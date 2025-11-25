@@ -400,7 +400,7 @@ export const initFromSinglePageV2 = async (
       project_id: project.id,
       url: fullUrl,
       path: new URL(fullUrl).pathname,
-      discovered_via: 'single_page',
+      discovered_via: 'manual',
       crawl_status: 'pending',
     }, {
       onConflict: 'project_id,url',
