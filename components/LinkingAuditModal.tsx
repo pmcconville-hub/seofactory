@@ -159,6 +159,20 @@ export const LinkingAuditModal: React.FC<LinkingAuditModalProps> = ({
     }
   };
 
+  // Determine target table based on issue type
+  const getTargetTable = (issueType: string): 'content_briefs' | 'topics' | 'navigation_structures' | 'foundation_pages' => {
+    if (issueType.includes('nav') || issueType.includes('header') || issueType.includes('footer')) {
+      return 'navigation_structures';
+    }
+    if (issueType.includes('foundation') || issueType.includes('eat')) {
+      return 'foundation_pages';
+    }
+    if (issueType.includes('brief') || issueType.includes('anchor') || issueType.includes('link')) {
+      return 'content_briefs';
+    }
+    return 'topics';
+  };
+
   // Apply single fix
   const handleApplySingleFix = async (issue: LinkingIssue, existingFix?: LinkingAutoFix) => {
     if (!state.user) return;
@@ -166,37 +180,25 @@ export const LinkingAuditModal: React.FC<LinkingAuditModalProps> = ({
     setApplyingFixId(issue.id);
 
     try {
-      // Use existing fix or create one from the issue's suggested fix
-      const fix: LinkingAutoFix = existingFix || {
-        issueId: issue.id,
-        fixType: issue.type.includes('anchor') ? 'update_anchor' :
-                 issue.type.includes('link') ? 'add_link' : 'remove_link',
-        description: issue.suggestedFix || `Auto-fix for ${issue.type}`,
-        confidence: 70,
-        requiresAI: false,
-        changes: [{
-          type: 'update',
-          target: issue.sourceTopic || 'navigation',
-          field: 'links',
-          oldValue: issue.anchorText,
-          newValue: issue.suggestedFix || 'Fixed',
-        }],
-      };
-
-      // If we have an audit ID, save the fix
-      if (lastAuditId) {
-        const fixResult = await applyFix(fix, lastAuditId, state.user.id);
-        if (fixResult.success) {
-          dispatch({ type: 'SET_NOTIFICATION', payload: `Fix applied: ${fix.description}` });
-          dispatch({ type: 'SET_LINKING_PENDING_FIXES', payload:
-            pendingFixes.filter(f => f.issueId !== issue.id)
-          });
-        } else {
-          dispatch({ type: 'SET_ERROR', payload: `Fix failed: ${fixResult.error}` });
+      // If we have an existing fix, use it
+      if (existingFix) {
+        if (lastAuditId) {
+          const fixResult = await applyFix(existingFix, lastAuditId, state.user.id);
+          if (fixResult.success) {
+            dispatch({ type: 'SET_NOTIFICATION', payload: `Fix applied: ${existingFix.description}` });
+            dispatch({ type: 'SET_LINKING_PENDING_FIXES', payload:
+              pendingFixes.filter(f => f.issueId !== issue.id)
+            });
+          } else {
+            dispatch({ type: 'SET_ERROR', payload: `Fix failed: ${fixResult.error}` });
+          }
         }
       } else {
-        // No audit ID yet, just show notification
-        dispatch({ type: 'SET_NOTIFICATION', payload: `Fix applied: ${fix.description}` });
+        // No pre-generated fix - these are informational fixes
+        // Mark as acknowledged and show the suggested action
+        dispatch({ type: 'SET_NOTIFICATION', payload:
+          `Acknowledged: ${issue.suggestedFix || issue.message}. Please apply this fix manually in your content.`
+        });
       }
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: `Failed to apply fix: ${error}` });
@@ -218,52 +220,44 @@ export const LinkingAuditModal: React.FC<LinkingAuditModalProps> = ({
         .filter(i => i.autoFixable);
 
       let appliedCount = 0;
+      let acknowledgedCount = 0;
       let failedCount = 0;
 
       // Apply fixes one by one
       for (const issue of autoFixableIssues) {
         const existingFix = pendingFixes.find(f => f.issueId === issue.id);
-        const fix: LinkingAutoFix = existingFix || {
-          issueId: issue.id,
-          fixType: issue.type.includes('anchor') ? 'update_anchor' :
-                   issue.type.includes('link') ? 'add_link' : 'remove_link',
-          description: issue.suggestedFix || `Auto-fix for ${issue.type}`,
-          confidence: 70,
-          requiresAI: false,
-          changes: [{
-            type: 'update',
-            target: issue.sourceTopic || 'navigation',
-            field: 'links',
-            oldValue: issue.anchorText,
-            newValue: issue.suggestedFix || 'Fixed',
-          }],
-        };
 
-        try {
-          if (lastAuditId) {
-            const fixResult = await applyFix(fix, lastAuditId, state.user.id);
+        if (existingFix && lastAuditId) {
+          // We have a pre-generated fix - apply it
+          try {
+            const fixResult = await applyFix(existingFix, lastAuditId, state.user.id);
             if (fixResult.success) {
               appliedCount++;
             } else {
               failedCount++;
             }
-          } else {
-            appliedCount++;
+          } catch {
+            failedCount++;
           }
-        } catch {
-          failedCount++;
+        } else {
+          // No pre-generated fix - count as acknowledged
+          acknowledgedCount++;
         }
       }
 
-      dispatch({ type: 'SET_NOTIFICATION', payload:
-        `Applied ${appliedCount} fixes (${failedCount} failed)`
-      });
+      const message = appliedCount > 0
+        ? `Applied ${appliedCount} fixes, acknowledged ${acknowledgedCount} issues`
+        : `Acknowledged ${acknowledgedCount} issues - please review and apply manually`;
+
+      dispatch({ type: 'SET_NOTIFICATION', payload: message });
 
       // Clear pending fixes
       dispatch({ type: 'SET_LINKING_PENDING_FIXES', payload: [] });
 
       // Re-run audit to see updated results
-      handleRunAudit();
+      if (appliedCount > 0) {
+        handleRunAudit();
+      }
 
     } catch (error) {
       dispatch({ type: 'SET_ERROR', payload: `Failed to apply fixes: ${error}` });
