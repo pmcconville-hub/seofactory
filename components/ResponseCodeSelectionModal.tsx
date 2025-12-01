@@ -41,6 +41,14 @@ const ResponseCodeSelectionModal: React.FC<ResponseCodeSelectionModalProps> = ({
     // Dynamic Model Selection State
     const [overrideSettings, setOverrideSettings] = useState<{ provider: string, model: string } | null>(null);
 
+    const handleConfigChange = useCallback((provider: string | null, model: string | null) => {
+        if (provider && model) {
+            setOverrideSettings({ provider, model });
+        } else {
+            setOverrideSettings(null);
+        }
+    }, []);
+
     useEffect(() => {
         if (isOpen && topic && businessInfo) {
             const fetchSuggestion = async () => {
@@ -62,20 +70,13 @@ const ResponseCodeSelectionModal: React.FC<ResponseCodeSelectionModalProps> = ({
         }
     }, [isOpen, topic, businessInfo, dispatch]);
 
+    // Early return MUST be after all hooks
     if (!isOpen) return null;
 
     const handleSubmit = () => {
         // Pass the explicit topic object back up, not relying on global state.
         onGenerate(topic, selectedCode, overrideSettings || undefined);
     };
-
-    const handleConfigChange = useCallback((provider: string | null, model: string | null) => {
-        if (provider && model) {
-            setOverrideSettings({ provider, model });
-        } else {
-            setOverrideSettings(null);
-        }
-    }, []);
 
     const isProcessing = globalIsLoading.briefs || !!briefGenerationStatus;
 

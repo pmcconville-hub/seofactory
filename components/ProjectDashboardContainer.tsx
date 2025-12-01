@@ -2,8 +2,9 @@
 // components/ProjectDashboardContainer.tsx
 import React, { useMemo, useCallback, useEffect, useRef } from 'react';
 import { useAppState } from '../state/appState';
-import { AppStep, SEOPillars, EnrichedTopic, ContentBrief, BusinessInfo, TopicalMap, TopicRecommendation, GscRow, ValidationIssue, MergeSuggestion, ResponseCode, FreshnessProfile, MapImprovementSuggestion, SemanticTriple, ExpansionMode, AuditRuleResult, ContextualFlowIssue } from '../types';
+import { AppStep, SEOPillars, EnrichedTopic, ContentBrief, BusinessInfo, TopicalMap, TopicRecommendation, GscRow, ValidationIssue, MergeSuggestion, ResponseCode, FreshnessProfile, MapImprovementSuggestion, SemanticTriple, ExpansionMode, AuditRuleResult, ContextualFlowIssue, FoundationPage, NAPData } from '../types';
 import * as aiService from '../services/ai/index';
+import * as foundationPagesService from '../services/ai/foundationPages';
 import { getSupabaseClient } from '../services/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
 import { slugify, cleanSlug } from '../utils/helpers';
@@ -19,7 +20,9 @@ import { generateMasterExport } from '../utils/exportUtils';
 import MapSelectionScreen from './MapSelectionScreen';
 import ProjectDashboard from './ProjectDashboard';
 import NewMapModal from './NewMapModal';
+import MigrationDashboardContainer from './migration/MigrationDashboardContainer';
 import { Loader } from './ui/Loader';
+import { Button } from './ui/Button';
 import DebugStatePanel from './ui/DebugStatePanel';
 import BriefReviewModal from './BriefReviewModal';
 import FlowAuditModal from './FlowAuditModal';
@@ -31,7 +34,7 @@ interface ProjectDashboardContainerProps {
 
 const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ onInitiateDeleteMap, onBackToProjects }) => {
     const { state, dispatch } = useAppState();
-    const { activeProjectId, activeMapId, topicalMaps, knowledgeGraph, businessInfo, modals, isLoading } = state;
+    const { activeProjectId, activeMapId, topicalMaps, knowledgeGraph, businessInfo, modals, isLoading, viewMode } = state;
 
     // Use a ref to track the latest state for long-running processes like batch generation
     const stateRef = useRef(state);
@@ -51,10 +54,22 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
     // REFACTOR 03: Use custom hook for KG hydration
     useKnowledgeGraph(activeMap, knowledgeGraph, dispatch);
 
-    const effectiveBusinessInfo = useMemo<BusinessInfo>(() => ({
-        ...businessInfo,
-        ...(activeMap?.business_info as Partial<BusinessInfo> || {})
-    }), [businessInfo, activeMap]);
+    // Build effective business info: global settings + project domain + map overrides
+    // Priority: map.business_info > project.domain > global businessInfo
+    const effectiveBusinessInfo = useMemo<BusinessInfo>(() => {
+        const mapBusinessInfo = activeMap?.business_info as Partial<BusinessInfo> || {};
+
+        return {
+            ...businessInfo,
+            // Use project domain if map doesn't have one set
+            domain: mapBusinessInfo.domain || activeProject?.domain || businessInfo.domain,
+            projectName: mapBusinessInfo.projectName || activeProject?.project_name || businessInfo.projectName,
+            // Spread map-specific overrides last
+            ...mapBusinessInfo,
+            // But ensure domain is always from project if map didn't override it
+            ...(mapBusinessInfo.domain ? {} : { domain: activeProject?.domain || businessInfo.domain }),
+        };
+    }, [businessInfo, activeMap, activeProject]);
     
     // REFACTOR 03 & Task 05: Use custom hook for Enrichment & Blueprints
     const { handleEnrichData, isEnriching, handleGenerateBlueprints, isGeneratingBlueprints } = useTopicEnrichment(
@@ -133,14 +148,98 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
         }
     };
 
+    // Pre-flight validation helper for map generation
+    const validateMapGenerationContext = (): { valid: boolean; errors: string[] } => {
+        const errors: string[] = [];
+
+        // Check pillars - SEOPillars has: centralEntity, sourceContext, centralSearchIntent
+        if (!activeMap?.pillars) {
+            errors.push('Pillars are not defined. Complete the Pillar Definition step first.');
+        } else {
+            if (!activeMap.pillars.centralEntity) {
+                errors.push('Central Entity is missing in Pillars.');
+            }
+            if (!activeMap.pillars.centralSearchIntent) {
+                errors.push('Central Search Intent is missing in Pillars.');
+            }
+        }
+
+        // Check domain (from effective business info)
+        if (!effectiveBusinessInfo.domain) {
+            errors.push('Domain is not set. Set it in Project settings or Business Info.');
+        }
+
+        // Check AI configuration
+        if (!effectiveBusinessInfo.aiProvider) {
+            errors.push('AI Provider is not configured. Check Settings.');
+        }
+
+        // Check API key based on provider
+        const provider = effectiveBusinessInfo.aiProvider;
+        if (provider === 'gemini' && !effectiveBusinessInfo.geminiApiKey) {
+            errors.push('Gemini API key is not configured. Add it in Settings.');
+        } else if (provider === 'openai' && !effectiveBusinessInfo.openAiApiKey) {
+            errors.push('OpenAI API key is not configured. Add it in Settings.');
+        } else if (provider === 'anthropic' && !effectiveBusinessInfo.anthropicApiKey) {
+            errors.push('Anthropic API key is not configured. Add it in Settings.');
+        } else if (provider === 'perplexity' && !effectiveBusinessInfo.perplexityApiKey) {
+            errors.push('Perplexity API key is not configured. Add it in Settings.');
+        } else if (provider === 'openrouter' && !effectiveBusinessInfo.openRouterApiKey) {
+            errors.push('OpenRouter API key is not configured. Add it in Settings.');
+        }
+
+        return { valid: errors.length === 0, errors };
+    };
+
     const handleGenerateInitialMap = async () => {
-        if (!activeMapId || !activeMap || !activeMap.pillars) return;
+        if (!activeMapId || !activeMap || !activeMap.pillars) {
+            dispatch({ type: 'SET_ERROR', payload: 'Cannot generate map: No active map or pillars not defined.' });
+            return;
+        }
         const user = state.user;
         if (!user) {
              dispatch({ type: 'SET_ERROR', payload: 'User session required.' });
              return;
         }
-        
+
+        // PRE-FLIGHT VALIDATION
+        const validation = validateMapGenerationContext();
+        if (!validation.valid) {
+            const errorMsg = `Cannot generate map. Please fix the following:\n\n• ${validation.errors.join('\n• ')}`;
+            dispatch({ type: 'SET_ERROR', payload: errorMsg });
+            dispatch({ type: 'LOG_EVENT', payload: {
+                service: 'MapGeneration',
+                message: 'Pre-flight validation failed',
+                status: 'failure',
+                timestamp: Date.now(),
+                data: { errors: validation.errors, effectiveConfig: {
+                    domain: effectiveBusinessInfo.domain,
+                    provider: effectiveBusinessInfo.aiProvider,
+                    model: effectiveBusinessInfo.aiModel,
+                    centralEntity: activeMap.pillars?.centralEntity,
+                    centralSearchIntent: activeMap.pillars?.centralSearchIntent?.substring(0, 100)
+                }}
+            }});
+            return;
+        }
+
+        // Log the configuration being used
+        dispatch({ type: 'LOG_EVENT', payload: {
+            service: 'MapGeneration',
+            message: 'Starting map generation with validated config',
+            status: 'info',
+            timestamp: Date.now(),
+            data: {
+                domain: effectiveBusinessInfo.domain,
+                provider: effectiveBusinessInfo.aiProvider,
+                model: effectiveBusinessInfo.aiModel,
+                centralEntity: activeMap.pillars.centralEntity,
+                centralSearchIntent: activeMap.pillars.centralSearchIntent?.substring(0, 100),
+                eavCount: activeMap.eavs?.length || 0,
+                competitorCount: activeMap.competitors?.length || 0
+            }
+        }});
+
         dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: true } });
         try {
             // Use effective business info (global keys + map strategy)
@@ -216,6 +315,17 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             }));
 
             if (dbTopics.length > 0) {
+                // Log topic_class distribution for debugging
+                const monetizationCount = finalTopics.filter(t => t.topic_class === 'monetization').length;
+                const informationalCount = finalTopics.filter(t => t.topic_class === 'informational').length;
+                const undefinedCount = finalTopics.filter(t => !t.topic_class).length;
+                dispatch({ type: 'LOG_EVENT', payload: {
+                    service: 'MapGeneration',
+                    message: `Saving ${dbTopics.length} topics to DB. topic_class distribution: monetization=${monetizationCount}, informational=${informationalCount}, undefined=${undefinedCount}`,
+                    status: 'info',
+                    timestamp: Date.now()
+                }});
+
                 const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
                 const { error: insertError } = await supabase.from('topics').insert(dbTopics);
                 if (insertError) throw insertError;
@@ -224,10 +334,19 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             // Update State
             // We use finalTopics directly to preserve the in-memory metadata immediately
             dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: activeMapId, topics: finalTopics } });
-            dispatch({ type: 'SET_NOTIFICATION', payload: 'Initial topical map generated successfully.' });
+
+            // Provide clear user feedback based on results
+            if (finalTopics.length === 0) {
+                // AI returned empty results - alert the user
+                dispatch({ type: 'SET_ERROR', payload: 'The AI returned no topics. This can happen if: (1) The pillars/seed keyword context is too vague, (2) There was an API parsing error, or (3) The AI model is unavailable. Please check the Logs panel for details and try again.' });
+                dispatch({ type: 'LOG_EVENT', payload: { service: 'MapGeneration', message: 'AI returned empty topic arrays. Check business context and API configuration.', status: 'warning', timestamp: Date.now(), data: { coreCount: coreTopics.length, outerCount: outerTopics.length, effectiveModel: effectiveBusinessInfo.aiModel, effectiveProvider: effectiveBusinessInfo.aiProvider } } });
+            } else {
+                dispatch({ type: 'SET_NOTIFICATION', payload: `Initial topical map generated: ${coreTopics.length} core topics and ${outerTopics.length} supporting topics.` });
+            }
 
         } catch (e) {
             console.error("Map Generation Error:", e);
+            dispatch({ type: 'LOG_EVENT', payload: { service: 'MapGeneration', message: `Generation failed: ${e instanceof Error ? e.message : 'Unknown error'}`, status: 'failure', timestamp: Date.now(), data: e } });
             dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : "Failed to generate initial map."});
         } finally {
             dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: false } });
@@ -751,61 +870,240 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
         }
     }, [activeMap, allTopics, effectiveBusinessInfo, dispatch, saveAnalysisState]);
 
-    const onImproveMap = useCallback(async (issues: ValidationIssue[]) => {
+    const onImproveMap = useCallback(async (issues: ValidationIssue[], options?: { includeTypeReclassifications?: boolean }) => {
         if (!activeMapId || !activeMap?.pillars) return;
         const user = state.user;
         if (!user) return;
 
+        const includeTypeReclassifications = options?.includeTypeReclassifications ?? true;
+
         dispatch({ type: 'SET_LOADING', payload: { key: 'improveMap', value: true } });
-        
+
         try {
             const suggestion = await aiService.improveTopicalMap(allTopics, issues, effectiveBusinessInfo, dispatch);
             dispatch({ type: 'SET_IMPROVEMENT_LOG', payload: suggestion });
-            
+
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            
-            if (suggestion.newTopics.length > 0) {
-                // FIX: Inject user_id
-                const topicsToAdd = suggestion.newTopics.map(t => ({
-                   id: uuidv4(),
-                   map_id: activeMapId,
-                   user_id: user.id,
-                   title: t.title,
-                   slug: slugify(t.title),
-                   description: t.description,
-                   type: t.type,
-                   freshness: 'STANDARD',
-                   parent_topic_id: null
-                }));
-                
-                const { data: addedTopics, error: addError } = await supabase.from('topics').insert(topicsToAdd).select();
-                if (addError) throw addError;
-                
-                (addedTopics || []).forEach(topic => {
-                    dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic: sanitizeTopicFromDb(topic) } });
+
+            // Build a lookup of core topics by title for parent assignment
+            const coreTopicsByTitle = new Map<string, EnrichedTopic>();
+            allTopics.filter(t => t.type === 'core').forEach(t => {
+                coreTopicsByTitle.set(t.title.toLowerCase(), t);
+            });
+
+            // Collect all new topics (from newTopics and hubSpokeGapFills)
+            const allNewTopics: typeof suggestion.newTopics = [...suggestion.newTopics];
+
+            // Process hubSpokeGapFills - convert to newTopics format
+            if (suggestion.hubSpokeGapFills && suggestion.hubSpokeGapFills.length > 0) {
+                suggestion.hubSpokeGapFills.forEach(fill => {
+                    fill.newSpokes.forEach(spoke => {
+                        allNewTopics.push({
+                            title: spoke.title,
+                            description: spoke.description,
+                            type: 'outer',
+                            topic_class: spoke.topic_class,
+                            parentTopicTitle: fill.hubTitle,
+                            reasoning: `Hub-spoke gap fill for "${fill.hubTitle}"`
+                        });
+                    });
                 });
             }
-            
+
+            if (allNewTopics.length > 0) {
+                // First pass: Create core topics to get their IDs
+                const coreTopicsToAdd = allNewTopics.filter(t => t.type === 'core');
+                const outerTopicsToAdd = allNewTopics.filter(t => t.type === 'outer');
+
+                // Track newly created cores for parent resolution
+                const newCoresByTitle = new Map<string, string>(); // title -> id
+
+                // Add core topics first
+                if (coreTopicsToAdd.length > 0) {
+                    const coreDbTopics = coreTopicsToAdd.map(t => ({
+                        id: uuidv4(),
+                        map_id: activeMapId,
+                        user_id: user.id,
+                        title: t.title,
+                        slug: slugify(t.title),
+                        description: t.description,
+                        type: 'core' as const,
+                        freshness: 'EVERGREEN',
+                        parent_topic_id: null,
+                        metadata: {
+                            topic_class: t.topic_class || 'informational'
+                        }
+                    }));
+
+                    coreDbTopics.forEach(ct => {
+                        newCoresByTitle.set(ct.title.toLowerCase(), ct.id);
+                    });
+
+                    const { data: addedCores, error: addCoreError } = await supabase.from('topics').insert(coreDbTopics).select();
+                    if (addCoreError) throw addCoreError;
+
+                    (addedCores || []).forEach(topic => {
+                        dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic: sanitizeTopicFromDb(topic) } });
+                    });
+
+                    dispatch({ type: 'LOG_EVENT', payload: {
+                        service: 'MapImprovement',
+                        message: `Added ${addedCores?.length || 0} new core topics`,
+                        status: 'info',
+                        timestamp: Date.now()
+                    }});
+                }
+
+                // Add outer topics with proper parent assignment
+                if (outerTopicsToAdd.length > 0) {
+                    const outerDbTopics = outerTopicsToAdd.map(t => {
+                        // Resolve parent topic ID
+                        let parentId: string | null = null;
+                        if (t.parentTopicTitle) {
+                            const parentTitleLower = t.parentTopicTitle.toLowerCase();
+                            // First check newly created cores
+                            if (newCoresByTitle.has(parentTitleLower)) {
+                                parentId = newCoresByTitle.get(parentTitleLower) || null;
+                            } else if (coreTopicsByTitle.has(parentTitleLower)) {
+                                // Then check existing cores
+                                parentId = coreTopicsByTitle.get(parentTitleLower)?.id || null;
+                            }
+                        }
+
+                        // Generate proper slug with parent context
+                        const parentTopic = parentId ?
+                            (allTopics.find(p => p.id === parentId) || { slug: '' }) :
+                            { slug: '' };
+                        const parentSlug = parentTopic.slug || '';
+                        const slug = parentId && parentSlug
+                            ? `${parentSlug}/${cleanSlug(parentSlug, t.title)}`.replace(/^\//, '')
+                            : slugify(t.title);
+
+                        return {
+                            id: uuidv4(),
+                            map_id: activeMapId,
+                            user_id: user.id,
+                            title: t.title,
+                            slug,
+                            description: t.description,
+                            type: 'outer' as const,
+                            freshness: 'STANDARD',
+                            parent_topic_id: parentId,
+                            metadata: {
+                                topic_class: t.topic_class || 'informational'
+                            }
+                        };
+                    });
+
+                    const { data: addedOuters, error: addOuterError } = await supabase.from('topics').insert(outerDbTopics).select();
+                    if (addOuterError) throw addOuterError;
+
+                    (addedOuters || []).forEach(topic => {
+                        dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic: sanitizeTopicFromDb(topic) } });
+                    });
+
+                    // Log parent assignment stats
+                    const withParent = outerDbTopics.filter(t => t.parent_topic_id).length;
+                    const orphaned = outerDbTopics.filter(t => !t.parent_topic_id).length;
+                    dispatch({ type: 'LOG_EVENT', payload: {
+                        service: 'MapImprovement',
+                        message: `Added ${addedOuters?.length || 0} outer topics (${withParent} with parents, ${orphaned} orphaned)`,
+                        status: orphaned > 0 ? 'warning' : 'info',
+                        timestamp: Date.now()
+                    }});
+                }
+            }
+
             if (suggestion.topicTitlesToDelete.length > 0) {
                 const idsToDelete: string[] = [];
                 suggestion.topicTitlesToDelete.forEach(title => {
                     const match = allTopics.find(t => t.title.toLowerCase() === title.toLowerCase());
                     if (match) idsToDelete.push(match.id);
                 });
-                
+
                 if (idsToDelete.length > 0) {
                     const { error: deleteError } = await supabase.from('topics').delete().in('id', idsToDelete);
                     if (deleteError) throw deleteError;
-                    
+
                     idsToDelete.forEach(id => {
                          dispatch({ type: 'DELETE_TOPIC', payload: { mapId: activeMapId, topicId: id } });
                     });
+
+                    dispatch({ type: 'LOG_EVENT', payload: {
+                        service: 'MapImprovement',
+                        message: `Deleted ${idsToDelete.length} topics`,
+                        status: 'info',
+                        timestamp: Date.now()
+                    }});
                 }
             }
-            
+
+            // Process type reclassifications (core -> outer or vice versa) - only if enabled
+            if (includeTypeReclassifications && suggestion.typeReclassifications && suggestion.typeReclassifications.length > 0) {
+                let reclassifiedCount = 0;
+                for (const reclass of suggestion.typeReclassifications) {
+                    const topic = allTopics.find(t => t.title.toLowerCase() === reclass.topicTitle.toLowerCase());
+                    if (!topic) continue;
+
+                    // Find the new parent if specified
+                    let newParentId: string | null = null;
+                    if (reclass.newParentTitle && reclass.newType === 'outer') {
+                        const parent = allTopics.find(t =>
+                            t.title.toLowerCase() === reclass.newParentTitle!.toLowerCase() && t.type === 'core'
+                        );
+                        newParentId = parent?.id || null;
+                    }
+
+                    // Build update object
+                    const updateData: Record<string, any> = {
+                        type: reclass.newType,
+                        parent_topic_id: newParentId
+                    };
+
+                    // Update slug if becoming outer with a parent
+                    if (reclass.newType === 'outer' && newParentId) {
+                        const parentTopic = allTopics.find(p => p.id === newParentId);
+                        if (parentTopic?.slug) {
+                            updateData.slug = `${parentTopic.slug}/${cleanSlug(parentTopic.slug, topic.title)}`.replace(/^\//, '');
+                        }
+                    }
+
+                    const { error: updateError } = await supabase
+                        .from('topics')
+                        .update(updateData)
+                        .eq('id', topic.id);
+
+                    if (updateError) {
+                        console.error(`Failed to reclassify topic "${topic.title}":`, updateError);
+                        continue;
+                    }
+
+                    // Update local state
+                    dispatch({ type: 'UPDATE_TOPIC', payload: {
+                        mapId: activeMapId,
+                        topicId: topic.id,
+                        updates: {
+                            type: reclass.newType,
+                            parent_topic_id: newParentId,
+                            slug: updateData.slug || topic.slug
+                        }
+                    }});
+                    reclassifiedCount++;
+                }
+
+                if (reclassifiedCount > 0) {
+                    dispatch({ type: 'LOG_EVENT', payload: {
+                        service: 'MapImprovement',
+                        message: `Reclassified ${reclassifiedCount} topics (type changes applied)`,
+                        status: 'info',
+                        timestamp: Date.now()
+                    }});
+                }
+            }
+
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'improvementLog', visible: true } });
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'validation', visible: false } });
-            
+
         } catch (e) {
              dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Map improvement failed.' });
         } finally {
@@ -1051,59 +1349,78 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
         const user = state.user;
         if (!user) return;
 
-        // Optimistic update? Or wait for DB?
-        // DB first ensures consistency.
-        
         const loadingKey = `update_${topicId}`;
         dispatch({ type: 'SET_LOADING', payload: { key: loadingKey, value: true } });
 
         try {
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            
-            // Sanitize updates for DB: Remove fields that are not actual columns on the topics table.
-            // We only want to update explicit columns like title, slug OR the metadata column.
-            const dbUpdates: any = { ...updates };
-            
+
             // List of fields that live in the `metadata` JSONB column, NOT as root columns
             const metaFields = [
-                'topic_class', 'cluster_role', 'attribute_focus', 'canonical_query', 'decay_score', 
-                'query_network', 'topical_border_note', 'planned_publication_date', 'url_slug_hint', 
+                'topic_class', 'cluster_role', 'attribute_focus', 'canonical_query', 'decay_score',
+                'query_network', 'topical_border_note', 'planned_publication_date', 'url_slug_hint',
                 'blueprint', 'query_type'
             ];
-            
-            // If updates contains metadata fields, we should probably merge them into the existing metadata
-            // However, typical usage of this function sends EITHER root columns (title/slug) OR a pre-constructed metadata object.
-            // If the caller sends { topic_class: '...', metadata: ... }, we need to be careful.
-            
-            // Strategy: 
-            // 1. Remove metadata-only fields from the root of dbUpdates.
-            // 2. If the caller provided a `metadata` object, it will be used.
-            // 3. If the caller provided metadata fields at the root but NOT a metadata object, we might lose data here if we just delete them.
-            //    Ideally, the caller should structure the update correctly. 
-            //    But for safety, let's warn if we are stripping data.
-            
-            metaFields.forEach(field => {
-                if (dbUpdates[field] !== undefined) {
-                    delete dbUpdates[field];
+
+            // Separate root-level DB columns from metadata fields
+            const dbUpdates: any = {};
+            const metadataUpdates: Record<string, any> = {};
+
+            Object.entries(updates).forEach(([key, value]) => {
+                if (metaFields.includes(key)) {
+                    // This field belongs in metadata JSONB
+                    metadataUpdates[key] = value;
+                } else if (key === 'metadata') {
+                    // Caller provided a full metadata object - merge it
+                    Object.assign(metadataUpdates, value);
+                } else {
+                    // Root-level column (title, slug, description, type, etc.)
+                    dbUpdates[key] = value;
                 }
             });
 
-            const { error } = await supabase
-                .from('topics')
-                .update(dbUpdates)
-                .eq('id', topicId);
+            // If we have metadata updates, we need to fetch existing metadata and merge
+            if (Object.keys(metadataUpdates).length > 0) {
+                // Fetch current metadata to merge
+                const { data: currentTopic, error: fetchError } = await supabase
+                    .from('topics')
+                    .select('metadata')
+                    .eq('id', topicId)
+                    .single();
 
-            if (error) throw error;
+                if (fetchError) throw fetchError;
 
-            dispatch({ 
-                type: 'UPDATE_TOPIC', 
-                payload: { 
-                    mapId: activeMapId, 
-                    topicId: topicId, 
-                    updates: updates 
-                } 
+                const existingMetadata = (currentTopic?.metadata as Record<string, any>) || {};
+                const mergedMetadata = { ...existingMetadata, ...metadataUpdates };
+                dbUpdates.metadata = mergedMetadata;
+
+                dispatch({ type: 'LOG_EVENT', payload: {
+                    service: 'TopicUpdate',
+                    message: `Updating metadata for topic ${topicId}: ${JSON.stringify(metadataUpdates)}`,
+                    status: 'info',
+                    timestamp: Date.now()
+                }});
+            }
+
+            // Only perform update if we have something to update
+            if (Object.keys(dbUpdates).length > 0) {
+                const { error } = await supabase
+                    .from('topics')
+                    .update(dbUpdates)
+                    .eq('id', topicId);
+
+                if (error) throw error;
+            }
+
+            // Update local state
+            dispatch({
+                type: 'UPDATE_TOPIC',
+                payload: {
+                    mapId: activeMapId,
+                    topicId: topicId,
+                    updates: updates
+                }
             });
-            dispatch({ type: 'SET_NOTIFICATION', payload: 'Topic updated successfully.' });
 
         } catch (e) {
             dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to update topic.' });
@@ -1226,9 +1543,9 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
         try {
             // Assuming briefs contains only fetched briefs.
             // If we want ALL briefs, we might need to fetch them all first if not loaded.
-            // For now, export what is in state. 
+            // For now, export what is in state.
             const filename = `${activeProject?.project_name || 'Project'}_${activeMap.name}_HolisticMap`;
-            
+
             // Use state analysis result if available
             const metrics = state.validationResult;
 
@@ -1246,7 +1563,179 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             dispatch({ type: 'SET_LOADING', payload: { key: 'export', value: false } });
         }
     }
-    
+
+    // --- MIGRATION MODE HANDLERS ---
+    const handleSwitchToMigration = useCallback(() => {
+        dispatch({ type: 'SET_VIEW_MODE', payload: 'MIGRATION' });
+    }, [dispatch]);
+
+    const handleSwitchToCreation = useCallback(() => {
+        dispatch({ type: 'SET_VIEW_MODE', payload: 'CREATION' });
+    }, [dispatch]);
+
+    const handleQuickAudit = useCallback(async (url: string) => {
+        if (!activeMapId) return;
+
+        const apiKey = effectiveBusinessInfo.firecrawlApiKey;
+        if (!apiKey) {
+            dispatch({ type: 'SET_ERROR', payload: 'Firecrawl API key is required for Quick Audit. Please configure it in Settings.' });
+            return;
+        }
+
+        dispatch({ type: 'SET_LOADING', payload: { key: 'quickAudit', value: true } });
+        try {
+            // Scrape the URL content using Firecrawl
+            const scrapeResult = await aiService.scrapeUrl(url, apiKey);
+            if (!scrapeResult || !scrapeResult.markdown) {
+                throw new Error('Failed to scrape URL content.');
+            }
+
+            // Create a transient brief from the scraped content
+            const transientBrief: Partial<ContentBrief> & { id: string; topic_id: string; title: string; articleDraft: string } = {
+                id: `transient_${uuidv4()}`,
+                topic_id: 'transient',
+                title: scrapeResult.title || 'Quick Audit',
+                slug: '',
+                metaDescription: '',
+                keyTakeaways: [],
+                outline: '',
+                serpAnalysis: { peopleAlsoAsk: [], competitorHeadings: [] },
+                visuals: { featuredImagePrompt: '', imageAltText: '' },
+                contextualVectors: [],
+                contextualBridge: [],
+                articleDraft: scrapeResult.markdown
+            };
+
+            // Set the result in state and open the content brief modal
+            dispatch({ type: 'SET_ACTIVE_BRIEF_TOPIC', payload: { id: 'transient', title: 'Quick Audit' } as EnrichedTopic });
+            dispatch({ type: 'SET_BRIEF_GENERATION_RESULT', payload: transientBrief as ContentBrief });
+            dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'contentBrief', visible: true } });
+            dispatch({ type: 'SET_NOTIFICATION', payload: 'Quick audit content loaded. You can now run audits on this content.' });
+        } catch (e) {
+            dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Quick audit failed.' });
+        } finally {
+            dispatch({ type: 'SET_LOADING', payload: { key: 'quickAudit', value: false } });
+        }
+    }, [activeMapId, effectiveBusinessInfo.firecrawlApiKey, dispatch]);
+
+    // ===========================================
+    // Foundation Pages Handlers
+    // ===========================================
+
+    // Get foundation pages from state
+    const foundationPages = useMemo(() => state.websiteStructure?.foundationPages || [], [state.websiteStructure?.foundationPages]);
+    const napData = useMemo(() => {
+        // Get NAP data from the first foundation page that has it, or undefined
+        const pageWithNap = foundationPages.find(p => p.nap_data);
+        return pageWithNap?.nap_data;
+    }, [foundationPages]);
+
+    // Load foundation pages when map changes
+    useEffect(() => {
+        const loadFoundationPages = async () => {
+            if (!activeMapId) return;
+            try {
+                const pages = await foundationPagesService.loadFoundationPages(activeMapId);
+                dispatch({ type: 'SET_FOUNDATION_PAGES', payload: pages });
+            } catch (error) {
+                console.error('Failed to load foundation pages:', error);
+            }
+        };
+        loadFoundationPages();
+    }, [activeMapId, dispatch]);
+
+    const handleSaveNAPData = useCallback(async (newNapData: NAPData) => {
+        if (!activeMapId || !state.user?.id) return;
+
+        // Update NAP data on all foundation pages
+        const updatedPages = foundationPages.map(page => ({
+            ...page,
+            nap_data: newNapData
+        }));
+
+        try {
+            await foundationPagesService.saveFoundationPages(
+                activeMapId,
+                state.user.id,
+                updatedPages,
+                effectiveBusinessInfo.supabaseUrl,
+                effectiveBusinessInfo.supabaseAnonKey
+            );
+            dispatch({ type: 'SET_FOUNDATION_PAGES', payload: updatedPages });
+            dispatch({ type: 'SET_NOTIFICATION', payload: 'NAP data saved successfully.' });
+        } catch (error) {
+            dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to save NAP data.' });
+        }
+    }, [activeMapId, state.user?.id, foundationPages, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey, dispatch]);
+
+    const handleUpdateFoundationPage = useCallback(async (pageId: string, updates: Partial<FoundationPage>) => {
+        try {
+            const updatedPage = await foundationPagesService.updateFoundationPage(pageId, updates);
+            dispatch({ type: 'UPDATE_FOUNDATION_PAGE', payload: { pageId, updates: updatedPage } });
+            dispatch({ type: 'SET_NOTIFICATION', payload: 'Foundation page updated.' });
+        } catch (error) {
+            dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to update foundation page.' });
+        }
+    }, [dispatch]);
+
+    const handleDeleteFoundationPage = useCallback(async (pageId: string) => {
+        try {
+            await foundationPagesService.deleteFoundationPage(pageId, 'user_deleted');
+            dispatch({ type: 'DELETE_FOUNDATION_PAGE', payload: { pageId } });
+            dispatch({ type: 'SET_NOTIFICATION', payload: 'Foundation page deleted.' });
+        } catch (error) {
+            dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to delete foundation page.' });
+        }
+    }, [dispatch]);
+
+    const handleRestoreFoundationPage = useCallback(async (pageId: string) => {
+        try {
+            const restoredPage = await foundationPagesService.restoreFoundationPage(pageId);
+            dispatch({ type: 'UPDATE_FOUNDATION_PAGE', payload: { pageId, updates: restoredPage } });
+            dispatch({ type: 'SET_NOTIFICATION', payload: 'Foundation page restored.' });
+        } catch (error) {
+            dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to restore foundation page.' });
+        }
+    }, [dispatch]);
+
+    const handleGenerateMissingFoundationPages = useCallback(async () => {
+        if (!activeMapId || !state.user?.id || !activeMap?.pillars) {
+            dispatch({ type: 'SET_ERROR', payload: 'Cannot generate foundation pages: missing map, user, or pillars.' });
+            return;
+        }
+
+        dispatch({ type: 'SET_LOADING', payload: { key: 'foundationPages', value: true } });
+        try {
+            const result = await foundationPagesService.generateFoundationPages(
+                effectiveBusinessInfo,
+                activeMap.pillars as SEOPillars,
+                dispatch
+            );
+
+            const pagesToSave = foundationPagesService.prepareFoundationPagesForSave(
+                result,
+                activeMapId,
+                state.user.id,
+                napData
+            );
+
+            const savedPages = await foundationPagesService.saveFoundationPages(
+                activeMapId,
+                state.user.id,
+                pagesToSave,
+                effectiveBusinessInfo.supabaseUrl,
+                effectiveBusinessInfo.supabaseAnonKey
+            );
+
+            dispatch({ type: 'SET_FOUNDATION_PAGES', payload: savedPages });
+            dispatch({ type: 'SET_NOTIFICATION', payload: `Generated ${savedPages.length} foundation pages.` });
+        } catch (error) {
+            dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to generate foundation pages.' });
+        } finally {
+            dispatch({ type: 'SET_LOADING', payload: { key: 'foundationPages', value: false } });
+        }
+    }, [activeMapId, state.user?.id, activeMap?.pillars, effectiveBusinessInfo, napData, dispatch]);
+
     const stateSnapshot = {
         'Active Map Found': !!activeMap,
         'Map Has Pillars': !!activeMap?.pillars,
@@ -1280,6 +1769,24 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                     onClose={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'newMap', visible: false } })}
                     onCreateMap={handleCreateNewMap}
                 />
+            </>
+        );
+    }
+
+    // Render based on view mode
+    if (viewMode === 'MIGRATION') {
+        return (
+            <>
+                <div className="flex justify-between items-center px-4 py-2 border-b border-gray-700">
+                    <Button onClick={handleSwitchToCreation} variant="secondary" className="text-xs">
+                        ← Back to Creation Mode
+                    </Button>
+                    <Button onClick={onBackToProjects} variant="secondary" className="text-xs">
+                        Back to Projects
+                    </Button>
+                </div>
+                <MigrationDashboardContainer />
+                <DebugStatePanel stateSnapshot={stateSnapshot} />
             </>
         );
     }
@@ -1344,9 +1851,21 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 onUpdateTopic={handleUpdateTopic}
                 // Flow Audit
                 onAnalyzeFlow={handleAnalyzeFlow}
+                // Migration Mode Props
+                onQuickAudit={handleQuickAudit}
+                onSwitchToMigration={handleSwitchToMigration}
+                // Foundation Pages Props
+                foundationPages={foundationPages}
+                napData={napData}
+                isLoadingFoundationPages={!!isLoading.foundationPages}
+                onSaveNAPData={handleSaveNAPData}
+                onUpdateFoundationPage={handleUpdateFoundationPage}
+                onDeleteFoundationPage={handleDeleteFoundationPage}
+                onRestoreFoundationPage={handleRestoreFoundationPage}
+                onGenerateMissingFoundationPages={handleGenerateMissingFoundationPages}
             />
-            <BriefReviewModal 
-                isOpen={!!modals.briefReview} 
+            <BriefReviewModal
+                isOpen={!!modals.briefReview}
             />
             <DebugStatePanel stateSnapshot={stateSnapshot} />
             <FlowAuditModal

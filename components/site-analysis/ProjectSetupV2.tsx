@@ -17,6 +17,8 @@ interface ProjectSetupV2Props {
   onCancel: () => void;
   isProcessing: boolean;
   existingTopicalMaps: TopicalMap[];
+  hasApiKeys?: boolean;
+  onOpenSettings?: () => void;
 }
 
 export const ProjectSetupV2: React.FC<ProjectSetupV2Props> = ({
@@ -24,6 +26,8 @@ export const ProjectSetupV2: React.FC<ProjectSetupV2Props> = ({
   onCancel,
   isProcessing,
   existingTopicalMaps,
+  hasApiKeys = true,
+  onOpenSettings,
 }) => {
   const [step, setStep] = useState<'method' | 'details'>('method');
   const [inputMethod, setInputMethod] = useState<'url' | 'sitemap' | 'gsc' | 'single_page'>('url');
@@ -97,6 +101,34 @@ export const ProjectSetupV2: React.FC<ProjectSetupV2Props> = ({
   if (step === 'method') {
     return (
       <div className="space-y-6">
+        {/* API Keys Warning */}
+        {!hasApiKeys && (
+          <Card className="p-4 border-yellow-500/50 bg-yellow-900/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-yellow-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <p className="font-medium text-yellow-300">API Keys Required</p>
+                  <p className="text-sm text-gray-400">
+                    Content extraction requires at least one API key (Apify or Jina) to be configured in Settings.
+                  </p>
+                </div>
+              </div>
+              {onOpenSettings && (
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="px-4 py-2 text-sm rounded bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30"
+                >
+                  Open Settings
+                </button>
+              )}
+            </div>
+          </Card>
+        )}
+
         <Card className="p-6">
           <h2 className="text-xl font-semibold text-white mb-6">Choose Input Method</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

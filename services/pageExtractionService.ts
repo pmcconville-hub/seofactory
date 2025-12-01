@@ -1,5 +1,5 @@
 // services/pageExtractionService.ts
-// Unified page extraction orchestrator - combines Apify (technical) + Jina (semantic)
+// Unified page extraction orchestrator - combines Apify (technical) + Jina (semantic) + Firecrawl fallback
 
 import { ApifyPageData, JinaExtraction, ExtractedPageData } from '../types';
 import { extractMultiplePagesTechnicalData } from './apifyService';
@@ -8,13 +8,18 @@ import {
   extractMultiplePages as jinaExtractMultiple,
   generateContentHash,
 } from './jinaService';
+import {
+  extractMultiplePagesWithFirecrawl,
+} from './firecrawlService';
 
 export interface ExtractionConfig {
   apifyToken: string;
   jinaApiKey: string;
+  firecrawlApiKey?: string; // Optional Firecrawl API key for fallback
   // Which extractors to use
   useApify?: boolean;
   useJina?: boolean;
+  useFirecrawlFallback?: boolean; // Default true - use Firecrawl when Apify fails
   // Concurrency settings
   batchSize?: number;
   // Timeout settings
@@ -27,7 +32,7 @@ export interface ExtractionConfig {
 }
 
 export interface ExtractionProgress {
-  phase: 'technical' | 'semantic' | 'complete';
+  phase: 'technical' | 'firecrawl_fallback' | 'semantic' | 'complete';
   completed: number;
   total: number;
   currentUrl?: string;
@@ -99,8 +104,10 @@ export const extractPages = async (
   const {
     apifyToken,
     jinaApiKey,
+    firecrawlApiKey,
     useApify = true,
     useJina = true,
+    useFirecrawlFallback = true,
     batchSize = 10,
     proxyConfig,
   } = config;
@@ -109,8 +116,10 @@ export const extractPages = async (
   const technicalResults = new Map<string, ApifyPageData>();
   const semanticResults = new Map<string, JinaExtraction>();
   const extractionErrors: { url: string; error: string; phase: string }[] = [];
+  let usedFirecrawlFallback = false;
 
   // Phase 1: Technical extraction (Apify - handles batches internally)
+  let apifyFailed = false;
   if (useApify && apifyToken) {
     try {
       onProgress?.({
@@ -141,10 +150,58 @@ export const extractPages = async (
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('[Extraction] Apify failed:', errorMsg);
+      apifyFailed = true;
       // Add error for all URLs if batch fails
       for (const url of urls) {
         extractionErrors.push({ url, error: errorMsg, phase: 'technical' });
       }
+    }
+  }
+
+  // Phase 1b: Firecrawl fallback (if Apify failed or wasn't used, and Firecrawl is configured)
+  const urlsWithoutTechnicalData = urls.filter(url => !technicalResults.has(normalizeUrl(url)));
+  if (useFirecrawlFallback && firecrawlApiKey && urlsWithoutTechnicalData.length > 0) {
+    console.log(`[Extraction] Using Firecrawl fallback for ${urlsWithoutTechnicalData.length} URLs`);
+    usedFirecrawlFallback = true;
+
+    try {
+      onProgress?.({
+        phase: 'firecrawl_fallback',
+        completed: 0,
+        total: urlsWithoutTechnicalData.length,
+        errors: extractionErrors,
+      });
+
+      const firecrawlResults = await extractMultiplePagesWithFirecrawl(
+        urlsWithoutTechnicalData,
+        firecrawlApiKey,
+        (completed, total, currentUrl) => {
+          onProgress?.({
+            phase: 'firecrawl_fallback',
+            completed,
+            total,
+            currentUrl,
+            errors: extractionErrors,
+          });
+        }
+      );
+
+      // Add Firecrawl results to technical results
+      for (const [url, data] of firecrawlResults) {
+        technicalResults.set(normalizeUrl(url), data);
+        // Remove the Apify error since Firecrawl succeeded
+        const errorIndex = extractionErrors.findIndex(
+          e => normalizeUrl(e.url) === normalizeUrl(url) && e.phase === 'technical'
+        );
+        if (errorIndex > -1) {
+          extractionErrors.splice(errorIndex, 1);
+        }
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('[Extraction] Firecrawl fallback also failed:', errorMsg);
+      // Don't add duplicate errors - the Apify errors are already there
     }
   }
 
@@ -255,8 +312,18 @@ export const mergeExtractionData = (extracted: ExtractedPageData): {
   // Meta description: Apify has direct access
   const metaDescription = technical?.metaDescription || semantic?.description || '';
 
-  // H1: extract from technical headings or Jina headings
-  const h1 = findH1(technical?.html) || semantic?.headings?.find(h => h.level === 1)?.text || '';
+  // H1: prefer Jina headings (cleaner semantic extraction), fallback to HTML parsing
+  // Jina's markdown parsing is more reliable than regex-based HTML extraction
+  const jinaH1 = semantic?.headings?.find(h => h.level === 1)?.text || '';
+  const htmlH1 = findH1(technical?.html);
+  const h1 = jinaH1 || htmlH1 || '';
+
+  // Debug: log headings to understand why H1 might be missing
+  if (!h1 && semantic?.headings?.length) {
+    console.log('[PageExtraction] H1 not found, headings available:',
+      semantic.headings.slice(0, 5).map(h => ({ level: h.level, text: h.text?.slice(0, 50) }))
+    );
+  }
 
   // Word count: prefer Jina (clean text) over estimate from HTML
   const wordCount = semantic?.wordCount || estimateWordCount(technical?.html);
@@ -340,12 +407,19 @@ const normalizeUrl = (url: string): string => {
 };
 
 /**
- * Extract H1 from raw HTML
+ * Extract H1 from raw HTML - handles nested elements inside H1
  */
 const findH1 = (html?: string): string => {
   if (!html) return '';
-  const match = html.match(/<h1[^>]*>([^<]*)<\/h1>/i);
-  return match ? match[1].trim() : '';
+  // Match H1 with any content (including nested tags)
+  const match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  if (!match) return '';
+  // Strip inner HTML tags to get just the text
+  const text = match[1]
+    .replace(/<[^>]+>/g, ' ')  // Replace tags with space
+    .replace(/\s+/g, ' ')       // Normalize whitespace
+    .trim();
+  return text;
 };
 
 /**
@@ -364,18 +438,26 @@ const estimateWordCount = (html?: string): number => {
 };
 
 /**
- * Parse headings from raw HTML
+ * Parse headings from raw HTML - handles nested elements inside headings
  */
 const parseHeadingsFromHtml = (html?: string): { level: number; text: string }[] => {
   if (!html) return [];
   const headings: { level: number; text: string }[] = [];
-  const regex = /<h([1-6])[^>]*>([^<]*)<\/h\1>/gi;
+  // Match headings with any content (including nested tags)
+  const regex = /<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi;
   let match;
   while ((match = regex.exec(html)) !== null) {
-    headings.push({
-      level: parseInt(match[1], 10),
-      text: match[2].trim(),
-    });
+    // Strip inner HTML tags to get just the text
+    const text = match[2]
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (text) {
+      headings.push({
+        level: parseInt(match[1], 10),
+        text,
+      });
+    }
   }
   return headings;
 };

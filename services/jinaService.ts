@@ -24,6 +24,51 @@ interface ProxyConfig {
   supabaseAnonKey: string;
 }
 
+// Common selectors for elements to remove (cookie banners, popups, etc.)
+// NOTE: Be specific - avoid broad selectors like [id*="cookie"] which can remove legitimate content
+const REMOVE_SELECTORS = [
+  // Cookiebot - be specific
+  '#CybotCookiebotDialog',
+  '#CybotCookiebotDialogBody',
+  '#CybotCookiebotDialogBodyContent',
+  '.CybotCookiebotDialogBody',
+  // OneTrust
+  '#onetrust-consent-sdk',
+  '#onetrust-banner-sdk',
+  '.onetrust-pc-dark-filter',
+  // Cookie consent libraries
+  '.cc-window',
+  '.cc-banner',
+  '#cookie-law-info-bar',
+  '#cookie-law-info-again',
+  // Specific cookie banner IDs (full match, not partial)
+  '#cookie-notice',
+  '#cookie-banner',
+  '#cookiebanner',
+  '#gdpr-cookie-notice',
+  '#gdpr-banner',
+  // Class-based cookie banners (specific patterns)
+  '.cookie-consent-banner',
+  '.cookie-notice-container',
+  '.gdpr-cookie-notice',
+  '.cookie-popup',
+  '.consent-banner',
+  '.privacy-banner',
+].join(', ');
+
+// Common selectors for main content (fallback targets)
+const MAIN_CONTENT_SELECTORS = [
+  'main',
+  'article',
+  '[role="main"]',
+  '#main-content',
+  '#content',
+  '.main-content',
+  '.post-content',
+  '.article-content',
+  '.entry-content',
+].join(', ');
+
 /**
  * Extract semantic content from a URL using Jina.ai Reader API
  * Uses proxy to avoid CORS issues in browser
@@ -43,7 +88,8 @@ export const extractPageContent = async (
     if (proxyConfig?.supabaseUrl) {
       // Use Supabase Edge Function proxy to avoid CORS
       const proxyUrl = `${proxyConfig.supabaseUrl}/functions/v1/fetch-proxy`;
-      const jinaUrl = `${JINA_READER_URL}${encodeURIComponent(url)}`;
+      // NOTE: URL should NOT be encoded - Jina expects raw URL after base
+      const jinaUrl = `${JINA_READER_URL}${url}`;
 
       const proxyResponse = await fetch(proxyUrl, {
         method: 'POST',
@@ -60,6 +106,13 @@ export const extractPageContent = async (
             'X-Return-Format': 'markdown',
             'X-With-Links-Summary': 'true',
             'X-With-Images-Summary': 'true',
+            'X-With-Generated-Alt': 'true', // Generate alt text for images
+            // Remove cookie banners and popups before extraction
+            'X-Remove-Selector': REMOVE_SELECTORS,
+            // Wait for main content to be visible (not just body)
+            'X-Wait-For-Selector': 'main, article, .content, #content, body',
+            // Set cookie to accept consent (workaround for cookie banners)
+            'X-Set-Cookie': 'cookieconsent_status=dismiss; CookieConsent=true',
           },
         }),
       });
@@ -74,7 +127,8 @@ export const extractPageContent = async (
       responseData = typeof proxyResult.body === 'string' ? JSON.parse(proxyResult.body) : proxyResult.body;
     } else {
       // Direct fetch (will fail with CORS in browser, but works server-side)
-      const response = await fetch(`${JINA_READER_URL}${encodeURIComponent(url)}`, {
+      // NOTE: URL should NOT be encoded - Jina expects raw URL after base
+      const response = await fetch(`${JINA_READER_URL}${url}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -82,6 +136,13 @@ export const extractPageContent = async (
           'X-Return-Format': 'markdown',
           'X-With-Links-Summary': 'true',
           'X-With-Images-Summary': 'true',
+          'X-With-Generated-Alt': 'true', // Generate alt text for images
+          // Remove cookie banners and popups before extraction
+          'X-Remove-Selector': REMOVE_SELECTORS,
+          // Wait for main content to be visible (not just body)
+          'X-Wait-For-Selector': 'main, article, .content, #content, body',
+          // Set cookie to accept consent (workaround for cookie banners)
+          'X-Set-Cookie': 'cookieconsent_status=dismiss; CookieConsent=true',
         },
       });
 
@@ -139,15 +200,52 @@ const parseJinaContent = (content: string, sourceUrl: string): {
     // Invalid URL, skip domain extraction
   }
 
-  // Parse headings (# ## ### etc)
-  const headingRegex = /^(#{1,6})\s+(.+)$/gm;
+  // Parse headings - both ATX style (# ##) and Setext style (=== ---)
+  // ATX style: # Heading, ## Heading, etc.
+  const atxHeadingRegex = /^(#{1,6})\s+(.+)$/gm;
   let match;
-  while ((match = headingRegex.exec(content)) !== null) {
+  while ((match = atxHeadingRegex.exec(content)) !== null) {
     headings.push({
       level: match[1].length,
       text: match[2].trim(),
     });
   }
+
+  // Setext style: Heading followed by === (H1) or --- (H2)
+  // Split content into lines for setext parsing
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length - 1; i++) {
+    const currentLine = lines[i].trim();
+    const nextLine = lines[i + 1].trim();
+
+    // Skip empty lines or lines that are already ATX headings
+    if (!currentLine || currentLine.startsWith('#')) continue;
+
+    // H1: line followed by === (at least 3 equals signs)
+    if (/^={3,}$/.test(nextLine)) {
+      // Clean up the heading text (remove markdown formatting like **)
+      const cleanText = currentLine.replace(/\*\*/g, '').replace(/\*/g, '').trim();
+      if (cleanText && cleanText.length < 200) {
+        headings.push({
+          level: 1,
+          text: cleanText,
+        });
+      }
+    }
+    // H2: line followed by --- (at least 3 dashes)
+    else if (/^-{3,}$/.test(nextLine)) {
+      const cleanText = currentLine.replace(/\*\*/g, '').replace(/\*/g, '').trim();
+      if (cleanText && cleanText.length < 200) {
+        headings.push({
+          level: 2,
+          text: cleanText,
+        });
+      }
+    }
+  }
+
+  // Sort headings by their position in content (ATX first, then setext)
+  // Note: This is a simplification - in real use, order matters less than finding the H1
 
   // Parse links [text](url)
   const linkRegex = /\[([^\]]*)\]\(([^)]+)\)/g;

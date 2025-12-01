@@ -4,10 +4,13 @@ import { BusinessInfo } from '../types';
 
 // Updated static lists with latest models (November 2025)
 const GEMINI_MODELS = [
-    'gemini-3-pro',
-    'gemini-3-flash',
-    'gemini-2.5-pro',
-    'gemini-2.5-flash'
+    'gemini-3-pro-preview', // Latest flagship - RECOMMENDED
+    'gemini-2.5-flash',     // Fast, cost-effective
+    'gemini-2.5-pro',       // Advanced reasoning
+    'gemini-2.5-flash-lite', // Lightweight
+    'gemini-2.0-flash',     // Previous generation
+    'gemini-1.5-flash',     // Legacy
+    'gemini-1.5-pro'        // Legacy
 ];
 
 const OPENAI_MODELS = [

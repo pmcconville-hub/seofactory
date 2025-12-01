@@ -202,6 +202,83 @@ export const extractMultiplePagesTechnicalData = async (
         // Wait for page to stabilize
         await page.waitForLoadState('domcontentloaded');
 
+        // Try to dismiss cookie banners/consent dialogs
+        const cookieSelectors = [
+          // Cookiebot
+          '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
+          '#CybotCookiebotDialogBodyButtonAccept',
+          '[data-cookiebanner="accept_button"]',
+          // OneTrust
+          '#onetrust-accept-btn-handler',
+          '.onetrust-close-btn-handler',
+          // Generic patterns
+          'button[id*="accept"]',
+          'button[class*="accept"]',
+          'button[id*="cookie"]',
+          '[class*="cookie-consent"] button',
+          '[class*="cookie-banner"] button:first-of-type',
+          '[class*="consent"] button[class*="accept"]',
+          '.cc-accept',
+          '.cc-btn.cc-dismiss',
+          // Close buttons
+          '[aria-label="Close"]',
+          '[aria-label="Accept cookies"]',
+          '[aria-label="Accept all cookies"]',
+        ];
+
+        for (const selector of cookieSelectors) {
+          try {
+            const button = await page.$(selector);
+            if (button) {
+              await button.click();
+              log.info('Clicked cookie consent button:', selector);
+              await page.waitForTimeout(500); // Brief wait for banner to close
+              break;
+            }
+          } catch (e) {
+            // Ignore click errors
+          }
+        }
+
+        // Remove any remaining overlays/banners from DOM
+        // NOTE: Use specific selectors to avoid removing legitimate content
+        await page.evaluate(() => {
+          const removeSelectors = [
+            // Cookiebot - specific
+            '#CybotCookiebotDialog',
+            '#CybotCookiebotDialogBody',
+            '#CybotCookiebotDialogBodyContent',
+            '.CybotCookiebotDialogBody',
+            // OneTrust
+            '#onetrust-consent-sdk',
+            '#onetrust-banner-sdk',
+            '.onetrust-pc-dark-filter',
+            // Cookie consent libraries
+            '.cc-window',
+            '.cc-banner',
+            '#cookie-law-info-bar',
+            // Specific cookie banner IDs
+            '#cookie-notice',
+            '#cookie-banner',
+            '#cookiebanner',
+            '#gdpr-cookie-notice',
+            '#gdpr-banner',
+            // Class-based (specific)
+            '.cookie-consent-banner',
+            '.cookie-notice-container',
+            '.gdpr-cookie-notice',
+            '.consent-banner',
+            '.privacy-banner',
+          ];
+
+          for (const selector of removeSelectors) {
+            document.querySelectorAll(selector).forEach(el => el.remove());
+          }
+        });
+
+        // Brief wait after cleanup
+        await page.waitForTimeout(300);
+
         // Get performance timing
         const performanceTiming = await page.evaluate(() => {
           const timing = performance.timing;

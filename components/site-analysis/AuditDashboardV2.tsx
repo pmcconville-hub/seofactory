@@ -1,15 +1,21 @@
 // components/site-analysis/AuditDashboardV2.tsx
 // V2 Audit dashboard with pillar context and enhanced metrics
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { SiteAnalysisProject, SitePageRecord } from '../../types';
+import { SiteAnalysisProject, SitePageRecord, AuditTask, AISuggestion } from '../../types';
+import { SEOAuditReportModal } from './report';
+import { useAppState } from '../../state/appState';
+import { getSupabaseClient } from '../../services/supabaseClient';
 
 interface AuditDashboardV2Props {
   project: SiteAnalysisProject;
   onViewPageDetail: (pageId: string) => void;
   onReaudit: () => void;
+  onReextract?: () => void;
+  onExtractPage?: (pageId: string) => void;
+  isProcessing?: boolean;
 }
 
 type SortField = 'score' | 'url' | 'status' | 'issues';
@@ -19,11 +25,99 @@ export const AuditDashboardV2: React.FC<AuditDashboardV2Props> = ({
   project,
   onViewPageDetail,
   onReaudit,
+  onReextract,
+  onExtractPage,
+  isProcessing = false,
 }) => {
+  const { state } = useAppState();
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('score');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [showReportModal, setShowReportModal] = useState(false);
+
+  // State for report data
+  const [tasks, setTasks] = useState<AuditTask[]>([]);
+  const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
+  const [isLoadingReportData, setIsLoadingReportData] = useState(false);
+
+  // Create Supabase client from business info
+  const supabase = useMemo(() => {
+    if (state.businessInfo?.supabaseUrl && state.businessInfo?.supabaseAnonKey) {
+      return getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+    }
+    return null;
+  }, [state.businessInfo?.supabaseUrl, state.businessInfo?.supabaseAnonKey]);
+
+  // Load tasks and suggestions for report
+  const loadReportData = useCallback(async () => {
+    if (!supabase || !project.id) return;
+
+    setIsLoadingReportData(true);
+    try {
+      // Load all tasks for the project
+      const { data: tasksData } = await (supabase as any)
+        .from('audit_tasks')
+        .select('*')
+        .eq('project_id', project.id)
+        .order('priority', { ascending: true });
+
+      const loadedTasks: AuditTask[] = (tasksData || []).map((t: any) => ({
+        id: t.id,
+        pageId: t.page_id,
+        projectId: t.project_id,
+        auditId: t.audit_id,
+        ruleId: t.rule_id,
+        phase: t.phase,
+        title: t.title,
+        description: t.description,
+        priority: t.priority,
+        status: t.status,
+        remediation: t.remediation,
+        context: t.context,
+        dismissedReason: t.dismissed_reason,
+        completedAt: t.completed_at,
+        createdAt: t.created_at,
+        updatedAt: t.updated_at,
+      }));
+      setTasks(loadedTasks);
+
+      // Load AI suggestions for tasks
+      if (loadedTasks.length > 0) {
+        const taskIds = loadedTasks.map(t => t.id);
+        const { data: suggestionsData } = await (supabase as any)
+          .from('ai_suggestions')
+          .select('*')
+          .in('task_id', taskIds);
+
+        if (suggestionsData) {
+          setSuggestions(suggestionsData.map((s: any) => ({
+            id: s.id,
+            taskId: s.task_id,
+            suggestionType: s.suggestion_type,
+            suggestedValue: s.suggested_value,
+            reasoning: s.reasoning,
+            confidence: s.confidence,
+            status: s.status,
+            reviewedBy: s.reviewed_by,
+            reviewedAt: s.reviewed_at,
+            createdAt: s.created_at,
+          })));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load report data:', err);
+    } finally {
+      setIsLoadingReportData(false);
+    }
+  }, [supabase, project.id]);
+
+  // Load report data when modal opens
+  useEffect(() => {
+    if (showReportModal && tasks.length === 0) {
+      loadReportData();
+    }
+  }, [showReportModal, tasks.length, loadReportData]);
 
   // Calculate metrics
   const metrics = useMemo(() => {
@@ -35,6 +129,7 @@ export const AuditDashboardV2: React.FC<AuditDashboardV2Props> = ({
       totalPages: pages.length,
       auditedPages: auditedPages.length,
       crawledPages: pages.filter(p => p.crawlStatus === 'crawled').length,
+      pendingPages: pages.filter(p => p.crawlStatus === 'pending').length,
       failedPages: pages.filter(p => p.crawlStatus === 'failed').length,
       averageScore: scores.length > 0
         ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
@@ -125,14 +220,68 @@ export const AuditDashboardV2: React.FC<AuditDashboardV2Props> = ({
             <p className="text-gray-400">{project.domain}</p>
           </div>
           <div className="flex items-center gap-3">
-            <Button onClick={onReaudit} variant="secondary" size="sm">
-              Re-audit All
+            {onReextract && (
+              <Button
+                onClick={onReextract}
+                variant="secondary"
+                size="sm"
+                disabled={isProcessing}
+              >
+                {isProcessing ? 'Extracting...' : 'Re-extract Content'}
+              </Button>
+            )}
+            <Button
+              onClick={onReaudit}
+              variant="secondary"
+              size="sm"
+              disabled={isProcessing}
+            >
+              {isProcessing ? 'Processing...' : 'Re-audit All'}
             </Button>
-            <Button variant="secondary" size="sm">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowReportModal(true)}
+            >
               Export Report
             </Button>
           </div>
         </div>
+
+        {/* Extraction Status Alert */}
+        {(metrics.pendingPages > 0 || metrics.failedPages > 0) && (
+          <div className={`p-4 rounded-lg border ${
+            metrics.failedPages > 0 ? 'border-red-500/50 bg-red-900/20' : 'border-yellow-500/50 bg-yellow-900/20'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <svg className={`w-5 h-5 ${metrics.failedPages > 0 ? 'text-red-400' : 'text-yellow-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <p className={`font-medium ${metrics.failedPages > 0 ? 'text-red-300' : 'text-yellow-300'}`}>
+                    {metrics.pendingPages > 0 && `${metrics.pendingPages} page${metrics.pendingPages > 1 ? 's' : ''} pending extraction`}
+                    {metrics.pendingPages > 0 && metrics.failedPages > 0 && ', '}
+                    {metrics.failedPages > 0 && `${metrics.failedPages} page${metrics.failedPages > 1 ? 's' : ''} failed`}
+                  </p>
+                  <p className="text-sm text-gray-400">
+                    Content extraction is required before auditing. Click "Re-extract Content" to process pending pages.
+                  </p>
+                </div>
+              </div>
+              {onReextract && (
+                <Button
+                  onClick={onReextract}
+                  variant="primary"
+                  size="sm"
+                  disabled={isProcessing}
+                >
+                  {isProcessing ? 'Extracting...' : 'Extract Now'}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Semantic Pillars */}
         {project.pillarsValidated && (
@@ -356,13 +505,25 @@ export const AuditDashboardV2: React.FC<AuditDashboardV2Props> = ({
                     )}
                   </td>
                   <td className="py-3 px-4 text-right">
-                    <Button
-                      onClick={() => onViewPageDetail(page.id)}
-                      variant="secondary"
-                      size="sm"
-                    >
-                      View
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      {page.crawlStatus === 'pending' && onExtractPage && (
+                        <Button
+                          onClick={() => onExtractPage(page.id)}
+                          variant="primary"
+                          size="sm"
+                          disabled={isProcessing}
+                        >
+                          Extract
+                        </Button>
+                      )}
+                      <Button
+                        onClick={() => onViewPageDetail(page.id)}
+                        variant="secondary"
+                        size="sm"
+                      >
+                        View
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -380,6 +541,17 @@ export const AuditDashboardV2: React.FC<AuditDashboardV2Props> = ({
           Showing {filteredPages.length} of {project.pages?.length || 0} pages
         </div>
       </Card>
+
+      {/* SEO Audit Report Modal */}
+      <SEOAuditReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        project={project}
+        pages={project.pages || []}
+        tasks={tasks}
+        suggestions={suggestions}
+        scope="site"
+      />
     </div>
   );
 };

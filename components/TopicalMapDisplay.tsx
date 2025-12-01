@@ -28,7 +28,12 @@ interface TopicalMapDisplayProps {
   canGenerateBriefs: boolean;
   onGenerateInitialMap?: () => void;
   onUpdateTopic: (topicId: string, updates: Partial<EnrichedTopic>) => void;
+  // Migration-specific props (optional)
+  onDeleteTopic?: (topicId: string) => void;
+  onInventoryDrop?: (inventoryId: string, topicId: string) => void;
 }
+
+export type { TopicalMapDisplayProps };
 
 const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
   coreTopics,
@@ -53,6 +58,7 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
   const [highlightedTopicId, setHighlightedTopicId] = useState<string | null>(null);
   const [draggedTopicId, setDraggedTopicId] = useState<string | null>(null);
   const [collapsedCoreIds, setCollapsedCoreIds] = useState<Set<string>>(new Set());
+  const [isRepairingLabels, setIsRepairingLabels] = useState(false);
 
   const topicsByParent = useMemo(() => {
     const map = new Map<string, EnrichedTopic[]>();
@@ -82,6 +88,91 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
   const handleCollapseAll = () => setCollapsedCoreIds(new Set(coreTopics.map(c => c.id)));
   const handleExpandAll = () => setCollapsedCoreIds(new Set());
 
+  // Repair Section Labels - classifies topics into Core Section (monetization) vs Author Section (informational)
+  // Also verifies and fixes topic type (core vs outer) misclassifications
+  const handleRepairSectionLabels = async () => {
+    if (allTopics.length === 0 || !activeMapId) return;
+    const activeMap = state.topicalMaps.find(m => m.id === activeMapId);
+    if (!activeMap || !businessInfo) return;
+
+    setIsRepairingLabels(true);
+    dispatch({ type: 'SET_LOADING', payload: { key: 'repairLabels', value: true } });
+
+    try {
+      // Call the classification service (now includes type verification)
+      const classifications = await aiService.classifyTopicSections(allTopics, businessInfo, dispatch);
+
+      // Track changes
+      let monetizationCount = 0;
+      let informationalCount = 0;
+      let typeChangesCount = 0;
+
+      // Build lookup for core topics
+      const coreTopicsByTitle = new Map<string, string>();
+      allTopics.filter(t => t.type === 'core').forEach(t => {
+        coreTopicsByTitle.set(t.title.toLowerCase(), t.id);
+      });
+
+      for (const classification of classifications) {
+        const topic = allTopics.find(t => t.id === classification.id);
+        if (!topic) continue;
+
+        // Build update object
+        const updates: Record<string, any> = {};
+
+        // Check topic_class change
+        if (topic.topic_class !== classification.topic_class) {
+          updates.topic_class = classification.topic_class;
+          if (classification.topic_class === 'monetization') monetizationCount++;
+          else informationalCount++;
+        }
+
+        // Check type change (core -> outer or vice versa)
+        if (classification.suggestedType && classification.suggestedType !== topic.type) {
+          updates.type = classification.suggestedType;
+
+          // If changing to outer, assign parent
+          if (classification.suggestedType === 'outer' && classification.suggestedParentTitle) {
+            const parentId = coreTopicsByTitle.get(classification.suggestedParentTitle.toLowerCase());
+            if (parentId) {
+              updates.parent_topic_id = parentId;
+            }
+          } else if (classification.suggestedType === 'core') {
+            // If promoting to core, remove parent
+            updates.parent_topic_id = null;
+          }
+
+          typeChangesCount++;
+          dispatch({ type: 'LOG_EVENT', payload: {
+            service: 'RepairLabels',
+            message: `Type change: "${topic.title}" ${topic.type} → ${classification.suggestedType}${classification.typeChangeReason ? ` (${classification.typeChangeReason})` : ''}`,
+            status: 'info',
+            timestamp: Date.now()
+          }});
+        }
+
+        // Apply updates if any
+        if (Object.keys(updates).length > 0) {
+          await onUpdateTopic(classification.id, updates);
+        }
+      }
+
+      const messages = [];
+      if (monetizationCount > 0 || informationalCount > 0) {
+        messages.push(`Section labels: ${monetizationCount} Core, ${informationalCount} Author`);
+      }
+      if (typeChangesCount > 0) {
+        messages.push(`Type changes: ${typeChangesCount}`);
+      }
+
+      dispatch({ type: 'SET_NOTIFICATION', payload: messages.length > 0 ? `Repaired: ${messages.join('. ')}` : 'No changes needed.' });
+    } catch (e) {
+      dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to repair section labels.' });
+    } finally {
+      setIsRepairingLabels(false);
+      dispatch({ type: 'SET_LOADING', payload: { key: 'repairLabels', value: false } });
+    }
+  };
 
   const handleToggleSelection = (topicId: string) => {
     setSelectedTopicIds(prev =>
@@ -181,6 +272,17 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
                     <div className="flex items-center gap-2">
                         <Button onClick={handleExpandAll} variant="secondary" className="!py-1 !px-3 text-xs">Expand All</Button>
                         <Button onClick={handleCollapseAll} variant="secondary" className="!py-1 !px-3 text-xs">Collapse All</Button>
+                        <div className="flex items-center gap-1">
+                            <Button
+                                onClick={handleRepairSectionLabels}
+                                variant="secondary"
+                                className="!py-1 !px-3 text-xs"
+                                disabled={isRepairingLabels || allTopics.length === 0}
+                            >
+                                {isRepairingLabels ? 'Classifying...' : 'Repair Section Labels'}
+                            </Button>
+                            <InfoTooltip text="Uses AI to classify topics into Core Section (monetization/service pages) or Author Section (informational/trust pages). Useful for fixing maps generated before section labels were implemented." />
+                        </div>
                     </div>
                 )}
                 <div className="flex rounded-lg bg-gray-700 p-1">

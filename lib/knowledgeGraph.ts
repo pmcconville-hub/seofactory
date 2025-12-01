@@ -67,8 +67,12 @@ export class KnowledgeGraph {
     }
 
     identifyKnowledgeGaps(): { entities: string[], attributes: string[] }[] {
+        // Returns empty array when no gaps are identified - actual gap analysis would require populated graph
+        if (this.nodes.size === 0) {
+            return []; // No gaps to identify in empty graph
+        }
         // Placeholder for a sophisticated gap analysis algorithm
-        return [{ entities: ['Example Entity'], attributes: ['Missing Attribute'] }];
+        return [];
     }
     
     getExpectedAttributes(term: string): string[] {

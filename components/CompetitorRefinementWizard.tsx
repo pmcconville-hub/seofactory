@@ -16,11 +16,19 @@ interface CompetitorRefinementWizardProps {
 const CompetitorRefinementWizard: React.FC<CompetitorRefinementWizardProps> = ({ onFinalize, onBack }) => {
     const { state, dispatch } = useAppState();
     const activeMap = state.topicalMaps.find(m => m.id === state.activeMapId);
+    const activeProject = state.projects.find(p => p.id === state.activeProjectId);
 
-    const effectiveBusinessInfo = useMemo<BusinessInfo>(() => ({
-        ...state.businessInfo,
-        ...(activeMap?.business_info as Partial<BusinessInfo> || {})
-    }), [state.businessInfo, activeMap]);
+    // Build effective business info with project domain fallback
+    const effectiveBusinessInfo = useMemo<BusinessInfo>(() => {
+        const mapBusinessInfo = activeMap?.business_info as Partial<BusinessInfo> || {};
+        return {
+            ...state.businessInfo,
+            domain: mapBusinessInfo.domain || activeProject?.domain || state.businessInfo.domain,
+            projectName: mapBusinessInfo.projectName || activeProject?.project_name || state.businessInfo.projectName,
+            ...mapBusinessInfo,
+            ...(mapBusinessInfo.domain ? {} : { domain: activeProject?.domain || state.businessInfo.domain }),
+        };
+    }, [state.businessInfo, activeMap, activeProject]);
 
     const [competitors, setCompetitors] = useState<SerpResult[]>([]);
     const [selectedCompetitorUrls, setSelectedCompetitorUrls] = useState<string[]>(activeMap?.competitors || []);

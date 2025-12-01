@@ -267,3 +267,29 @@ export const generatePublicationPlan = (
             return geminiService.generatePublicationPlan(topics, businessInfo, dispatch);
     }
 };
+
+/**
+ * Classifies topics into Core Section (monetization) or Author Section (informational).
+ * Also verifies topic type (core vs outer) and suggests reclassifications.
+ * This is useful for repairing existing maps that were generated before proper topic_class assignment.
+ */
+export const classifyTopicSections = async (
+    topics: EnrichedTopic[],
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>
+): Promise<{ id: string, topic_class: 'monetization' | 'informational', suggestedType?: 'core' | 'outer' | null, suggestedParentTitle?: string | null, typeChangeReason?: string | null }[]> => {
+    // Use Gemini as the default classifier as it's reliable
+    // In the future, this could be provider-specific
+    const result = await geminiService.classifyTopicSections(
+        topics.map(t => ({
+            id: t.id,
+            title: t.title,
+            description: t.description || '',
+            type: t.type,
+            parent_topic_id: t.parent_topic_id
+        })),
+        businessInfo,
+        dispatch
+    );
+    return result;
+};

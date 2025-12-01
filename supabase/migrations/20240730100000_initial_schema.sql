@@ -1,1 +1,3 @@
-ûäáŠÉ¢‚¶­Š‰ßŠW¢²z0¡»(•ë^ï“…çZµ¦Ú±ë…éšŠÇ+y«^u©İ™©ÚçZºÚ&jØœjYro+ayªi–'¶*'ûëâh
+-- Additional initial schema migration (tables already exist in database)
+-- This file was corrupted and has been replaced with a placeholder
+SELECT 1;

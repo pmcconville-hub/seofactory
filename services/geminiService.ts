@@ -38,7 +38,52 @@ import { AppAction } from "../state/appState";
 import React from "react";
 import { v4 as uuidv4 } from 'uuid';
 
-const GEMINI_FALLBACK_MODEL = 'gemini-3-pro';
+// Valid Gemini models (November 2025 - Latest)
+const validGeminiModels = [
+    // Gemini 3 series (Latest - November 2025)
+    'gemini-3-pro-preview',   // Latest flagship - RECOMMENDED DEFAULT
+    // Gemini 2.5 series (Stable - 2025)
+    'gemini-2.5-flash',       // Fast, cost-effective
+    'gemini-2.5-pro',         // Advanced reasoning
+    'gemini-2.5-flash-lite',  // Lightweight variant
+    // Gemini 2.0 series (Still supported)
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
+    // Legacy 1.5 models (being deprecated)
+    'gemini-1.5-flash',
+    'gemini-1.5-pro',
+];
+
+// Default to gemini-3-pro-preview as the latest flagship model
+const GEMINI_DEFAULT_MODEL = 'gemini-3-pro-preview';
+const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash';
+
+const validateModel = (model: string | undefined, dispatch?: React.Dispatch<AppAction>): string => {
+    if (!model) {
+        dispatch?.({ type: 'LOG_EVENT', payload: { service: 'Gemini', message: `No model specified, using default: ${GEMINI_DEFAULT_MODEL}`, status: 'info', timestamp: Date.now() } });
+        return GEMINI_DEFAULT_MODEL;
+    }
+
+    // Check if the model is in our valid list
+    if (validGeminiModels.includes(model)) {
+        return model;
+    }
+
+    // Check for partial matches (e.g., "gemini-2.5" might match "gemini-2.5-flash")
+    const partialMatch = validGeminiModels.find(m =>
+        m.startsWith(model) || model.includes(m.split('-').slice(0, 2).join('-'))
+    );
+
+    if (partialMatch) {
+        console.warn(`Gemini model "${model}" not found, using closest match: ${partialMatch}`);
+        dispatch?.({ type: 'LOG_EVENT', payload: { service: 'Gemini', message: `Model "${model}" not found, using closest match: ${partialMatch}. Update your settings to avoid this warning.`, status: 'warning', timestamp: Date.now() } });
+        return partialMatch;
+    }
+
+    console.warn(`Invalid Gemini model "${model}", falling back to ${GEMINI_DEFAULT_MODEL}`);
+    dispatch?.({ type: 'LOG_EVENT', payload: { service: 'Gemini', message: `Invalid model "${model}", falling back to ${GEMINI_DEFAULT_MODEL}. Please update your AI model in Settings.`, status: 'warning', timestamp: Date.now() } });
+    return GEMINI_DEFAULT_MODEL;
+};
 
 const getAi = (apiKey: string) => {
   if (!apiKey) {
@@ -77,8 +122,11 @@ const callApi = async <T>(
             parts: [{ text: prompt }]
         }];
 
+        // Validate and use the appropriate model, pass dispatch for logging
+        const validatedModel = validateModel(businessInfo.aiModel, dispatch);
+
         const response: GenerateContentResponse = await ai.models.generateContent({
-            model: businessInfo.aiModel || GEMINI_FALLBACK_MODEL,
+            model: validatedModel,
             contents: contents,
             config: Object.keys(config).length > 0 ? config : undefined,
         });
@@ -212,6 +260,15 @@ export const generateInitialTopicalMap = async (businessInfo: BusinessInfo, pill
     const fallback = { monetizationSection: [], informationalSection: [] };
 
     const result = await callApi(prompt, businessInfo, dispatch, (text) => sanitizer.sanitize(text, sanitizerSchema, fallback), true, apiSchema);
+
+    // Log the raw result for debugging
+    dispatch({ type: 'LOG_EVENT', payload: {
+        service: 'Gemini',
+        message: `Topical map response parsed. Monetization sections: ${result.monetizationSection?.length || 0}, Informational sections: ${result.informationalSection?.length || 0}`,
+        status: result.monetizationSection?.length || result.informationalSection?.length ? 'info' : 'warning',
+        timestamp: Date.now(),
+        data: { sectionCounts: { monetization: result.monetizationSection?.length, informational: result.informationalSection?.length } }
+    }});
 
     const coreTopics: EnrichedTopic[] = [];
     const outerTopics: EnrichedTopic[] = [];
@@ -415,7 +472,7 @@ export const validateTopicalMap = async (topics: EnrichedTopic[], pillars: SEOPi
 export const improveTopicalMap = async (topics: EnrichedTopic[], issues: ValidationIssue[], businessInfo: BusinessInfo, dispatch: React.Dispatch<any>): Promise<MapImprovementSuggestion> => {
     const sanitizer = new AIResponseSanitizer(dispatch);
     const prompt = prompts.IMPROVE_TOPICAL_MAP_PROMPT(topics, issues, businessInfo);
-    const fallback: MapImprovementSuggestion = { newTopics: [], topicTitlesToDelete: [] };
+    const fallback: MapImprovementSuggestion = { newTopics: [], topicTitlesToDelete: [], topicMerges: [], hubSpokeGapFills: [], typeReclassifications: [] };
     return callApi(prompt, businessInfo, dispatch, (text) => sanitizer.sanitize(text, { newTopics: Array, topicTitlesToDelete: Array }, fallback));
 };
 
@@ -775,10 +832,86 @@ export const applyBatchFlowRemediation = async (
 ): Promise<string> => {
     const sanitizer = new AIResponseSanitizer(dispatch);
     const prompt = prompts.BATCH_FLOW_REMEDIATION_PROMPT(fullDraft, issues, businessInfo);
-    
+
     const schema = { polishedDraft: String };
     const fallback = { polishedDraft: fullDraft };
 
     const result = await callApi(prompt, businessInfo, dispatch, (text) => sanitizer.sanitize(text, schema, fallback));
     return result.polishedDraft;
+};
+
+// --- Generic AI methods for Migration Service ---
+
+/**
+ * Generic JSON generation method for migration workflows
+ */
+export const generateJson = async <T extends object>(
+    prompt: string,
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>,
+    fallback: T
+): Promise<T> => {
+    const sanitizer = new AIResponseSanitizer(dispatch);
+    return callApi(prompt, businessInfo, dispatch, (text) => {
+        try {
+            return JSON.parse(text);
+        } catch {
+            return sanitizer.sanitize(text, {}, fallback);
+        }
+    }, true);
+};
+
+/**
+ * Generic text generation method for migration workflows
+ */
+export const generateText = async (
+    prompt: string,
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>
+): Promise<string> => {
+    return callApi(prompt, businessInfo, dispatch, (text) => text, false);
+};
+
+/**
+ * Classifies topics into Core Section (monetization) or Author Section (informational)
+ */
+export const classifyTopicSections = async (
+    topics: { id: string, title: string, description: string, type?: string, parent_topic_id?: string | null }[],
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>
+): Promise<{ id: string, topic_class: 'monetization' | 'informational', suggestedType?: 'core' | 'outer' | null, suggestedParentTitle?: string | null, typeChangeReason?: string | null }[]> => {
+    const sanitizer = new AIResponseSanitizer(dispatch);
+    const prompt = prompts.CLASSIFY_TOPIC_SECTIONS_PROMPT(businessInfo, topics);
+
+    dispatch({ type: 'LOG_EVENT', payload: {
+        service: 'Gemini',
+        message: `Classifying ${topics.length} topics into Core/Author sections and verifying hierarchy types...`,
+        status: 'info',
+        timestamp: Date.now()
+    }});
+
+    const result = await callApi(
+        prompt,
+        businessInfo,
+        dispatch,
+        (text) => sanitizer.sanitizeArray(text, []),
+        false
+    );
+
+    // Validate and filter results
+    const validResults = result.filter((item: any) =>
+        item.id && (item.topic_class === 'monetization' || item.topic_class === 'informational')
+    );
+
+    // Count type changes
+    const typeChanges = validResults.filter((r: any) => r.suggestedType && r.suggestedType !== null);
+
+    dispatch({ type: 'LOG_EVENT', payload: {
+        service: 'Gemini',
+        message: `Classification complete. Monetization: ${validResults.filter((r: any) => r.topic_class === 'monetization').length}, Informational: ${validResults.filter((r: any) => r.topic_class === 'informational').length}, Type changes suggested: ${typeChanges.length}`,
+        status: 'info',
+        timestamp: Date.now()
+    }});
+
+    return validResults;
 };

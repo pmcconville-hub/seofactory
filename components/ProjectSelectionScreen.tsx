@@ -34,10 +34,20 @@ const ProjectSelectionScreen: React.FC<ProjectSelectionScreenProps> = ({ onCreat
   };
 
   return (
-    <div className="max-w-4xl w-full mx-auto">
-      <header className="text-center mb-10">
-        <h1 className="text-4xl font-bold text-white">Holistic SEO Workbench</h1>
-        <p className="text-lg text-gray-400 mt-2">Create a new project or continue working on an existing one.</p>
+    <div className="max-w-4xl w-full mx-auto relative pb-20">
+      <header className="flex justify-between items-center mb-10">
+        <div>
+            <h1 className="text-4xl font-bold text-white">Holistic SEO Workbench</h1>
+            <p className="text-lg text-gray-400 mt-2">Next-Gen SEO Strategy & Migration Platform</p>
+        </div>
+        <div>
+            <Button
+                onClick={() => dispatch({ type: 'SET_STEP', payload: AppStep.ADMIN })}
+                className="bg-gray-800 hover:bg-gray-700 border border-gray-600 flex items-center gap-2 shadow-lg"
+            >
+                <span className="text-lg">🛡️</span> Admin Dashboard
+            </Button>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

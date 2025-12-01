@@ -1,0 +1,438 @@
+// services/firecrawlService.ts
+// Firecrawl API integration for page extraction (fallback for Apify)
+// API Documentation: https://docs.firecrawl.dev/
+
+import { ApifyPageData } from '../types';
+
+const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v1/scrape';
+
+/**
+ * Firecrawl scrape response format
+ */
+interface FirecrawlScrapeResponse {
+  success: boolean;
+  data?: {
+    markdown?: string;
+    html?: string;
+    metadata?: {
+      title?: string;
+      description?: string;
+      ogTitle?: string;
+      ogDescription?: string;
+      statusCode?: number;
+      sourceURL?: string;
+      [key: string]: any;
+    };
+    links?: string[];
+  };
+  error?: string;
+}
+
+/**
+ * Parse HTML to extract schema markup
+ */
+const extractSchemaMarkup = (html: string): { schemaMarkup: any[]; schemaTypes: string[] } => {
+  const schemaMarkup: any[] = [];
+  const schemaTypes: string[] = [];
+
+  // Find JSON-LD script tags
+  const jsonLdRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let match;
+
+  while ((match = jsonLdRegex.exec(html)) !== null) {
+    try {
+      const schema = JSON.parse(match[1].trim());
+      schemaMarkup.push(schema);
+
+      // Extract @type
+      if (schema['@type']) {
+        const types = Array.isArray(schema['@type']) ? schema['@type'] : [schema['@type']];
+        schemaTypes.push(...types.filter((t: string) => !schemaTypes.includes(t)));
+      }
+    } catch (e) {
+      // Ignore invalid JSON
+    }
+  }
+
+  return { schemaMarkup, schemaTypes };
+};
+
+/**
+ * Parse HTML to extract meta tags
+ */
+const extractMetaTags = (html: string): { canonical: string; robotsMeta: string } => {
+  let canonical = '';
+  let robotsMeta = '';
+
+  // Extract canonical
+  const canonicalMatch = html.match(/<link[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)["']/i);
+  if (canonicalMatch) {
+    canonical = canonicalMatch[1];
+  }
+
+  // Extract robots meta
+  const robotsMatch = html.match(/<meta[^>]*name=["']robots["'][^>]*content=["']([^"']+)["']/i);
+  if (robotsMatch) {
+    robotsMeta = robotsMatch[1];
+  }
+
+  return { canonical, robotsMeta };
+};
+
+/**
+ * Parse HTML to extract links
+ */
+const extractLinks = (html: string, baseUrl: string): { internalLinks: ApifyPageData['internalLinks']; externalLinks: ApifyPageData['externalLinks'] } => {
+  const internalLinks: ApifyPageData['internalLinks'] = [];
+  const externalLinks: ApifyPageData['externalLinks'] = [];
+
+  const linkRegex = /<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  let position = 0;
+
+  try {
+    const baseUrlObj = new URL(baseUrl);
+
+    while ((match = linkRegex.exec(html)) !== null) {
+      const href = match[1];
+      const text = match[2].replace(/<[^>]+>/g, '').trim().substring(0, 100);
+
+      // Get rel attribute
+      const relMatch = match[0].match(/rel=["']([^"']+)["']/i);
+      const rel = relMatch ? relMatch[1] : undefined;
+
+      try {
+        const linkUrl = new URL(href, baseUrl);
+
+        if (linkUrl.hostname === baseUrlObj.hostname) {
+          internalLinks.push({
+            href: linkUrl.href,
+            text,
+            rel,
+            position: position < 1000 ? 'header' : position < 5000 ? 'body' : 'footer',
+          });
+        } else if (linkUrl.protocol.startsWith('http')) {
+          externalLinks.push({ href: linkUrl.href, text, rel });
+        }
+      } catch {
+        // Skip invalid URLs
+      }
+
+      position += match[0].length;
+    }
+  } catch {
+    // Invalid base URL
+  }
+
+  return { internalLinks, externalLinks };
+};
+
+/**
+ * Parse HTML to extract images
+ */
+const extractImages = (html: string, baseUrl: string): ApifyPageData['images'] => {
+  const images: ApifyPageData['images'] = [];
+  const imgRegex = /<img[^>]*>/gi;
+  let match;
+
+  while ((match = imgRegex.exec(html)) !== null) {
+    const srcMatch = match[0].match(/src=["']([^"']+)["']/i);
+    const altMatch = match[0].match(/alt=["']([^"']+)["']/i);
+    const widthMatch = match[0].match(/width=["']?(\d+)/i);
+    const heightMatch = match[0].match(/height=["']?(\d+)/i);
+
+    if (srcMatch) {
+      try {
+        const src = new URL(srcMatch[1], baseUrl).href;
+        images.push({
+          src,
+          alt: altMatch ? altMatch[1] : '',
+          width: widthMatch ? parseInt(widthMatch[1]) : undefined,
+          height: heightMatch ? parseInt(heightMatch[1]) : undefined,
+        });
+      } catch {
+        // Skip invalid image URLs
+      }
+    }
+  }
+
+  return images;
+};
+
+/**
+ * Extract a single page using Firecrawl API
+ */
+export const extractPageWithFirecrawl = async (
+  url: string,
+  apiKey: string
+): Promise<ApifyPageData> => {
+  console.log('[Firecrawl] Extracting:', url);
+
+  const response = await fetch(FIRECRAWL_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      url,
+      formats: ['html', 'markdown'],
+      includeTags: ['title', 'meta', 'link', 'script', 'a', 'img'],
+      waitFor: 2000, // Wait for dynamic content
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[Firecrawl] API error:', response.status, errorText);
+    throw new Error(`Firecrawl API error (${response.status}): ${errorText}`);
+  }
+
+  const result: FirecrawlScrapeResponse = await response.json();
+
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Firecrawl extraction failed');
+  }
+
+  const { data } = result;
+  const html = data.html || '';
+
+  // Extract schema markup from HTML
+  const { schemaMarkup, schemaTypes } = extractSchemaMarkup(html);
+
+  // Extract meta tags
+  const { canonical, robotsMeta } = extractMetaTags(html);
+
+  // Extract links
+  const { internalLinks, externalLinks } = extractLinks(html, url);
+
+  // Extract images
+  const images = extractImages(html, url);
+
+  // Build ApifyPageData compatible response
+  const pageData: ApifyPageData = {
+    url,
+    statusCode: data.metadata?.statusCode || 200,
+
+    // Meta
+    title: data.metadata?.title || data.metadata?.ogTitle || '',
+    metaDescription: data.metadata?.description || data.metadata?.ogDescription || '',
+    canonical,
+    robotsMeta,
+
+    // Schema
+    schemaMarkup,
+    schemaTypes,
+
+    // Performance (Firecrawl doesn't provide these, use defaults)
+    ttfbMs: 0, // Not available from Firecrawl
+    loadTimeMs: 0, // Not available from Firecrawl
+    htmlSizeKb: Math.round((html.length / 1024) * 100) / 100,
+    domNodes: (html.match(/<[^>]+>/g) || []).length, // Rough estimate
+
+    // Full HTML
+    html,
+
+    // Links
+    internalLinks,
+    externalLinks,
+
+    // Images
+    images,
+  };
+
+  console.log('[Firecrawl] Extracted:', url, '- Status:', pageData.statusCode);
+  return pageData;
+};
+
+/**
+ * Extract multiple pages using Firecrawl with rate limiting
+ */
+export const extractMultiplePagesWithFirecrawl = async (
+  urls: string[],
+  apiKey: string,
+  onProgress?: (completed: number, total: number, currentUrl: string) => void,
+  concurrency: number = 2 // Firecrawl rate limits, so keep concurrency low
+): Promise<Map<string, ApifyPageData>> => {
+  const results = new Map<string, ApifyPageData>();
+  const errors: string[] = [];
+
+  console.log(`[Firecrawl] Starting batch extraction of ${urls.length} URLs`);
+
+  // Process in batches
+  for (let i = 0; i < urls.length; i += concurrency) {
+    const batch = urls.slice(i, i + concurrency);
+
+    const batchResults = await Promise.allSettled(
+      batch.map(url => extractPageWithFirecrawl(url, apiKey))
+    );
+
+    for (let j = 0; j < batchResults.length; j++) {
+      const result = batchResults[j];
+      const url = batch[j];
+
+      if (result.status === 'fulfilled') {
+        results.set(url, result.value);
+      } else {
+        console.error(`[Firecrawl] Failed to extract ${url}:`, result.reason);
+        errors.push(`${url}: ${result.reason}`);
+      }
+
+      if (onProgress) {
+        onProgress(i + j + 1, urls.length, url);
+      }
+    }
+
+    // Rate limit: wait 500ms between batches
+    if (i + concurrency < urls.length) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+
+  if (errors.length > 0) {
+    console.warn(`[Firecrawl] Completed with ${errors.length} errors:`, errors);
+  }
+
+  return results;
+};
+
+/**
+ * Check if Firecrawl API key is valid
+ */
+export const validateFirecrawlApiKey = async (apiKey: string): Promise<boolean> => {
+  try {
+    // Try to scrape a simple test URL
+    const response = await fetch(FIRECRAWL_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        url: 'https://example.com',
+        formats: ['html'],
+      }),
+    });
+
+    // 401/403 means invalid key, anything else might be valid
+    return response.status !== 401 && response.status !== 403;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Simple URL scrape that returns just markdown content
+ * Used by migration service for content analysis
+ */
+export const scrapeUrl = async (
+  url: string,
+  apiKey: string
+): Promise<{ markdown: string; title: string; statusCode: number }> => {
+  console.log('[Firecrawl] Scraping URL:', url);
+
+  const response = await fetch(FIRECRAWL_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      url,
+      formats: ['markdown'],
+      waitFor: 2000,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Firecrawl API error (${response.status}): ${errorText}`);
+  }
+
+  const result: FirecrawlScrapeResponse = await response.json();
+
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Firecrawl scrape failed');
+  }
+
+  return {
+    markdown: result.data.markdown || '',
+    title: result.data.metadata?.title || '',
+    statusCode: result.data.metadata?.statusCode || 200,
+  };
+};
+
+/**
+ * Scrape a URL for audit purposes with extended metadata
+ * Returns content summary and SEO-relevant data
+ */
+export const scrapeForAudit = async (
+  url: string,
+  apiKey: string
+): Promise<{
+  url: string;
+  title: string;
+  markdown: string;
+  wordCount: number;
+  headings: string[];
+  internalLinkCount: number;
+  externalLinkCount: number;
+  statusCode: number;
+}> => {
+  console.log('[Firecrawl] Scraping for audit:', url);
+
+  const response = await fetch(FIRECRAWL_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      url,
+      formats: ['html', 'markdown'],
+      includeTags: ['h1', 'h2', 'h3', 'h4', 'a'],
+      waitFor: 2000,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Firecrawl API error (${response.status}): ${errorText}`);
+  }
+
+  const result: FirecrawlScrapeResponse = await response.json();
+
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Firecrawl audit scrape failed');
+  }
+
+  const { data } = result;
+  const html = data.html || '';
+  const markdown = data.markdown || '';
+
+  // Extract headings
+  const headings: string[] = [];
+  const headingRegex = /<h[1-4][^>]*>(.*?)<\/h[1-4]>/gi;
+  let match;
+  while ((match = headingRegex.exec(html)) !== null) {
+    headings.push(match[1].replace(/<[^>]+>/g, '').trim());
+  }
+
+  // Count links
+  const { internalLinks, externalLinks } = extractLinks(html, url);
+
+  // Count words
+  const plainText = markdown.replace(/[#*_\[\]()]/g, ' ').replace(/\s+/g, ' ');
+  const wordCount = plainText.split(' ').filter(w => w.length > 0).length;
+
+  return {
+    url,
+    title: data.metadata?.title || '',
+    markdown,
+    wordCount,
+    headings,
+    internalLinkCount: internalLinks.length,
+    externalLinkCount: externalLinks.length,
+    statusCode: data.metadata?.statusCode || 200,
+  };
+};

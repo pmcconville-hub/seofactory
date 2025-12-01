@@ -561,33 +561,90 @@ export const extractProjectContent = async (
       ...merged.externalLinks.map(l => ({ href: l.href, text: l.text, isInternal: false })),
     ];
 
+    // Limit arrays to prevent oversized payloads
+    const limitedHeadings = (merged.headings || []).slice(0, 100);
+    const limitedLinks = allLinks.slice(0, 500);
+    // Sanitize images - ensure all fields are valid strings/numbers
+    const limitedImages = (merged.images || []).slice(0, 200).map(img => ({
+      src: String(img.src || '').slice(0, 2000),
+      alt: String(img.alt || '').slice(0, 500),
+      width: typeof img.width === 'number' && isFinite(img.width) ? Math.round(img.width) : null,
+      height: typeof img.height === 'number' && isFinite(img.height) ? Math.round(img.height) : null,
+    })).filter(img => img.src); // Remove images without src
+    // Sanitize schema JSON - ensure it's valid and serializable
+    const sanitizedSchemaJson = (merged.schemaJson || []).slice(0, 20).map(schema => {
+      try {
+        // Re-serialize to strip any non-serializable values
+        return JSON.parse(JSON.stringify(schema));
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+    const limitedMarkdown = (merged.contentMarkdown || '').slice(0, 100000);
+
+    // Helper to ensure valid integer for PostgreSQL INTEGER columns
+    const safeInt = (val: any): number | null => {
+      if (val === null || val === undefined) return null;
+      const num = Number(val);
+      if (isNaN(num) || !isFinite(num)) return null;
+      return Math.round(num);
+    };
+
+    // Helper to ensure valid string
+    const safeStr = (val: any, maxLen: number): string | null => {
+      if (val === null || val === undefined) return null;
+      const str = String(val).slice(0, maxLen);
+      return str || null;
+    };
+
+    // Log extraction results for debugging
+    console.log('[SiteAnalysis] Merging extraction data for:', extraction.url, {
+      hasApify: !!extraction.technical,
+      hasJina: !!extraction.semantic,
+      h1: merged.h1?.slice(0, 50) || '(empty)',
+      title: merged.title?.slice(0, 50) || '(empty)',
+      headingsCount: limitedHeadings.length,
+      linksCount: limitedLinks.length,
+      schemaCount: sanitizedSchemaJson.length,
+    });
+
     const updateData: any = {
       crawl_status: hasContent ? 'crawled' : 'failed',
       crawled_at: new Date().toISOString(),
       apify_crawled: !!extraction.technical,
       jina_crawled: !!extraction.semantic,
-      content_hash: merged.contentHash || null,
-      title: (merged.title || '').slice(0, 500), // Prevent overflow
-      meta_description: (merged.metaDescription || '').slice(0, 1000),
-      h1: (merged.h1 || '').slice(0, 500),
-      word_count: merged.wordCount || 0,
-      status_code: merged.statusCode || 0,
-      canonical_url: merged.canonicalUrl || null,
-      robots_meta: merged.robotsMeta || null,
-      schema_types: merged.schemaTypes || [],
-      schema_json: merged.schemaJson || [],
-      ttfb_ms: merged.ttfbMs || null,
-      load_time_ms: merged.loadTimeMs || null,
-      dom_nodes: merged.domNodes || null,
-      html_size_kb: merged.htmlSizeKb || null,
-      headings: merged.headings || [],
-      links: allLinks,
-      images: merged.images || [],
-      content_markdown: merged.contentMarkdown || null,
+      content_hash: safeStr(merged.contentHash, 100),
+      title: safeStr(merged.title, 500),
+      meta_description: safeStr(merged.metaDescription, 1000),
+      h1: safeStr(merged.h1, 500),
+      word_count: safeInt(merged.wordCount) || 0,
+      status_code: safeInt(merged.statusCode) || 0,
+      canonical_url: safeStr(merged.canonicalUrl, 2000),
+      robots_meta: safeStr(merged.robotsMeta, 500),
+      schema_types: (merged.schemaTypes || []).slice(0, 50).filter(Boolean),
+      schema_json: sanitizedSchemaJson,
+      ttfb_ms: safeInt(merged.ttfbMs),
+      load_time_ms: safeInt(merged.loadTimeMs),
+      dom_nodes: safeInt(merged.domNodes),
+      html_size_kb: safeInt(merged.htmlSizeKb),
+      headings: limitedHeadings,
+      links: limitedLinks,
+      images: limitedImages,
+      content_markdown: limitedMarkdown || null,
     };
 
     if (extraction.errors?.length) {
-      updateData.crawl_error = extraction.errors.join('; ');
+      updateData.crawl_error = extraction.errors.join('; ').slice(0, 5000);
+    }
+
+    // Log payload size for debugging
+    const payloadSize = JSON.stringify(updateData).length;
+    console.log('[SiteAnalysis] Update payload size:', payloadSize, 'bytes for', page.url);
+
+    // If payload is too large, strip content_markdown
+    if (payloadSize > 500000) {
+      console.warn('[SiteAnalysis] Payload too large, stripping content_markdown');
+      updateData.content_markdown = null;
     }
 
     const { error } = await supabase
@@ -602,7 +659,19 @@ export const extractProjectContent = async (
         error: error.message,
         code: error.code,
         details: error.details,
-        hint: error.hint
+        hint: error.hint,
+        payloadSize,
+        // Log field sizes to identify the problem
+        fieldSizes: {
+          title: updateData.title?.length || 0,
+          meta_description: updateData.meta_description?.length || 0,
+          h1: updateData.h1?.length || 0,
+          content_markdown: updateData.content_markdown?.length || 0,
+          headings: updateData.headings?.length || 0,
+          links: updateData.links?.length || 0,
+          images: updateData.images?.length || 0,
+          schema_json: updateData.schema_json?.length || 0,
+        }
       });
       dispatch({
         type: 'LOG_EVENT',
@@ -621,6 +690,265 @@ export const extractProjectContent = async (
 
   // Reload project
   return loadProject(supabase, project.id);
+};
+
+/**
+ * Extract content for a single page by ID
+ */
+export const extractSinglePageById = async (
+  supabase: SupabaseClient,
+  project: SiteAnalysisProject,
+  pageId: string,
+  config: ExtractionConfig,
+  dispatch: React.Dispatch<AppAction>
+): Promise<SitePageRecord | null> => {
+  const page = project.pages?.find(p => p.id === pageId);
+  if (!page) {
+    dispatch({
+      type: 'LOG_EVENT',
+      payload: { service: 'SiteAnalysis', message: `Page ${pageId} not found`, status: 'failure', timestamp: Date.now() }
+    });
+    return null;
+  }
+
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: { service: 'SiteAnalysis', message: `Extracting content for ${page.url}`, status: 'info', timestamp: Date.now() }
+  });
+
+  // Run extraction
+  const extraction = await extractSinglePage(page.url, config);
+  const merged = mergeExtractionData(extraction);
+  const hasContent = extraction.technical || extraction.semantic;
+
+  // Build links array with isInternal flag
+  const allLinks = [
+    ...merged.internalLinks.map(l => ({ href: l.href, text: l.text, isInternal: true })),
+    ...merged.externalLinks.map(l => ({ href: l.href, text: l.text, isInternal: false })),
+  ];
+
+  // Limit arrays to prevent oversized payloads
+  const limitedHeadings = (merged.headings || []).slice(0, 100);
+  const limitedLinks = allLinks.slice(0, 500);
+  // Sanitize images - ensure all fields are valid strings/numbers
+  const limitedImages = (merged.images || []).slice(0, 200).map(img => ({
+    src: String(img.src || '').slice(0, 2000),
+    alt: String(img.alt || '').slice(0, 500),
+    width: typeof img.width === 'number' && isFinite(img.width) ? Math.round(img.width) : null,
+    height: typeof img.height === 'number' && isFinite(img.height) ? Math.round(img.height) : null,
+  })).filter(img => img.src); // Remove images without src
+  // Sanitize schema JSON - ensure it's valid and serializable
+  const sanitizedSchemaJson = (merged.schemaJson || []).slice(0, 20).map(schema => {
+    try {
+      return JSON.parse(JSON.stringify(schema));
+    } catch {
+      return null;
+    }
+  }).filter(Boolean);
+  // Limit content markdown to ~100KB
+  const limitedMarkdown = (merged.contentMarkdown || '').slice(0, 100000);
+
+  // Helper to ensure valid integer for PostgreSQL INTEGER columns
+  const safeInt = (val: any): number | null => {
+    if (val === null || val === undefined) return null;
+    const num = Number(val);
+    if (isNaN(num) || !isFinite(num)) return null;
+    return Math.round(num);
+  };
+
+  // Helper to ensure valid string
+  const safeStr = (val: any, maxLen: number): string | null => {
+    if (val === null || val === undefined) return null;
+    const str = String(val).slice(0, maxLen);
+    return str || null;
+  };
+
+  // Log extraction results for debugging
+  console.log('[SiteAnalysis] Single page extraction for:', page.url, {
+    hasApify: !!extraction.technical,
+    hasJina: !!extraction.semantic,
+    h1: merged.h1?.slice(0, 50) || '(empty)',
+    title: merged.title?.slice(0, 50) || '(empty)',
+    headingsCount: limitedHeadings.length,
+    schemaCount: sanitizedSchemaJson.length,
+  });
+
+  const updateData: any = {
+    crawl_status: hasContent ? 'crawled' : 'failed',
+    crawled_at: new Date().toISOString(),
+    apify_crawled: !!extraction.technical,
+    jina_crawled: !!extraction.semantic,
+    content_hash: safeStr(merged.contentHash, 100),
+    title: safeStr(merged.title, 500),
+    meta_description: safeStr(merged.metaDescription, 1000),
+    h1: safeStr(merged.h1, 500),
+    word_count: safeInt(merged.wordCount) || 0,
+    status_code: safeInt(merged.statusCode) || 0,
+    canonical_url: safeStr(merged.canonicalUrl, 2000),
+    robots_meta: safeStr(merged.robotsMeta, 500),
+    schema_types: (merged.schemaTypes || []).slice(0, 50).filter(Boolean),
+    schema_json: sanitizedSchemaJson,
+    ttfb_ms: safeInt(merged.ttfbMs),
+    load_time_ms: safeInt(merged.loadTimeMs),
+    dom_nodes: safeInt(merged.domNodes),
+    html_size_kb: safeInt(merged.htmlSizeKb),
+    headings: limitedHeadings,
+    links: limitedLinks,
+    images: limitedImages,
+    content_markdown: limitedMarkdown || null,
+  };
+
+  if (extraction.errors?.length) {
+    updateData.crawl_error = extraction.errors.join('; ').slice(0, 5000);
+  }
+
+  // Log payload size for debugging
+  const payloadSize = JSON.stringify(updateData).length;
+  console.log('[SiteAnalysis] Single page update payload size:', payloadSize, 'bytes');
+
+  // If payload is too large, strip content_markdown
+  if (payloadSize > 500000) {
+    console.warn('[SiteAnalysis] Payload too large, stripping content_markdown');
+    updateData.content_markdown = null;
+  }
+
+  const { data, error } = await supabase
+    .from('site_pages')
+    .update(updateData)
+    .eq('id', page.id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[SiteAnalysis] Single page update failed:', {
+      pageId: page.id,
+      url: page.url,
+      error: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      payloadSize,
+      fieldSizes: {
+        title: updateData.title?.length || 0,
+        meta_description: updateData.meta_description?.length || 0,
+        h1: updateData.h1?.length || 0,
+        content_markdown: updateData.content_markdown?.length || 0,
+        headings: updateData.headings?.length || 0,
+        links: updateData.links?.length || 0,
+        images: updateData.images?.length || 0,
+        schema_json: updateData.schema_json?.length || 0,
+      }
+    });
+    dispatch({
+      type: 'LOG_EVENT',
+      payload: { service: 'SiteAnalysis', message: `Failed to update page: ${error.message}`, status: 'failure', timestamp: Date.now() }
+    });
+    return null;
+  }
+
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: { service: 'SiteAnalysis', message: `Extraction ${hasContent ? 'succeeded' : 'failed'} for ${page.url}`, status: hasContent ? 'success' : 'failure', timestamp: Date.now() }
+  });
+
+  return data ? mapDbPageToModel(data) : null;
+};
+
+/**
+ * Audit a single page by ID and save results
+ */
+export const auditSinglePageById = async (
+  supabase: SupabaseClient,
+  project: SiteAnalysisProject,
+  pageId: string,
+  dispatch: React.Dispatch<AppAction>
+): Promise<PageAudit | null> => {
+  const page = project.pages?.find(p => p.id === pageId);
+  if (!page) {
+    dispatch({
+      type: 'LOG_EVENT',
+      payload: { service: 'SiteAnalysis', message: `Page ${pageId} not found`, status: 'failure', timestamp: Date.now() }
+    });
+    return null;
+  }
+
+  if (page.crawlStatus !== 'crawled') {
+    dispatch({
+      type: 'LOG_EVENT',
+      payload: { service: 'SiteAnalysis', message: `Page ${page.url} has not been extracted yet`, status: 'failure', timestamp: Date.now() }
+    });
+    return null;
+  }
+
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: { service: 'SiteAnalysis', message: `Auditing ${page.url}...`, status: 'info', timestamp: Date.now() }
+  });
+
+  // Get next version number
+  const { data: versionData } = await supabase
+    .rpc('get_next_audit_version', { p_page_id: page.id });
+
+  const audit = auditPageV2(page, project);
+  audit.version = versionData || 1;
+
+  // Insert audit
+  const { data: insertedAudit, error } = await supabase
+    .from('page_audits')
+    .insert({
+      page_id: audit.pageId,
+      project_id: audit.projectId,
+      version: audit.version,
+      overall_score: audit.overallScore,
+      technical_score: audit.technicalScore,
+      semantic_score: audit.semanticScore,
+      link_structure_score: audit.linkStructureScore,
+      content_quality_score: audit.contentQualityScore,
+      visual_schema_score: audit.visualSchemaScore,
+      technical_checks: audit.technicalChecks,
+      semantic_checks: audit.semanticChecks,
+      link_structure_checks: audit.linkStructureChecks,
+      content_quality_checks: audit.contentQualityChecks,
+      visual_schema_checks: audit.visualSchemaChecks,
+      ai_analysis_complete: audit.aiAnalysisComplete,
+      summary: audit.summary,
+      critical_issues_count: audit.criticalIssuesCount,
+      high_issues_count: audit.highIssuesCount,
+      medium_issues_count: audit.mediumIssuesCount,
+      low_issues_count: audit.lowIssuesCount,
+      content_hash_at_audit: audit.contentHashAtAudit,
+      audit_type: audit.auditType,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    dispatch({
+      type: 'LOG_EVENT',
+      payload: { service: 'SiteAnalysis', message: `Failed to save audit: ${error.message}`, status: 'failure', timestamp: Date.now() }
+    });
+    return null;
+  }
+
+  // Update page with latest audit reference
+  await supabase
+    .from('site_pages')
+    .update({
+      latest_audit_id: insertedAudit.id,
+      latest_audit_score: audit.overallScore,
+      latest_audit_at: new Date().toISOString(),
+    })
+    .eq('id', page.id);
+
+  // Generate tasks for failed checks
+  await generateAuditTasks(supabase, project.id, page.id, insertedAudit.id, audit);
+
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: { service: 'SiteAnalysis', message: `Audit complete for ${page.url} - Score: ${audit.overallScore}`, status: 'success', timestamp: Date.now() }
+  });
+
+  return mapDbAuditToModel(insertedAudit);
 };
 
 // ============================================
@@ -999,6 +1327,7 @@ export const auditProjectV2 = async (
 
 /**
  * Generate audit tasks from failed checks
+ * Clears old pending tasks for the page before creating new ones
  */
 const generateAuditTasks = async (
   supabase: SupabaseClient,
@@ -1007,6 +1336,20 @@ const generateAuditTasks = async (
   auditId: string | undefined,
   audit: Omit<PageAudit, 'id' | 'createdAt'>
 ): Promise<void> => {
+  // Delete ALL old tasks for this page to avoid accumulation (not just pending)
+  // Tasks that were in_progress or completed will be regenerated if still relevant
+  const { data: deletedTasks, error: deleteError } = await supabase
+    .from('audit_tasks')
+    .delete()
+    .eq('page_id', pageId)
+    .select('id');
+
+  if (deleteError) {
+    console.error('[SiteAnalysis] Failed to delete old tasks:', deleteError.message);
+  } else {
+    console.log('[SiteAnalysis] Deleted', deletedTasks?.length || 0, 'old tasks for page', pageId);
+  }
+
   const allChecks = [
     ...audit.technicalChecks.map(c => ({ ...c, phase: 'technical' as const })),
     ...audit.semanticChecks.map(c => ({ ...c, phase: 'semantic' as const })),
@@ -1333,4 +1676,38 @@ const mapDbPageToModel = (db: any): SitePageRecord => ({
   latestAuditAt: db.latest_audit_at,
   createdAt: db.created_at,
   updatedAt: db.updated_at,
+});
+
+const mapDbAuditToModel = (db: any): PageAudit => ({
+  id: db.id,
+  pageId: db.page_id,
+  projectId: db.project_id,
+  version: db.version,
+  overallScore: db.overall_score,
+  technicalScore: db.technical_score,
+  semanticScore: db.semantic_score,
+  linkStructureScore: db.link_structure_score,
+  contentQualityScore: db.content_quality_score,
+  visualSchemaScore: db.visual_schema_score,
+  technicalChecks: db.technical_checks || [],
+  semanticChecks: db.semantic_checks || [],
+  linkStructureChecks: db.link_structure_checks || [],
+  contentQualityChecks: db.content_quality_checks || [],
+  visualSchemaChecks: db.visual_schema_checks || [],
+  aiAnalysisComplete: db.ai_analysis_complete,
+  ceAlignmentScore: db.ce_alignment_score,
+  ceAlignmentExplanation: db.ce_alignment_explanation,
+  scAlignmentScore: db.sc_alignment_score,
+  scAlignmentExplanation: db.sc_alignment_explanation,
+  csiAlignmentScore: db.csi_alignment_score,
+  csiAlignmentExplanation: db.csi_alignment_explanation,
+  contentSuggestions: db.content_suggestions,
+  summary: db.summary,
+  criticalIssuesCount: db.critical_issues_count,
+  highIssuesCount: db.high_issues_count,
+  mediumIssuesCount: db.medium_issues_count,
+  lowIssuesCount: db.low_issues_count,
+  contentHashAtAudit: db.content_hash_at_audit,
+  auditType: db.audit_type,
+  createdAt: db.created_at,
 });

@@ -28,6 +28,10 @@ import {
     FlowAuditResult,
     SiteAnalysisProject,
     DiscoveredPillars,
+    FoundationPage,
+    NavigationStructure,
+    NavigationSyncStatus,
+    FoundationNotification,
 } from '../types';
 import { KnowledgeGraph } from '../lib/knowledgeGraph';
 import { defaultBusinessInfo } from '../config/defaults';
@@ -35,10 +39,14 @@ import { defaultBusinessInfo } from '../config/defaults';
 export interface AppState {
     user: User | null;
     appStep: AppStep;
+    viewMode: 'CREATION' | 'MIGRATION'; // NEW: Toggle between creation and migration workflows
     isLoading: { [key: string]: boolean | undefined; };
     error: string | null;
     notification: string | null;
-    
+
+    // UX State
+    isStrategistOpen: boolean;
+
     businessInfo: BusinessInfo;
     projects: Project[];
     activeProjectId: string | null;
@@ -80,11 +88,22 @@ export interface AppState {
         selectedPageId: string | null;
         discoveredPillars: DiscoveredPillars | null;
     };
+
+    // Foundation Pages & Navigation state
+    websiteStructure: {
+        foundationPages: FoundationPage[];
+        navigation: NavigationStructure | null;
+        navigationSyncStatus: NavigationSyncStatus | null;
+        notifications: FoundationNotification[];
+        isGenerating: boolean;
+    };
 }
 
 export type AppAction =
   | { type: 'SET_USER'; payload: User | null }
   | { type: 'SET_STEP'; payload: AppStep }
+  | { type: 'SET_VIEW_MODE'; payload: 'CREATION' | 'MIGRATION' } // NEW: Toggle workflows
+  | { type: 'TOGGLE_STRATEGIST'; payload?: boolean } // NEW: Toggle strategist panel
   | { type: 'SET_LOADING'; payload: { key: string; value: boolean } }
   | { type: 'SET_ERROR'; payload: string | null }
   | { type: 'SET_NOTIFICATION'; payload: string | null }
@@ -136,14 +155,28 @@ export type AppAction =
   | { type: 'SET_SITE_ANALYSIS_PROJECT'; payload: SiteAnalysisProject | null }
   | { type: 'SET_SITE_ANALYSIS_SELECTED_PAGE'; payload: string | null }
   | { type: 'SET_SITE_ANALYSIS_PILLARS'; payload: DiscoveredPillars | null }
-  | { type: 'RESET_SITE_ANALYSIS' };
+  | { type: 'RESET_SITE_ANALYSIS' }
+  // Foundation Pages & Navigation actions
+  | { type: 'SET_FOUNDATION_PAGES'; payload: FoundationPage[] }
+  | { type: 'ADD_FOUNDATION_PAGE'; payload: FoundationPage }
+  | { type: 'UPDATE_FOUNDATION_PAGE'; payload: { pageId: string; updates: Partial<FoundationPage> } }
+  | { type: 'DELETE_FOUNDATION_PAGE'; payload: { pageId: string } }
+  | { type: 'SET_NAVIGATION'; payload: NavigationStructure | null }
+  | { type: 'UPDATE_NAVIGATION'; payload: Partial<NavigationStructure> }
+  | { type: 'SET_NAV_SYNC_STATUS'; payload: NavigationSyncStatus | null }
+  | { type: 'ADD_FOUNDATION_NOTIFICATION'; payload: FoundationNotification }
+  | { type: 'DISMISS_FOUNDATION_NOTIFICATION'; payload: { notificationId: string } }
+  | { type: 'SET_WEBSITE_STRUCTURE_GENERATING'; payload: boolean }
+  | { type: 'RESET_WEBSITE_STRUCTURE' };
 
 export const initialState: AppState = {
     user: null,
     appStep: AppStep.AUTH,
+    viewMode: 'CREATION',
     isLoading: {},
     error: null,
     notification: null,
+    isStrategistOpen: false,
     businessInfo: defaultBusinessInfo,
     projects: [],
     activeProjectId: null,
@@ -176,12 +209,21 @@ export const initialState: AppState = {
         selectedPageId: null,
         discoveredPillars: null,
     },
+    websiteStructure: {
+        foundationPages: [],
+        navigation: null,
+        navigationSyncStatus: null,
+        notifications: [],
+        isGenerating: false,
+    },
 };
 
 export const appReducer = (state: AppState, action: AppAction): AppState => {
     switch (action.type) {
         case 'SET_USER': return { ...state, user: action.payload };
         case 'SET_STEP': return { ...state, appStep: action.payload };
+        case 'SET_VIEW_MODE': return { ...state, viewMode: action.payload }; // Handle viewMode toggle
+        case 'TOGGLE_STRATEGIST': return { ...state, isStrategistOpen: action.payload !== undefined ? action.payload : !state.isStrategistOpen };
         case 'SET_LOADING': return { ...state, isLoading: { ...state.isLoading, [action.payload.key]: action.payload.value } };
         case 'SET_ERROR': return { ...state, error: action.payload };
         case 'SET_NOTIFICATION': return { ...state, notification: action.payload };
@@ -252,6 +294,97 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
                     currentProject: null,
                     selectedPageId: null,
                     discoveredPillars: null,
+                }
+            };
+
+        // Foundation Pages & Navigation reducers
+        case 'SET_FOUNDATION_PAGES':
+            return {
+                ...state,
+                websiteStructure: { ...state.websiteStructure, foundationPages: action.payload }
+            };
+        case 'ADD_FOUNDATION_PAGE':
+            return {
+                ...state,
+                websiteStructure: {
+                    ...state.websiteStructure,
+                    foundationPages: [...state.websiteStructure.foundationPages, action.payload]
+                }
+            };
+        case 'UPDATE_FOUNDATION_PAGE':
+            return {
+                ...state,
+                websiteStructure: {
+                    ...state.websiteStructure,
+                    foundationPages: state.websiteStructure.foundationPages.map(page =>
+                        page.id === action.payload.pageId
+                            ? { ...page, ...action.payload.updates }
+                            : page
+                    )
+                }
+            };
+        case 'DELETE_FOUNDATION_PAGE':
+            return {
+                ...state,
+                websiteStructure: {
+                    ...state.websiteStructure,
+                    foundationPages: state.websiteStructure.foundationPages.map(page =>
+                        page.id === action.payload.pageId
+                            ? { ...page, deleted_at: new Date().toISOString(), deletion_reason: 'user_deleted' as const }
+                            : page
+                    )
+                }
+            };
+        case 'SET_NAVIGATION':
+            return {
+                ...state,
+                websiteStructure: { ...state.websiteStructure, navigation: action.payload }
+            };
+        case 'UPDATE_NAVIGATION':
+            return {
+                ...state,
+                websiteStructure: {
+                    ...state.websiteStructure,
+                    navigation: state.websiteStructure.navigation
+                        ? { ...state.websiteStructure.navigation, ...action.payload }
+                        : null
+                }
+            };
+        case 'SET_NAV_SYNC_STATUS':
+            return {
+                ...state,
+                websiteStructure: { ...state.websiteStructure, navigationSyncStatus: action.payload }
+            };
+        case 'ADD_FOUNDATION_NOTIFICATION':
+            return {
+                ...state,
+                websiteStructure: {
+                    ...state.websiteStructure,
+                    notifications: [...state.websiteStructure.notifications, action.payload]
+                }
+            };
+        case 'DISMISS_FOUNDATION_NOTIFICATION':
+            return {
+                ...state,
+                websiteStructure: {
+                    ...state.websiteStructure,
+                    notifications: state.websiteStructure.notifications.filter(n => n.id !== action.payload.notificationId)
+                }
+            };
+        case 'SET_WEBSITE_STRUCTURE_GENERATING':
+            return {
+                ...state,
+                websiteStructure: { ...state.websiteStructure, isGenerating: action.payload }
+            };
+        case 'RESET_WEBSITE_STRUCTURE':
+            return {
+                ...state,
+                websiteStructure: {
+                    foundationPages: [],
+                    navigation: null,
+                    navigationSyncStatus: null,
+                    notifications: [],
+                    isGenerating: false,
                 }
             };
 

@@ -36,15 +36,29 @@ const callApi = async <T>(
     }
 
     // Claude works best if we explicitly ask for JSON in the prefill or user message
-    const effectivePrompt = `${prompt}\n\nIMPORTANT: Return ONLY a valid JSON object. Do not include any explanation.`;
+    const effectivePrompt = `${prompt}\n\nCRITICAL FORMATTING REQUIREMENT: Your response must be ONLY a valid JSON object. Do NOT include any text before or after the JSON. Do NOT wrap it in markdown code blocks. Start your response directly with { and end with }.`;
 
     // Use Supabase Edge Function as proxy to avoid CORS issues
     const proxyUrl = `${businessInfo.supabaseUrl}/functions/v1/anthropic-proxy`;
 
     // Ensure we use a valid Claude model - if aiModel is not a Claude model, use default
-    const validClaudeModels = ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku', 'claude-sonnet-4-5-20250929', 'claude-3-5-sonnet', 'claude-3-5-haiku'];
-    const isValidClaudeModel = businessInfo.aiModel && validClaudeModels.some(m => businessInfo.aiModel.includes(m.split('-').slice(0, 2).join('-')));
-    const modelToUse = isValidClaudeModel ? businessInfo.aiModel : 'claude-sonnet-4-5-20250929';
+    // Valid Anthropic model IDs: https://docs.anthropic.com/en/docs/about-claude/models/overview
+    const validClaudeModels = [
+        // Claude 4.5 models (November 2025 - Latest)
+        'claude-opus-4-5-20251101',
+        'claude-sonnet-4-5-20250929',
+        'claude-haiku-4-5-20251001',
+        // Claude 4.1 models (August 2025)
+        'claude-opus-4-1-20250805',
+        // Claude 4 models (May 2025)
+        'claude-sonnet-4-20250514',
+        // Legacy Claude 3.5 models (being deprecated)
+        'claude-3-5-sonnet-20241022',
+        'claude-3-5-haiku-20241022',
+    ];
+    const defaultModel = 'claude-sonnet-4-5-20250929'; // Latest Sonnet - best price/performance
+    const isValidClaudeModel = businessInfo.aiModel && validClaudeModels.includes(businessInfo.aiModel);
+    const modelToUse = isValidClaudeModel ? businessInfo.aiModel : defaultModel;
 
     try {
         const response = await fetch(proxyUrl, {
@@ -56,11 +70,11 @@ const callApi = async <T>(
             },
             body: JSON.stringify({
                 model: modelToUse,
-                max_tokens: 4096,
+                max_tokens: 16384,
                 messages: [
                     { role: "user", content: effectivePrompt }
                 ],
-                system: "You are a helpful, expert SEO strategist. You output strict JSON when requested."
+                system: "You are a helpful, expert SEO strategist. You ALWAYS output valid JSON when requested. Never include explanatory text, markdown formatting, or code blocks around your JSON response. Start directly with { and end with }. Keep responses concise - focus on quality topics rather than quantity."
             }),
         });
 
@@ -79,8 +93,37 @@ const callApi = async <T>(
         // Claude's response content is an array of blocks. We assume the first block is text.
         const textBlock = data.content?.[0];
         const responseText = textBlock?.type === 'text' ? textBlock.text : '';
+        const stopReason = data.stop_reason || 'unknown';
 
-        dispatch({ type: 'LOG_EVENT', payload: { service: 'Anthropic', message: `Received response.`, status: 'info', timestamp: Date.now() } });
+        // Log stop reason if it indicates truncation
+        if (stopReason === 'max_tokens') {
+            dispatch({ type: 'LOG_EVENT', payload: {
+                service: 'Anthropic',
+                message: 'WARNING: Response was truncated due to max_tokens limit. Consider increasing limit or making prompt more specific.',
+                status: 'warning',
+                timestamp: Date.now()
+            }});
+        }
+
+        // Check if we got an empty response
+        if (!responseText) {
+            dispatch({ type: 'LOG_EVENT', payload: {
+                service: 'Anthropic',
+                message: 'Received empty response from Claude.',
+                status: 'warning',
+                timestamp: Date.now(),
+                data: { contentBlocks: data.content, textBlockType: textBlock?.type }
+            }});
+        } else {
+            // Log preview directly in message for visibility (data field may not display)
+            const preview = responseText.substring(0, 150).replace(/\n/g, ' ').replace(/\s+/g, ' ');
+            dispatch({ type: 'LOG_EVENT', payload: {
+                service: 'Anthropic',
+                message: `Received response (${responseText.length} chars, stop: ${stopReason}). Preview: "${preview}..."`,
+                status: 'info',
+                timestamp: Date.now()
+            }});
+        }
 
         return sanitizerFn(responseText);
 
@@ -127,14 +170,65 @@ export const expandSemanticTriples = async (info: BusinessInfo, pillars: SEOPill
 
 export const generateInitialTopicalMap = async (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>) => {
     const sanitizer = new AIResponseSanitizer(dispatch);
-    const prompt = prompts.GENERATE_INITIAL_TOPICAL_MAP_PROMPT(info, pillars, eavs, competitors);
-    const fallback = { monetizationSection: [], informationalSection: [] };
-    const result = await callApi(prompt, info, dispatch, (text) => sanitizer.sanitize(text, { monetizationSection: Array, informationalSection: Array }, fallback));
-    
-    // Reuse flattening logic (simplified for brevity, assumes result structure is correct)
+
+    // Use chunked generation to avoid token truncation
+    // Generate each section in a separate API call
+    dispatch({ type: 'LOG_EVENT', payload: {
+        service: 'Anthropic',
+        message: 'Starting chunked map generation (monetization + informational sections in parallel)...',
+        status: 'info',
+        timestamp: Date.now()
+    }});
+
+    const monetizationPrompt = prompts.GENERATE_MONETIZATION_SECTION_PROMPT(info, pillars, eavs, competitors);
+    const informationalPrompt = prompts.GENERATE_INFORMATIONAL_SECTION_PROMPT(info, pillars, eavs, competitors);
+
+    const fallbackSection = { topics: [] };
+
+    // Run both calls in parallel for faster generation
+    const [monetizationResult, informationalResult] = await Promise.all([
+        callApi(monetizationPrompt, info, dispatch, (text) =>
+            sanitizer.sanitize(text, { topics: Array }, fallbackSection)
+        ).catch(err => {
+            dispatch({ type: 'LOG_EVENT', payload: {
+                service: 'Anthropic',
+                message: `Monetization section failed: ${err.message}`,
+                status: 'failure',
+                timestamp: Date.now()
+            }});
+            return fallbackSection;
+        }),
+        callApi(informationalPrompt, info, dispatch, (text) =>
+            sanitizer.sanitize(text, { topics: Array }, fallbackSection)
+        ).catch(err => {
+            dispatch({ type: 'LOG_EVENT', payload: {
+                service: 'Anthropic',
+                message: `Informational section failed: ${err.message}`,
+                status: 'failure',
+                timestamp: Date.now()
+            }});
+            return fallbackSection;
+        })
+    ]);
+
+    const monetizationTopics = monetizationResult.topics || [];
+    const informationalTopics = informationalResult.topics || [];
+
+    // Log the parsed result for debugging with topic_class info
+    const monetizationWithSpokes = monetizationTopics.reduce((acc: number, t: any) => acc + (t.spokes?.length || 0), 0);
+    const informationalWithSpokes = informationalTopics.reduce((acc: number, t: any) => acc + (t.spokes?.length || 0), 0);
+
+    dispatch({ type: 'LOG_EVENT', payload: {
+        service: 'Anthropic',
+        message: `Chunked generation complete. Monetization: ${monetizationTopics.length} core + ${monetizationWithSpokes} spokes (topic_class=monetization), Informational: ${informationalTopics.length} core + ${informationalWithSpokes} spokes (topic_class=informational)`,
+        status: monetizationTopics.length || informationalTopics.length ? 'info' : 'warning',
+        timestamp: Date.now()
+    }});
+
+    // Flatten into coreTopics and outerTopics
     const coreTopics: any[] = [];
     const outerTopics: any[] = [];
-    
+
     const process = (list: any[], cls: string) => {
          if(!list) return;
          list.forEach(c => {
@@ -143,8 +237,8 @@ export const generateInitialTopicalMap = async (info: BusinessInfo, pillars: SEO
              if(c.spokes) c.spokes.forEach((s: any) => outerTopics.push({...s, id: Math.random().toString(), parent_topic_id: tid, topic_class: cls, type: 'outer'}));
          });
     };
-    process(result.monetizationSection, 'monetization');
-    process(result.informationalSection, 'informational');
+    process(monetizationTopics, 'monetization');
+    process(informationalTopics, 'informational');
     return { coreTopics, outerTopics };
 };
 
@@ -202,9 +296,10 @@ export const analyzeGscDataForOpportunities = async (rows: GscRow[], kg: Knowled
     return callApi(prompts.ANALYZE_GSC_DATA_PROMPT(rows, kg), info, dispatch, t => sanitizer.sanitizeArray(t, []));
 };
 
-export const improveTopicalMap = async (topics: EnrichedTopic[], issues: ValidationIssue[], info: BusinessInfo, dispatch: React.Dispatch<any>) => {
+export const improveTopicalMap = async (topics: EnrichedTopic[], issues: ValidationIssue[], info: BusinessInfo, dispatch: React.Dispatch<any>): Promise<MapImprovementSuggestion> => {
     const sanitizer = new AIResponseSanitizer(dispatch);
-    return callApi(prompts.IMPROVE_TOPICAL_MAP_PROMPT(topics, issues, info), info, dispatch, t => sanitizer.sanitize(t, { newTopics: Array, topicTitlesToDelete: Array }, { newTopics: [], topicTitlesToDelete: [] }));
+    const fallback: MapImprovementSuggestion = { newTopics: [], topicTitlesToDelete: [], topicMerges: [], hubSpokeGapFills: [], typeReclassifications: [] };
+    return callApi(prompts.IMPROVE_TOPICAL_MAP_PROMPT(topics, issues, info), info, dispatch, t => sanitizer.sanitize(t, { newTopics: Array, topicTitlesToDelete: Array }, fallback));
 };
 
 export const findMergeOpportunities = async (topics: EnrichedTopic[], info: BusinessInfo, dispatch: React.Dispatch<any>) => {
@@ -305,4 +400,37 @@ export const applyBatchFlowRemediation = async (draft: string, issues: Contextua
     const result = await callApi(prompts.BATCH_FLOW_REMEDIATION_PROMPT(draft, issues, info), info, dispatch, t => sanitizer.sanitize(t, { polishedDraft: String }, { polishedDraft: draft }));
     return result.polishedDraft;
 };
-    
+
+// --- Generic AI methods for Migration Service ---
+
+/**
+ * Generic JSON generation method for migration workflows
+ */
+export const generateJson = async <T extends object>(
+    prompt: string,
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>,
+    fallback: T
+): Promise<T> => {
+    const sanitizer = new AIResponseSanitizer(dispatch);
+    return callApi(prompt, businessInfo, dispatch, (text) => {
+        try {
+            return JSON.parse(text);
+        } catch {
+            return sanitizer.sanitize(text, {}, fallback);
+        }
+    });
+};
+
+/**
+ * Generic text generation method for migration workflows
+ */
+export const generateText = async (
+    prompt: string,
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>
+): Promise<string> => {
+    // For text generation, we don't want to ask for JSON
+    const textPrompt = prompt.replace(/IMPORTANT:.*JSON.*\./gi, ''); // Remove JSON instructions
+    return callApi(textPrompt, businessInfo, dispatch, (text) => text);
+};

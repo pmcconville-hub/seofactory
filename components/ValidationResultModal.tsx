@@ -13,7 +13,7 @@ interface ValidationResultModalProps {
   isOpen: boolean;
   onClose: () => void;
   result: ValidationResult | null;
-  onImproveMap: (issues: ValidationIssue[]) => void;
+  onImproveMap: (issues: ValidationIssue[], options?: { includeTypeReclassifications?: boolean }) => void;
   isImprovingMap: boolean;
 }
 
@@ -32,6 +32,7 @@ const getSeverityStyles = (severity: ValidationIssue['severity']) => {
 
 const ValidationResultModal: React.FC<ValidationResultModalProps> = ({ isOpen, onClose, result, onImproveMap, isImprovingMap }) => {
   const [activeTab, setActiveTab] = useState<'issues' | 'metrics'>('issues');
+  const [includeTypeReclassifications, setIncludeTypeReclassifications] = useState(true);
 
   if (!isOpen) return null;
 
@@ -100,10 +101,26 @@ const ValidationResultModal: React.FC<ValidationResultModalProps> = ({ isOpen, o
                                 <div className="mt-6 pt-6 border-t border-gray-700">
                                     <h4 className="text-md font-semibold text-white mb-2 text-center">AI-Powered Improvement</h4>
                                     <p className="text-sm text-gray-400 mb-4 text-center">Let the AI attempt to fix these issues by adding, removing, or modifying topics.</p>
+
+                                    {/* Type Reclassification Option */}
+                                    <div className="flex items-center justify-center gap-2 mb-4">
+                                        <input
+                                            type="checkbox"
+                                            id="includeTypeReclassifications"
+                                            checked={includeTypeReclassifications}
+                                            onChange={(e) => setIncludeTypeReclassifications(e.target.checked)}
+                                            className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                                        />
+                                        <label htmlFor="includeTypeReclassifications" className="text-sm text-gray-300">
+                                            Include type reclassifications (core ↔ outer)
+                                        </label>
+                                        <InfoTooltip text="When enabled, the AI will also suggest changing topic types (e.g., demoting location variants from 'core' to 'outer'). Disable if you want to keep the current hierarchy structure." />
+                                    </div>
+
                                     <div className="flex justify-center gap-4">
                                         {hasCriticalIssues && (
-                                            <Button 
-                                                onClick={() => onImproveMap(result.issues.filter(i => i.severity === 'CRITICAL'))} 
+                                            <Button
+                                                onClick={() => onImproveMap(result.issues.filter(i => i.severity === 'CRITICAL'), { includeTypeReclassifications })}
                                                 disabled={isImprovingMap}
                                                 variant="secondary"
                                                 className="bg-red-900/40 hover:bg-red-800/40 text-red-200"
@@ -111,8 +128,8 @@ const ValidationResultModal: React.FC<ValidationResultModalProps> = ({ isOpen, o
                                                 {isImprovingMap ? <Loader className="w-4 h-4"/> : 'Fix Critical Issues Only'}
                                             </Button>
                                         )}
-                                        <Button 
-                                            onClick={() => onImproveMap(result.issues)} 
+                                        <Button
+                                            onClick={() => onImproveMap(result.issues, { includeTypeReclassifications })}
                                             disabled={isImprovingMap}
                                         >
                                             {isImprovingMap ? <Loader className="w-4 h-4"/> : 'Fix All Issues'}

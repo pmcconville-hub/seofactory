@@ -32,11 +32,18 @@ export class BatchProcessor {
         }
 
         const topicsWithoutBriefs = topics.filter(t => !activeMap.briefs?.[t.id]);
-        
-        // Use map-specific business info if available, merged with global
+
+        // Get active project for domain fallback
+        const activeProject = state.projects.find(p => p.id === state.activeProjectId);
+
+        // Use map-specific business info if available, merged with global and project domain
+        const mapBusinessInfo = activeMap.business_info as Partial<BusinessInfo> || {};
         const effectiveBusinessInfo = {
-             ...state.businessInfo,
-             ...(activeMap.business_info as Partial<BusinessInfo> || {})
+            ...state.businessInfo,
+            domain: mapBusinessInfo.domain || activeProject?.domain || state.businessInfo.domain,
+            projectName: mapBusinessInfo.projectName || activeProject?.project_name || state.businessInfo.projectName,
+            ...mapBusinessInfo,
+            ...(mapBusinessInfo.domain ? {} : { domain: activeProject?.domain || state.businessInfo.domain }),
         };
 
         for (let i = 0; i < topicsWithoutBriefs.length; i++) {

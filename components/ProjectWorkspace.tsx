@@ -10,6 +10,7 @@ import CompetitorRefinementWizard from './CompetitorRefinementWizard';
 import ProjectDashboardContainer from './ProjectDashboardContainer';
 import { getSupabaseClient } from '../services/supabaseClient';
 import * as aiService from '../services/aiService';
+import * as foundationPagesService from '../services/ai/foundationPages';
 import { v4 as uuidv4 } from 'uuid';
 import { slugify, cleanSlug } from '../utils/helpers';
 import { sanitizeTopicFromDb } from '../utils/parsers';
@@ -166,6 +167,17 @@ const ProjectWorkspace: React.FC = () => {
             }));
 
             if (dbTopics.length > 0) {
+                // Log topic_class distribution for debugging
+                const monetizationCount = finalTopics.filter(t => t.topic_class === 'monetization').length;
+                const informationalCount = finalTopics.filter(t => t.topic_class === 'informational').length;
+                const undefinedCount = finalTopics.filter(t => !t.topic_class).length;
+                dispatch({ type: 'LOG_EVENT', payload: {
+                    service: 'MapGeneration',
+                    message: `Saving ${dbTopics.length} topics to DB. topic_class distribution: monetization=${monetizationCount}, informational=${informationalCount}, undefined=${undefinedCount}`,
+                    status: 'info',
+                    timestamp: Date.now()
+                }});
+
                 const { error: insertError } = await supabase.from('topics').insert(dbTopics);
                 if (insertError) throw insertError;
             }
@@ -175,7 +187,73 @@ const ProjectWorkspace: React.FC = () => {
             // the 'metadata' properties if the function expects a different DB structure than the flat object we just created.
             dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: activeMapId, topics: finalTopics } });
 
-            // 6. Redirect
+            // 6. Generate Foundation Pages (non-blocking)
+            try {
+                dispatch({ type: 'LOG_EVENT', payload: {
+                    service: 'FoundationPages',
+                    message: 'Generating foundation pages...',
+                    status: 'info',
+                    timestamp: Date.now()
+                }});
+
+                const foundationResult = await foundationPagesService.generateFoundationPages(
+                    effectiveBusinessInfo,
+                    currentMap.pillars,
+                    dispatch
+                );
+
+                const pagesToSave = foundationPagesService.prepareFoundationPagesForSave(
+                    foundationResult,
+                    activeMapId,
+                    user.id,
+                    undefined // NAP data will be added later by user
+                );
+
+                const savedPages = await foundationPagesService.saveFoundationPages(
+                    activeMapId,
+                    user.id,
+                    pagesToSave,
+                    effectiveBusinessInfo.supabaseUrl,
+                    effectiveBusinessInfo.supabaseAnonKey
+                );
+
+                // Generate navigation structure based on foundation pages and core topics
+                const coreTopicsForNav = finalTopics.filter(t => t.type === 'core');
+                const navigation = await foundationPagesService.generateDefaultNavigation(
+                    savedPages,
+                    coreTopicsForNav,
+                    effectiveBusinessInfo,
+                    dispatch
+                );
+
+                const savedNavigation = await foundationPagesService.saveNavigationStructure(
+                    activeMapId,
+                    user.id,
+                    { ...navigation, map_id: activeMapId }
+                );
+
+                // Update state with foundation pages and navigation
+                dispatch({ type: 'SET_FOUNDATION_PAGES', payload: savedPages });
+                dispatch({ type: 'SET_NAVIGATION', payload: savedNavigation });
+
+                dispatch({ type: 'LOG_EVENT', payload: {
+                    service: 'FoundationPages',
+                    message: `Generated ${savedPages.length} foundation pages and navigation structure`,
+                    status: 'success',
+                    timestamp: Date.now()
+                }});
+            } catch (foundationError) {
+                // Foundation page generation is non-blocking - log error but continue
+                console.error('Foundation page generation failed:', foundationError);
+                dispatch({ type: 'LOG_EVENT', payload: {
+                    service: 'FoundationPages',
+                    message: `Foundation page generation failed: ${foundationError instanceof Error ? foundationError.message : 'Unknown error'}`,
+                    status: 'failure',
+                    timestamp: Date.now()
+                }});
+            }
+
+            // 7. Redirect
             dispatch({ type: 'SET_STEP', payload: AppStep.PROJECT_DASHBOARD });
 
         } catch (e) {

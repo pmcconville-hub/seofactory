@@ -283,3 +283,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
 };
 
 export default SettingsModal;
+
+// Named exports for sub-components used by other modules
+export { AIProviderSettings, ServiceSettings };

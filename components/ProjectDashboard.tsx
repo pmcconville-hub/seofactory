@@ -2,9 +2,10 @@
 // components/ProjectDashboard.tsx
 import React, { useState, useMemo, useCallback } from 'react';
 import { useAppState } from '../state/appState';
-import { TopicalMap, EnrichedTopic, ContentBrief, BusinessInfo, SEOPillars, TopicRecommendation, GscRow, ValidationIssue, MergeSuggestion, ResponseCode, SemanticTriple, ExpansionMode, AuditRuleResult, ContextualFlowIssue } from '../types';
+import { TopicalMap, EnrichedTopic, ContentBrief, BusinessInfo, SEOPillars, TopicRecommendation, GscRow, ValidationIssue, MergeSuggestion, ResponseCode, SemanticTriple, ExpansionMode, AuditRuleResult, ContextualFlowIssue, FoundationPage, NAPData } from '../types';
 import { KnowledgeGraph as KnowledgeGraphClass } from '../lib/knowledgeGraph';
 import { calculateDashboardMetrics } from '../utils/helpers';
+import { calculateNextSteps, RecommendationType } from '../services/recommendationEngine';
 
 // Import child components
 import TopicalMapDisplay from './TopicalMapDisplay';
@@ -12,6 +13,8 @@ import StrategicDashboard from './ui/StrategicDashboard';
 import WorkbenchPanel from './dashboard/WorkbenchPanel';
 import AnalysisToolsPanel from './dashboard/AnalysisToolsPanel';
 import StrategicContextPanel from './dashboard/StrategicContextPanel';
+import { NextStepsWidget } from './dashboard/NextStepsWidget';
+import { FoundationPagesPanel } from './FoundationPagesPanel';
 
 // Modals
 import AddTopicModal from './AddTopicModal';
@@ -66,7 +69,7 @@ interface ProjectDashboardProps {
   expandingCoreTopicId: string | null;
   onSavePillars: (newPillars: SEOPillars) => void;
   onBackToProjects: () => void;
-  
+
   // Modal Action Handlers
   onAddTopic: (topicData: Omit<EnrichedTopic, 'id' | 'map_id' | 'slug'>, placement: 'ai' | 'root' | string, overrideSettings?: { provider: string, model: string }) => void;
   onBulkAddTopics?: (topics: {data: Omit<EnrichedTopic, 'id' | 'map_id' | 'slug'>, placement: 'ai' | 'root' | string}[]) => Promise<void>;
@@ -84,13 +87,13 @@ interface ProjectDashboardProps {
   onExpandKnowledgeDomain: () => void;
   onFindAndAddMissingKnowledgeTerms: () => void;
   onGenerateInitialMap?: () => void;
-  
+
   // Context Management
   onUpdateEavs: (newEavs: SemanticTriple[]) => Promise<void>;
   onUpdateCompetitors: (newCompetitors: string[]) => Promise<void>;
   onRegenerateMap: () => Promise<void>;
   onExpandWithContext: (topic: EnrichedTopic, mode: ExpansionMode, context?: string, overrideSettings?: { provider: string, model: string }) => void;
-  
+
   // Data Enrichment & Blueprinting
   onEnrichData: () => Promise<void>;
   isEnriching?: boolean;
@@ -105,12 +108,28 @@ interface ProjectDashboardProps {
 
   // Flow Audit
   onAnalyzeFlow: (draft: string) => void;
+
+  // Quick Audit
+  onQuickAudit: (url: string) => void;
+
+  // Mode Switching
+  onSwitchToMigration: () => void;
+
+  // Foundation Pages
+  foundationPages: FoundationPage[];
+  napData?: NAPData;
+  isLoadingFoundationPages?: boolean;
+  onSaveNAPData: (napData: NAPData) => Promise<void>;
+  onUpdateFoundationPage: (pageId: string, updates: Partial<FoundationPage>) => Promise<void>;
+  onDeleteFoundationPage: (pageId: string) => Promise<void>;
+  onRestoreFoundationPage: (pageId: string) => Promise<void>;
+  onGenerateMissingFoundationPages?: () => Promise<void>;
 }
 
 
-const ProjectDashboard: React.FC<ProjectDashboardProps> = ({ 
-    projectName, 
-    topicalMap, 
+const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
+    projectName,
+    topicalMap,
     knowledgeGraph,
     allTopics,
     canExpandTopics,
@@ -159,10 +178,21 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     isGeneratingBlueprints,
     onAutoFix,
     onUpdateTopic,
-    onAnalyzeFlow
+    onAnalyzeFlow,
+    onQuickAudit,
+    onSwitchToMigration,
+    // Foundation Pages
+    foundationPages,
+    napData,
+    isLoadingFoundationPages,
+    onSaveNAPData,
+    onUpdateFoundationPage,
+    onDeleteFoundationPage,
+    onRestoreFoundationPage,
+    onGenerateMissingFoundationPages
 }) => {
     const { state, dispatch } = useAppState();
-    const { modals, isLoading, briefGenerationStatus } = state;
+    const { modals, isLoading, briefGenerationStatus, validationResult } = state;
     const [topicForBrief, setTopicForBrief] = useState<EnrichedTopic | null>(null);
 
     const coreTopics = useMemo(() => allTopics.filter(t => t.type === 'core'), [allTopics]);
@@ -174,18 +204,23 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         knowledgeGraph,
         allTopics
     }), [briefs, knowledgeGraph, allTopics]);
-    
+
+    // Calculate Next Steps
+    const recommendations = useMemo(() =>
+        calculateNextSteps(topicalMap, validationResult),
+    [topicalMap, validationResult]);
+
     const handleSelectTopicForBrief = useCallback((topic: EnrichedTopic) => {
         const briefExists = !!briefs[topic.id];
-        
+
         setTopicForBrief(topic);
 
         if (briefExists) {
-            dispatch({ type: 'SET_ACTIVE_BRIEF_TOPIC', payload: topic }); 
+            dispatch({ type: 'SET_ACTIVE_BRIEF_TOPIC', payload: topic });
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'contentBrief', visible: true } });
             return;
         }
-        
+
         if (canGenerateBriefs) {
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'responseCode', visible: true } });
         } else {
@@ -197,6 +232,37 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         onGenerateBrief(topic, responseCode, overrideSettings);
     };
 
+    const handleRecommendationAction = (type: RecommendationType) => {
+        switch (type) {
+            case 'GENERATE_INITIAL_MAP':
+                if(onGenerateInitialMap) onGenerateInitialMap();
+                break;
+            case 'ANALYZE_DOMAIN':
+                onAnalyzeKnowledgeDomain();
+                break;
+            case 'GENERATE_BRIEFS':
+                onGenerateAllBriefs();
+                break;
+            case 'VALIDATE_MAP':
+                onValidateMap();
+                break;
+            case 'FIX_VALIDATION_ISSUES':
+                // Open validation modal which has the "Fix" button
+                dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'validation', visible: true } });
+                break;
+            case 'EXPAND_TOPICS':
+                // Open Add Topic modal or trigger expansion.
+                // For "Strengthen Core Clusters", adding manually or expanding a specific core is best.
+                // Let's open Add Topic manual for now, or scroll to map.
+                dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'addTopic', visible: true } });
+                break;
+            case 'EXPORT_DATA':
+                // Trigger default export (Excel)
+                onExportData('xlsx');
+                break;
+        }
+    };
+
     return (
         <div className="space-y-8 max-w-7xl w-full">
             <header className="flex justify-between items-start">
@@ -204,11 +270,19 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                 <h1 className="text-4xl font-bold text-white">{projectName}</h1>
                 <p className="text-lg text-gray-400 mt-1">Topical Map: {topicalMap.name}</p>
               </div>
-              <Button onClick={onBackToProjects} variant="secondary">Back to Projects</Button>
+              <div className="flex gap-3">
+                  <Button onClick={onSwitchToMigration} className="bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-500">
+                      Switch to Migration Workbench
+                  </Button>
+                  <Button onClick={onBackToProjects} variant="secondary">Back to Projects</Button>
+              </div>
             </header>
 
+            {/* New Recommendation Widget */}
+            <NextStepsWidget recommendations={recommendations} onAction={handleRecommendationAction} />
+
             <StrategicDashboard metrics={metrics} />
-            
+
             {topicalMap.pillars && (
                 <StrategicContextPanel
                     pillars={topicalMap.pillars}
@@ -227,7 +301,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                 />
             )}
 
-            <WorkbenchPanel 
+            <WorkbenchPanel
                 isLoading={isLoading}
                 canGenerateBriefs={canGenerateBriefs}
                 briefGenerationStatus={briefGenerationStatus}
@@ -237,9 +311,10 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                 onUploadGsc={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'gsc', visible: true } })}
                 onGenerateAllBriefs={onGenerateAllBriefs}
                 onExportData={onExportData}
+                onQuickAudit={onQuickAudit}
             />
 
-            <AnalysisToolsPanel 
+            <AnalysisToolsPanel
                 isLoading={isLoading}
                 onValidateMap={onValidateMap}
                 onFindMergeOpportunities={onFindMergeOpportunities}
@@ -263,7 +338,21 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                 onGenerateInitialMap={onGenerateInitialMap}
                 onUpdateTopic={onUpdateTopic}
             />
-            
+
+            {/* Website Structure - Foundation Pages */}
+            <FoundationPagesPanel
+                foundationPages={foundationPages}
+                napData={napData}
+                isLoading={isLoadingFoundationPages}
+                onSaveNAPData={onSaveNAPData}
+                onUpdatePage={onUpdateFoundationPage}
+                onDeletePage={onDeleteFoundationPage}
+                onRestorePage={onRestoreFoundationPage}
+                onGenerateMissingPages={onGenerateMissingFoundationPages}
+                businessInfo={effectiveBusinessInfo}
+                pillars={topicalMap.pillars}
+            />
+
             <AddTopicModal
                 isOpen={!!modals.addTopic}
                 onClose={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'addTopic', visible: false } })}
@@ -272,12 +361,12 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                 coreTopics={coreTopics}
                 isLoading={!!isLoading.addTopic}
             />
-            <ContentBriefModal 
+            <ContentBriefModal
                 allTopics={allTopics}
                 onGenerateDraft={onGenerateDraft}
             />
-            <BriefReviewModal 
-                isOpen={!!modals.briefReview} 
+            <BriefReviewModal
+                isOpen={!!modals.briefReview}
             />
             {topicForBrief && (
                  <ResponseCodeSelectionModal
@@ -292,7 +381,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                 />
             )}
 
-            <DraftingModal 
+            <DraftingModal
                 isOpen={!!modals.drafting}
                 onClose={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'drafting', visible: false } })}
                 brief={state.activeBriefTopic ? briefs[state.activeBriefTopic.id] : null}
@@ -326,7 +415,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                 onFindAndAddMissingKnowledgeTerms={onFindAndAddMissingKnowledgeTerms}
                 isFindingMissingTerms={!!isLoading.knowledgeDomain}
             />
-            <InternalLinkingModal 
+            <InternalLinkingModal
                  isOpen={!!modals.internalLinking}
                  onClose={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'internalLinking', visible: false } })}
                  coreTopics={coreTopics}

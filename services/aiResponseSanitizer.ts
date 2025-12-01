@@ -40,14 +40,132 @@ export class AIResponseSanitizer {
             return '';
         }
 
-        const trimmedText = rawText.trim();
-        const match = trimmedText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-        
-        if (match && match[1]) {
-            this.log('Extracted JSON from markdown code block.', { original: rawText, extracted: match[1] }, 'info');
-            return match[1].trim();
+        // Remove BOM (Byte Order Mark) if present - this can cause JSON.parse to fail
+        let cleanedText = rawText;
+        if (cleanedText.charCodeAt(0) === 0xFEFF) {
+            cleanedText = cleanedText.substring(1);
+            this.log('Removed BOM from response.', {}, 'info');
         }
-        
+
+        // Remove control characters (except newline, tab, carriage return) that could corrupt JSON
+        // eslint-disable-next-line no-control-regex
+        const controlCharMatch = cleanedText.match(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g);
+        if (controlCharMatch) {
+            // eslint-disable-next-line no-control-regex
+            cleanedText = cleanedText.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+            this.log(`Removed ${controlCharMatch.length} control characters from response.`, {}, 'info');
+        }
+
+        const trimmedText = cleanedText.trim();
+
+        // Try to extract from markdown code block first (```json ... ``` or ``` ... ```)
+        // Use greedy match to get all content between opening and closing backticks
+        const markdownMatch = trimmedText.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/);
+        if (markdownMatch && markdownMatch[1]) {
+            this.log('Extracted JSON from markdown code block (exact match).', {}, 'info');
+            return markdownMatch[1].trim();
+        }
+
+        // Fallback: Try less strict markdown extraction (content might have trailing text after ```)
+        const markdownFallback = trimmedText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+        if (markdownFallback && markdownFallback[1]) {
+            this.log('Extracted JSON from markdown code block (fallback).', {}, 'info');
+            return markdownFallback[1].trim();
+        }
+
+        // Manual fallback: If response starts with ```json, strip it manually
+        if (trimmedText.startsWith('```json') || trimmedText.startsWith('```')) {
+            let content = trimmedText;
+            // Remove opening ```json or ```
+            content = content.replace(/^```(?:json)?\s*\n?/, '');
+            // Remove closing ``` and anything after it (Claude sometimes adds notes after)
+            content = content.replace(/\n?```[\s\S]*$/, '');
+            if (content && content.trim().startsWith('{')) {
+                this.log('Extracted JSON by manually stripping markdown backticks.', {}, 'info');
+                return content.trim();
+            }
+        }
+
+        // Last resort: Find JSON object using bracket matching even if wrapped
+        if (trimmedText.includes('{') && trimmedText.includes('}')) {
+            const startIdx = trimmedText.indexOf('{');
+            const endIdx = trimmedText.lastIndexOf('}');
+            if (startIdx !== -1 && endIdx > startIdx) {
+                const candidate = trimmedText.substring(startIdx, endIdx + 1);
+                try {
+                    JSON.parse(candidate);
+                    this.log('Extracted JSON using first/last brace positions.', {}, 'info');
+                    return candidate;
+                } catch {
+                    // Continue
+                }
+            }
+        }
+
+        // Try to find JSON object - use non-greedy approach to find the FIRST complete JSON object
+        // Look for opening brace and try to find matching closing brace
+        const firstBraceIndex = trimmedText.indexOf('{');
+        if (firstBraceIndex !== -1) {
+            // Try to extract JSON starting from first {
+            let depth = 0;
+            let inString = false;
+            let escapeNext = false;
+
+            for (let i = firstBraceIndex; i < trimmedText.length; i++) {
+                const char = trimmedText[i];
+
+                if (escapeNext) {
+                    escapeNext = false;
+                    continue;
+                }
+
+                if (char === '\\' && inString) {
+                    escapeNext = true;
+                    continue;
+                }
+
+                if (char === '"' && !escapeNext) {
+                    inString = !inString;
+                    continue;
+                }
+
+                if (!inString) {
+                    if (char === '{') depth++;
+                    if (char === '}') depth--;
+
+                    if (depth === 0) {
+                        const candidate = trimmedText.substring(firstBraceIndex, i + 1);
+                        try {
+                            JSON.parse(candidate);
+                            this.log('Extracted JSON object from response text.', { extracted: candidate.substring(0, 200) + '...' }, 'info');
+                            return candidate;
+                        } catch {
+                            // Try to continue finding another valid JSON
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: Try regex for JSON array
+        const jsonArrayMatch = trimmedText.match(/(\[[\s\S]*?\])/);
+        if (jsonArrayMatch && jsonArrayMatch[1]) {
+            try {
+                JSON.parse(jsonArrayMatch[1]);
+                this.log('Extracted JSON array from response text.', { extracted: jsonArrayMatch[1].substring(0, 200) + '...' }, 'info');
+                return jsonArrayMatch[1];
+            } catch {
+                // Continue to return trimmed text
+            }
+        }
+
+        // Log a preview of what we're trying to parse if it doesn't look like JSON
+        if (!trimmedText.startsWith('{') && !trimmedText.startsWith('[')) {
+            const cleanPreview = trimmedText.substring(0, 300).replace(/\n/g, ' ').replace(/\s+/g, ' ');
+            this.log(`Response does not appear to be JSON. First 300 chars: "${cleanPreview}"`, {}, 'warning');
+        }
+
         return trimmedText;
     }
 
@@ -71,8 +189,86 @@ export class AIResponseSanitizer {
             try {
                 parsedJson = JSON.parse(jsonString);
             } catch (error) {
-                this.log('Sanitization failed: JSON parsing error.', { jsonString, error: error instanceof Error ? error.message : String(error) });
-                return fallback;
+                const errorMsg = error instanceof Error ? error.message : String(error);
+                // Log more context to help debug - include error details in message
+                const firstChars = jsonString.substring(0, 100).replace(/\n/g, ' ');
+                const lastChars = jsonString.substring(Math.max(0, jsonString.length - 100)).replace(/\n/g, ' ');
+                this.log(`JSON parsing error: ${errorMsg}. Length: ${jsonString.length}. First 100: "${firstChars}" ... Last 100: "${lastChars}"`, {}, 'failure');
+
+                // Try to repair truncated JSON
+                if (errorMsg.includes('end of') || errorMsg.includes('Unexpected end') ||
+                    errorMsg.includes('Unterminated string') || !jsonString.trim().endsWith('}')) {
+                    this.log('Attempting to repair potentially truncated JSON...', {}, 'info');
+
+                    // Count open braces/brackets and track if we're inside a string
+                    let openBraces = 0;
+                    let openBrackets = 0;
+                    let inString = false;
+                    let escapeNext = false;
+
+                    for (const char of jsonString) {
+                        if (escapeNext) { escapeNext = false; continue; }
+                        if (char === '\\' && inString) { escapeNext = true; continue; }
+                        if (char === '"' && !escapeNext) { inString = !inString; continue; }
+                        if (!inString) {
+                            if (char === '{') openBraces++;
+                            if (char === '}') openBraces--;
+                            if (char === '[') openBrackets++;
+                            if (char === ']') openBrackets--;
+                        }
+                    }
+
+                    if (openBraces > 0 || openBrackets > 0 || inString) {
+                        let repaired = jsonString.trim();
+
+                        // If we're inside an unterminated string, close it first
+                        if (inString) {
+                            // Remove any trailing incomplete content after last complete property
+                            // Look for last complete key-value pair pattern
+                            const lastCompleteMatch = repaired.match(/^([\s\S]*"[^"]*":\s*(?:"[^"]*"|[\d.]+|true|false|null|\{[^{}]*\}|\[[^\[\]]*\]))\s*,?\s*"[^"]*$/);
+                            if (lastCompleteMatch) {
+                                repaired = lastCompleteMatch[1];
+                                this.log('Trimmed incomplete final property from JSON.', {}, 'info');
+                            } else {
+                                // Just close the string - may lose the incomplete item but structure will be valid
+                                repaired += '"';
+                                this.log('Closed unterminated string in JSON.', {}, 'info');
+                            }
+                            // Recount after modification
+                            openBraces = 0;
+                            openBrackets = 0;
+                            inString = false;
+                            escapeNext = false;
+                            for (const char of repaired) {
+                                if (escapeNext) { escapeNext = false; continue; }
+                                if (char === '\\' && inString) { escapeNext = true; continue; }
+                                if (char === '"' && !escapeNext) { inString = !inString; continue; }
+                                if (!inString) {
+                                    if (char === '{') openBraces++;
+                                    if (char === '}') openBraces--;
+                                    if (char === '[') openBrackets++;
+                                    if (char === ']') openBrackets--;
+                                }
+                            }
+                        }
+
+                        // Close any open arrays first, then objects
+                        for (let i = 0; i < openBrackets; i++) repaired += ']';
+                        for (let i = 0; i < openBraces; i++) repaired += '}';
+
+                        try {
+                            parsedJson = JSON.parse(repaired);
+                            this.log(`Repaired truncated JSON by closing string and adding ${openBrackets} ] and ${openBraces} }`, {}, 'info');
+                        } catch (repairError) {
+                            this.log('JSON repair failed. Using fallback.', {}, 'failure');
+                            return fallback;
+                        }
+                    } else {
+                        return fallback;
+                    }
+                } else {
+                    return fallback;
+                }
             }
         } else {
             parsedJson = rawResponse;

@@ -12,6 +12,7 @@ export const defaultBusinessInfo: BusinessInfo = {
   projectName: '',
   industry: '',
   model: '',
+  websiteType: 'INFORMATIONAL', // Default website type
   valueProp: '',
   audience: '',
   expertise: 'Expert',
@@ -30,7 +31,7 @@ export const defaultBusinessInfo: BusinessInfo = {
 
   // AI Provider Credentials (from environment variables)
   aiProvider: 'gemini',
-  aiModel: 'gemini-3-pro',
+  aiModel: 'gemini-3-pro-preview',
   geminiApiKey: env('VITE_GEMINI_API_KEY'),
   openAiApiKey: env('VITE_OPENAI_API_KEY'),
   anthropicApiKey: env('VITE_ANTHROPIC_API_KEY'),

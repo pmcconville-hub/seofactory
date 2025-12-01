@@ -1,5 +1,5 @@
 
-import { TopicalMap, SEOPillars, BusinessInfo, ContentBrief, EnrichedTopic, FreshnessProfile, SemanticTriple, Project, ContextualBridgeLink, ContextualBridgeSection, BriefSection, TopicBlueprint, AttributeCategory, AttributeClass, VisualSemantics, FeaturedSnippetTarget, AuthorProfile, StylometryType } from '../types';
+import { TopicalMap, SEOPillars, BusinessInfo, ContentBrief, EnrichedTopic, FreshnessProfile, SemanticTriple, Project, ContextualBridgeLink, ContextualBridgeSection, BriefSection, TopicBlueprint, AttributeCategory, AttributeClass, VisualSemantics, FeaturedSnippetTarget, AuthorProfile, StylometryType, SiteInventoryItem, TransitionStatus, ActionType, SectionType } from '../types';
 
 /**
  * Converts any value to a safe string. 
@@ -379,5 +379,48 @@ export const sanitizeBriefFromDb = (dbBrief: any): ContentBrief => {
         featured_snippet_target: parseFeaturedSnippetTarget(dbBrief.featured_snippet_target),
         visual_semantics: parseVisualSemantics(dbBrief.visual_semantics),
         discourse_anchors: sanitizeStringArray(dbBrief.discourse_anchors),
+    };
+};
+
+/**
+ * Transforms a raw database row into a safe SiteInventoryItem object.
+ * Used by migration components for content auditing and transition workflows.
+ */
+export const sanitizeInventoryFromDb = (dbItem: any): SiteInventoryItem => {
+    if (!dbItem || typeof dbItem !== 'object') {
+        throw new Error("Invalid inventory data source");
+    }
+
+    // Validate status is a valid TransitionStatus
+    const validStatuses: TransitionStatus[] = ['AUDIT_PENDING', 'GAP_ANALYSIS', 'ACTION_REQUIRED', 'IN_PROGRESS', 'OPTIMIZED'];
+    const status = validStatuses.includes(dbItem.status) ? dbItem.status : 'AUDIT_PENDING';
+
+    // Validate action is a valid ActionType
+    const validActions: ActionType[] = ['KEEP', 'REWRITE', 'MERGE', 'REDIRECT_301', 'PRUNE_410', 'CANONICALIZE'];
+    const action = dbItem.action && validActions.includes(dbItem.action) ? dbItem.action : undefined;
+
+    return {
+        id: safeString(dbItem.id),
+        project_id: safeString(dbItem.project_id),
+        url: safeString(dbItem.url),
+        title: safeString(dbItem.title),
+        http_status: typeof dbItem.http_status === 'number' ? dbItem.http_status : 200,
+        content_hash: dbItem.content_hash ? safeString(dbItem.content_hash) : undefined,
+        word_count: typeof dbItem.word_count === 'number' ? dbItem.word_count : undefined,
+        link_count: typeof dbItem.link_count === 'number' ? dbItem.link_count : undefined,
+        dom_size: typeof dbItem.dom_size === 'number' ? dbItem.dom_size : undefined,
+        ttfb_ms: typeof dbItem.ttfb_ms === 'number' ? dbItem.ttfb_ms : undefined,
+        cor_score: typeof dbItem.cor_score === 'number' ? dbItem.cor_score : undefined,
+        gsc_clicks: typeof dbItem.gsc_clicks === 'number' ? dbItem.gsc_clicks : undefined,
+        gsc_impressions: typeof dbItem.gsc_impressions === 'number' ? dbItem.gsc_impressions : undefined,
+        gsc_position: typeof dbItem.gsc_position === 'number' ? dbItem.gsc_position : undefined,
+        index_status: dbItem.index_status ? safeString(dbItem.index_status) : undefined,
+        striking_distance_keywords: safeArray(dbItem.striking_distance_keywords),
+        mapped_topic_id: dbItem.mapped_topic_id ? safeString(dbItem.mapped_topic_id) : null,
+        section: dbItem.section || undefined,
+        status: status,
+        action: action,
+        created_at: safeString(dbItem.created_at || new Date().toISOString()),
+        updated_at: safeString(dbItem.updated_at || new Date().toISOString()),
     };
 };

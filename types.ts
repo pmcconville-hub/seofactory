@@ -16,8 +16,11 @@ export enum AppStep {
   EAV_WIZARD,
   COMPETITOR_WIZARD,
   PROJECT_DASHBOARD,
-  SITE_ANALYSIS
+  SITE_ANALYSIS,
+  ADMIN // New Admin Step
 }
+
+export type WebsiteType = 'ECOMMERCE' | 'SAAS' | 'SERVICE' | 'INFORMATIONAL';
 
 export type StylometryType = 'ACADEMIC_FORMAL' | 'DIRECT_TECHNICAL' | 'PERSUASIVE_SALES' | 'INSTRUCTIONAL_CLEAR';
 
@@ -35,6 +38,7 @@ export interface BusinessInfo {
   projectName: string;
   industry: string;
   model: string;
+  websiteType?: WebsiteType; // NEW: Determines the AI strategy (E-com, SaaS, etc.)
   valueProp: string;
   audience: string;
   expertise: string;
@@ -97,26 +101,49 @@ export interface SourceContextOption {
   score: number;
 }
 
-export type AttributeCategory = 'UNIQUE' | 'ROOT' | 'RARE' | 'COMMON';
+// REVISED: Research-based Attribute Classification
+export type AttributeCategory = 'CORE_DEFINITION' | 'SEARCH_DEMAND' | 'COMPETITIVE_EXPANSION' | 'COMPOSITE' | 'UNIQUE' | 'ROOT' | 'RARE' | 'COMMON'; // Including legacy types for compatibility
 export type AttributeClass = 'TYPE' | 'COMPONENT' | 'BENEFIT' | 'RISK' | 'PROCESS' | 'SPECIFICATION';
 
+export interface AttributeMetadata {
+    validation?: {
+        type: 'CURRENCY' | 'NUMBER' | 'STRING' | 'BOOLEAN';
+        min?: number;
+        max?: number;
+        options?: string[];
+    };
+    presentation?: {
+        prominence: 'CENTERPIECE' | 'STANDARD' | 'SUPPLEMENTARY';
+    };
+    dependency?: {
+        dependsOn: string;
+        rule: string;
+    };
+    computation?: {
+        originalUnit: string;
+        displayUnit: string;
+        conversion: string;
+    };
+}
+
 export interface SemanticTriple {
-  subject: { 
-      label: string; 
-      type: string; 
+  subject: {
+      label: string;
+      type: string;
   };
-  predicate: { 
-      relation: string; 
-      type: string; 
-      category?: AttributeCategory; // NEW: Rule I.B, I.C
-      classification?: AttributeClass; // NEW: Rule II.D
+  predicate: {
+      relation: string;
+      type: string;
+      category?: AttributeCategory; // NEW: Research-based classification
+      classification?: AttributeClass;
   };
-  object: { 
-      value: string | number; 
-      type: string; 
-      unit?: string; // NEW: Rule III.B
-      truth_range?: string; // NEW: Rule III.C (e.g. "7.0 - 7.8")
+  object: {
+      value: string | number;
+      type: string;
+      unit?: string;
+      truth_range?: string;
   };
+  metadata?: AttributeMetadata; // NEW: Deep metadata for EAV
 }
 
 export enum FreshnessProfile {
@@ -332,10 +359,27 @@ export interface FreshnessMetric {
     decayScore: number;
 }
 
+export interface TypeMisclassification {
+  topicTitle: string;
+  currentType: 'core' | 'outer';
+  shouldBe: 'core' | 'outer';
+  reason: string;
+  suggestedParent?: string;
+}
+
+export interface TopicClassificationResult {
+  id: string;
+  topic_class: 'monetization' | 'informational';
+  suggestedType?: 'core' | 'outer' | null;
+  suggestedParentTitle?: string | null;
+  typeChangeReason?: string | null;
+}
+
 export interface ValidationResult {
   overallScore: number;
   summary: string;
   issues: ValidationIssue[];
+  typeMisclassifications?: TypeMisclassification[];
   // Holistic SEO Metrics
   metrics?: {
       hubSpoke: HubSpokeMetric[];
@@ -345,8 +389,34 @@ export interface ValidationResult {
 }
 
 export interface MapImprovementSuggestion {
-  newTopics: { title: string, description: string, type: 'core' | 'outer' }[];
+  newTopics: {
+    title: string;
+    description: string;
+    type: 'core' | 'outer';
+    topic_class?: 'monetization' | 'informational';
+    parentTopicTitle?: string | null;
+    reasoning?: string;
+  }[];
   topicTitlesToDelete: string[];
+  topicMerges?: {
+    sourceTitle: string;
+    targetTitle: string;
+    reasoning: string;
+  }[];
+  hubSpokeGapFills?: {
+    hubTitle: string;
+    newSpokes: {
+      title: string;
+      description: string;
+      topic_class?: 'monetization' | 'informational';
+    }[];
+  }[];
+  typeReclassifications?: {
+    topicTitle: string;
+    newType: 'core' | 'outer';
+    newParentTitle?: string;
+    reasoning: string;
+  }[];
 }
 
 export interface MergeSuggestion {
@@ -361,11 +431,17 @@ export interface SemanticPair {
     topicA: string;
     topicB: string;
     distance: {
-        weightedScore: number;
+        weightedScore: number; // 0 = Identity, 1 = Unrelated
+        // Granular components
+        cosine_similarity?: number; // 0-1
+        context_weight?: number; // 0-1
+        co_occurrence_score?: number; // 0-1
+        connection_length?: number; // Hops
     };
     relationship: {
         type: 'SIBLING' | 'RELATED' | 'DISTANT';
         internalLinkingPriority: 'high' | 'medium' | 'low';
+        bridge_topic_suggestion?: string; // If distance is high, suggest a bridge
     };
 }
 
@@ -439,6 +515,14 @@ export interface AuditRuleResult {
     affectedTextSnippet?: string; // The specific sentence/paragraph failing the rule
 }
 
+// NEW: Triple Analysis Types
+export interface TripleAuditResult {
+    tripleDensityScore: number; // 0-100
+    missingTriples: string[]; // List of required EAVs missing from text
+    sentenceStructureIssues: string[]; // "Subject-Predicate-Object too far apart"
+    consistencyIssues: string[]; // "Contradicts Knowledge Graph"
+}
+
 export interface ContentIntegrityResult {
     overallSummary: string;
     draftText: string; // The text that was audited (needed for Auto-Fix)
@@ -446,6 +530,8 @@ export interface ContentIntegrityResult {
     linkCheck: { isPassing: boolean, details: string };
     linguisticModality: { score: number, summary: string };
     frameworkRules: AuditRuleResult[];
+    // NEW: Semantic Triple Analysis
+    tripleAnalysis?: TripleAuditResult;
 }
 
 export interface SchemaGenerationResult {
@@ -663,6 +749,7 @@ export interface SitePageRecord {
   crawledAt?: string;
   apifyCrawled?: boolean;
   jinaCrawled?: boolean;
+  firecrawlCrawled?: boolean; // True if Firecrawl was used as fallback for Apify
 
   // Content basics
   contentHash?: string;
@@ -887,6 +974,25 @@ export interface AuditTask {
 // Legacy alias
 export type PageAuditActionItem = AuditTask;
 
+// AI Suggestion for human-in-the-loop workflow
+export interface AISuggestion {
+  id: string;
+  taskId: string;
+  projectId: string;
+  pageId?: string;
+  originalValue: string;
+  suggestedValue: string;
+  confidence: number;
+  reasoning: string;
+  modelUsed: string;
+  status: 'pending' | 'approved' | 'rejected' | 'applied';
+  userModifiedValue?: string;
+  approvedAt?: string;
+  rejectionReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Audit history snapshot
 export interface AuditHistoryEntry {
   id: string;
@@ -976,4 +1082,530 @@ export interface ExtractedPageData {
   contentHash: string;
   extractedAt: number;
   errors?: string[];
+}
+
+// ============================================
+// PHASE 3: REPORT GENERATION TYPES
+// ============================================
+
+export type ReportScope = 'page' | 'site';
+export type ReportAudience = 'business' | 'technical';
+export type HealthStatus = 'excellent' | 'good' | 'needs-work' | 'critical';
+export type EffortLevel = 'Quick Fix' | 'Moderate' | 'Complex';
+
+export interface SEOAuditReport {
+  id: string;
+  projectId: string;
+  pageId?: string;
+  scope: ReportScope;
+  generatedAt: string;
+
+  executiveSummary: {
+    overallScore: number;
+    healthStatus: HealthStatus;
+    keyFindings: string[];
+    pagesAnalyzed: number;
+    issuesCritical: number;
+    issuesHigh: number;
+    issuesMedium: number;
+    issuesLow: number;
+  };
+
+  phaseScores: {
+    technical: { score: number; passed: number; total: number };
+    semantic: { score: number; passed: number; total: number };
+    linkStructure: { score: number; passed: number; total: number };
+    contentQuality: { score: number; passed: number; total: number };
+    visualSchema: { score: number; passed: number; total: number };
+  };
+
+  pillarContext?: {
+    centralEntity: string;
+    centralEntityExplanation: string;
+    sourceContext: string;
+    sourceContextExplanation: string;
+    centralSearchIntent: string;
+  };
+
+  issues: ReportIssue[];
+
+  progress: {
+    totalTasks: number;
+    completed: number;
+    pending: number;
+    dismissed: number;
+  };
+
+  pages?: PageReportSummary[];
+}
+
+export interface ReportIssue {
+  id: string;
+  ruleId: string;
+  phase: string;
+  priority: 'critical' | 'high' | 'medium' | 'low';
+
+  // Business view fields
+  headline: string;
+  whyItMatters: string;
+  businessImpact: string;
+  suggestedAction: string;
+  effortLevel: EffortLevel;
+
+  // Technical view fields
+  technicalDetails: {
+    ruleName: string;
+    actualValue?: string | number;
+    expectedValue?: string | number;
+    remediation: string;
+    aiSuggestion?: string;
+  };
+
+  affectedPages: string[];
+  status: 'pending' | 'in_progress' | 'completed' | 'dismissed';
+}
+
+export interface PageReportSummary {
+  url: string;
+  title: string;
+  overallScore: number;
+  issueCount: number;
+  topIssue?: string;
+}
+
+export interface BusinessLanguageTranslation {
+  headline: string;
+  whyItMatters: string;
+  businessImpact: string;
+  effortLevel: EffortLevel;
+}
+
+export interface PhaseBusinessName {
+  name: string;
+  explanation: string;
+}
+
+// ============================================
+// MIGRATION WORKBENCH TYPES
+// ============================================
+
+export type TransitionStatus = 'AUDIT_PENDING' | 'GAP_ANALYSIS' | 'ACTION_REQUIRED' | 'IN_PROGRESS' | 'OPTIMIZED';
+export type ActionType = 'KEEP' | 'REWRITE' | 'MERGE' | 'REDIRECT_301' | 'PRUNE_410' | 'CANONICALIZE';
+export type SectionType = 'CORE_SECTION' | 'AUTHOR_SECTION' | 'ORPHAN';
+
+export interface SiteInventoryItem {
+    id: string;
+    project_id: string;
+    url: string;
+    title: string;
+    http_status: number;
+    content_hash?: string;
+
+    // Metrics
+    word_count?: number;
+    link_count?: number;
+    dom_size?: number; // KB
+    ttfb_ms?: number;
+    cor_score?: number; // 0-100 (High = Bad)
+
+    // GSC Metrics
+    gsc_clicks?: number;
+    gsc_impressions?: number;
+    gsc_position?: number;
+    index_status?: string;
+    striking_distance_keywords?: string[]; // Array of strings
+
+    // Strategy & Mapping
+    mapped_topic_id: string | null;
+    section?: SectionType;
+    status: TransitionStatus;
+    action?: ActionType;
+
+    created_at: string;
+    updated_at: string;
+}
+
+export interface TransitionSnapshot {
+    id: string;
+    inventory_id: string;
+    created_at: string;
+    content_markdown: string;
+    snapshot_type: 'ORIGINAL_IMPORT' | 'PRE_OPTIMIZATION' | 'POST_OPTIMIZATION';
+}
+
+// --- Smart Migration Types (Harvesting) ---
+
+export interface ContentChunk {
+    id: string;
+    content: string;
+    heading?: string;
+    summary: string;
+    semantic_embedding?: number[]; // For future vector search
+    suggested_topic_id?: string;
+    quality_score: number; // 0-100
+    tags: string[];
+}
+
+export interface MigrationDecision {
+    sourceUrl: string;
+    targetTopicId: string;
+    recommendation: 'REDIRECT_301' | 'MERGE' | 'PRUNE' | 'KEEP' | 'REWRITE';
+    confidence: number;
+    pros: string[];
+    cons: string[];
+    reasoning: string;
+}
+
+// ============================================
+// FOUNDATION PAGES & NAVIGATION TYPES
+// ============================================
+
+// Foundation page types
+export type FoundationPageType =
+  | 'homepage'
+  | 'about'
+  | 'contact'
+  | 'privacy'
+  | 'terms'
+  | 'author';
+
+// Foundation page section specification
+export interface FoundationPageSection {
+  heading: string;
+  purpose: string;
+  required: boolean;
+}
+
+// NAP (Name, Address, Phone) data for E-A-T
+export interface NAPData {
+  company_name: string;
+  address: string;
+  phone: string;
+  email: string;
+  founded_year?: string;
+}
+
+// Foundation page specification
+export interface FoundationPage {
+  id: string;
+  map_id: string;
+  user_id?: string;
+  page_type: FoundationPageType;
+  title: string;
+  slug: string;
+  meta_description?: string;
+  h1_template?: string;
+  schema_type?: 'Organization' | 'AboutPage' | 'ContactPage' | 'WebPage';
+
+  // Content structure hints
+  sections?: FoundationPageSection[];
+
+  // E-A-T fields (for about/contact)
+  nap_data?: NAPData;
+
+  // Soft delete support
+  deleted_at?: string | null;
+  deletion_reason?: 'user_deleted' | 'not_needed';
+
+  metadata?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Navigation link definition
+export interface NavigationLink {
+  id?: string;
+  text: string;
+  target_topic_id?: string;
+  target_foundation_page_id?: string;
+  external_url?: string;
+  prominence: 'high' | 'medium' | 'low';
+  order?: number;
+}
+
+// Footer section with heading
+export interface FooterSection {
+  id?: string;
+  heading: string;  // Will use H4/H5
+  links: NavigationLink[];
+}
+
+// Navigation structure
+export interface NavigationStructure {
+  id: string;
+  map_id: string;
+
+  // Header configuration
+  header: {
+    logo_alt_text: string;
+    primary_nav: NavigationLink[];
+    cta_button?: {
+      text: string;
+      target_topic_id?: string;
+      target_foundation_page_id?: string;
+      url?: string;
+    };
+  };
+
+  // Footer configuration
+  footer: {
+    sections: FooterSection[];
+    legal_links: NavigationLink[];  // Privacy, Terms
+    nap_display: boolean;
+    copyright_text: string;
+  };
+
+  // Boilerplate rules
+  max_header_links: number;  // Default: 10
+  max_footer_links: number;  // Default: 30
+  dynamic_by_section: boolean;  // Change nav based on topic_class
+
+  metadata?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Navigation sync status - tracks changes between topical map and navigation
+export interface NavigationSyncStatus {
+  map_id: string;
+  lastSyncedAt: string;
+  topicsModifiedSince: number;  // Count of changes since last sync
+  requiresReview: boolean;
+  pendingChanges: {
+    addedTopics: string[];
+    deletedTopics: string[];
+    renamedTopics: { id: string; oldTitle: string; newTitle: string }[];
+  };
+}
+
+// Foundation page generation result
+export interface FoundationPageGenerationResult {
+  foundationPages: Omit<FoundationPage, 'id' | 'map_id' | 'user_id' | 'created_at'>[];
+  napSuggestion: NAPData;
+}
+
+// Non-blocking notification for foundation pages
+export interface FoundationNotification {
+  id: string;
+  type: 'info' | 'warning';  // Never 'error' for missing pages
+  message: string;
+  dismissable: boolean;
+  showOnce: boolean;
+  dismissed?: boolean;
+  dismissedAt?: string;
+  action?: {
+    label: string;
+    actionType: 'add_page' | 'configure_nav' | 'run_audit';
+    targetPageType?: FoundationPageType;
+  };
+}
+
+// Computed sitemap view (not stored, generated from topics + foundation pages)
+export interface SitemapView {
+  foundationPages: FoundationPage[];
+  coreTopics: EnrichedTopic[];
+  outerTopics: EnrichedTopic[];
+  totalUrls: number;
+  hierarchicalView: SitemapNode[];
+}
+
+export interface SitemapNode {
+  id: string;
+  type: 'foundation' | 'core' | 'outer';
+  title: string;
+  slug: string;
+  children?: SitemapNode[];
+}
+
+// ============================================
+// INTERNAL LINKING SYSTEM TYPES
+// ============================================
+
+// Internal linking rules configuration
+export interface InternalLinkingRules {
+  maxLinksPerPage: number;  // 150
+  maxAnchorTextRepetition: number;  // 3
+  prioritizeMainContentLinks: boolean;
+  useDescriptiveAnchorText: boolean;
+  avoidGenericAnchors: string[];  // ['click here', 'read more', 'learn more']
+  contextualBridgeRequired: boolean;
+  delayLowRelevanceLinks: boolean;
+  hubSpokeFlowDirection: 'bidirectional' | 'hub_to_spoke' | 'spoke_to_hub';
+  linkToQualityNodesFirst: boolean;
+  qualityNodeThreshold: number;  // Score threshold (0-100)
+}
+
+// Linking issue detected during audit
+export interface LinkingIssue {
+  id: string;
+  type: 'missing_hub_link' | 'missing_spoke_link' | 'anchor_repetition' |
+        'link_limit_exceeded' | 'orphaned_topic' | 'generic_anchor' |
+        'missing_quality_node_link' | 'missing_contextual_bridge';
+  severity: 'critical' | 'warning' | 'suggestion';
+  sourceTopic?: string;
+  targetTopic?: string;
+  anchorText?: string;
+  currentCount?: number;
+  limit?: number;
+  message: string;
+  autoFixable: boolean;
+  suggestedFix?: string;
+}
+
+// Result of a single linking pass
+export interface LinkingPassResult {
+  pass: string;
+  status: 'passed' | 'issues_found' | 'failed';
+  issues: LinkingIssue[];
+  autoFixable: boolean;
+  summary: string;
+}
+
+// Full linking audit result
+export interface LinkingAuditResult {
+  id?: string;
+  map_id: string;
+  passResults: LinkingPassResult[];
+  overallScore: number;
+  summary: {
+    totalLinks: number;
+    averageLinksPerPage: number;
+    orphanedTopics: string[];
+    overLinkedTopics: string[];
+    repetitiveAnchors: { text: string; count: number }[];
+  };
+  created_at?: string;
+}
+
+// ============================================
+// UNIFIED AUDIT SYSTEM TYPES
+// ============================================
+
+// Audit rule severity
+export type AuditSeverity = 'critical' | 'warning' | 'suggestion';
+
+// Audit rule definition
+export interface AuditRule {
+  id: string;
+  name: string;
+  severity: AuditSeverity;
+  category: string;
+  description?: string;
+}
+
+// Audit category with rules and weight
+export interface AuditCategory {
+  id: string;
+  name: string;
+  rules: AuditRule[];
+  weight: number;  // Importance in overall score (0-100, all categories sum to 100)
+}
+
+// Individual audit issue found
+export interface UnifiedAuditIssue {
+  id: string;
+  ruleId: string;
+  ruleName: string;
+  category: string;
+  severity: AuditSeverity;
+  message: string;
+  details?: string;
+  affectedItems?: string[];  // Topic titles, page URLs, etc.
+  autoFixable: boolean;
+  fixType?: 'auto' | 'ai-assisted' | 'manual';
+  suggestedFix?: string;
+}
+
+// Category result in unified audit
+export interface AuditCategoryResult {
+  categoryId: string;
+  categoryName: string;
+  score: number;
+  weight: number;
+  issueCount: number;
+  autoFixableCount: number;
+  issues: UnifiedAuditIssue[];
+}
+
+// Full unified audit result
+export interface UnifiedAuditResult {
+  id: string;
+  map_id: string;
+  overallScore: number;
+  categories: AuditCategoryResult[];
+  totalIssues: number;
+  criticalCount: number;
+  warningCount: number;
+  suggestionCount: number;
+  autoFixableCount: number;
+  runAt: string;
+  runBy?: string;
+}
+
+// Audit fix definition
+export interface AuditFix {
+  id: string;
+  issueId: string;
+  fixType: 'auto' | 'ai-assisted' | 'manual';
+  description: string;
+  changes?: {
+    table: string;
+    id: string;
+    field: string;
+    oldValue: any;
+    newValue: any;
+  }[];
+  aiPrompt?: string;
+  canUndo: boolean;
+  status: 'pending' | 'applied' | 'undone' | 'failed';
+}
+
+// Audit history entry (for undo support)
+export interface AuditHistoryEntry {
+  id: string;
+  map_id: string;
+  audit_run_id: string;
+  category: string;
+  issue_id: string;
+  fix_description: string;
+  changes: {
+    table: string;
+    id: string;
+    field: string;
+    oldValue: any;
+    newValue: any;
+  }[];
+  applied_at: string;
+  applied_by?: string;
+  undone_at?: string;
+  can_undo: boolean;
+}
+
+// ============================================
+// EXTENDED VALIDATION RESULT (for foundation pages)
+// ============================================
+
+// Extend ValidationResult with foundation page issues
+export interface FoundationPageIssues {
+  missingPages: FoundationPageType[];
+  incompletePages: { type: FoundationPageType; missing: string[] }[];
+  napIssues?: string[];
+}
+
+export interface NavigationIssues {
+  headerLinkCount: number;
+  footerLinkCount: number;
+  warnings: string[];
+}
+
+// --- Telemetry Types ---
+export interface TelemetryLog {
+    id: string;
+    timestamp: number;
+    provider: string;
+    model: string;
+    operation: string;
+    tokens_in: number;
+    tokens_out: number;
+    cost_est: number;
 }

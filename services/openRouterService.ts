@@ -170,9 +170,10 @@ export const analyzeGscDataForOpportunities = async (rows: GscRow[], kg: Knowled
     return callApi(prompts.ANALYZE_GSC_DATA_PROMPT(rows, kg), info, dispatch, t => sanitizer.sanitizeArray(t, []));
 };
 
-export const improveTopicalMap = async (topics: EnrichedTopic[], issues: ValidationIssue[], info: BusinessInfo, dispatch: React.Dispatch<any>) => {
+export const improveTopicalMap = async (topics: EnrichedTopic[], issues: ValidationIssue[], info: BusinessInfo, dispatch: React.Dispatch<any>): Promise<MapImprovementSuggestion> => {
     const sanitizer = new AIResponseSanitizer(dispatch);
-    return callApi(prompts.IMPROVE_TOPICAL_MAP_PROMPT(topics, issues, info), info, dispatch, t => sanitizer.sanitize(t, { newTopics: Array, topicTitlesToDelete: Array }, { newTopics: [], topicTitlesToDelete: [] }));
+    const fallback: MapImprovementSuggestion = { newTopics: [], topicTitlesToDelete: [], topicMerges: [], hubSpokeGapFills: [], typeReclassifications: [] };
+    return callApi(prompts.IMPROVE_TOPICAL_MAP_PROMPT(topics, issues, info), info, dispatch, t => sanitizer.sanitize(t, { newTopics: Array, topicTitlesToDelete: Array }, fallback));
 };
 
 export const findMergeOpportunities = async (topics: EnrichedTopic[], info: BusinessInfo, dispatch: React.Dispatch<any>) => {
@@ -271,4 +272,35 @@ export const applyBatchFlowRemediation = async (draft: string, issues: Contextua
     const result = await callApi(prompts.BATCH_FLOW_REMEDIATION_PROMPT(draft, issues, info), info, dispatch, t => sanitizer.sanitize(t, { polishedDraft: String }, { polishedDraft: draft }));
     return result.polishedDraft;
 };
-    
+
+// --- Generic AI methods for Migration Service ---
+
+/**
+ * Generic JSON generation method for migration workflows
+ */
+export const generateJson = async <T extends object>(
+    prompt: string,
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>,
+    fallback: T
+): Promise<T> => {
+    const sanitizer = new AIResponseSanitizer(dispatch);
+    return callApi(prompt, businessInfo, dispatch, (text) => {
+        try {
+            return JSON.parse(text);
+        } catch {
+            return sanitizer.sanitize(text, {}, fallback);
+        }
+    });
+};
+
+/**
+ * Generic text generation method for migration workflows
+ */
+export const generateText = async (
+    prompt: string,
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>
+): Promise<string> => {
+    return callApi(prompt, businessInfo, dispatch, (text) => text);
+};

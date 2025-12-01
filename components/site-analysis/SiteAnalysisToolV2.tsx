@@ -22,6 +22,8 @@ import {
   initFromSinglePageV2,
   initFromGscV2,
   extractProjectContent,
+  extractSinglePageById,
+  auditSinglePageById,
   copyPillarsFromLinkedMap,
   validateProjectPillars,
   buildProjectGraphV2,
@@ -80,6 +82,7 @@ export const SiteAnalysisToolV2: React.FC<SiteAnalysisToolV2Props> = ({ onClose 
   // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pageDetailRefresh, setPageDetailRefresh] = useState(0);
 
   // Get Supabase client and API keys from state
   const supabase = useMemo(() => {
@@ -92,6 +95,7 @@ export const SiteAnalysisToolV2: React.FC<SiteAnalysisToolV2Props> = ({ onClose 
   const userId = state.user?.id;
   const apifyToken = state.businessInfo?.apifyToken || '';
   const jinaApiKey = state.businessInfo?.jinaApiKey || '';
+  const firecrawlApiKey = state.businessInfo?.firecrawlApiKey || '';
   const neo4jConfig = {
     uri: state.businessInfo?.neo4jUri || '',
     user: state.businessInfo?.neo4jUser || '',
@@ -313,8 +317,10 @@ export const SiteAnalysisToolV2: React.FC<SiteAnalysisToolV2Props> = ({ onClose 
         {
           apifyToken,
           jinaApiKey,
+          firecrawlApiKey, // Fallback for Apify
           useApify: !!apifyToken,
           useJina: !!jinaApiKey,
+          useFirecrawlFallback: !!firecrawlApiKey,
           proxyConfig, // Pass proxy config for CORS-safe Jina requests
         },
         dispatch,
@@ -754,6 +760,7 @@ export const SiteAnalysisToolV2: React.FC<SiteAnalysisToolV2Props> = ({ onClose 
             onCancel={() => setViewMode('project_list')}
             isProcessing={isLoading}
             existingTopicalMaps={topicalMaps}
+            hasApiKeys={!!(apifyToken || jinaApiKey)}
           />
         )}
 
@@ -805,6 +812,37 @@ export const SiteAnalysisToolV2: React.FC<SiteAnalysisToolV2Props> = ({ onClose 
               setViewMode('analyzing');
               await runAnalysis(currentProject);
             }}
+            onReextract={async () => {
+              setViewMode('extracting');
+              await startExtraction(currentProject);
+            }}
+            onExtractPage={async (pageId: string) => {
+              setIsLoading(true);
+              try {
+                await extractSinglePageById(
+                  supabase!,
+                  currentProject,
+                  pageId,
+                  {
+                    apifyToken,
+                    jinaApiKey,
+                    firecrawlApiKey,
+                    useApify: !!apifyToken,
+                    useJina: !!jinaApiKey,
+                    useFirecrawlFallback: !!firecrawlApiKey,
+                    proxyConfig,
+                  },
+                  dispatch
+                );
+                const refreshed = await loadProject(supabase!, currentProject.id);
+                setCurrentProject(refreshed);
+              } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to extract page');
+              } finally {
+                setIsLoading(false);
+              }
+            }}
+            isProcessing={isLoading}
           />
         )}
 
@@ -814,6 +852,48 @@ export const SiteAnalysisToolV2: React.FC<SiteAnalysisToolV2Props> = ({ onClose 
             projectId={currentProject.id}
             pageId={selectedPageId}
             onBack={handleBackToResults}
+            onReextract={async (pageId: string) => {
+              setIsLoading(true);
+              try {
+                await extractSinglePageById(
+                  supabase!,
+                  currentProject,
+                  pageId,
+                  {
+                    apifyToken,
+                    jinaApiKey,
+                    firecrawlApiKey,
+                    useApify: !!apifyToken,
+                    useJina: !!jinaApiKey,
+                    useFirecrawlFallback: !!firecrawlApiKey,
+                    proxyConfig,
+                  },
+                  dispatch
+                );
+                const refreshed = await loadProject(supabase!, currentProject.id);
+                setCurrentProject(refreshed);
+                setPageDetailRefresh(prev => prev + 1); // Trigger data reload
+              } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to extract page');
+              } finally {
+                setIsLoading(false);
+              }
+            }}
+            onReaudit={async (pageId: string) => {
+              setIsLoading(true);
+              try {
+                await auditSinglePageById(supabase!, currentProject, pageId, dispatch);
+                const refreshed = await loadProject(supabase!, currentProject.id);
+                setCurrentProject(refreshed);
+                setPageDetailRefresh(prev => prev + 1); // Trigger data reload
+              } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to audit page');
+              } finally {
+                setIsLoading(false);
+              }
+            }}
+            isProcessing={isLoading}
+            refreshTrigger={pageDetailRefresh}
           />
         )}
       </div>

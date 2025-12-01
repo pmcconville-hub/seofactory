@@ -1,0 +1,250 @@
+
+import React, { useEffect, useState, useMemo } from 'react';
+import { useAppState } from '../../state/appState';
+import { Button } from '../ui/Button';
+import { Loader } from '../ui/Loader';
+import { SiteIngestionWizard } from './SiteIngestionWizard';
+import { InventoryMatrix } from './InventoryMatrix';
+import { TransitionKanban } from './TransitionKanban';
+import { InventoryGraphView } from './InventoryGraphView'; 
+import { StrategySelectionModal } from './StrategySelectionModal';
+import { MigrationWorkbenchModal } from './MigrationWorkbenchModal';
+import { ExportPanel } from './ExportPanel';
+import { TriageView } from './TriageView';
+import TopicalMapDisplay from '../TopicalMapDisplay';
+import { SiteInventoryItem, ActionType, EnrichedTopic } from '../../types';
+import { useInventoryOperations } from '../../hooks/useInventoryOperations';
+import { useTopicOperations } from '../../hooks/useTopicOperations';
+import { useMapData } from '../../hooks/useMapData';
+
+const MigrationDashboardContainer: React.FC = () => {
+    const { state, dispatch } = useAppState();
+    const { activeProjectId, businessInfo, activeMapId } = state;
+    
+    const { 
+        inventory, 
+        isLoadingInventory, 
+        refreshInventory, 
+        updateAction, 
+        updateStatus, 
+        markOptimized,
+        mapInventoryItem,
+        promoteToCore
+    } = useInventoryOperations(activeProjectId, businessInfo, dispatch, activeMapId, state.user?.id);
+
+    const [showWizard, setShowWizard] = useState(false);
+    const [viewType, setViewType] = useState<'MATRIX' | 'GRAPH' | 'KANBAN' | 'TRIAGE'>('MATRIX');
+    
+    // Strategy Modal State
+    const [showStrategyModal, setShowStrategyModal] = useState(false);
+    const [pendingSource, setPendingSource] = useState<SiteInventoryItem | null>(null);
+    const [pendingTarget, setPendingTarget] = useState<EnrichedTopic | null>(null);
+    
+    const [workbenchItem, setWorkbenchItem] = useState<SiteInventoryItem | null>(null);
+
+    // Check wizard
+    useEffect(() => {
+        if (!isLoadingInventory && inventory.length === 0 && activeProjectId) {
+             if (inventory.length === 0) {
+                setShowWizard(true);
+            }
+        }
+    }, [inventory.length, isLoadingInventory, activeProjectId]);
+
+    // Fetch Target Map - Use unified hook
+    const activeMap = state.topicalMaps.find(m => m.id === activeMapId);
+    
+    // Reusing the centralized data fetching logic
+    useMapData(activeMapId, activeMap, businessInfo, dispatch);
+
+    const targetTopics = useMemo(() => activeMap?.topics || [], [activeMap?.topics]);
+    const targetBriefs = useMemo(() => activeMap?.briefs || {}, [activeMap?.briefs]);
+    
+    // Topic Operations Hook for Editing/Deleting in Migration View
+    const { handleUpdateTopic, handleDeleteTopic } = useTopicOperations(
+        activeMapId, 
+        businessInfo, 
+        targetTopics, 
+        dispatch, 
+        state.user
+    );
+
+    const handleWizardComplete = () => {
+        setShowWizard(false);
+        refreshInventory();
+    };
+
+    // Handlers for Drag & Drop
+    const handleInventoryDrop = (inventoryId: string, topicId: string) => {
+        const source = inventory.find(i => i.id === inventoryId);
+        const target = targetTopics.find(t => t.id === topicId);
+        
+        if (source && target) {
+            setPendingSource(source);
+            setPendingTarget(target);
+            setShowStrategyModal(true);
+        }
+    };
+    
+    const handleConfirmStrategy = async (action: ActionType) => {
+        if (pendingSource && pendingTarget) {
+            await mapInventoryItem(pendingSource.id, pendingTarget.id, action);
+            setShowStrategyModal(false);
+            setPendingSource(null);
+            setPendingTarget(null);
+        }
+    };
+    
+    const handleOpenWorkbench = (item: SiteInventoryItem) => {
+        setWorkbenchItem(item);
+    };
+
+    const coreTopics = targetTopics.filter(t => t.type === 'core');
+    const outerTopics = targetTopics.filter(t => t.type === 'outer');
+    const allTopics = [...coreTopics, ...outerTopics];
+    
+    const linkedBrief = workbenchItem?.mapped_topic_id ? targetBriefs[workbenchItem.mapped_topic_id] : null;
+
+    return (
+        <div className="h-[calc(100vh-100px)] flex flex-col space-y-4 max-w-full w-full">
+            <header className="flex justify-between items-center flex-shrink-0 px-4">
+              <div>
+                <h1 className="text-2xl font-bold text-white">Migration Workbench</h1>
+                <p className="text-sm text-gray-400">Map your existing inventory to the target strategy.</p>
+              </div>
+              <div className="flex gap-3">
+                  <ExportPanel inventory={inventory} topics={allTopics} />
+                  
+                  <div className="bg-gray-800 p-1 rounded-lg flex text-xs">
+                      <button 
+                        onClick={() => setViewType('MATRIX')}
+                        className={`px-3 py-1.5 rounded ${viewType === 'MATRIX' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                      >
+                          Matrix List
+                      </button>
+                      <button 
+                        onClick={() => setViewType('KANBAN')}
+                        className={`px-3 py-1.5 rounded ${viewType === 'KANBAN' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                      >
+                          Kanban
+                      </button>
+                      <button 
+                        onClick={() => setViewType('GRAPH')}
+                        className={`px-3 py-1.5 rounded ${viewType === 'GRAPH' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                      >
+                          Graph
+                      </button>
+                       <button 
+                        onClick={() => setViewType('TRIAGE')}
+                        className={`px-3 py-1.5 rounded ${viewType === 'TRIAGE' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                      >
+                          Triage Mode
+                      </button>
+                  </div>
+                  <Button onClick={() => setShowWizard(true)} className="text-xs py-2">
+                      Import Data
+                  </Button>
+              </div>
+            </header>
+
+            <div className="flex-grow flex gap-4 overflow-hidden px-4 pb-4">
+                <div className={`${(viewType === 'KANBAN' || viewType === 'TRIAGE') ? 'w-full' : 'w-1/2'} flex flex-col min-w-[400px]`}>
+                    {isLoadingInventory ? (
+                        <div className="flex-grow flex items-center justify-center bg-gray-800/30 border border-gray-700 rounded-lg">
+                            <Loader />
+                        </div>
+                    ) : (
+                        <>
+                            {viewType === 'MATRIX' && (
+                                <InventoryMatrix 
+                                    inventory={inventory} 
+                                    onSelect={(item) => handleOpenWorkbench(item)}
+                                    onAction={updateAction}
+                                    onPromote={promoteToCore}
+                                />
+                            )}
+                            {viewType === 'KANBAN' && (
+                                <TransitionKanban 
+                                    inventory={inventory} 
+                                    onStatusChange={updateStatus}
+                                    onSelect={handleOpenWorkbench}
+                                />
+                            )}
+                            {viewType === 'GRAPH' && (
+                                <InventoryGraphView 
+                                    inventory={inventory}
+                                />
+                            )}
+                            {viewType === 'TRIAGE' && (
+                                <TriageView 
+                                    inventory={inventory}
+                                    targetTopics={targetTopics}
+                                    onAction={updateAction}
+                                    onMap={mapInventoryItem}
+                                />
+                            )}
+                        </>
+                    )}
+                </div>
+
+                {(viewType !== 'KANBAN' && viewType !== 'TRIAGE') && (
+                    <div className="w-1/2 flex flex-col min-w-[400px] bg-gray-900/30 border-l-2 border-gray-800 pl-4">
+                        <div className="flex justify-between items-center mb-4 flex-shrink-0">
+                            <h3 className="text-lg font-bold text-blue-300">Target Strategy (Ideal Map)</h3>
+                            {!activeMapId && <span className="text-xs text-red-400">No Map Selected</span>}
+                        </div>
+                        
+                        <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar">
+                            {activeMapId ? (
+                                <TopicalMapDisplay
+                                    coreTopics={coreTopics}
+                                    outerTopics={outerTopics}
+                                    briefs={targetBriefs}
+                                    onSelectTopicForBrief={() => {}}
+                                    onExpandCoreTopic={() => {}}
+                                    expandingCoreTopicId={null}
+                                    onExecuteMerge={() => {}}
+                                    canExpandTopics={false}
+                                    canGenerateBriefs={false}
+                                    onUpdateTopic={handleUpdateTopic}
+                                    onDeleteTopic={handleDeleteTopic}
+                                    onInventoryDrop={handleInventoryDrop}
+                                />
+                            ) : (
+                                <div className="h-full flex flex-col items-center justify-center text-center text-gray-500 border-2 border-dashed border-gray-800 rounded-lg">
+                                    <p>Select a Topical Map from the main menu to see the target strategy.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <SiteIngestionWizard 
+                isOpen={showWizard} 
+                onClose={() => setShowWizard(false)} 
+                onComplete={handleWizardComplete}
+                inventoryCount={inventory.length} 
+            />
+            
+            <StrategySelectionModal 
+                isOpen={showStrategyModal}
+                onClose={() => setShowStrategyModal(false)}
+                onConfirm={handleConfirmStrategy}
+                sourceItem={pendingSource}
+                targetTopic={pendingTarget}
+                businessInfo={businessInfo}
+            />
+
+            <MigrationWorkbenchModal
+                isOpen={!!workbenchItem}
+                onClose={() => setWorkbenchItem(null)}
+                inventoryItem={workbenchItem}
+                linkedBrief={linkedBrief}
+                onMarkOptimized={markOptimized}
+            />
+        </div>
+    );
+};
+
+export default MigrationDashboardContainer;

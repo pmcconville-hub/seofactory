@@ -1,6 +1,6 @@
 
 // App.tsx
-import React, { useEffect, useReducer } from 'react';
+import React, { useEffect, useReducer, useRef } from 'react';
 import { AppStateContext, appReducer, initialState } from './state/appState';
 import { AppStep, BusinessInfo, Project, TopicalMap } from './types';
 import { getSupabaseClient } from './services/supabaseClient';
@@ -12,6 +12,7 @@ import ProjectSelectionScreen from './components/ProjectSelectionScreen';
 import ProjectWorkspace from './components/ProjectWorkspace';
 import AnalysisStatusScreen from './components/AnalysisStatusScreen';
 import { SiteAnalysisToolV2 } from './components/site-analysis';
+import AdminDashboard from './components/admin/AdminDashboard';
 
 // Import Global UI
 import SettingsModal from './components/SettingsModal';
@@ -20,16 +21,29 @@ import ConfirmationModal from './components/ui/ConfirmationModal';
 import HelpModal from './components/HelpModal';
 import GlobalLoadingBar from './components/ui/GlobalLoadingBar';
 import LoggingPanel from './components/LoggingPanel';
+import MainLayout from './components/layout/MainLayout';
 
 const App: React.FC = () => {
     const [state, dispatch] = useReducer(appReducer, initialState);
+
+    // Use a ref to track the current step without triggering re-renders or effect dependencies
+    const appStepRef = useRef(state.appStep);
+
+    // Keep the ref synchronized with state
+    useEffect(() => {
+        appStepRef.current = state.appStep;
+    }, [state.appStep]);
 
     useEffect(() => {
         const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             dispatch({ type: 'SET_USER', payload: session?.user ?? null });
             if (session?.user) {
-                dispatch({ type: 'SET_STEP', payload: AppStep.PROJECT_SELECTION });
+                // Only redirect to selection if we are currently on the Auth screen (login/signup)
+                // This prevents resetting the view when switching tabs (which triggers session refresh)
+                if (appStepRef.current === AppStep.AUTH) {
+                    dispatch({ type: 'SET_STEP', payload: AppStep.PROJECT_SELECTION });
+                }
             } else {
                 dispatch({ type: 'SET_STEP', payload: AppStep.AUTH });
             }
@@ -169,6 +183,7 @@ const App: React.FC = () => {
             case AppStep.PROJECT_SELECTION: return <ProjectSelectionScreen onCreateProject={handleCreateProject} onLoadProject={handleLoadProject} onInitiateDeleteProject={handleInitiateDeleteProject} />;
             case AppStep.ANALYSIS_STATUS: return <AnalysisStatusScreen />;
             case AppStep.SITE_ANALYSIS: return <SiteAnalysisToolV2 onClose={() => dispatch({ type: 'SET_STEP', payload: AppStep.PROJECT_SELECTION })} />;
+            case AppStep.ADMIN: return <AdminDashboard />; // New Admin Route
             case AppStep.PROJECT_WORKSPACE:
             case AppStep.BUSINESS_INFO:
             case AppStep.PILLAR_WIZARD:
@@ -182,51 +197,54 @@ const App: React.FC = () => {
 
     return (
         <AppStateContext.Provider value={{ state, dispatch }}>
-            <div className="bg-gray-900 text-gray-200 min-h-screen font-sans">
-                <GlobalLoadingBar />
-                <NotificationBanner 
-                    message={state.notification} 
-                    onDismiss={() => dispatch({ type: 'SET_NOTIFICATION', payload: null })} 
-                />
-                 {state.error && (
-                    <div className="fixed bottom-4 left-4 z-[100] bg-red-800 text-white p-4 rounded-lg shadow-lg max-w-md">
-                        <h4 className="font-bold">An Error Occurred</h4>
-                        <p className="text-sm mt-1">{state.error}</p>
-                        <button onClick={() => dispatch({ type: 'SET_ERROR', payload: null })} className="absolute top-2 right-2 text-xl">&times;</button>
-                    </div>
-                )}
-                
-                <div className="container mx-auto px-4 py-8">
-                    {renderStep()}
-                </div>
-
-                <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
-                    <LoggingPanel />
-                    <button onClick={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'help', visible: true }})} className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 w-10 flex items-center justify-center rounded-full shadow-lg text-xl" title="Help">?</button>
-                    <button onClick={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'settings', visible: true }})} className="bg-gray-600 hover:bg-gray-700 text-white font-bold h-10 w-10 flex items-center justify-center rounded-full shadow-lg" title="Settings">⚙️</button>
-                </div>
-
-                {/* Global Modals */}
-                <SettingsModal 
-                    isOpen={!!state.modals.settings}
-                    onClose={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'settings', visible: false } })}
-                    onSave={handleSaveSettings}
-                    initialSettings={state.businessInfo}
-                />
-                <HelpModal 
-                    isOpen={!!state.modals.help}
-                    onClose={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'help', visible: false } })}
-                />
-                {state.confirmation && (
-                    <ConfirmationModal 
-                        isOpen={true}
-                        onClose={() => dispatch({ type: 'HIDE_CONFIRMATION' })}
-                        onConfirm={state.confirmation.onConfirm}
-                        title={state.confirmation.title}
-                        message={state.confirmation.message}
+            <MainLayout>
+                <div className="bg-gray-900 text-gray-200 min-h-screen font-sans">
+                    <GlobalLoadingBar />
+                    <NotificationBanner
+                        message={state.notification}
+                        onDismiss={() => dispatch({ type: 'SET_NOTIFICATION', payload: null })}
                     />
-                )}
-            </div>
+                     {state.error && (
+                        <div className="fixed bottom-4 left-4 z-[100] bg-red-800 text-white p-4 rounded-lg shadow-lg max-w-md">
+                            <h4 className="font-bold">An Error Occurred</h4>
+                            <p className="text-sm mt-1">{state.error}</p>
+                            <button onClick={() => dispatch({ type: 'SET_ERROR', payload: null })} className="absolute top-2 right-2 text-xl">&times;</button>
+                        </div>
+                    )}
+
+                    {/* Main content container. Full width for admin/site-analysis, constrained for wizards if needed. */}
+                    <div className={(state.appStep === AppStep.ADMIN || state.appStep === AppStep.SITE_ANALYSIS) ? "w-full" : "container mx-auto px-4 py-8"}>
+                        {renderStep()}
+                    </div>
+
+                    <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
+                        <LoggingPanel />
+                        <button onClick={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'help', visible: true }})} className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 w-10 flex items-center justify-center rounded-full shadow-lg text-xl" title="Help">?</button>
+                        <button onClick={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'settings', visible: true }})} className="bg-gray-600 hover:bg-gray-700 text-white font-bold h-10 w-10 flex items-center justify-center rounded-full shadow-lg" title="Settings">⚙️</button>
+                    </div>
+
+                    {/* Global Modals */}
+                    <SettingsModal
+                        isOpen={!!state.modals.settings}
+                        onClose={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'settings', visible: false } })}
+                        onSave={handleSaveSettings}
+                        initialSettings={state.businessInfo}
+                    />
+                    <HelpModal
+                        isOpen={!!state.modals.help}
+                        onClose={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'help', visible: false } })}
+                    />
+                    {state.confirmation && (
+                        <ConfirmationModal
+                            isOpen={true}
+                            onClose={() => dispatch({ type: 'HIDE_CONFIRMATION' })}
+                            onConfirm={state.confirmation.onConfirm}
+                            title={state.confirmation.title}
+                            message={state.confirmation.message}
+                        />
+                    )}
+                </div>
+            </MainLayout>
         </AppStateContext.Provider>
     );
 };

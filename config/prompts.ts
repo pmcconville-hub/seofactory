@@ -162,21 +162,38 @@ Strategic Inputs:
 
 ${businessContext(info)}
 
+**SEMANTIC HIERARCHY RULES (CRITICAL):**
+A **CORE TOPIC** represents a DISTINCT ATTRIBUTE FACET of the Central Entity. It must be a fundamentally different service, product category, problem type, or major functional area.
+An **OUTER TOPIC (Spoke)** is a VARIATION, MODIFIER, or SPECIFIC INSTANCE of a Core Topic.
+
+**FORBIDDEN AS CORE TOPICS (These MUST be SPOKES instead):**
+- Location variants (e.g., "[Service] in Amsterdam" → SPOKE, not core)
+- Price/cost modifiers (e.g., "Cheap [Service]" → SPOKE)
+- Urgency variants (e.g., "Emergency [Service]" → SPOKE)
+- Size/scope variants (e.g., "Small Business [Service]" → SPOKE)
+- Brand comparisons (e.g., "[Service] vs [Competitor]" → SPOKE)
+
+**VALID CORE TOPIC EXAMPLES:**
+- Different service categories (Installation vs Repair vs Maintenance)
+- Different product types (Residential vs Commercial systems)
+- Different problem domains (Detection vs Prevention vs Response)
+- Different functional areas (Assessment vs Implementation vs Support)
+
 **Expansion Strategy (Think in ${info.language}):**
 1.  **Monetization Section (Core Section / Money Pages):**
-    *   **MANDATORY: Generate a MINIMUM of 6 distinct Core Topics.**
-    *   **HARD CONSTRAINT (1:7 HUB-SPOKE RATIO):** For EVERY single Core Topic you generate, you **MUST** generate exactly **7 unique 'Spokes' (Outer Topics)**. 
-    *   If you generate a Core Topic with 0 spokes, the entire map fails. You must provide depth.
-    *   *Spoke Ideas:* Specific use cases, variations, problems solved, benefits, comparisons, implementation steps.
-    *   *Example:* Entity 'Ontruimingen' -> Core 'Woningontruiming' -> Spokes: 'Kosten woningontruiming', 'Spoed woningontruiming', 'Woningontruiming na overlijden', 'Woningontruiming tips', 'Woningontruiming vs verhuizing', 'Woningontruiming checklist', 'Woningontruiming bedrijf kiezen'.
+    *   **MANDATORY: Generate a MINIMUM of 6 SEMANTICALLY DISTINCT Core Topics.**
+    *   Each Core Topic MUST target a different attribute/facet of "${pillars.centralEntity}"
+    *   **HARD CONSTRAINT (1:7 HUB-SPOKE RATIO):** For EVERY Core Topic, generate exactly **7 unique Spokes**.
+    *   *Spoke Ideas:* Location variants, price tiers, urgency levels, specific use cases, comparisons, checklists.
+    *   *Example Structure:* "[Service Type]" (Core) → "Emergency [Service Type]", "[Service Type] Costs", "[Service Type] in [Location]", etc. (Spokes)
 
 2.  **Informational Section (Author Section / Trust Pages):**
     *   Topics related to "${pillars.centralEntity} + Knowledge/Background/Trust".
-    *   Generate 3-5 distinct clusters (e.g., Laws, Costs, Procedures).
-    *   Ensure these also have supporting spokes (3-5 each).
+    *   Generate 3-5 distinct clusters covering: Laws/Regulations, General Costs, Procedures, Industry Background.
+    *   Each cluster must have 3-5 supporting spokes.
 
 **Granular Node Identity (REQUIRED for each topic):**
-For every topic generated (Core AND Spoke), provide:
+For every topic (Core AND Spoke), provide:
 - "canonical_query": The single, most representative search query (User Intent).
 - "query_network": An array of 3-5 related mid-string keywords.
 - "url_slug_hint": A concise version of the title (max 3 words).
@@ -210,6 +227,156 @@ Each Core Topic object structure:
 }
 
 ${jsonResponseInstruction}
+`;
+
+// Section-specific prompts for chunked generation to avoid token truncation
+export const GENERATE_MONETIZATION_SECTION_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[]): string => `
+You are a Holistic SEO Architect. Your task is to generate the MONETIZATION SECTION of a topical map.
+
+Strategic Inputs:
+- SEO Pillars: ${JSON.stringify(pillars, null, 2)}
+- Core Semantic Triples (EAVs): ${JSON.stringify(eavs.slice(0, 15), null, 2)}
+- Key Competitors: ${competitors.join(', ')}
+
+${businessContext(info)}
+
+**SEMANTIC HIERARCHY RULES (CRITICAL):**
+A **CORE TOPIC** represents a DISTINCT ATTRIBUTE FACET of the Central Entity - a fundamentally different service, product category, or major functional area.
+An **OUTER TOPIC (Spoke)** is a VARIATION, MODIFIER, or SPECIFIC INSTANCE of a Core Topic.
+
+**FORBIDDEN AS CORE TOPICS (Must be SPOKES):**
+- Location variants ("[Service] in [City]" → SPOKE)
+- Price modifiers ("Cheap/Affordable [Service]" → SPOKE)
+- Urgency variants ("Emergency [Service]" → SPOKE)
+- Size variants ("Small Business [Service]" → SPOKE)
+- Comparisons ("[Service] vs [Competitor]" → SPOKE)
+
+**VALID CORE TOPICS:**
+- Different service categories (Installation vs Repair vs Maintenance)
+- Different product types (Residential vs Commercial)
+- Different problem domains (Detection vs Prevention vs Response)
+
+**Monetization Section (Core Section / Money Pages):**
+- Generate 5-8 SEMANTICALLY DISTINCT Core Topics
+- Each Core Topic MUST represent a different attribute/facet of "${pillars.centralEntity}"
+- Each Core Topic MUST have 5-7 unique Spokes
+- Spokes should include: location variants, price tiers, urgency levels, comparisons
+
+**For each topic provide:**
+- "title": Topic title (must be distinct attribute, NOT a modifier variant)
+- "description": Brief 1-2 sentence description
+- "canonical_query": The main search query
+- "query_network": 3-5 related keywords
+- "url_slug_hint": URL-friendly version (2-3 words)
+- "spokes": Array of supporting topics (variations/modifiers) with same structure
+
+Think in ${info.language}. Keep descriptions concise.
+
+Output a JSON object with a single key "topics" containing an array of Core Topics.
+
+${jsonResponseInstruction}
+`;
+
+export const GENERATE_INFORMATIONAL_SECTION_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[]): string => `
+You are a Holistic SEO Architect. Your task is to generate the INFORMATIONAL SECTION of a topical map.
+
+Strategic Inputs:
+- SEO Pillars: ${JSON.stringify(pillars, null, 2)}
+- Core Semantic Triples (EAVs): ${JSON.stringify(eavs.slice(0, 15), null, 2)}
+- Key Competitors: ${competitors.join(', ')}
+
+${businessContext(info)}
+
+**SEMANTIC HIERARCHY RULES:**
+A **CORE TOPIC** represents a DISTINCT KNOWLEDGE DOMAIN related to the Central Entity.
+An **OUTER TOPIC (Spoke)** is a specific aspect, sub-question, or variation within that knowledge domain.
+
+**VALID CORE TOPICS for Informational Section:**
+- Laws & Regulations governing "${pillars.centralEntity}"
+- Cost Structures & Pricing Information
+- Industry Standards & Best Practices
+- Technical/How-It-Works Explanations
+- History & Background of the Industry
+
+**Informational Section (Trust & Authority Pages):**
+- Generate 3-5 DISTINCT knowledge domain clusters
+- Each Core Topic should have 3-5 supporting Spokes
+- Focus on: educational content, guides, explanations, industry knowledge
+
+**For each topic provide:**
+- "title": Topic title (distinct knowledge domain)
+- "description": Brief 1-2 sentence description
+- "canonical_query": The main search query
+- "query_network": 3-5 related keywords
+- "url_slug_hint": URL-friendly version (2-3 words)
+- "spokes": Array of specific aspects/questions within this domain
+
+Think in ${info.language}. Keep descriptions concise.
+
+Output a JSON object with a single key "topics" containing an array of Core Topics.
+
+${jsonResponseInstruction}
+`;
+
+// Prompt to classify topics into Core Section (monetization) or Author Section (informational)
+// Also checks topic type (core vs outer) for misclassifications
+export const CLASSIFY_TOPIC_SECTIONS_PROMPT = (info: BusinessInfo, topics: { id: string, title: string, description: string, type?: string, parent_topic_id?: string | null }[]): string => `
+You are a Holistic SEO Architect. Your task is to classify topics into the correct Topical Map Section AND verify their hierarchy type is correct.
+
+**PART 1: Section Classification (topic_class)**
+
+**Section Definitions:**
+1. **Core Section (monetization)**: Money pages focused on conversion, services, products, pricing, quotes, comparisons of offerings.
+   - Examples: "Roof Repair Services", "Get a Quote", "Pricing Plans", "Product Comparison", "[Service] Costs"
+
+2. **Author Section (informational)**: Trust/authority pages focused on education, guides, explanations, background knowledge.
+   - Examples: "What is [Topic]", "Guide to [Topic]", "History of [Topic]", "How [Topic] Works", "Benefits of [Topic]"
+
+**PART 2: Type Verification (type: core vs outer)**
+
+**Type Definitions:**
+- **Core (Hub/Pillar)**: Represents a DISTINCT attribute facet - a fundamentally different service category, product type, or problem domain
+- **Outer (Spoke/Cluster)**: A variation, modifier, or specific instance of a core topic
+
+**MISCLASSIFIED AS CORE (Should be OUTER):**
+- Location variants ("[Service] in [City]" → Should be outer)
+- Price modifiers ("Cheap/Affordable [Service]" → Should be outer)
+- Urgency variants ("Emergency [Service]" → Should be outer)
+- Size variants ("Small Business [Service]" → Should be outer)
+- Comparisons ("[Service] vs [Competitor]" → Should be outer)
+
+**VALID CORE TOPICS:**
+- Different service categories (Installation vs Repair vs Maintenance)
+- Different product types (Residential vs Commercial systems)
+- Different problem domains (Detection vs Prevention vs Response)
+
+${businessContext(info)}
+
+**Topics to Classify:**
+${JSON.stringify(topics.map(t => ({ id: t.id, title: t.title, description: t.description, currentType: t.type || 'unknown' })), null, 2)}
+
+**Rules for topic_class:**
+- If a topic is about a SERVICE, PRODUCT, PRICING, QUOTE, or direct business offering → "monetization"
+- If a topic is educational, explanatory, or provides background knowledge → "informational"
+
+**Rules for type:**
+- Only suggest a type change if the current type is clearly wrong
+- If a topic marked as "core" is actually a modifier/variant, suggest changing to "outer"
+- If suggesting "outer", also suggest which existing core topic should be its parent (suggestedParentTitle)
+
+${jsonResponseInstruction}
+Respond with a JSON array of objects:
+[
+  {
+    "id": "topic-id",
+    "topic_class": "monetization" | "informational",
+    "suggestedType": "core" | "outer" | null,
+    "suggestedParentTitle": "Title of parent core topic" | null,
+    "typeChangeReason": "Why the type should change" | null
+  }
+]
+
+Note: Only include suggestedType, suggestedParentTitle, and typeChangeReason if you're recommending a type change. Otherwise set them to null.
 `;
 
 export const SUGGEST_RESPONSE_CODE_PROMPT = (info: BusinessInfo, topicTitle: string): string => `
@@ -565,47 +732,233 @@ Return a JSON array of opportunity objects.
 `;
 };
 
-export const VALIDATE_TOPICAL_MAP_PROMPT = (topics: EnrichedTopic[], pillars: SEOPillars, info: BusinessInfo): string => `
-You are a Holistic SEO Auditor. Validate the topical map against strict semantic rules.
+export const VALIDATE_TOPICAL_MAP_PROMPT = (topics: EnrichedTopic[], pillars: SEOPillars, info: BusinessInfo): string => {
+    // Build hierarchy context for validation
+    const coreTopics = topics.filter(t => t.type === 'core');
+    const outerTopics = topics.filter(t => t.type === 'outer');
 
-Topical Map:
-${JSON.stringify(topics.map(t => ({title: t.title, type: t.type, description: t.description})), null, 2)}
+    // Calculate hub-spoke distribution
+    const hubSpokeAnalysis = coreTopics.map(core => {
+        const spokes = outerTopics.filter(o => o.parent_topic_id === core.id);
+        return {
+            title: core.title,
+            topic_class: core.topic_class || 'unknown',
+            spokeCount: spokes.length,
+            spokeTitles: spokes.map(s => s.title)
+        };
+    });
 
-SEO Pillars:
+    // Identify orphaned topics
+    const orphanedTopics = outerTopics.filter(o =>
+        !o.parent_topic_id || !coreTopics.find(c => c.id === o.parent_topic_id)
+    );
+
+    return `
+You are a Holistic SEO Auditor. Validate the topical map against strict semantic and structural rules.
+
+**HIERARCHY STRUCTURE:**
+Core Topics (Hubs) with their Spokes:
+${JSON.stringify(hubSpokeAnalysis, null, 2)}
+
+Orphaned Topics (No Parent):
+${JSON.stringify(orphanedTopics.map(t => ({ title: t.title, topic_class: t.topic_class })), null, 2)}
+
+**FULL TOPIC LIST:**
+${JSON.stringify(topics.map(t => ({
+    title: t.title,
+    type: t.type,
+    topic_class: t.topic_class || 'unknown',
+    parent: coreTopics.find(c => c.id === t.parent_topic_id)?.title || null,
+    description: t.description
+})), null, 2)}
+
+**SEO Pillars:**
 ${JSON.stringify(pillars, null, 2)}
 
 ${businessContext(info)}
 
-Instructions:
-1.  Calculate "overallScore" (0-100).
-2.  Provide "summary".
-3.  Identify "issues" using these specific Holistic Checks:
-    - **Focus Check (Rule A):** Identify any topic that deviates from the Central Entity ("${pillars.centralEntity}"). If a topic is about a related but distinct entity (e.g., "Sales Software" vs "Contract Software"), flag it as CRITICAL.
-    - **Context Check (Rule B):** Identify any topic that contradicts or ignores the Source Context ("${pillars.sourceContext}"). Example: If context is "Enterprise", flag "Free/Cheap" topics as WARNING.
-    - **Flow Check (Rule C):** Identify "Orphaned Clusters" in the Author Section that do not semantically bridge back to a Core Section hub.
+**VALIDATION RULES (Check ALL):**
+
+1. **Hub-Spoke Ratio (Rule D - CRITICAL):**
+   - Every Core Topic MUST have ~7 spokes (optimal range: 4-15)
+   - Less than 4 spokes = UNDER_SUPPORTED (CRITICAL)
+   - More than 15 spokes = DILUTED (WARNING)
+   - Flag each hub with its actual spoke count
+
+2. **Section Classification (Rule E - CRITICAL):**
+   - All topics MUST have topic_class: "monetization" or "informational"
+   - Monetization (Core Section): Services, products, pricing, quotes
+   - Informational (Author Section): Educational, guides, explanations
+   - Flag topics with missing or "unknown" classification
+
+3. **Type Misclassification (Rule G - CRITICAL):**
+   - Core topics MUST represent DISTINCT attribute facets, NOT variations/modifiers
+   - **MISCLASSIFIED AS CORE (Should be OUTER):**
+     * Location variants ("[Service] in [City]" → Should be outer)
+     * Price modifiers ("Cheap/Affordable [Service]" → Should be outer)
+     * Urgency variants ("Emergency [Service]" → Should be outer)
+     * Size variants ("Small Business [Service]" → Should be outer)
+     * Comparisons ("[Service] vs [Competitor]" → Should be outer)
+   - **VALID CORE TOPICS:**
+     * Different service categories (Installation vs Repair vs Maintenance)
+     * Different product types (Residential vs Commercial systems)
+     * Different problem domains (Detection vs Prevention vs Response)
+   - Flag any core topic that appears to be a modifier/variant of another core topic
+   - Suggest reclassification: which core topic it should become a spoke of
+
+4. **Orphan Detection (Rule F - WARNING):**
+   - All outer topics MUST have a valid parent_topic_id
+   - Flag orphaned topics that need parent assignment
+
+5. **Focus Check (Rule A - CRITICAL):**
+   - Topics must align with Central Entity ("${pillars.centralEntity}")
+   - Flag topics about related but distinct entities
+
+6. **Context Check (Rule B - WARNING):**
+   - Topics must align with Source Context ("${pillars.sourceContext}")
+   - Flag contradicting topics (e.g., "Free" topics when context is "Enterprise")
+
+7. **Flow Check (Rule C - WARNING):**
+   - Author Section clusters must semantically bridge to Core Section
+   - Flag orphaned clusters with no monetization connection
+
+**Output Format:**
+{
+  "overallScore": 0-100,
+  "summary": "Brief assessment of map health",
+  "hubSpokeAnalysis": {
+    "underSupported": [{ "hub": "Title", "spokeCount": 2, "spokesNeeded": 5 }],
+    "diluted": [{ "hub": "Title", "spokeCount": 18 }],
+    "optimal": [{ "hub": "Title", "spokeCount": 7 }]
+  },
+  "typeMisclassifications": [
+    {
+      "topicTitle": "Title of misclassified topic",
+      "currentType": "core",
+      "shouldBe": "outer",
+      "reason": "This is a location variant of [Parent Topic]",
+      "suggestedParent": "Title of the core topic it should belong to"
+    }
+  ],
+  "issues": [
+    {
+      "rule": "Rule Name",
+      "message": "Description of the issue",
+      "severity": "CRITICAL" | "WARNING" | "INFO",
+      "offendingTopics": ["Topic 1", "Topic 2"],
+      "suggestedAction": "What should be done to fix this"
+    }
+  ]
+}
 
 ${jsonResponseInstruction}
-Return a single JSON object with "overallScore", "summary", and "issues" (rule, message, severity, offendingTopics).
 `;
+};
 
-export const IMPROVE_TOPICAL_MAP_PROMPT = (topics: EnrichedTopic[], issues: ValidationIssue[], info: BusinessInfo): string => `
-You are an AI SEO strategist. Generate improvements for the topical map based on validation issues.
+export const IMPROVE_TOPICAL_MAP_PROMPT = (topics: EnrichedTopic[], issues: ValidationIssue[], info: BusinessInfo): string => {
+    // Separate core and outer topics for hierarchy context
+    const coreTopics = topics.filter(t => t.type === 'core');
+    const outerTopics = topics.filter(t => t.type === 'outer');
 
-Current Topics:
-${JSON.stringify(topics.map(t => ({title: t.title, type: t.type})), null, 2)}
+    // Calculate hub-spoke ratios for context
+    const hubSpokeInfo = coreTopics.map(core => {
+        const spokeCount = outerTopics.filter(o => o.parent_topic_id === core.id).length;
+        return {
+            id: core.id,
+            title: core.title,
+            topic_class: core.topic_class || 'informational',
+            spokeCount,
+            needsSpokes: spokeCount < 7,
+            spokesNeeded: Math.max(0, 7 - spokeCount)
+        };
+    });
 
-Validation Issues:
+    return `
+You are a Holistic SEO Architect. Generate improvements for the topical map based on validation issues.
+
+**CRITICAL HIERARCHY RULES (MUST FOLLOW):**
+1. **Hub-Spoke Ratio (1:7)**: Every Core Topic (hub) MUST have approximately 7 Outer Topics (spokes).
+2. **Section Classification**: New topics MUST be assigned to either "monetization" (Core Section) or "informational" (Author Section).
+3. **Parent Assignment**: Every new Outer Topic MUST specify which Core Topic it belongs to.
+4. **Link Flow Direction**: Author Section topics support Core Section topics with PageRank flow.
+
+**Current Topical Map Structure:**
+CORE TOPICS (Hubs):
+${JSON.stringify(hubSpokeInfo, null, 2)}
+
+OUTER TOPICS (Spokes):
+${JSON.stringify(outerTopics.map(t => ({
+    title: t.title,
+    parent: coreTopics.find(c => c.id === t.parent_topic_id)?.title || 'ORPHANED',
+    topic_class: t.topic_class || 'informational'
+})), null, 2)}
+
+**Validation Issues to Resolve:**
 ${JSON.stringify(issues, null, 2)}
 
 ${businessContext(info)}
 
-Instructions:
-Generate concrete actions to resolve the issues.
-1.  "newTopics": Array of new topics to add (title, description, type) to fill gaps or fix broken flows.
-2.  "topicTitlesToDelete": Array of titles to remove (e.g. Out of Focus topics).
+**Instructions:**
+Generate concrete actions to resolve ALL issues while maintaining proper hierarchy.
+
+1. **For UNDER_SUPPORTED hubs** (spokeCount < 7): Add new outer topics as spokes. Each new spoke MUST specify:
+   - "parentTopicTitle": The exact title of the core topic it belongs to
+   - "topic_class": "monetization" or "informational"
+
+2. **For new CORE topics**: They become new hubs and should have at least 3-5 initial spokes suggested.
+
+3. **For topics to DELETE**: Consider if their semantic content should be MERGED into another topic instead of pure deletion.
+
+4. **For MISCLASSIFIED topics** (core topics that should be outer):
+   - Reclassify location variants, price modifiers, urgency variants as OUTER topics
+   - Assign them to the appropriate core topic parent
+   - Keep valid distinct attribute facets as CORE topics
+
+**Output Format:**
+{
+  "newTopics": [
+    {
+      "title": "Topic Title",
+      "description": "Brief description",
+      "type": "core" | "outer",
+      "topic_class": "monetization" | "informational",
+      "parentTopicTitle": "Exact title of parent core topic (REQUIRED if type is 'outer', null if 'core')",
+      "reasoning": "Why this topic is needed and where it fits in the hierarchy"
+    }
+  ],
+  "topicTitlesToDelete": ["Topic Title 1"],
+  "topicMerges": [
+    {
+      "sourceTitle": "Topic to be merged away",
+      "targetTitle": "Topic to merge into",
+      "reasoning": "Why these should be merged"
+    }
+  ],
+  "hubSpokeGapFills": [
+    {
+      "hubTitle": "Core Topic Title",
+      "newSpokes": [
+        {
+          "title": "New Spoke Title",
+          "description": "Brief description",
+          "topic_class": "monetization" | "informational"
+        }
+      ]
+    }
+  ],
+  "typeReclassifications": [
+    {
+      "topicTitle": "Topic that needs reclassification",
+      "newType": "outer",
+      "newParentTitle": "Core topic it should belong to",
+      "reasoning": "Why this is a modifier/variant not a distinct facet"
+    }
+  ]
+}
 
 ${jsonResponseInstruction}
 `;
+};
 
 export const FIND_MERGE_OPPORTUNITIES_PROMPT = (topics: EnrichedTopic[], info: BusinessInfo): string => `
 You are an expert SEO strategist. Find semantically redundant topics to merge.
@@ -1026,4 +1379,541 @@ ${idx + 1}. [${issue.category}] Rule: ${issue.rule}
 
 ${jsonResponseInstruction}
 Return a JSON object with a single key "polishedDraft" containing the full rewritten markdown.
+`;
+
+// ============================================
+// AI TASK SUGGESTION PROMPTS
+// ============================================
+
+export const GENERATE_TASK_SUGGESTION_PROMPT = (
+  task: { ruleId: string; title: string; description: string; remediation: string; priority: string; phase?: string },
+  page: { url: string; title?: string; h1?: string; contentMarkdown?: string },
+  project: { domain: string; centralEntity?: string; sourceContext?: string; centralSearchIntent?: string }
+): string => `
+You are an expert SEO consultant specializing in Holistic SEO and technical audits.
+Generate a specific, actionable remediation for this audit issue.
+
+**Project Context:**
+- Domain: ${project.domain}
+${project.centralEntity ? `- Central Entity: ${project.centralEntity}` : ''}
+${project.sourceContext ? `- Source Context: ${project.sourceContext}` : ''}
+${project.centralSearchIntent ? `- Central Search Intent: ${project.centralSearchIntent}` : ''}
+
+**Issue to Fix:**
+- Rule ID: ${task.ruleId}
+- Problem: ${task.title}
+- Details: ${task.description}
+- Current Suggestion (generic): ${task.remediation}
+- Priority: ${task.priority}
+${task.phase ? `- Phase: ${task.phase}` : ''}
+
+**Page Context:**
+- URL: ${page.url}
+- Title: ${page.title || 'N/A'}
+- H1: ${page.h1 || 'N/A'}
+${page.contentMarkdown ? `
+Content Excerpt (first 2000 chars):
+"""
+${page.contentMarkdown.slice(0, 2000)}
+"""
+` : ''}
+
+**Your Task:**
+Generate a SPECIFIC remediation that:
+1. References actual content from this page when possible
+2. Provides concrete, actionable steps (e.g., "Add H2 heading 'Benefits of X' after the introduction section")
+3. Aligns with the Central Entity and Source Context if provided
+4. Is immediately actionable by a content editor or developer
+5. Explains WHY this specific fix will improve the page
+
+**Quality Guidelines:**
+- High confidence (80-100): Very specific suggestion with clear evidence from page content
+- Medium confidence (50-79): Good suggestion but limited context available
+- Low confidence (30-49): General guidance, human review strongly recommended
+
+${jsonResponseInstruction}
+Return a JSON object:
+{
+  "suggestedValue": "Your specific, actionable remediation text here...",
+  "confidence": 85,
+  "reasoning": "Brief explanation of why this suggestion is better than the generic one and how it addresses the issue..."
+}
+`;
+
+export const GENERATE_BATCH_TASK_SUGGESTIONS_PROMPT = (
+  tasks: Array<{
+    sequence: number;
+    task: { ruleId: string; title: string; description: string; remediation: string; priority: string };
+    pageContext?: { url: string; title?: string; h1?: string };
+  }>,
+  project: { domain: string; centralEntity?: string; sourceContext?: string }
+): string => `
+You are an expert SEO consultant. Generate specific remediations for multiple audit issues.
+
+**Project Context:**
+- Domain: ${project.domain}
+${project.centralEntity ? `- Central Entity: ${project.centralEntity}` : ''}
+${project.sourceContext ? `- Source Context: ${project.sourceContext}` : ''}
+
+**Tasks to Process:**
+${tasks.map((t, idx) => `
+### Task ${idx + 1} (sequence: ${t.sequence})
+- Rule: ${t.task.ruleId} - ${t.task.title}
+- Details: ${t.task.description}
+- Current Suggestion: ${t.task.remediation}
+- Priority: ${t.task.priority}
+${t.pageContext ? `- Page: ${t.pageContext.url} (Title: ${t.pageContext.title || 'N/A'}, H1: ${t.pageContext.h1 || 'N/A'})` : ''}
+`).join('\n---\n')}
+
+**Instructions:**
+For each task, generate a specific, actionable suggestion that improves upon the generic remediation.
+
+${jsonResponseInstruction}
+Return a JSON array with exactly ${tasks.length} objects in sequence order:
+[
+  {
+    "sequence": 0,
+    "suggestedValue": "Specific remediation...",
+    "confidence": 85,
+    "reasoning": "Why this is better..."
+  },
+  ...
+]
+`;
+
+/**
+ * Context-aware task suggestion prompt for use in batch processing
+ * Includes previous suggestions to ensure consistency across all recommendations
+ */
+export const GENERATE_CONTEXT_AWARE_TASK_SUGGESTION_PROMPT = (
+  task: { ruleId: string; title: string; description: string; remediation: string; priority: string; phase?: string },
+  page: { url: string; title?: string; h1?: string; contentMarkdown?: string },
+  project: { domain: string; centralEntity?: string; sourceContext?: string; centralSearchIntent?: string },
+  previousSuggestions: Array<{
+    ruleId: string;
+    title: string;
+    suggestedValue: string;
+    reasoning: string;
+  }>
+): string => `
+You are an expert SEO consultant specializing in Holistic SEO and technical audits.
+Generate a specific, actionable remediation for this audit issue.
+
+**CRITICAL: CONTEXT AWARENESS & CONSISTENCY**
+You are part of a batch processing workflow. Previous suggestions have already been made for other tasks on this page.
+Your suggestion MUST be consistent with and build upon these previous suggestions. DO NOT contradict them.
+
+${previousSuggestions.length > 0 ? `
+**Previous Suggestions Made (YOU MUST ALIGN WITH THESE):**
+${previousSuggestions.map((ps, idx) => `
+${idx + 1}. [${ps.ruleId}] ${ps.title}
+   → Suggested: "${ps.suggestedValue.substring(0, 500)}${ps.suggestedValue.length > 500 ? '...' : ''}"
+   → Reasoning: ${ps.reasoning}
+`).join('')}
+
+**CONSISTENCY RULES:**
+- If a previous suggestion recommends a specific H1, title, or entity name, USE THAT EXACT TEXT in your suggestion
+- If a previous suggestion establishes a content structure, BUILD UPON it
+- If a previous suggestion defines the Central Entity framing, MAINTAIN that framing
+- Your suggestion should feel like part of a UNIFIED PLAN, not an isolated fix
+` : '**Note:** This is the first task in the batch. Your suggestion will set the baseline for consistency.'}
+
+**Project Context:**
+- Domain: ${project.domain}
+${project.centralEntity ? `- Central Entity: ${project.centralEntity}` : ''}
+${project.sourceContext ? `- Source Context: ${project.sourceContext}` : ''}
+${project.centralSearchIntent ? `- Central Search Intent: ${project.centralSearchIntent}` : ''}
+
+**Issue to Fix:**
+- Rule ID: ${task.ruleId}
+- Problem: ${task.title}
+- Details: ${task.description}
+- Current Suggestion (generic): ${task.remediation}
+- Priority: ${task.priority}
+${task.phase ? `- Phase: ${task.phase}` : ''}
+
+**Page Context:**
+- URL: ${page.url}
+- Title: ${page.title || 'N/A'}
+- H1: ${page.h1 || 'N/A'}
+${page.contentMarkdown ? `
+Content Excerpt (first 2000 chars):
+"""
+${page.contentMarkdown.slice(0, 2000)}
+"""
+` : ''}
+
+**Your Task:**
+Generate a SPECIFIC remediation that:
+1. Is CONSISTENT with all previous suggestions listed above
+2. References actual content from this page when possible
+3. Provides concrete, actionable steps
+4. Aligns with the Central Entity and Source Context if provided
+5. Is immediately actionable by a content editor or developer
+6. Explains WHY this specific fix will improve the page
+
+**Quality Guidelines:**
+- High confidence (80-100): Very specific suggestion with clear evidence from page content
+- Medium confidence (50-79): Good suggestion but limited context available
+- Low confidence (30-49): General guidance, human review strongly recommended
+
+${jsonResponseInstruction}
+Return a JSON object:
+{
+  "suggestedValue": "Your specific, actionable remediation text here...",
+  "confidence": 85,
+  "reasoning": "Brief explanation of why this suggestion is better than the generic one and how it aligns with other suggestions..."
+}
+`;
+
+// ============================================
+// MIGRATION WORKBENCH PROMPTS
+// ============================================
+
+export const SEMANTIC_CHUNKING_PROMPT = (markdown: string, businessInfo: BusinessInfo): string => `
+You are an expert content analyst specializing in semantic segmentation.
+Your task is to analyze the following markdown content and break it into semantically coherent chunks.
+
+${businessContext(businessInfo)}
+
+**Content to Analyze:**
+"""
+${markdown}
+"""
+
+**Chunking Rules:**
+1. Each chunk should represent a single, coherent topic or concept
+2. Chunks should be 100-500 words each (approximate)
+3. Preserve heading hierarchy context
+4. Identify the semantic focus of each chunk
+5. Tag each chunk with relevant entity types
+
+${jsonResponseInstruction}
+Return a JSON array of chunk objects:
+[
+  {
+    "id": "chunk_1",
+    "content": "The chunk text...",
+    "heading_context": "H2: Parent Heading > H3: Current Heading",
+    "semantic_focus": "Brief description of what this chunk covers",
+    "entity_tags": ["Entity1", "Entity2"],
+    "word_count": 250,
+    "position": 1
+  }
+]
+`;
+
+export const GENERATE_MIGRATION_DECISION_PROMPT = (
+  inventoryItem: { url: string; title: string; content_summary?: string; metrics?: any },
+  topicalMap: { pillars: any; topics: any[] },
+  businessInfo: BusinessInfo
+): string => `
+You are an expert SEO strategist specializing in content migration and optimization.
+Analyze this existing page and recommend a migration action.
+
+${businessContext(businessInfo)}
+
+**Page to Analyze:**
+- URL: ${inventoryItem.url}
+- Title: ${inventoryItem.title}
+${inventoryItem.content_summary ? `- Content Summary: ${inventoryItem.content_summary}` : ''}
+${inventoryItem.metrics ? `- Performance Metrics: ${JSON.stringify(inventoryItem.metrics)}` : ''}
+
+**Strategic Context (Topical Map):**
+- Central Entity: ${topicalMap.pillars?.centralEntity || 'Not defined'}
+- Source Context: ${topicalMap.pillars?.sourceContext || 'Not defined'}
+- Existing Topics: ${topicalMap.topics?.slice(0, 20).map((t: any) => t.title).join(', ') || 'None'}
+
+**Decision Framework:**
+Evaluate the page against these criteria:
+1. **Relevance**: Does it align with the Central Entity and Source Context?
+2. **Quality**: Is the content comprehensive and authoritative?
+3. **Performance**: Are there traffic/ranking signals worth preserving?
+4. **Redundancy**: Does it overlap with planned topical map content?
+
+**Available Actions:**
+- KEEP: Page is valuable, keep as-is with minor updates
+- REWRITE: Content is relevant but needs significant improvement
+- MERGE: Content should be consolidated with another page
+- REDIRECT_301: Page should redirect to a more relevant destination
+- PRUNE_410: Page should be removed (low value, no redirect target)
+- CANONICALIZE: Page is duplicate, should point to canonical version
+
+${jsonResponseInstruction}
+Return a JSON object:
+{
+  "action": "KEEP" | "REWRITE" | "MERGE" | "REDIRECT_301" | "PRUNE_410" | "CANONICALIZE",
+  "confidence": 85,
+  "reasoning": "Detailed explanation of why this action is recommended...",
+  "target_url": "If REDIRECT_301 or MERGE, the target URL or topic title",
+  "priority": "HIGH" | "MEDIUM" | "LOW",
+  "estimated_effort": "Brief effort estimate (e.g., '2-3 hours', 'Full rewrite needed')",
+  "key_content_to_preserve": ["List of valuable content elements to keep if rewriting/merging"]
+}
+`;
+
+// ============================================
+// FOUNDATION PAGES & NAVIGATION PROMPTS
+// ============================================
+
+export const GENERATE_FOUNDATION_PAGES_PROMPT = (info: BusinessInfo, pillars: SEOPillars): string => `
+You are an expert Holistic SEO Architect specializing in website structure and E-A-T optimization.
+Your task is to generate Foundation Pages for a website based on the business context and SEO pillars.
+
+${businessContext(info)}
+
+**SEO Pillars:**
+- Central Entity: ${pillars.centralEntity}
+- Source Context: ${pillars.sourceContext}
+- Central Search Intent: ${pillars.centralSearchIntent}
+
+**Foundation Pages to Generate:**
+Generate specifications for 5 essential foundation pages that establish authority and trust.
+
+**CRITICAL E-A-T RULES:**
+1. **Homepage** = Entity Home - The H1 MUST include the Central Entity + Source Context
+2. **About Page** = E-A-T Corroboration - Must demonstrate expertise, credentials, team
+3. **Contact Page** = NAP Consistency - Must include full Name, Address, Phone, Email
+4. **Privacy Policy** = Legal Trust Signal - Standard but professional
+5. **Terms of Service** = Legal Trust Signal - Standard but professional
+
+**Homepage Specific Rules (from Holistic SEO):**
+- H1 Template: Include Central Entity + Source Context (e.g., "[Central Entity]: [Source Context]")
+- First 400 characters = "Centerpiece Text" - Must contain core value prop + CTA
+- Target the canonical query for the main business offering
+- Schema: Organization
+
+**About Page Rules:**
+- H1: "About [Company Name]" or "Over [Company Name]"
+- Sections: Company Story, Mission/Values, Team/Expertise, Credentials/Awards
+- Schema: AboutPage
+- E-A-T Focus: Demonstrate WHY users should trust this entity
+
+**Contact Page Rules:**
+- H1: "Contact [Company Name]"
+- Sections: Contact Form, NAP Data, Business Hours, Map/Location
+- Schema: ContactPage
+- NAP Consistency: Use EXACT same NAP across all pages
+
+**For each page, generate:**
+1. page_type: The type identifier
+2. title: SEO-optimized title (include Central Entity where appropriate)
+3. slug: URL slug (e.g., "/about", "/contact")
+4. meta_description: 150-160 chars, include Central Entity + Source Context
+5. h1_template: H1 heading template
+6. schema_type: Appropriate Schema.org type
+7. sections: Array of content sections with {heading, purpose, required}
+
+**NAP Data Suggestions:**
+Based on the business context, suggest appropriate NAP (Name, Address, Phone) structure.
+If specific data isn't available, provide placeholder guidance.
+
+${jsonResponseInstruction}
+Return a JSON object:
+{
+  "foundationPages": [
+    {
+      "page_type": "homepage",
+      "title": "...",
+      "slug": "/",
+      "meta_description": "...",
+      "h1_template": "...",
+      "schema_type": "Organization",
+      "sections": [
+        { "heading": "...", "purpose": "...", "required": true }
+      ]
+    }
+  ],
+  "napDataSuggestions": {
+    "company_name": "Suggested company name based on domain/context",
+    "address_hint": "Placeholder or guidance for address",
+    "phone_hint": "Format suggestion (e.g., +31 XX XXX XXXX for Netherlands)",
+    "email_hint": "Suggested email format (e.g., info@domain.com)"
+  },
+  "navigationSuggestions": {
+    "headerLinks": ["Homepage", "About", "Services", "Contact"],
+    "footerSections": [
+      { "heading": "Company", "links": ["About Us", "Contact", "Careers"] },
+      { "heading": "Legal", "links": ["Privacy Policy", "Terms of Service"] }
+    ],
+    "ctaButton": { "text": "Get Started", "target": "contact" }
+  }
+}
+`;
+
+export const GENERATE_DEFAULT_NAVIGATION_PROMPT = (
+  foundationPages: { page_type: string; title: string; slug: string }[],
+  coreTopics: { id: string; title: string; slug?: string }[],
+  info: BusinessInfo
+): string => `
+You are an expert Information Architect specializing in website navigation.
+Generate an optimal navigation structure based on the foundation pages and core topics.
+
+${businessContext(info)}
+
+**Available Foundation Pages:**
+${JSON.stringify(foundationPages, null, 2)}
+
+**Core Topics (for potential header/footer links):**
+${JSON.stringify(coreTopics.slice(0, 15).map(t => ({ title: t.title, slug: t.slug })), null, 2)}
+
+**NAVIGATION RULES (Holistic SEO):**
+1. **Header Max Links: 10** - Only most important pages
+2. **Footer Max Links: 30** - Organized into sections
+3. **Total Page Links: Max 150** - Never exceed this
+4. **Homepage MUST be in header** - Always first position
+5. **Legal pages in footer** - Privacy, Terms at bottom
+6. **Pure HTML links** - No JavaScript-dependent navigation
+7. **Descriptive anchor text** - Never "Click here" or "Read more"
+
+**Header Structure:**
+- Position 1: Homepage (Logo link)
+- Positions 2-5: Core service/product categories
+- Position 6-8: Key informational pages (if space)
+- CTA Button: Contact or main conversion action
+
+**Footer Structure:**
+- Section 1: Main Services/Products
+- Section 2: Resources/Information
+- Section 3: Company (About, Contact, Careers)
+- Section 4: Legal (Privacy, Terms)
+- NAP Display: Company info at bottom
+
+${jsonResponseInstruction}
+Return a JSON object:
+{
+  "header": {
+    "logo_alt_text": "Alt text for logo including Central Entity",
+    "primary_nav": [
+      {
+        "text": "Link text",
+        "target_foundation_page_id": "homepage|about|contact|null",
+        "target_topic_id": "core-topic-id|null",
+        "prominence": "high|medium",
+        "order": 1
+      }
+    ],
+    "cta_button": {
+      "text": "CTA text",
+      "target_foundation_page_id": "contact|null",
+      "target_topic_id": "topic-id|null"
+    }
+  },
+  "footer": {
+    "sections": [
+      {
+        "heading": "Section Heading",
+        "links": [
+          {
+            "text": "Link text",
+            "target_foundation_page_id": "page-type|null",
+            "target_topic_id": "topic-id|null",
+            "prominence": "medium|low"
+          }
+        ]
+      }
+    ],
+    "legal_links": [
+      { "text": "Privacy Policy", "target_foundation_page_id": "privacy" },
+      { "text": "Terms of Service", "target_foundation_page_id": "terms" }
+    ],
+    "nap_display": true,
+    "copyright_text": "© ${new Date().getFullYear()} [Company Name]. All rights reserved."
+  }
+}
+`;
+
+export const VALIDATE_FOUNDATION_PAGES_PROMPT = (
+  foundationPages: { page_type: string; title: string; h1_template?: string; meta_description?: string; sections?: any[]; nap_data?: any }[],
+  navigation: { header?: any; footer?: any } | null,
+  pillars: SEOPillars,
+  info: BusinessInfo
+): string => `
+You are a Holistic SEO Auditor. Validate the foundation pages and navigation structure.
+
+${businessContext(info)}
+
+**SEO Pillars:**
+- Central Entity: ${pillars.centralEntity}
+- Source Context: ${pillars.sourceContext}
+
+**Foundation Pages to Validate:**
+${JSON.stringify(foundationPages, null, 2)}
+
+**Navigation Structure:**
+${navigation ? JSON.stringify(navigation, null, 2) : 'No navigation configured'}
+
+**VALIDATION RULES:**
+
+**1. Homepage Validation (CRITICAL):**
+- H1 MUST include Central Entity
+- Meta description MUST include Central Entity + Source Context
+- Must have Organization schema
+
+**2. About Page Validation (CRITICAL for E-A-T):**
+- MUST exist for E-A-T compliance
+- Should have sections for: Company Story, Team/Expertise, Credentials
+- Schema should be AboutPage
+
+**3. Contact Page Validation (CRITICAL):**
+- MUST exist with NAP data
+- NAP data MUST be consistent (same format everywhere)
+- Schema should be ContactPage
+
+**4. Legal Pages Validation (WARNING):**
+- Privacy Policy recommended
+- Terms of Service recommended
+
+**5. Navigation Validation:**
+- Header: Max 10 links
+- Footer: Max 30 links per section
+- Homepage MUST be in header
+- Legal pages MUST be in footer
+- No duplicate links
+- No generic anchor text ("Click here", "Read more")
+
+**6. Missing Pages Check:**
+- Flag any standard foundation pages that don't exist
+- Rate severity based on E-A-T impact
+
+${jsonResponseInstruction}
+Return a JSON object:
+{
+  "overallScore": 0-100,
+  "summary": "Brief assessment",
+  "foundationPageIssues": [
+    {
+      "page_type": "homepage|about|contact|etc",
+      "issues": [
+        {
+          "rule": "Rule name",
+          "message": "Issue description",
+          "severity": "CRITICAL|WARNING|SUGGESTION",
+          "fix": "How to fix"
+        }
+      ]
+    }
+  ],
+  "navigationIssues": [
+    {
+      "location": "header|footer",
+      "rule": "Rule name",
+      "message": "Issue description",
+      "severity": "CRITICAL|WARNING|SUGGESTION",
+      "fix": "How to fix"
+    }
+  ],
+  "missingPages": [
+    {
+      "page_type": "about|contact|etc",
+      "reason": "Why this page is needed",
+      "severity": "CRITICAL|WARNING",
+      "impact": "E-A-T impact description"
+    }
+  ],
+  "napConsistency": {
+    "isConsistent": true|false,
+    "issues": ["List of inconsistency issues if any"]
+  }
+}
 `;

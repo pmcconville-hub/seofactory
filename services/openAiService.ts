@@ -34,9 +34,24 @@ const callApi = async <T>(
         dangerouslyAllowBrowser: true // Client-side usage
     });
 
+    // Valid OpenAI model IDs: https://platform.openai.com/docs/models
+    const validOpenAIModels = [
+        // GPT-5 series (Latest - 2025)
+        'gpt-5.1', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano',
+        // GPT-4.1 series (April 2025)
+        'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano',
+        // O-series reasoning models
+        'o3', 'o4-mini', 'o4-mini-high',
+        // Legacy GPT-4o (still supported)
+        'gpt-4o', 'gpt-4o-mini',
+    ];
+    const defaultModel = 'gpt-5.1'; // Latest flagship model
+    const isValidModel = businessInfo.aiModel && validOpenAIModels.includes(businessInfo.aiModel);
+    const modelToUse = isValidModel ? businessInfo.aiModel : defaultModel;
+
     try {
         const completion = await openai.chat.completions.create({
-            model: businessInfo.aiModel || 'gpt-4.1',
+            model: modelToUse,
             messages: [
                 { role: "system", content: "You are a helpful, expert SEO strategist and content architect. You output strict JSON when requested." },
                 { role: "user", content: prompt }
@@ -196,7 +211,8 @@ export const analyzeGscDataForOpportunities = async (rows: GscRow[], kg: Knowled
 
 export const improveTopicalMap = async (topics: EnrichedTopic[], issues: ValidationIssue[], info: BusinessInfo, dispatch: React.Dispatch<any>): Promise<MapImprovementSuggestion> => {
     const sanitizer = new AIResponseSanitizer(dispatch);
-    return callApi(prompts.IMPROVE_TOPICAL_MAP_PROMPT(topics, issues, info), info, dispatch, (text) => sanitizer.sanitize(text, { newTopics: Array, topicTitlesToDelete: Array }, { newTopics: [], topicTitlesToDelete: [] }));
+    const fallback: MapImprovementSuggestion = { newTopics: [], topicTitlesToDelete: [], topicMerges: [], hubSpokeGapFills: [], typeReclassifications: [] };
+    return callApi(prompts.IMPROVE_TOPICAL_MAP_PROMPT(topics, issues, info), info, dispatch, (text) => sanitizer.sanitize(text, { newTopics: Array, topicTitlesToDelete: Array }, fallback));
 };
 
 export const findMergeOpportunities = async (topics: EnrichedTopic[], info: BusinessInfo, dispatch: React.Dispatch<any>): Promise<MergeSuggestion[]> => {
@@ -328,4 +344,34 @@ export const applyBatchFlowRemediation = async (draft: string, issues: Contextua
     return result.polishedDraft;
 };
 
-    
+// --- Generic AI methods for Migration Service ---
+
+/**
+ * Generic JSON generation method for migration workflows
+ */
+export const generateJson = async <T extends object>(
+    prompt: string,
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>,
+    fallback: T
+): Promise<T> => {
+    const sanitizer = new AIResponseSanitizer(dispatch);
+    return callApi(prompt, businessInfo, dispatch, (text) => {
+        try {
+            return JSON.parse(text);
+        } catch {
+            return sanitizer.sanitize(text, {}, fallback);
+        }
+    }, true);
+};
+
+/**
+ * Generic text generation method for migration workflows
+ */
+export const generateText = async (
+    prompt: string,
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>
+): Promise<string> => {
+    return callApi(prompt, businessInfo, dispatch, (text) => text, false);
+};
