@@ -1637,16 +1637,19 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
     useEffect(() => {
         const loadFoundationPagesAndNavigation = async () => {
             if (!activeMapId) return;
+
+            // Clear existing data first to prevent showing stale data from previous map
+            dispatch({ type: 'SET_FOUNDATION_PAGES', payload: [] });
+            dispatch({ type: 'SET_NAVIGATION', payload: null });
+
             try {
-                // Load foundation pages
+                // Load foundation pages for this specific map
                 const pages = await foundationPagesService.loadFoundationPages(activeMapId);
                 dispatch({ type: 'SET_FOUNDATION_PAGES', payload: pages });
 
-                // Load navigation structure
+                // Load navigation structure for this specific map
                 const nav = await foundationPagesService.loadNavigationStructure(activeMapId);
-                if (nav) {
-                    dispatch({ type: 'SET_NAVIGATION', payload: nav });
-                }
+                dispatch({ type: 'SET_NAVIGATION', payload: nav });
             } catch (error) {
                 console.error('Failed to load foundation pages/navigation:', error);
             }

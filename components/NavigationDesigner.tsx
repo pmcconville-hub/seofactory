@@ -63,6 +63,18 @@ const NavigationDesigner: React.FC<NavigationDesignerProps> = ({
   const [editingLink, setEditingLink] = useState<{ location: string; index: number } | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
 
+  // Update state when navigation prop changes (e.g., when switching maps)
+  React.useEffect(() => {
+    setHeaderLinks(navigation?.header.primary_nav || []);
+    setCtaButton(navigation?.header.cta_button || null);
+    setLogoAltText(navigation?.header.logo_alt_text || '');
+    setFooterSections(navigation?.footer.sections || []);
+    setLegalLinks(navigation?.footer.legal_links || []);
+    setNapDisplay(navigation?.footer.nap_display ?? true);
+    setCopyrightText(navigation?.footer.copyright_text || '');
+    setHasChanges(false);
+  }, [navigation]);
+
   // Calculate link counts
   const headerLinkCount = headerLinks.length + (ctaButton ? 1 : 0);
   const footerLinkCount = footerSections.reduce((sum, section) => sum + section.links.length, 0) + legalLinks.length;
