@@ -361,3 +361,26 @@
 | Reference Principle (link position) | ❌ | ❌ | ❌ | GAP |
 | Negative Constraints | ❌ | ❌ | ❌ | GAP |
 
+---
+
+## Future Development: Macro Context Gaps
+
+Additional gaps identified from deeper analysis of `macro context.md` and related documents:
+
+| Gap Category | Description | Priority |
+|--------------|-------------|----------|
+| **Macro/Micro Context Border** | Explicit "Bridge Heading" separating main content from supplementary | HIGH |
+| **Predicate Consistency** | H2 predicates must match H1 angle (if "Risks", use negative predicates) | MEDIUM |
+| **Extractive Summary Validation** | First sentences of H2s should form coherent preview matching intro | MEDIUM |
+| **Query-Format Alignment** | "Types of X" → list, "How to X" → ordered list enforcement | MEDIUM |
+| **Content Coverage Weight** | Section length must match attribute importance (no minor topic >50%) | MEDIUM |
+| **LLM Phrase Detection (Extended)** | Full list: "Overall", "delve", "I had the pleasure", etc. | HIGH |
+| **Vocabulary Richness** | Type-Token Ratio (TTR) measurement | LOW |
+| **Supplementary Link Placement** | Core Section links should be in Micro Context zone only | HIGH |
+| **Anchor Text Variety** | Max 3 uses of same anchor per page, with synonym variation | MEDIUM |
+| **Annotation Text Quality** | Surrounding text must explain WHY the link exists | MEDIUM |
+
+**Full details:** See `docs/plans/2024-12-02-macro-context-gaps-future-development.md`
+
+These items should be implemented AFTER the multipass content generation system is complete.
+
