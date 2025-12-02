@@ -68,7 +68,6 @@ const TopicItem: React.FC<TopicItemProps> = ({
     allCoreTopics = [],
     onReparent = () => {},
 }) => {
-    const [confirmingDelete, setConfirmingDelete] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     
     const title = safeString(topic.title);
@@ -94,12 +93,7 @@ const TopicItem: React.FC<TopicItemProps> = ({
     };
 
     const handleDeleteClick = () => {
-        if (confirmingDelete) {
-            onDelete();
-        } else {
-            setConfirmingDelete(true);
-            setTimeout(() => setConfirmingDelete(false), 3000);
-        }
+        onDelete();
     };
 
     const handleStartEdit = () => {
@@ -193,7 +187,7 @@ const TopicItem: React.FC<TopicItemProps> = ({
          <ActionButton
             onClick={handleDeleteClick}
             title="Delete Topic"
-            className={confirmingDelete ? 'text-red-400 hover:text-red-300' : 'hover:text-red-400'}
+            className="hover:text-red-400"
             icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>}
         />
     );
@@ -204,7 +198,6 @@ const TopicItem: React.FC<TopicItemProps> = ({
             <div 
                 className={`group p-4 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-all duration-200 border flex items-start gap-3 cursor-pointer ${topicTypeColor} ${isHighlighted || isEditing ? 'ring-2 ring-blue-500' : ''} ${isDragOver ? 'ring-2 ring-blue-500 border-blue-400' : ''}`}
                 onClick={handleContainerClick}
-                onMouseLeave={() => setConfirmingDelete(false)}
                 draggable={topic.type === 'outer'}
                 onDragStart={(e) => onDragStart(e, topic.id)}
                 onDragOver={handleDragOver}

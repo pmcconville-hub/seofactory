@@ -11,6 +11,7 @@ import TopicalMapGraphView from './TopicalMapGraphView';
 // FIX: Corrected import path for aiService to be relative.
 import * as aiService from '../services/aiService';
 import { useAppState } from '../state/appState';
+import { getSupabaseClient } from '../services/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
 import { slugify } from '../utils/helpers';
 import MergeConfirmationModal from './ui/MergeConfirmationModal';
@@ -94,6 +95,36 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
   };
   const handleCollapseAll = () => setCollapsedCoreIds(new Set(coreTopics.map(c => c.id)));
   const handleExpandAll = () => setCollapsedCoreIds(new Set());
+
+  // Delete topic from database and local state
+  const handleDeleteTopic = useCallback(async (topicId: string) => {
+    if (!activeMapId) return;
+
+    if (!window.confirm("Are you sure you want to delete this topic? This action cannot be undone.")) {
+      return;
+    }
+
+    dispatch({ type: 'SET_LOADING', payload: { key: 'deleteTopic', value: true } });
+    try {
+      const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+
+      // First delete any content briefs associated with this topic
+      await supabase.from('content_briefs').delete().eq('topic_id', topicId);
+
+      // Then delete the topic itself
+      const { error } = await supabase.from('topics').delete().eq('id', topicId);
+      if (error) throw error;
+
+      // Update local state
+      dispatch({ type: 'DELETE_TOPIC', payload: { mapId: activeMapId, topicId } });
+      dispatch({ type: 'SET_NOTIFICATION', payload: "Topic deleted successfully." });
+    } catch (e) {
+      console.error('Delete topic error:', e);
+      dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : "Failed to delete topic." });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: { key: 'deleteTopic', value: false } });
+    }
+  }, [activeMapId, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey, dispatch]);
 
   // Repair Section Labels - classifies topics into Core Section (monetization) vs Author Section (informational)
   // Also verifies and fixes topic type (core vs outer) misclassifications
@@ -371,7 +402,7 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
                                         hasBrief={!!briefs[core.id]}
                                         onHighlight={() => onSelectTopicForBrief(core)}
                                         onGenerateBrief={() => onSelectTopicForBrief(core)}
-                                        onDelete={() => activeMapId && dispatch({ type: 'DELETE_TOPIC', payload: {mapId: activeMapId, topicId: core.id} })}
+                                        onDelete={() => handleDeleteTopic(core.id)}
                                         onUpdateTopic={onUpdateTopic}
                                         isChecked={selectedTopicIds.includes(core.id)}
                                         onToggleSelection={handleToggleSelection}
@@ -397,7 +428,7 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
                                             hasBrief={!!briefs[outer.id]}
                                             onHighlight={() => onSelectTopicForBrief(outer)}
                                             onGenerateBrief={() => onSelectTopicForBrief(outer)}
-                                            onDelete={() => activeMapId && dispatch({ type: 'DELETE_TOPIC', payload: {mapId: activeMapId, topicId: outer.id} })}
+                                            onDelete={() => handleDeleteTopic(outer.id)}
                                             onUpdateTopic={onUpdateTopic}
                                             isChecked={selectedTopicIds.includes(outer.id)}
                                             onToggleSelection={handleToggleSelection}
@@ -424,7 +455,7 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
                 briefs={briefs}
                 onSelectTopic={onSelectTopicForBrief}
                 onExpandCoreTopic={onExpandCoreTopic}
-                onDeleteTopic={(topicId) => activeMapId && dispatch({ type: 'DELETE_TOPIC', payload: {mapId: activeMapId, topicId} })}
+                onDeleteTopic={(topicId) => handleDeleteTopic(topicId)}
                 expandingCoreTopicId={expandingCoreTopicId}
                 allCoreTopics={coreTopics}
                 onReparent={handleReparent}

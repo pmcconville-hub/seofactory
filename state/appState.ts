@@ -36,7 +36,10 @@ import {
     LinkingAuditResult,
     LinkingAutoFix,
     LinkingFixHistoryEntry,
+    UnifiedAuditResult,
+    AuditFixHistoryEntry,
 } from '../types';
+import { AuditProgress } from '../services/ai/unifiedAudit';
 import { KnowledgeGraph } from '../lib/knowledgeGraph';
 import { defaultBusinessInfo } from '../config/defaults';
 
@@ -109,6 +112,15 @@ export interface AppState {
         isRunning: boolean;
         pendingFixes: LinkingAutoFix[];
         fixHistory: LinkingFixHistoryEntry[];
+        lastAuditId: string | null;
+    };
+
+    // Unified Audit state (Phase 6)
+    unifiedAudit: {
+        result: UnifiedAuditResult | null;
+        isRunning: boolean;
+        progress: AuditProgress | null;
+        fixHistory: AuditFixHistoryEntry[];
         lastAuditId: string | null;
     };
 }
@@ -190,7 +202,15 @@ export type AppAction =
   | { type: 'ADD_LINKING_FIX_HISTORY'; payload: LinkingFixHistoryEntry }
   | { type: 'CLEAR_LINKING_FIX_HISTORY' }
   | { type: 'SET_LINKING_LAST_AUDIT_ID'; payload: string | null }
-  | { type: 'RESET_LINKING_AUDIT' };
+  | { type: 'RESET_LINKING_AUDIT' }
+  // Unified Audit actions (Phase 6)
+  | { type: 'SET_UNIFIED_AUDIT_RESULT'; payload: UnifiedAuditResult | null }
+  | { type: 'SET_UNIFIED_AUDIT_RUNNING'; payload: boolean }
+  | { type: 'SET_UNIFIED_AUDIT_PROGRESS'; payload: AuditProgress | null }
+  | { type: 'SET_UNIFIED_AUDIT_HISTORY'; payload: AuditFixHistoryEntry[] }
+  | { type: 'ADD_UNIFIED_AUDIT_HISTORY'; payload: AuditFixHistoryEntry }
+  | { type: 'SET_UNIFIED_AUDIT_ID'; payload: string | null }
+  | { type: 'RESET_UNIFIED_AUDIT' };
 
 export const initialState: AppState = {
     user: null,
@@ -243,6 +263,13 @@ export const initialState: AppState = {
         result: null,
         isRunning: false,
         pendingFixes: [],
+        fixHistory: [],
+        lastAuditId: null,
+    },
+    unifiedAudit: {
+        result: null,
+        isRunning: false,
+        progress: null,
         fixHistory: [],
         lastAuditId: null,
     },
@@ -464,6 +491,52 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
                     result: null,
                     isRunning: false,
                     pendingFixes: [],
+                    fixHistory: [],
+                    lastAuditId: null,
+                }
+            };
+
+        // Unified Audit reducers (Phase 6)
+        case 'SET_UNIFIED_AUDIT_RESULT':
+            return {
+                ...state,
+                unifiedAudit: { ...state.unifiedAudit, result: action.payload }
+            };
+        case 'SET_UNIFIED_AUDIT_RUNNING':
+            return {
+                ...state,
+                unifiedAudit: { ...state.unifiedAudit, isRunning: action.payload }
+            };
+        case 'SET_UNIFIED_AUDIT_PROGRESS':
+            return {
+                ...state,
+                unifiedAudit: { ...state.unifiedAudit, progress: action.payload }
+            };
+        case 'SET_UNIFIED_AUDIT_HISTORY':
+            return {
+                ...state,
+                unifiedAudit: { ...state.unifiedAudit, fixHistory: action.payload }
+            };
+        case 'ADD_UNIFIED_AUDIT_HISTORY':
+            return {
+                ...state,
+                unifiedAudit: {
+                    ...state.unifiedAudit,
+                    fixHistory: [action.payload, ...state.unifiedAudit.fixHistory]
+                }
+            };
+        case 'SET_UNIFIED_AUDIT_ID':
+            return {
+                ...state,
+                unifiedAudit: { ...state.unifiedAudit, lastAuditId: action.payload }
+            };
+        case 'RESET_UNIFIED_AUDIT':
+            return {
+                ...state,
+                unifiedAudit: {
+                    result: null,
+                    isRunning: false,
+                    progress: null,
                     fixHistory: [],
                     lastAuditId: null,
                 }

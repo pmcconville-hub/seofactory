@@ -1038,7 +1038,14 @@ export const applyFix = async (
           .eq('map_id', fix.targetId)
           .single();
 
-        if (fetchError) throw new Error(`Failed to fetch navigation: ${fetchError.message}`);
+        // If table doesn't exist, skip this fix
+        if (fetchError) {
+          if (fetchError.message?.includes('406') || fetchError.code === '42P01') {
+            console.warn('Navigation structures table not found, skipping fix');
+            break;
+          }
+          throw new Error(`Failed to fetch navigation: ${fetchError.message}`);
+        }
 
         let updateData: Record<string, any> = {};
 
@@ -1054,7 +1061,13 @@ export const applyFix = async (
           .update(updateData)
           .eq('map_id', fix.targetId);
 
-        if (updateError) throw new Error(`Failed to update navigation: ${updateError.message}`);
+        if (updateError) {
+          if (updateError.message?.includes('406') || updateError.code === '42P01') {
+            console.warn('Navigation structures table not found, skipping update');
+            break;
+          }
+          throw new Error(`Failed to update navigation: ${updateError.message}`);
+        }
         break;
       }
 
@@ -1180,7 +1193,14 @@ export const undoFix = async (
             .eq('map_id', history.target_id)
             .single();
 
-          if (fetchNavError) throw new Error(`Failed to fetch navigation: ${fetchNavError.message}`);
+          // If table doesn't exist, skip
+          if (fetchNavError) {
+            if (fetchNavError.message?.includes('406') || fetchNavError.code === '42P01') {
+              console.warn('Navigation structures table not found, skipping undo');
+              break;
+            }
+            throw new Error(`Failed to fetch navigation: ${fetchNavError.message}`);
+          }
 
           const { error: updateError } = await supabase
             .from('navigation_structures')
@@ -1189,7 +1209,13 @@ export const undoFix = async (
             })
             .eq('map_id', history.target_id);
 
-          if (updateError) throw new Error(`Failed to restore navigation: ${updateError.message}`);
+          if (updateError) {
+            if (updateError.message?.includes('406') || updateError.code === '42P01') {
+              console.warn('Navigation structures table not found, skipping undo');
+              break;
+            }
+            throw new Error(`Failed to restore navigation: ${updateError.message}`);
+          }
         }
         break;
       }

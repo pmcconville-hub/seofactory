@@ -68,11 +68,27 @@ const App: React.FC = () => {
                     if (projectsError) throw projectsError;
                     dispatch({ type: 'SET_PROJECTS', payload: projectsData || [] });
 
-                    // Fetch Settings
+                    // Fetch Settings (global credentials only)
                     const { data: settingsData, error: settingsError } = await supabase.functions.invoke('get-settings');
                     if (settingsError) throw settingsError;
                     if (settingsData) {
-                        dispatch({ type: 'SET_BUSINESS_INFO', payload: { ...state.businessInfo, ...settingsData } });
+                        // Filter to only apply global settings fields, not project-specific data
+                        // This prevents stale project data from user_settings overwriting defaults
+                        const GLOBAL_SETTINGS_FIELDS = [
+                            'aiProvider', 'aiModel',
+                            'geminiApiKey', 'openAiApiKey', 'anthropicApiKey', 'perplexityApiKey', 'openRouterApiKey',
+                            'dataforseoLogin', 'dataforseoPassword', 'apifyToken', 'infranodusApiKey',
+                            'jinaApiKey', 'firecrawlApiKey', 'apitemplateApiKey',
+                            'neo4jUri', 'neo4jUser', 'neo4jPassword',
+                            'language', 'targetMarket', 'expertise'
+                        ];
+                        const filteredSettings: Record<string, any> = {};
+                        for (const key of GLOBAL_SETTINGS_FIELDS) {
+                            if (key in settingsData) {
+                                filteredSettings[key] = settingsData[key];
+                            }
+                        }
+                        dispatch({ type: 'SET_BUSINESS_INFO', payload: { ...state.businessInfo, ...filteredSettings } });
                     }
                 } catch (e) {
                     dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to load initial data.' });
@@ -155,11 +171,24 @@ const App: React.FC = () => {
 
                         // Delete related records for each map individually to avoid .in() issues
                         for (const mapId of mapIds) {
-                            await supabase.from('content_briefs').delete().eq('map_id', mapId);
+                            // Get topic IDs first - content_briefs uses topic_id, not map_id
+                            const { data: topics } = await supabase.from('topics').select('id').eq('map_id', mapId);
+                            const topicIds = (topics || []).map(t => t.id);
+
+                            // Delete content_briefs by topic_id (in chunks to avoid query limits)
+                            for (const topicId of topicIds) {
+                                await supabase.from('content_briefs').delete().eq('topic_id', topicId);
+                            }
+
+                            // Delete topics
                             await supabase.from('topics').delete().eq('map_id', mapId);
-                            await supabase.from('foundation_pages').delete().eq('map_id', mapId);
-                            await supabase.from('navigation_structures').delete().eq('map_id', mapId);
-                            await supabase.from('navigation_sync_status').delete().eq('map_id', mapId);
+
+                            // Delete foundation pages and navigation (may not exist, ignore errors)
+                            await supabase.from('foundation_pages').delete().eq('map_id', mapId).then(() => {}, () => {});
+                            await supabase.from('navigation_structures').delete().eq('map_id', mapId).then(() => {}, () => {});
+                            await supabase.from('navigation_sync_status').delete().eq('map_id', mapId).then(() => {}, () => {});
+
+                            // Delete the map itself
                             await supabase.from('topical_maps').delete().eq('id', mapId);
                         }
 
@@ -180,16 +209,39 @@ const App: React.FC = () => {
         });
     };
 
+    // Fields that should be stored globally in user_settings (credentials only)
+    // Project-specific fields like projectName, domain, valueProp, etc. should be stored in topical_maps.business_info
+    const GLOBAL_SETTINGS_FIELDS = [
+        'aiProvider', 'aiModel',
+        'geminiApiKey', 'openAiApiKey', 'anthropicApiKey', 'perplexityApiKey', 'openRouterApiKey',
+        'dataforseoLogin', 'dataforseoPassword', 'apifyToken', 'infranodusApiKey',
+        'jinaApiKey', 'firecrawlApiKey', 'apitemplateApiKey',
+        'neo4jUri', 'neo4jUser', 'neo4jPassword',
+        'supabaseUrl', 'supabaseAnonKey',
+        'language', 'targetMarket', 'expertise' // These can be global defaults
+    ];
+
     const handleSaveSettings = async (settings: Partial<BusinessInfo>) => {
         dispatch({ type: 'SET_LOADING', payload: { key: 'settings', value: true } });
         try {
             const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+
+            // Filter to only save global credential fields to user_settings
+            // Project-specific fields (projectName, domain, valueProp, etc.) should NOT be in global settings
+            const globalSettings: Partial<BusinessInfo> = {};
+            for (const key of GLOBAL_SETTINGS_FIELDS) {
+                if (key in settings) {
+                    (globalSettings as any)[key] = (settings as any)[key];
+                }
+            }
+
             const { data, error } = await supabase.functions.invoke('update-settings', {
-                body: settings
+                body: globalSettings
             });
             if (error) throw error;
-            // Optimistically update local state with what we sent. The backend confirms it's saved.
-            dispatch({ type: 'SET_BUSINESS_INFO', payload: { ...state.businessInfo, ...settings } });
+
+            // Update local state with what we sent
+            dispatch({ type: 'SET_BUSINESS_INFO', payload: { ...state.businessInfo, ...globalSettings } });
             dispatch({ type: 'SET_NOTIFICATION', payload: 'Settings saved successfully.' });
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'settings', visible: false } });
         } catch(e) {

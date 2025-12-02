@@ -66,6 +66,7 @@ interface ProjectDashboardProps {
   onAuditInternalLinking: () => void;
   onCalculateTopicalAuthority: () => void;
   onGeneratePublicationPlan: () => void;
+  onRunUnifiedAudit: () => void;
   onExpandCoreTopic: (coreTopic: EnrichedTopic, mode: ExpansionMode, userContext?: string, overrideSettings?: { provider: string, model: string }) => void;
   expandingCoreTopicId: string | null;
   onSavePillars: (newPillars: SEOPillars) => void;
@@ -156,6 +157,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     onAuditInternalLinking,
     onCalculateTopicalAuthority,
     onGeneratePublicationPlan,
+    onRunUnifiedAudit,
     onExpandCoreTopic,
     expandingCoreTopicId,
     onSavePillars,
@@ -207,7 +209,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     onSaveNavigation
 }) => {
     const { state, dispatch } = useAppState();
-    const { modals, isLoading, briefGenerationStatus, validationResult } = state;
+    const { modals, isLoading, briefGenerationStatus, validationResult, unifiedAudit } = state;
     const [topicForBrief, setTopicForBrief] = useState<EnrichedTopic | null>(null);
 
     // Ref for scrolling to Website Structure section
@@ -346,6 +348,8 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                 onAuditInternalLinking={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'multiPassLinkingAudit', visible: true }})}
                 onCalculateTopicalAuthority={onCalculateTopicalAuthority}
                 onGeneratePublicationPlan={onGeneratePublicationPlan}
+                onRunUnifiedAudit={onRunUnifiedAudit}
+                auditProgress={unifiedAudit.progress}
             />
 
             <TopicalMapDisplay

@@ -1709,8 +1709,8 @@ export interface AuditFix {
   status: 'pending' | 'applied' | 'undone' | 'failed';
 }
 
-// Audit history entry (for undo support)
-export interface AuditHistoryEntry {
+// Audit fix history entry (for undo support)
+export interface AuditFixHistoryEntry {
   id: string;
   map_id: string;
   audit_run_id: string;

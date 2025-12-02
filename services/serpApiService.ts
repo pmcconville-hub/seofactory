@@ -141,7 +141,7 @@ export const fetchSerpResults = async (query: string, login: string, password: s
             keyword: query,
             location_name: locationName,
             language_code: languageCode,
-            depth: 10,
+            depth: 30, // Fetch more results since we filter out publications and own domain
         }];
 
         const url = 'https://api.dataforseo.com/v3/serp/google/organic/live/advanced';
@@ -196,17 +196,192 @@ export const fetchSerpResults = async (query: string, login: string, password: s
     return cacheService.cacheThrough('serp:dataforseo', { query, locationName, languageCode }, fetchFn, 3600);
 };
 
-// FIX: Added missing 'discoverInitialCompetitors' function.
+// Generic publication/news sites that are NOT competitors
+const EXCLUDED_DOMAINS = [
+    'forbes.com', 'businessinsider.com', 'entrepreneur.com', 'inc.com',
+    'techcrunch.com', 'wired.com', 'theverge.com', 'cnet.com', 'zdnet.com',
+    'medium.com', 'wikipedia.org', 'wikihow.com', 'quora.com', 'reddit.com',
+    'youtube.com', 'facebook.com', 'twitter.com', 'linkedin.com', 'instagram.com',
+    'amazon.com', 'ebay.com', 'aliexpress.com', 'alibaba.com',
+    'capterra.com', 'g2.com', 'softwareadvice.com', 'getapp.com', 'trustpilot.com',
+    'gartner.com', 'forrester.com', 'nytimes.com', 'wsj.com', 'bbc.com', 'cnn.com',
+    'hubspot.com', 'salesforce.com', 'blog.hubspot.com', 'zapier.com',
+    'pcmag.com', 'tomsguide.com', 'techradar.com', 'makeuseof.com',
+    'gov.uk', 'gov.nl', 'overheid.nl', 'rijksoverheid.nl', // Government sites
+];
+
+// Map of language codes to country TLDs for prioritization
+const LANGUAGE_TO_TLDS: Record<string, string[]> = {
+    'nl': ['.nl', '.be'],
+    'de': ['.de', '.at', '.ch'],
+    'fr': ['.fr', '.be', '.ch', '.ca'],
+    'es': ['.es', '.mx', '.ar', '.co'],
+    'it': ['.it'],
+    'pt': ['.pt', '.br'],
+    'en': ['.com', '.co.uk', '.io', '.us'],
+};
+
+// Map of language codes to locale keywords for query enhancement
+const LANGUAGE_TO_LOCALE_KEYWORDS: Record<string, string> = {
+    'nl': 'Nederland',
+    'de': 'Deutschland',
+    'fr': 'France',
+    'es': 'España',
+    'it': 'Italia',
+    'pt': 'Portugal',
+    'en': '', // English is default, no locale needed
+};
+
+/**
+ * Extract domain from URL for comparison
+ */
+const extractDomain = (url: string): string => {
+    try {
+        const hostname = new URL(url).hostname;
+        // Remove www. prefix
+        return hostname.replace(/^www\./, '').toLowerCase();
+    } catch {
+        return url.toLowerCase();
+    }
+};
+
+/**
+ * Check if a URL belongs to an excluded domain
+ */
+const isExcludedDomain = (url: string): boolean => {
+    const domain = extractDomain(url);
+    return EXCLUDED_DOMAINS.some(excluded =>
+        domain === excluded || domain.endsWith('.' + excluded)
+    );
+};
+
+/**
+ * Check if a URL belongs to the company's own domain
+ */
+const isOwnDomain = (url: string, companyDomain: string): boolean => {
+    if (!companyDomain) return false;
+    const urlDomain = extractDomain(url);
+    const ownDomain = extractDomain(companyDomain.startsWith('http') ? companyDomain : `https://${companyDomain}`);
+    return urlDomain === ownDomain || urlDomain.endsWith('.' + ownDomain);
+};
+
+/**
+ * Score a result based on locale relevance
+ * Higher score = more relevant to the target market
+ */
+const scoreLocaleRelevance = (url: string, languageCode: string): number => {
+    const domain = extractDomain(url);
+    const preferredTlds = LANGUAGE_TO_TLDS[languageCode] || LANGUAGE_TO_TLDS['en'];
+
+    // Check if domain ends with a preferred TLD
+    for (let i = 0; i < preferredTlds.length; i++) {
+        if (domain.endsWith(preferredTlds[i])) {
+            return 10 - i; // Higher score for first preference
+        }
+    }
+    return 0;
+};
+
+/**
+ * Build an enhanced search query with locale context
+ */
+const buildLocalizedQuery = (baseQuery: string, languageCode: string, targetMarket: string): string => {
+    // If query already contains locale keywords, don't add more
+    const localeKeyword = LANGUAGE_TO_LOCALE_KEYWORDS[languageCode] || '';
+
+    if (localeKeyword &&
+        !baseQuery.toLowerCase().includes(localeKeyword.toLowerCase()) &&
+        !baseQuery.toLowerCase().includes(targetMarket.toLowerCase())) {
+        return `${baseQuery} ${localeKeyword}`;
+    }
+
+    return baseQuery;
+};
+
+/**
+ * Discover competitors with improved filtering and locale awareness
+ */
 export const discoverInitialCompetitors = async (
     query: string,
     info: BusinessInfo,
     dispatch: React.Dispatch<any>
 ): Promise<SerpResult[]> => {
-    dispatch({ type: 'LOG_EVENT', payload: { service: 'SERP', message: `Discovering competitors for query: ${query}`, status: 'info', timestamp: Date.now() }});
-    // This example prioritizes DataForSEO. Add other providers as fallbacks if needed.
-    if (info.dataforseoLogin && info.dataforseoPassword) {
-        return fetchSerpResults(query, info.dataforseoLogin, info.dataforseoPassword, info.targetMarket, info.language);
+    // Build a locale-aware query
+    const localizedQuery = buildLocalizedQuery(query, info.language, info.targetMarket);
+
+    dispatch({ type: 'LOG_EVENT', payload: {
+        service: 'SERP',
+        message: `Discovering competitors for query: "${localizedQuery}" (original: "${query}", locale: ${info.language}/${info.targetMarket})`,
+        status: 'info',
+        timestamp: Date.now()
+    }});
+
+    if (!info.dataforseoLogin || !info.dataforseoPassword) {
+        dispatch({ type: 'LOG_EVENT', payload: {
+            service: 'SERP',
+            message: `DataForSEO credentials not provided. Cannot discover competitors.`,
+            status: 'skipped',
+            timestamp: Date.now()
+        }});
+        return [];
     }
-    dispatch({ type: 'LOG_EVENT', payload: { service: 'SERP', message: `DataForSEO credentials not provided. Cannot discover competitors.`, status: 'skipped', timestamp: Date.now() }});
-    return [];
+
+    // Fetch raw SERP results
+    const rawResults = await fetchSerpResults(
+        localizedQuery,
+        info.dataforseoLogin,
+        info.dataforseoPassword,
+        info.targetMarket,
+        info.language
+    );
+
+    // Filter and score results
+    const filteredResults = rawResults
+        .filter(result => {
+            // Exclude publication/generic sites
+            if (isExcludedDomain(result.link)) {
+                dispatch({ type: 'LOG_EVENT', payload: {
+                    service: 'SERP',
+                    message: `Filtered out publication site: ${extractDomain(result.link)}`,
+                    status: 'info',
+                    timestamp: Date.now()
+                }});
+                return false;
+            }
+
+            // Exclude own domain
+            if (isOwnDomain(result.link, info.domain)) {
+                dispatch({ type: 'LOG_EVENT', payload: {
+                    service: 'SERP',
+                    message: `Filtered out own domain: ${extractDomain(result.link)}`,
+                    status: 'info',
+                    timestamp: Date.now()
+                }});
+                return false;
+            }
+
+            return true;
+        })
+        .map(result => ({
+            ...result,
+            localeScore: scoreLocaleRelevance(result.link, info.language)
+        }))
+        // Sort by locale relevance first, then by original position
+        .sort((a, b) => {
+            if (b.localeScore !== a.localeScore) {
+                return b.localeScore - a.localeScore;
+            }
+            return a.position - b.position;
+        })
+        // Remove the localeScore property before returning
+        .map(({ localeScore, ...result }) => result);
+
+    dispatch({ type: 'LOG_EVENT', payload: {
+        service: 'SERP',
+        message: `Found ${filteredResults.length} relevant competitors (filtered from ${rawResults.length} raw results)`,
+        status: 'success',
+        timestamp: Date.now()
+    }});
+
+    return filteredResults;
 };

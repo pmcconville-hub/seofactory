@@ -26,6 +26,9 @@ import { Button } from './ui/Button';
 import DebugStatePanel from './ui/DebugStatePanel';
 import BriefReviewModal from './BriefReviewModal';
 import FlowAuditModal from './FlowAuditModal';
+import AuditDashboard from './AuditDashboard';
+import { runUnifiedAudit, UnifiedAuditContext, AuditProgress } from '../services/ai/unifiedAudit';
+import { applyFix, generateFix, generateBatchFixes, FixContext } from '../services/ai/auditFixes';
 
 interface ProjectDashboardContainerProps {
   onInitiateDeleteMap: (map: TopicalMap) => void;
@@ -869,6 +872,80 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
              dispatch({ type: 'SET_LOADING', payload: { key: 'plan', value: false } });
         }
     }, [activeMap, allTopics, effectiveBusinessInfo, dispatch, saveAnalysisState]);
+
+    // Unified Audit handler (Phase 6)
+    const onRunUnifiedAudit = useCallback(async () => {
+        if (!activeMap || !activeMapId) return;
+        dispatch({ type: 'SET_UNIFIED_AUDIT_RUNNING', payload: true });
+        dispatch({ type: 'SET_LOADING', payload: { key: 'unifiedAudit', value: true } });
+        dispatch({ type: 'SET_UNIFIED_AUDIT_PROGRESS', payload: null });
+
+        try {
+            const context: UnifiedAuditContext = {
+                mapId: activeMapId,
+                topics: allTopics,
+                briefs: briefs,
+                foundationPages: state.websiteStructure.foundationPages || [],
+                navigation: state.websiteStructure.navigation || null,
+                eavs: (activeMap.eavs as SemanticTriple[]) || [],
+                pillars: activeMap.pillars ? [{ id: activeMap.pillars.centralEntity, name: activeMap.pillars.centralEntity }] : [],
+            };
+
+            const result = await runUnifiedAudit(
+                context,
+                state.user?.id,
+                (progress) => {
+                    dispatch({ type: 'SET_UNIFIED_AUDIT_PROGRESS', payload: progress });
+                }
+            );
+            dispatch({ type: 'SET_UNIFIED_AUDIT_RESULT', payload: result });
+            dispatch({ type: 'SET_UNIFIED_AUDIT_ID', payload: result.id });
+            dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'unifiedAudit', visible: true } });
+            saveAnalysisState('unifiedAuditResult', result);
+        } catch (e) {
+            dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Unified audit failed.' });
+        } finally {
+            dispatch({ type: 'SET_UNIFIED_AUDIT_RUNNING', payload: false });
+            dispatch({ type: 'SET_UNIFIED_AUDIT_PROGRESS', payload: null });
+            dispatch({ type: 'SET_LOADING', payload: { key: 'unifiedAudit', value: false } });
+        }
+    }, [activeMap, activeMapId, allTopics, briefs, state.websiteStructure, state.user, dispatch, saveAnalysisState]);
+
+    // Handle applying a single fix from unified audit
+    const handleApplyUnifiedFix = useCallback(async (issue: any, existingFix?: any) => {
+        if (!activeMapId || !state.user) return;
+        const fix = existingFix || generateFix(issue);
+        if (!fix) {
+            dispatch({ type: 'SET_NOTIFICATION', payload: `Acknowledged: ${issue.suggestedFix || issue.message}` });
+            return;
+        }
+
+        const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+        const context: FixContext = {
+            supabase,
+            mapId: activeMapId,
+            userId: state.user.id,
+            auditRunId: state.unifiedAudit.lastAuditId || '',
+        };
+
+        const result = await applyFix(issue, fix, context);
+        if (result.success) {
+            dispatch({ type: 'SET_NOTIFICATION', payload: result.message });
+            if (result.historyEntry) {
+                dispatch({ type: 'ADD_UNIFIED_AUDIT_HISTORY', payload: result.historyEntry });
+            }
+        } else {
+            dispatch({ type: 'SET_ERROR', payload: result.error || result.message });
+        }
+    }, [activeMapId, state.user, state.unifiedAudit.lastAuditId, businessInfo, dispatch]);
+
+    // Handle applying all fixes from unified audit
+    const handleApplyAllUnifiedFixes = useCallback(async (issues: any[], _fixes: any[]) => {
+        for (const issue of issues) {
+            await handleApplyUnifiedFix(issue);
+        }
+        dispatch({ type: 'SET_NOTIFICATION', payload: `Applied fixes for ${issues.length} issues` });
+    }, [handleApplyUnifiedFix, dispatch]);
 
     const onImproveMap = useCallback(async (issues: ValidationIssue[], options?: { includeTypeReclassifications?: boolean }) => {
         if (!activeMapId || !activeMap?.pillars) return;
@@ -1973,6 +2050,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 onAuditInternalLinking={onAuditInternalLinking}
                 onCalculateTopicalAuthority={onCalculateTopicalAuthority}
                 onGeneratePublicationPlan={onGeneratePublicationPlan}
+                onRunUnifiedAudit={onRunUnifiedAudit}
                 onExpandCoreTopic={handleOpenExpansionModal}
                 expandingCoreTopicId={Object.entries(isLoading).find(([k, v]) => k.startsWith('expand_') && v === true)?.[0].split('_')[1] || null}
                 onSavePillars={onSavePillars}
@@ -2040,6 +2118,19 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 result={state.flowAuditResult}
                 onAutoFix={handleFlowAutoFix}
                 onBatchAutoFix={handleBatchFlowAutoFix}
+            />
+
+            {/* Unified Audit Dashboard (Phase 6) */}
+            <AuditDashboard
+                isOpen={!!modals.unifiedAudit}
+                onClose={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'unifiedAudit', visible: false }})}
+                result={state.unifiedAudit.result}
+                isLoading={state.unifiedAudit.isRunning}
+                onRunAudit={onRunUnifiedAudit}
+                onApplyFix={handleApplyUnifiedFix}
+                onApplyAllFixes={handleApplyAllUnifiedFixes}
+                isApplyingFix={!!isLoading.applyingFix}
+                historyEntries={state.unifiedAudit.fixHistory}
             />
         </>
     );

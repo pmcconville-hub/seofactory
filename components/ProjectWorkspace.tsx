@@ -349,14 +349,25 @@ const ProjectWorkspace: React.FC = () => {
                     try {
                         const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
 
-                        // Delete in order: briefs, topics, foundation_pages, navigation, then map
-                        // These should cascade due to ON DELETE CASCADE, but we'll be explicit
-                        await supabase.from('content_briefs').delete().eq('map_id', map.id);
-                        await supabase.from('topics').delete().eq('map_id', map.id);
-                        await supabase.from('foundation_pages').delete().eq('map_id', map.id);
-                        await supabase.from('navigation_structures').delete().eq('map_id', map.id);
-                        await supabase.from('navigation_sync_status').delete().eq('map_id', map.id);
+                        // Delete in order: briefs (by topic_id), topics, foundation_pages, navigation, then map
+                        // Get topic IDs first - content_briefs uses topic_id, not map_id
+                        const { data: topics } = await supabase.from('topics').select('id').eq('map_id', map.id);
+                        const topicIds = (topics || []).map(t => t.id);
 
+                        // Delete content_briefs by topic_id
+                        for (const topicId of topicIds) {
+                            await supabase.from('content_briefs').delete().eq('topic_id', topicId);
+                        }
+
+                        // Delete topics
+                        await supabase.from('topics').delete().eq('map_id', map.id);
+
+                        // Delete foundation pages and navigation (may not exist, ignore errors)
+                        await supabase.from('foundation_pages').delete().eq('map_id', map.id).then(() => {}, () => {});
+                        await supabase.from('navigation_structures').delete().eq('map_id', map.id).then(() => {}, () => {});
+                        await supabase.from('navigation_sync_status').delete().eq('map_id', map.id).then(() => {}, () => {});
+
+                        // Delete the map itself
                         const { error } = await supabase.from('topical_maps').delete().eq('id', map.id);
                         if (error) throw error;
 

@@ -497,32 +497,115 @@ export const saveNavigationStructure = async (
     .single();
 
   if (error) {
+    // If table doesn't exist, just warn and return the navigation as-is
+    if (error.message?.includes('406') || error.code === '42P01') {
+      console.warn('Navigation structures table not found, skipping save');
+      return navigation;
+    }
     throw new Error(`Failed to save navigation structure: ${error.message}`);
   }
 
   return transformToNavigationStructure(data as Record<string, unknown>);
 };
 
+// Cache key for tracking if navigation_structures table exists
+const NAV_TABLE_EXISTS_KEY = 'nav_structures_table_exists';
+const NAV_TABLE_CHECK_EXPIRY = 1000 * 60 * 60; // 1 hour
+
+/**
+ * Check if we should skip the navigation structures query
+ * (because we know the table doesn't exist)
+ */
+const shouldSkipNavigationQuery = (): boolean => {
+  try {
+    const cached = localStorage.getItem(NAV_TABLE_EXISTS_KEY);
+    if (!cached) return false;
+
+    const { exists, timestamp } = JSON.parse(cached);
+    // If cache is expired, allow the query
+    if (Date.now() - timestamp > NAV_TABLE_CHECK_EXPIRY) {
+      return false;
+    }
+    // Skip query if we know table doesn't exist
+    return exists === false;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Mark whether the navigation_structures table exists
+ */
+const markNavigationTableExists = (exists: boolean): void => {
+  try {
+    localStorage.setItem(NAV_TABLE_EXISTS_KEY, JSON.stringify({
+      exists,
+      timestamp: Date.now()
+    }));
+  } catch {
+    // Ignore localStorage errors
+  }
+};
+
 /**
  * Load navigation structure from database
+ * Note: Uses maybeSingle() to avoid errors when no rows exist
+ * Silently returns null if table doesn't exist (406 error)
+ * Caches table existence to prevent repeated 406 errors
  */
 export const loadNavigationStructure = async (
   mapId: string
 ): Promise<NavigationStructure | null> => {
-  const supabase = useSupabase();
-
-  const { data, error } = await supabase
-    .from('navigation_structures')
-    .select('*')
-    .eq('map_id', mapId)
-    .single();
-
-  if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-    throw new Error(`Failed to load navigation structure: ${error.message}`);
+  // Skip the query entirely if we know the table doesn't exist
+  if (shouldSkipNavigationQuery()) {
+    return null;
   }
 
-  if (!data) return null;
-  return transformToNavigationStructure(data as Record<string, unknown>);
+  const supabase = useSupabase();
+
+  try {
+    const { data, error } = await supabase
+      .from('navigation_structures')
+      .select('*')
+      .eq('map_id', mapId)
+      .maybeSingle();  // Use maybeSingle to avoid error when no rows exist
+
+    // Handle table not existing (406) or other errors
+    if (error) {
+      // 406 = table doesn't exist, PGRST116 = no rows, 42P01 = undefined table
+      const isTableMissing =
+        (error as any).status === 406 ||
+        error.code === '42P01' ||
+        error.message?.includes('406') ||
+        error.message?.includes('relation') ||
+        error.message?.includes('does not exist');
+
+      if (isTableMissing) {
+        // Cache that the table doesn't exist to prevent future 406 errors
+        markNavigationTableExists(false);
+        return null;
+      }
+
+      // For "no rows" error, table exists but is empty
+      if (error.code === 'PGRST116') {
+        markNavigationTableExists(true);
+        return null;
+      }
+
+      console.warn(`Navigation structure query error: ${error.message}`);
+      return null;
+    }
+
+    // Table exists and we got data
+    markNavigationTableExists(true);
+
+    if (!data) return null;
+    return transformToNavigationStructure(data as Record<string, unknown>);
+  } catch (e) {
+    // Catch any network errors (including 406) and silently return null
+    markNavigationTableExists(false);
+    return null;
+  }
 };
 
 // ============================================
