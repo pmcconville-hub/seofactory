@@ -1,6 +1,38 @@
 // services/ai/contentGeneration/passes/auditChecks.ts
 import { ContentBrief, BusinessInfo, AuditRuleResult } from '../../../../types';
 
+// Extended LLM signature phrases list (from macro context research)
+const LLM_SIGNATURE_PHRASES = [
+  'overall',
+  'in conclusion',
+  "it's important to note",
+  'it is important to note',
+  'it is worth mentioning',
+  'it is worth noting',
+  'delve',
+  'delving',
+  'delved',
+  'i had the pleasure of',
+  'embark on a journey',
+  'explore the world of',
+  "in today's fast-paced world",
+  'when it comes to',
+  'at the end of the day',
+  'needless to say',
+  'it goes without saying',
+  'without further ado',
+  'dive into',
+  'diving into',
+  'unpack this',
+  'unpacking',
+  'game-changer',
+  'a testament to',
+  'the importance of',
+  'crucial to understand',
+  'pivotal',
+  'paramount'
+];
+
 export function runAlgorithmicAudit(
   draft: string,
   brief: ContentBrief,
@@ -37,6 +69,9 @@ export function runAlgorithmicAudit(
 
   // 10. Information Density
   results.push(checkInformationDensity(draft, info.seedKeyword));
+
+  // 11. LLM Signature Phrases
+  results.push(checkLLMSignaturePhrases(draft));
 
   return results;
 }
@@ -256,4 +291,26 @@ function checkInformationDensity(text: string, centralEntity: string): AuditRule
     };
   }
   return { ruleName: 'Information Density', isPassing: true, details: 'Good information density.' };
+}
+
+function checkLLMSignaturePhrases(text: string): AuditRuleResult {
+  const textLower = text.toLowerCase();
+  const found = LLM_SIGNATURE_PHRASES.filter(phrase =>
+    textLower.includes(phrase.toLowerCase())
+  );
+
+  if (found.length > 0) {
+    return {
+      ruleName: 'LLM Phrase Detection',
+      isPassing: false,
+      details: `Found ${found.length} LLM signature phrase(s): ${found.slice(0, 5).join(', ')}${found.length > 5 ? '...' : ''}`,
+      affectedTextSnippet: found.slice(0, 3).join(', '),
+      remediation: 'Remove or rewrite sentences containing these AI-generated patterns. Use more natural, specific language.'
+    };
+  }
+  return {
+    ruleName: 'LLM Phrase Detection',
+    isPassing: true,
+    details: 'No LLM signature phrases detected.'
+  };
 }

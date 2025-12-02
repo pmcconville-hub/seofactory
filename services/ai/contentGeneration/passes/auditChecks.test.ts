@@ -48,3 +48,36 @@ describe('runAlgorithmicAudit', () => {
     });
   });
 });
+
+describe('checkLLMSignaturePhrases', () => {
+  it('fails when draft contains LLM signature phrases', () => {
+    const draft = `## Introduction
+
+Overall, test keyword is important. It's important to note that this concept delves into many areas.
+In conclusion, we have explored the world of test keywords.`;
+    const brief = createMockBrief();
+    const info = createMockBusinessInfo();
+
+    const results = runAlgorithmicAudit(draft, brief, info);
+    const llmCheck = results.find(r => r.ruleName === 'LLM Phrase Detection');
+
+    expect(llmCheck).toBeDefined();
+    expect(llmCheck?.isPassing).toBe(false);
+    expect(llmCheck?.details).toContain('overall');
+  });
+
+  it('passes when draft has no LLM signature phrases', () => {
+    const draft = `## Introduction
+
+Test keyword represents a specific methodology. This approach provides measurable benefits.
+The framework enables efficient implementation.`;
+    const brief = createMockBrief();
+    const info = createMockBusinessInfo();
+
+    const results = runAlgorithmicAudit(draft, brief, info);
+    const llmCheck = results.find(r => r.ruleName === 'LLM Phrase Detection');
+
+    expect(llmCheck).toBeDefined();
+    expect(llmCheck?.isPassing).toBe(true);
+  });
+});
