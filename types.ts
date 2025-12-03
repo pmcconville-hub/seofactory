@@ -6,6 +6,9 @@ import { Json } from './database.types';
 // FIX: Export KnowledgeGraph to be available for other modules.
 export { KnowledgeGraph } from './lib/knowledgeGraph';
 
+// Content Generation V2 Types - Priority-based generation with user control
+export * from './types/contentGeneration';
+
 export enum AppStep {
   AUTH,
   PROJECT_SELECTION,
