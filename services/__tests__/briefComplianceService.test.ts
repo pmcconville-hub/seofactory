@@ -110,4 +110,59 @@ describe('BriefComplianceService', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('checkBriefCompliance', () => {
+    it('identifies missing structured_outline as critical', async () => {
+      const result = await service.checkBriefCompliance(
+        { title: 'Test', outline: '## Section 1\n## Section 2' } as any,
+        { seedKeyword: 'test' } as any,
+        []
+      );
+      expect(result.hasStructuredOutline).toBe(false);
+      expect(result.missingFields.some(f => f.field === 'structured_outline' && f.importance === 'critical')).toBe(true);
+    });
+
+    it('identifies missing subordinate text hints as high importance', async () => {
+      const result = await service.checkBriefCompliance(
+        {
+          title: 'Test',
+          structured_outline: [
+            { heading: 'Section 1' },
+            { heading: 'Section 2', subordinate_text_hint: 'hint' }
+          ]
+        } as any,
+        { seedKeyword: 'test' } as any,
+        []
+      );
+      expect(result.hasSubordinateTextHints).toBe(false);
+      expect(result.missingFields.some(f => f.field === 'subordinate_text_hints')).toBe(true);
+    });
+
+    it('calculates compliance score based on missing fields', async () => {
+      const result = await service.checkBriefCompliance(
+        {
+          title: 'Test',
+          structured_outline: [{ heading: 'Section', subordinate_text_hint: 'hint' }],
+          serpAnalysis: { peopleAlsoAsk: ['question'] },
+          contextualBridge: [{ targetTopic: 'link', anchorText: 'anchor' }]
+        } as any,
+        { seedKeyword: 'test', audience: 'developers' } as any,
+        []
+      );
+      expect(result.score).toBeGreaterThan(50);
+    });
+
+    it('generates auto-suggestions for missing fields', async () => {
+      const result = await service.checkBriefCompliance(
+        {
+          title: 'What is Docker?',
+          outline: '## What is Docker\n## Benefits'
+        } as any,
+        { seedKeyword: 'docker' } as any,
+        []
+      );
+      expect(result.suggestions.length).toBeGreaterThan(0);
+      expect(result.suggestions.some(s => s.field === 'featured_snippet_target')).toBe(true);
+    });
+  });
 });
