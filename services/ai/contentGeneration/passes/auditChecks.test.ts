@@ -201,3 +201,49 @@ ${'Conclusion wrapping up the main points effectively. '.repeat(8)}`;
     expect(coverageCheck?.isPassing).toBe(true);
   });
 });
+
+describe('checkVocabularyRichness', () => {
+  it('fails when vocabulary diversity is too low', () => {
+    // Highly repetitive text with same words (many repetitions of "thing")
+    const draft = `## Introduction
+
+The thing is important thing. The thing is good thing. The thing is useful thing.
+The thing helps thing. The thing makes thing better thing.
+The thing is the best thing for doing thing with thing.
+The thing thing thing thing thing thing thing thing thing thing thing thing.
+The thing thing thing thing thing thing thing thing thing.
+The thing is the thing. The thing with thing for thing.
+The thing about thing means thing. The thing and thing with thing.
+The thing uses thing to make thing. The thing helps thing become thing.
+The thing provides thing through thing. The thing enables thing via thing.
+The thing supports thing using thing. The thing creates thing from thing.`;
+    const brief = createMockBrief();
+    const info = createMockBusinessInfo();
+
+    const results = runAlgorithmicAudit(draft, brief, info);
+    const vocabCheck = results.find(r => r.ruleName === 'Vocabulary Richness');
+
+    expect(vocabCheck).toBeDefined();
+    expect(vocabCheck?.isPassing).toBe(false);
+    expect(vocabCheck?.details).toContain('TTR');
+  });
+
+  it('passes when vocabulary is diverse', () => {
+    const draft = `## Introduction
+
+Test keyword represents a sophisticated methodology for achieving optimal results.
+This approach combines multiple strategies, techniques, and frameworks.
+Implementation requires careful planning, execution, and monitoring.
+The benefits include improved efficiency, reduced costs, and enhanced quality.
+Organizations leverage these principles to transform their operations.
+Success depends on commitment, resources, and continuous improvement.`;
+    const brief = createMockBrief();
+    const info = createMockBusinessInfo();
+
+    const results = runAlgorithmicAudit(draft, brief, info);
+    const vocabCheck = results.find(r => r.ruleName === 'Vocabulary Richness');
+
+    expect(vocabCheck).toBeDefined();
+    expect(vocabCheck?.isPassing).toBe(true);
+  });
+});

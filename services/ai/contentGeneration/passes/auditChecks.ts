@@ -96,6 +96,9 @@ export function runAlgorithmicAudit(
   // 13. Content Coverage Weight
   results.push(checkCoverageWeight(draft));
 
+  // 14. Vocabulary Richness
+  results.push(checkVocabularyRichness(draft));
+
   return results;
 }
 
@@ -335,6 +338,50 @@ function checkLLMSignaturePhrases(text: string): AuditRuleResult {
     ruleName: 'LLM Phrase Detection',
     isPassing: true,
     details: 'No LLM signature phrases detected.'
+  };
+}
+
+function calculateTTR(text: string): number {
+  // Extract words (lowercase, only letters)
+  const words = text.toLowerCase().match(/\b[a-z]+\b/g) || [];
+
+  if (words.length < 50) {
+    return 1; // Too short to measure, assume good
+  }
+
+  const uniqueWords = new Set(words);
+
+  // Type-Token Ratio
+  return uniqueWords.size / words.length;
+}
+
+function checkVocabularyRichness(text: string): AuditRuleResult {
+  const ttr = calculateTTR(text);
+  const threshold = 0.35; // 35% unique words minimum
+
+  // For short content, be more lenient
+  const words = text.toLowerCase().match(/\b[a-z]+\b/g) || [];
+  if (words.length < 100) {
+    return {
+      ruleName: 'Vocabulary Richness',
+      isPassing: true,
+      details: 'Content too short to evaluate vocabulary richness.'
+    };
+  }
+
+  if (ttr < threshold) {
+    return {
+      ruleName: 'Vocabulary Richness',
+      isPassing: false,
+      details: `TTR score: ${(ttr * 100).toFixed(1)}% (minimum: ${threshold * 100}%). Content lacks vocabulary diversity.`,
+      remediation: 'Use more synonyms and varied phrasing. Avoid repeating the same words.'
+    };
+  }
+
+  return {
+    ruleName: 'Vocabulary Richness',
+    isPassing: true,
+    details: `TTR score: ${(ttr * 100).toFixed(1)}%. Good vocabulary diversity.`
   };
 }
 
