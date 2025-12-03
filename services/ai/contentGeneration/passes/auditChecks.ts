@@ -33,6 +33,23 @@ const LLM_SIGNATURE_PHRASES = [
   'paramount'
 ];
 
+// Predicate classification for consistency checking
+const POSITIVE_PREDICATES = [
+  'benefits', 'advantages', 'improvements', 'gains', 'pros',
+  'opportunities', 'strengths', 'positives', 'success', 'wins'
+];
+
+const NEGATIVE_PREDICATES = [
+  'risks', 'dangers', 'problems', 'issues', 'cons', 'drawbacks',
+  'challenges', 'threats', 'weaknesses', 'failures', 'losses',
+  'mistakes', 'errors', 'pitfalls', 'downsides'
+];
+
+const INSTRUCTIONAL_PREDICATES = [
+  'how to', 'guide', 'steps', 'tutorial', 'ways to', 'tips',
+  'process', 'method', 'approach', 'strategy', 'techniques'
+];
+
 export function runAlgorithmicAudit(
   draft: string,
   brief: ContentBrief,
@@ -72,6 +89,9 @@ export function runAlgorithmicAudit(
 
   // 11. LLM Signature Phrases
   results.push(checkLLMSignaturePhrases(draft));
+
+  // 12. Predicate Consistency
+  results.push(checkPredicateConsistency(draft, brief.title));
 
   return results;
 }
@@ -312,5 +332,79 @@ function checkLLMSignaturePhrases(text: string): AuditRuleResult {
     ruleName: 'LLM Phrase Detection',
     isPassing: true,
     details: 'No LLM signature phrases detected.'
+  };
+}
+
+function classifyPredicate(text: string): 'positive' | 'negative' | 'instructional' | 'neutral' {
+  const lower = text.toLowerCase();
+
+  if (INSTRUCTIONAL_PREDICATES.some(p => lower.includes(p))) {
+    return 'instructional';
+  }
+  if (NEGATIVE_PREDICATES.some(p => lower.includes(p))) {
+    return 'negative';
+  }
+  if (POSITIVE_PREDICATES.some(p => lower.includes(p))) {
+    return 'positive';
+  }
+  return 'neutral';
+}
+
+function checkPredicateConsistency(text: string, title: string): AuditRuleResult {
+  // Extract all H2 headings
+  const h2Headings = text.match(/^## .+$/gm) || [];
+
+  // Classify title/H1 predicate
+  const titleClass = classifyPredicate(title);
+
+  // If title is neutral, any predicate mix is acceptable
+  if (titleClass === 'neutral') {
+    return {
+      ruleName: 'Predicate Consistency',
+      isPassing: true,
+      details: 'Title has neutral predicate; H2 predicates can vary.'
+    };
+  }
+
+  // Check H2s for conflicting predicates
+  const violations: string[] = [];
+
+  h2Headings.forEach(h2 => {
+    const h2Class = classifyPredicate(h2);
+
+    // Instructional titles allow instructional or neutral H2s
+    if (titleClass === 'instructional') {
+      if (h2Class === 'positive' || h2Class === 'negative') {
+        // Allow if it's a minor mention, but flag if many
+        // Actually, instructional can include pros/cons sections
+      }
+      return; // instructional is flexible
+    }
+
+    // Positive title with negative H2 = conflict
+    if (titleClass === 'positive' && h2Class === 'negative') {
+      violations.push(h2.replace('## ', ''));
+    }
+
+    // Negative title with positive H2 = conflict
+    if (titleClass === 'negative' && h2Class === 'positive') {
+      violations.push(h2.replace('## ', ''));
+    }
+  });
+
+  if (violations.length >= 2) {
+    return {
+      ruleName: 'Predicate Consistency',
+      isPassing: false,
+      details: `Title uses ${titleClass} predicates but ${violations.length} H2s conflict: ${violations.slice(0, 2).join(', ')}`,
+      affectedTextSnippet: violations[0],
+      remediation: `Use consistent ${titleClass} predicates in H2 headings, or add a bridge heading to transition to contrasting content.`
+    };
+  }
+
+  return {
+    ruleName: 'Predicate Consistency',
+    isPassing: true,
+    details: `Heading predicates are consistent with ${titleClass} title angle.`
   };
 }

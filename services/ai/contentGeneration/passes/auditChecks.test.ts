@@ -81,3 +81,71 @@ The framework enables efficient implementation.`;
     expect(llmCheck?.isPassing).toBe(true);
   });
 });
+
+describe('checkPredicateConsistency', () => {
+  it('fails when H1 uses negative predicates but H2s use positive', () => {
+    const draft = `## Risks of Test Keyword
+
+Test keyword has some concerns.
+
+## Benefits of Test Keyword
+
+Here are the advantages.
+
+## Advantages of Test Keyword
+
+More positive aspects.`;
+    const brief = createMockBrief({ title: 'Risks of Test Keyword' });
+    const info = createMockBusinessInfo();
+
+    const results = runAlgorithmicAudit(draft, brief, info);
+    const predicateCheck = results.find(r => r.ruleName === 'Predicate Consistency');
+
+    expect(predicateCheck).toBeDefined();
+    expect(predicateCheck?.isPassing).toBe(false);
+  });
+
+  it('passes when heading predicates are consistent', () => {
+    const draft = `## Benefits of Test Keyword
+
+Test keyword provides many advantages.
+
+## Advantages of Test Keyword
+
+Additional positive aspects.
+
+## Improvements from Test Keyword
+
+Enhanced outcomes.`;
+    const brief = createMockBrief({ title: 'Benefits of Test Keyword' });
+    const info = createMockBusinessInfo();
+
+    const results = runAlgorithmicAudit(draft, brief, info);
+    const predicateCheck = results.find(r => r.ruleName === 'Predicate Consistency');
+
+    expect(predicateCheck).toBeDefined();
+    expect(predicateCheck?.isPassing).toBe(true);
+  });
+
+  it('passes for instructional content with how-to headings', () => {
+    const draft = `## How to Use Test Keyword
+
+Follow these steps.
+
+## Steps for Test Keyword
+
+The process involves.
+
+## Guide to Test Keyword Implementation
+
+Implementation details.`;
+    const brief = createMockBrief({ title: 'How to Use Test Keyword' });
+    const info = createMockBusinessInfo();
+
+    const results = runAlgorithmicAudit(draft, brief, info);
+    const predicateCheck = results.find(r => r.ruleName === 'Predicate Consistency');
+
+    expect(predicateCheck).toBeDefined();
+    expect(predicateCheck?.isPassing).toBe(true);
+  });
+});
