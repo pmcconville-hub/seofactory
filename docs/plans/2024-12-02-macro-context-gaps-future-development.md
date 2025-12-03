@@ -496,20 +496,20 @@ These items require site-wide analysis beyond single-article scope:
 
 ## 5. Implementation Priority Matrix
 
-| Gap | Category | Priority | Complexity | Prerequisite |
-|-----|----------|----------|------------|--------------|
-| 1.1 Macro/Micro Border | Page Segmentation | HIGH | Medium | Multipass Complete |
-| 1.2 Predicate Consistency | Page Segmentation | MEDIUM | Low | Multipass Complete |
-| 1.3 Extractive Summary | Page Segmentation | MEDIUM | Low | Pass 7 Complete |
-| 1.4 Query-Format Alignment | Page Segmentation | MEDIUM | Medium | Brief Generation |
-| 2.1 Coverage Weight | Audit | MEDIUM | Low | Pass 8 Complete |
-| 2.2 Factual Consensus | Audit | LOW | High | Site-wide KG |
-| 2.3 LLM Phrase Detection | Audit | HIGH | Low | Pass 5 Complete |
-| 2.4 Vocabulary Richness | Audit | LOW | Low | Pass 8 Complete |
-| 3.1 Supp. Link Placement | Linking | HIGH | Medium | 1.1 Complete |
-| 3.2 Anchor Text Variety | Linking | MEDIUM | Low | Pass 8 Complete |
-| 3.3 Annotation Quality | Linking | MEDIUM | Medium | Pass 6 Complete |
-| 4.x Site-Wide | Architecture | LOW | High | Future Phase |
+| Gap | Category | Priority | Complexity | Prerequisite | Status |
+|-----|----------|----------|------------|--------------|--------|
+| 1.1 Macro/Micro Border | Page Segmentation | HIGH | Medium | Multipass Complete | |
+| 1.2 Predicate Consistency | Page Segmentation | MEDIUM | Low | Multipass Complete | IMPLEMENTED |
+| 1.3 Extractive Summary | Page Segmentation | MEDIUM | Low | Pass 7 Complete | |
+| 1.4 Query-Format Alignment | Page Segmentation | MEDIUM | Medium | Brief Generation | |
+| 2.1 Coverage Weight | Audit | MEDIUM | Low | Pass 8 Complete | IMPLEMENTED |
+| 2.2 Factual Consensus | Audit | LOW | High | Site-wide KG | |
+| 2.3 LLM Phrase Detection | Audit | HIGH | Low | Pass 5 Complete | IMPLEMENTED |
+| 2.4 Vocabulary Richness | Audit | LOW | Low | Pass 8 Complete | IMPLEMENTED |
+| 3.1 Supp. Link Placement | Linking | HIGH | Medium | 1.1 Complete | |
+| 3.2 Anchor Text Variety | Linking | MEDIUM | Low | Pass 8 Complete | |
+| 3.3 Annotation Quality | Linking | MEDIUM | Medium | Pass 6 Complete | |
+| 4.x Site-Wide | Architecture | LOW | High | Future Phase | |
 
 ---
 
