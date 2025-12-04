@@ -13,6 +13,8 @@ import { getSupabaseClient } from '../../services/supabaseClient';
 import { safeString } from '../../utils/parsers';
 import { useChunking } from '../../hooks/useChunking';
 import { ChunkList } from './ChunkList';
+import { useSemanticAnalysis } from '../../hooks/useSemanticAnalysis';
+import { CoreEntityBoxes } from '../ui/CoreEntityBoxes';
 
 interface MigrationWorkbenchModalProps {
     isOpen: boolean;
@@ -39,7 +41,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
     
     const [draftContent, setDraftContent] = useState<string>('');
     const [activeRightTab, setActiveRightTab] = useState<'edit' | 'preview'>('edit');
-    const [activeLeftTab, setActiveLeftTab] = useState<'raw' | 'chunks'>('raw');
+    const [activeLeftTab, setActiveLeftTab] = useState<'raw' | 'chunks' | 'semantic'>('raw');
     const [isSaving, setIsSaving] = useState(false);
 
     // Ref for the textarea to handle cursor insertion
@@ -48,17 +50,27 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
     // Chunking Hook
     const { chunks, isChunking, error: chunkError, analyzeContent } = useChunking(businessInfo);
 
-    const loadContent = useCallback(async () => {
+    // Semantic Analysis Hook
+    const {
+        result: semanticResult,
+        isAnalyzing: isAnalyzingSemantic,
+        error: semanticError,
+        analyze: runSemanticAnalysis,
+        updateActionFix,
+    } = useSemanticAnalysis(businessInfo, dispatch);
+
+    const loadContent = useCallback(async (forceRefetch: boolean = false) => {
         if (!inventoryItem) return;
-        
+
         setIsLoadingOriginal(true);
         setLoadError(null);
         try {
             const content = await getOriginalContent(
-                inventoryItem, 
-                businessInfo, 
-                businessInfo.supabaseUrl, 
-                businessInfo.supabaseAnonKey
+                inventoryItem,
+                businessInfo,
+                businessInfo.supabaseUrl,
+                businessInfo.supabaseAnonKey,
+                forceRefetch
             );
             setOriginalContent(content);
             
@@ -87,9 +99,10 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
             setManualInput('');
             setOriginalContent('');
             setDraftContent(''); // Will be populated by loadContent
-            loadContent();
+            loadContent(false); // Don't force refetch on initial load
         }
-    }, [isOpen, inventoryItem, loadContent]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, inventoryItem]);
 
     // Lazy load chunks when tab is switched
     useEffect(() => {
@@ -223,22 +236,43 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                 <div className="w-1/2 border-r border-gray-700 flex flex-col bg-gray-900">
                     <div className="p-3 bg-gray-800/50 border-b border-gray-700 font-semibold text-gray-300 text-sm flex justify-between items-center">
                         <div className="flex bg-gray-700 rounded p-0.5">
-                             <button 
+                             <button
                                 onClick={() => setActiveLeftTab('raw')}
                                 className={`px-3 py-1 text-xs rounded ${activeLeftTab === 'raw' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}
                                 disabled={!!loadError}
                              >
                                 Raw Content
                              </button>
-                             <button 
+                             <button
                                 onClick={() => setActiveLeftTab('chunks')}
                                 className={`px-3 py-1 text-xs rounded ${activeLeftTab === 'chunks' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}
                                 disabled={!!loadError}
                              >
                                 Semantic Chunks
                              </button>
+                             <button
+                                onClick={() => setActiveLeftTab('semantic')}
+                                className={`px-3 py-1 text-xs rounded ${activeLeftTab === 'semantic' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}
+                                disabled={!!loadError}
+                             >
+                                Semantic Audit
+                             </button>
                          </div>
-                        {isLoadingOriginal && <Loader className="w-4 h-4" />}
+                        <div className="flex items-center gap-2">
+                            {!loadError && originalContent && !isLoadingOriginal && (
+                                <button
+                                    onClick={() => loadContent(true)}
+                                    className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1"
+                                    title="Re-fetch content from source URL"
+                                >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                    Re-fetch
+                                </button>
+                            )}
+                            {isLoadingOriginal && <Loader className="w-4 h-4" />}
+                        </div>
                     </div>
                     <div className="flex-grow overflow-y-auto p-6 text-gray-400 bg-gray-900/50">
                         {loadError ? (
@@ -246,7 +280,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                                 <div className="bg-red-900/20 border border-red-700/50 p-4 rounded text-red-200 text-center">
                                     <p className="font-bold mb-1">Extraction Failed</p>
                                     <p className="text-sm mb-3">{loadError}</p>
-                                    <Button variant="secondary" onClick={loadContent} className="text-xs !py-1">Retry Scrape</Button>
+                                    <Button variant="secondary" onClick={() => loadContent(true)} className="text-xs !py-1">Retry Scrape</Button>
                                 </div>
                                 
                                 <div className="flex-grow flex flex-col gap-2">
@@ -272,7 +306,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                                  ) : (
                                      !isLoadingOriginal && <p className="text-center mt-20">No content found.</p>
                                  )
-                             ) : (
+                             ) : activeLeftTab === 'chunks' ? (
                                  <div className="h-full">
                                      {isChunking ? (
                                          <div className="flex flex-col items-center justify-center h-full">
@@ -283,6 +317,73 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                                          <div className="text-red-400 p-4 text-center">{chunkError}</div>
                                      ) : (
                                          <ChunkList chunks={chunks} />
+                                     )}
+                                 </div>
+                             ) : (
+                                 <div className="h-full flex flex-col">
+                                     {isAnalyzingSemantic ? (
+                                         <div className="flex flex-col items-center justify-center h-full">
+                                             <Loader />
+                                             <p className="text-xs text-gray-500 mt-2">Running semantic analysis...</p>
+                                         </div>
+                                     ) : semanticError ? (
+                                         <div className="text-red-400 p-4 text-center">{semanticError}</div>
+                                     ) : !semanticResult ? (
+                                         <div className="flex flex-col items-center justify-center h-full gap-4">
+                                             <p className="text-gray-500 text-sm">No semantic analysis yet.</p>
+                                             <Button
+                                                 onClick={() => originalContent && inventoryItem && runSemanticAnalysis(originalContent, inventoryItem.url)}
+                                                 disabled={!originalContent}
+                                             >
+                                                 Run Semantic Analysis
+                                             </Button>
+                                         </div>
+                                     ) : (
+                                         <div className="flex-grow overflow-y-auto p-4 space-y-4">
+                                             {/* Core Entities */}
+                                             {semanticResult.coreEntities && (
+                                                 <div>
+                                                     <h3 className="text-sm font-semibold text-white mb-2">Core Entities</h3>
+                                                     <CoreEntityBoxes entities={semanticResult.coreEntities} />
+                                                 </div>
+                                             )}
+
+                                             {/* Semantic Score */}
+                                             {semanticResult.overallScore !== undefined && (
+                                                 <div className="bg-gray-800 p-3 rounded">
+                                                     <h3 className="text-sm font-semibold text-white mb-1">Overall Score</h3>
+                                                     <div className="flex items-center gap-2">
+                                                         <div className="text-2xl font-bold text-green-400">
+                                                             {semanticResult.overallScore}/100
+                                                         </div>
+                                                         <div className="flex-grow bg-gray-700 h-2 rounded-full overflow-hidden">
+                                                             <div
+                                                                 className="bg-green-500 h-full transition-all duration-300"
+                                                                 style={{ width: `${semanticResult.overallScore}%` }}
+                                                             />
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                             )}
+
+                                             {/* Summary */}
+                                             {semanticResult.summary && (
+                                                 <div className="bg-gray-800 p-3 rounded">
+                                                     <h3 className="text-sm font-semibold text-white mb-1">Summary</h3>
+                                                     <p className="text-sm text-gray-300">{semanticResult.summary}</p>
+                                                 </div>
+                                             )}
+
+                                             {/* Actions Count */}
+                                             {semanticResult.actions && (
+                                                 <div className="bg-gray-800 p-3 rounded">
+                                                     <h3 className="text-sm font-semibold text-white mb-1">Action Items</h3>
+                                                     <p className="text-sm text-gray-300">
+                                                         {semanticResult.actions.length} optimization{semanticResult.actions.length !== 1 ? 's' : ''} identified
+                                                     </p>
+                                                 </div>
+                                             )}
+                                         </div>
                                      )}
                                  </div>
                              )
