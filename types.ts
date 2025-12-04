@@ -1113,6 +1113,8 @@ export interface ExtractedPageData {
   contentHash: string;
   extractedAt: number;
   errors?: string[];
+  primaryProvider?: ScrapingProvider; // Which provider was used (first successful)
+  fallbackUsed?: boolean; // True if primary failed and fallback succeeded
 }
 
 // ============================================

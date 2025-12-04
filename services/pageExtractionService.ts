@@ -1,7 +1,13 @@
 // services/pageExtractionService.ts
 // Unified page extraction orchestrator - combines Apify (technical) + Jina (semantic) + Firecrawl fallback
 
-import { ApifyPageData, JinaExtraction, ExtractedPageData } from '../types';
+import {
+  ApifyPageData,
+  JinaExtraction,
+  ExtractedPageData,
+  ExtractionType,
+  ScrapingProvider,
+} from '../types';
 import { extractMultiplePagesTechnicalData } from './apifyService';
 import {
   extractPageContent as jinaExtractPage,
@@ -9,17 +15,32 @@ import {
   generateContentHash,
 } from './jinaService';
 import {
+  extractPageWithFirecrawl,
   extractMultiplePagesWithFirecrawl,
 } from './firecrawlService';
+import {
+  selectProvidersForExtraction,
+  needsParallelExtraction,
+  getSemanticProvider,
+  getTechnicalProvider,
+} from './scrapingProviderRouter';
 
 export interface ExtractionConfig {
   apifyToken: string;
   jinaApiKey: string;
   firecrawlApiKey?: string; // Optional Firecrawl API key for fallback
-  // Which extractors to use
+
+  // New provider router fields
+  extractionType?: ExtractionType; // Type of extraction (semantic_only, technical_only, full_audit, auto)
+  preferredProvider?: ScrapingProvider | 'auto'; // User preference for provider
+  enableFallback?: boolean; // Default true - use fallback providers when primary fails
+  forceApifyDomains?: string[]; // Custom domains that require Apify (JS-heavy sites)
+
+  // Legacy fields (deprecated but kept for backward compatibility)
   useApify?: boolean;
   useJina?: boolean;
   useFirecrawlFallback?: boolean; // Default true - use Firecrawl when Apify fails
+
   // Concurrency settings
   batchSize?: number;
   // Timeout settings
@@ -42,40 +63,204 @@ export interface ExtractionProgress {
 export type ProgressCallback = (progress: ExtractionProgress) => void;
 
 /**
+ * Use case type for determining extraction strategy
+ */
+export type ExtractionUseCase =
+  | 'content_brief'
+  | 'topic_enrichment'
+  | 'link_analysis'
+  | 'schema_extraction'
+  | 'site_audit'
+  | 'competitor_analysis';
+
+/**
+ * Map use cases to extraction types
+ */
+export function getExtractionTypeForUseCase(useCase: ExtractionUseCase): ExtractionType {
+  switch (useCase) {
+    case 'content_brief':
+    case 'topic_enrichment':
+      // Only need content and headings
+      return 'semantic_only';
+    case 'link_analysis':
+    case 'schema_extraction':
+      // Only need technical SEO data
+      return 'technical_only';
+    case 'site_audit':
+    case 'competitor_analysis':
+      // Need everything
+      return 'full_audit';
+    default:
+      return 'auto';
+  }
+}
+
+/**
+ * Internal helper: Extract with a specific provider
+ */
+async function extractWithProvider(
+  url: string,
+  provider: ScrapingProvider,
+  config: ExtractionConfig
+): Promise<{ technical: ApifyPageData | null; semantic: JinaExtraction | null }> {
+  const { apifyToken, jinaApiKey, firecrawlApiKey, proxyConfig } = config;
+
+  let technical: ApifyPageData | null = null;
+  let semantic: JinaExtraction | null = null;
+
+  switch (provider) {
+    case 'jina':
+      if (jinaApiKey) {
+        semantic = await jinaExtractPage(url, jinaApiKey, proxyConfig);
+      }
+      break;
+
+    case 'firecrawl':
+      if (firecrawlApiKey) {
+        const firecrawlResult = await extractPageWithFirecrawl(url, firecrawlApiKey);
+        // Firecrawl provides both technical and semantic data
+        technical = firecrawlResult;
+        // Convert markdown to semantic format
+        if (firecrawlResult.markdown) {
+          semantic = {
+            url,
+            title: firecrawlResult.title || '',
+            content: firecrawlResult.markdown,
+            description: firecrawlResult.metaDescription || '',
+            wordCount: firecrawlResult.markdown.split(/\s+/).length,
+            headings: parseHeadingsFromMarkdown(firecrawlResult.markdown),
+            links: [],
+            images: firecrawlResult.images || [],
+            schema: firecrawlResult.schemaMarkup || [],
+            author: null,
+            publishedTime: null,
+            modifiedTime: null,
+          };
+        }
+      }
+      break;
+
+    case 'apify':
+      if (apifyToken) {
+        const apifyResults = await extractMultiplePagesTechnicalData([url], apifyToken);
+        technical = apifyResults[0] || null;
+      }
+      break;
+  }
+
+  return { technical, semantic };
+}
+
+/**
  * Extract a single page with both technical and semantic data
+ * Now uses provider router for intelligent provider selection and fallback
  */
 export const extractSinglePage = async (
   url: string,
   config: ExtractionConfig
 ): Promise<ExtractedPageData> => {
-  const { apifyToken, jinaApiKey, useApify = true, useJina = true, proxyConfig } = config;
+  const {
+    apifyToken,
+    jinaApiKey,
+    firecrawlApiKey,
+    extractionType = 'auto',
+    preferredProvider = 'auto',
+    enableFallback = true,
+    forceApifyDomains,
+    proxyConfig,
+  } = config;
 
   let technical: ApifyPageData | null = null;
   let semantic: JinaExtraction | null = null;
   const errors: string[] = [];
+  let primaryProvider: ScrapingProvider | undefined;
+  let fallbackUsed = false;
 
-  // Run extractions in parallel
-  const extractions = await Promise.allSettled([
-    useApify && apifyToken
-      ? extractMultiplePagesTechnicalData([url], apifyToken).then(r => r[0] || null)
-      : Promise.resolve(null),
-    useJina && jinaApiKey
-      ? jinaExtractPage(url, jinaApiKey, proxyConfig)
-      : Promise.resolve(null),
-  ]);
+  // Get provider priority list based on extraction type and config
+  const providers = selectProvidersForExtraction(extractionType, {
+    jinaApiKey,
+    firecrawlApiKey,
+    apifyToken,
+    preferredProvider,
+    forceApifyDomains,
+    url,
+  });
 
-  // Handle Apify result
-  if (extractions[0].status === 'fulfilled') {
-    technical = extractions[0].value;
-  } else if (useApify) {
-    errors.push(`Apify extraction failed: ${extractions[0].reason}`);
+  if (providers.length === 0) {
+    errors.push('No API keys configured for extraction');
+    const contentHash = generateContentHash('');
+    return {
+      url,
+      technical,
+      semantic,
+      contentHash,
+      extractedAt: Date.now(),
+      errors,
+      primaryProvider,
+      fallbackUsed,
+    };
   }
 
-  // Handle Jina result
-  if (extractions[1].status === 'fulfilled') {
-    semantic = extractions[1].value;
-  } else if (useJina) {
-    errors.push(`Jina extraction failed: ${extractions[1].reason}`);
+  // Check if we need parallel extraction (full_audit)
+  if (needsParallelExtraction(extractionType)) {
+    // Full audit: run semantic and technical in parallel
+    const semanticProvider = getSemanticProvider(providers);
+    const technicalProvider = getTechnicalProvider(providers);
+
+    const extractions = await Promise.allSettled([
+      semanticProvider ? extractWithProvider(url, semanticProvider, config) : Promise.resolve({ technical: null, semantic: null }),
+      technicalProvider && technicalProvider !== semanticProvider
+        ? extractWithProvider(url, technicalProvider, config)
+        : Promise.resolve({ technical: null, semantic: null }),
+    ]);
+
+    // Merge results from parallel extraction
+    if (extractions[0].status === 'fulfilled') {
+      const result = extractions[0].value;
+      semantic = semantic || result.semantic;
+      technical = technical || result.technical;
+      if (result.semantic || result.technical) {
+        primaryProvider = semanticProvider || undefined;
+      }
+    } else if (semanticProvider) {
+      errors.push(`${semanticProvider} extraction failed: ${extractions[0].reason}`);
+    }
+
+    if (extractions[1].status === 'fulfilled') {
+      const result = extractions[1].value;
+      technical = technical || result.technical;
+      semantic = semantic || result.semantic;
+    } else if (technicalProvider && technicalProvider !== semanticProvider) {
+      errors.push(`${technicalProvider} extraction failed: ${extractions[1].reason}`);
+    }
+  } else {
+    // Sequential extraction with fallback
+    for (let i = 0; i < providers.length; i++) {
+      const provider = providers[i];
+      const isFirstAttempt = i === 0;
+
+      try {
+        const result = await extractWithProvider(url, provider, config);
+
+        // Check if we got useful data
+        if (result.technical || result.semantic) {
+          technical = result.technical;
+          semantic = result.semantic;
+          primaryProvider = provider;
+          fallbackUsed = !isFirstAttempt;
+          break; // Success, stop trying
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        errors.push(`${provider} extraction failed: ${errorMsg}`);
+
+        // If fallback is disabled or this is the last provider, stop
+        if (!enableFallback || i === providers.length - 1) {
+          break;
+        }
+        // Otherwise, continue to next provider
+      }
+    }
   }
 
   // Generate content hash from the best available content
@@ -89,6 +274,8 @@ export const extractSinglePage = async (
     contentHash,
     extractedAt: Date.now(),
     errors: errors.length > 0 ? errors : undefined,
+    primaryProvider,
+    fallbackUsed,
   };
 };
 
@@ -388,6 +575,29 @@ export const mergeExtractionData = (extracted: ExtractedPageData): {
 // ============================================
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Parse headings from markdown content
+ */
+const parseHeadingsFromMarkdown = (markdown: string): { level: number; text: string }[] => {
+  if (!markdown) return [];
+  const headings: { level: number; text: string }[] = [];
+  const lines = markdown.split('\n');
+
+  for (const line of lines) {
+    // Match markdown headings (# H1, ## H2, etc.)
+    const match = line.match(/^(#{1,6})\s+(.+)$/);
+    if (match) {
+      const level = match[1].length;
+      const text = match[2].trim();
+      if (text) {
+        headings.push({ level, text });
+      }
+    }
+  }
+
+  return headings;
+};
 
 /**
  * Normalize URL for consistent comparison
