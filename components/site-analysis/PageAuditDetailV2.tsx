@@ -12,6 +12,8 @@ import { SitePageRecord, PageAudit, AuditCheck, AuditTask, SiteAnalysisProject, 
 import AISuggestionReviewModal from './AISuggestionReviewModal';
 import BatchSuggestionReviewModal from './BatchSuggestionReviewModal';
 import { SEOAuditReportModal } from './report';
+import { useSemanticAnalysis } from '../../hooks/useSemanticAnalysis';
+import { SemanticAnalysisPanel } from '../ui/SemanticAnalysisPanel';
 
 interface PageAuditDetailV2Props {
   projectId: string;
@@ -48,7 +50,7 @@ export const PageAuditDetailV2: React.FC<PageAuditDetailV2Props> = ({
   const [project, setProject] = useState<SiteAnalysisProject | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdatingTask, setIsUpdatingTask] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'technical' | 'semantic' | 'links' | 'content' | 'schema' | 'tasks' | 'raw_data'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'technical' | 'semantic' | 'semantic_ai' | 'links' | 'content' | 'schema' | 'tasks' | 'raw_data'>('overview');
 
   // AI Suggestion modal state
   const [selectedTaskForSuggestion, setSelectedTaskForSuggestion] = useState<AuditTask | null>(null);
@@ -61,6 +63,15 @@ export const PageAuditDetailV2: React.FC<PageAuditDetailV2Props> = ({
 
   // Task expansion state
   const [expandedTaskIds, setExpandedTaskIds] = useState<Set<string>>(new Set());
+
+  // Semantic AI analysis hook
+  const {
+    result: semanticResult,
+    isAnalyzing: isAnalyzingSemantic,
+    error: semanticError,
+    analyze: runSemanticAnalysis,
+    updateActionFix,
+  } = useSemanticAnalysis(state.businessInfo, dispatch);
 
   const toggleTaskExpanded = (taskId: string) => {
     setExpandedTaskIds(prev => {
@@ -589,24 +600,32 @@ export const PageAuditDetailV2: React.FC<PageAuditDetailV2Props> = ({
       {/* Tabs */}
       <div className="border-b border-gray-700">
         <nav className="flex gap-6">
-          {['overview', 'technical', 'semantic', 'links', 'content', 'schema', 'tasks', 'raw_data'].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab as typeof activeTab)}
-              className={`py-3 px-1 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab
-                  ? 'border-purple-500 text-purple-400'
-                  : 'border-transparent text-gray-400 hover:text-white'
-              }`}
-            >
-              {tab === 'raw_data' ? 'Raw Data' : tab.charAt(0).toUpperCase() + tab.slice(1)}
-              {tab === 'tasks' && tasks.length > 0 && (
-                <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-red-500/20 text-red-400">
-                  {tasks.filter(t => t.status === 'pending').length}
-                </span>
-              )}
-            </button>
-          ))}
+          {['overview', 'technical', 'semantic', 'semantic_ai', 'links', 'content', 'schema', 'tasks', 'raw_data'].map(tab => {
+            const getTabLabel = (t: string) => {
+              if (t === 'raw_data') return 'Raw Data';
+              if (t === 'semantic_ai') return 'AI Semantic';
+              return t.charAt(0).toUpperCase() + t.slice(1);
+            };
+
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab as typeof activeTab)}
+                className={`py-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab
+                    ? 'border-purple-500 text-purple-400'
+                    : 'border-transparent text-gray-400 hover:text-white'
+                }`}
+              >
+                {getTabLabel(tab)}
+                {tab === 'tasks' && tasks.length > 0 && (
+                  <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-red-500/20 text-red-400">
+                    {tasks.filter(t => t.status === 'pending').length}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </nav>
       </div>
 
@@ -765,6 +784,52 @@ export const PageAuditDetailV2: React.FC<PageAuditDetailV2Props> = ({
               </div>
             )}
             {renderPhaseTasks('VisualSchema')}
+          </div>
+        )}
+
+        {activeTab === 'semantic_ai' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">AI Semantic Analysis</h3>
+              <Button
+                onClick={() => {
+                  if (page?.contentMarkdown) {
+                    runSemanticAnalysis(page.contentMarkdown, page.url);
+                  }
+                }}
+                disabled={isAnalyzingSemantic || !page?.contentMarkdown}
+                variant="primary"
+              >
+                {isAnalyzingSemantic ? 'Analyzing...' : 'Run Analysis'}
+              </Button>
+            </div>
+
+            {semanticError && (
+              <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <p className="text-red-400 text-sm">{semanticError}</p>
+              </div>
+            )}
+
+            {!semanticResult && !isAnalyzingSemantic && !semanticError && (
+              <div className="text-center py-12">
+                <p className="text-gray-400 mb-4">
+                  Click "Run Analysis" to perform AI semantic analysis of this page.
+                </p>
+                <p className="text-gray-500 text-sm">
+                  This will analyze content quality, semantic relevance, and provide improvement suggestions.
+                </p>
+              </div>
+            )}
+
+            {semanticResult && page?.contentMarkdown && (
+              <SemanticAnalysisPanel
+                result={semanticResult}
+                pageContent={page.contentMarkdown}
+                businessInfo={state.businessInfo}
+                dispatch={dispatch}
+                onActionFixGenerated={updateActionFix}
+              />
+            )}
           </div>
         )}
 
