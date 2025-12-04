@@ -24,6 +24,27 @@ interface ProxyConfig {
   supabaseAnonKey: string;
 }
 
+interface RetryConfig {
+  maxRetries: number;
+  initialDelayMs: number;
+  backoffMultiplier: number;
+}
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxRetries: 3,
+  initialDelayMs: 1000,
+  backoffMultiplier: 2,
+};
+
+// Helper to sleep for a given duration
+const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+
+// Helper to determine if an error is retryable
+const isRetryableError = (status: number): boolean => {
+  // Retry on 5xx server errors and 429 rate limiting
+  return status >= 500 || status === 429;
+};
+
 // Common selectors for elements to remove (cookie banners, popups, etc.)
 // NOTE: Be specific - avoid broad selectors like [id*="cookie"] which can remove legitimate content
 const REMOVE_SELECTORS = [
@@ -76,59 +97,65 @@ const MAIN_CONTENT_SELECTORS = [
 export const extractPageContent = async (
   url: string,
   apiKey: string,
-  proxyConfig?: ProxyConfig
+  proxyConfig?: ProxyConfig,
+  retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
 ): Promise<JinaExtraction> => {
   if (!apiKey) {
     throw new Error('Jina.ai API key is not configured.');
   }
 
-  try {
-    let responseData: JinaResponse;
+  // Retry loop with exponential backoff
+  let lastError: Error | null = null;
 
-    if (proxyConfig?.supabaseUrl) {
-      // Use Supabase Edge Function proxy to avoid CORS
-      const proxyUrl = `${proxyConfig.supabaseUrl}/functions/v1/fetch-proxy`;
-      // NOTE: URL should NOT be encoded - Jina expects raw URL after base
-      const jinaUrl = `${JINA_READER_URL}${url}`;
+  for (let attempt = 0; attempt < retryConfig.maxRetries; attempt++) {
+    try {
+      return await doExtraction(url, apiKey, proxyConfig);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
 
-      const proxyResponse = await fetch(proxyUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': proxyConfig.supabaseAnonKey,
-        },
-        body: JSON.stringify({
-          url: jinaUrl,
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Accept': 'application/json',
-            'X-Return-Format': 'markdown',
-            'X-With-Links-Summary': 'true',
-            'X-With-Images-Summary': 'true',
-            'X-With-Generated-Alt': 'true', // Generate alt text for images
-            // Remove cookie banners and popups before extraction
-            'X-Remove-Selector': REMOVE_SELECTORS,
-            // Wait for main content to be visible (not just body)
-            'X-Wait-For-Selector': 'main, article, .content, #content, body',
-            // Set cookie to accept consent (workaround for cookie banners)
-            'X-Set-Cookie': 'cookieconsent_status=dismiss; CookieConsent=true',
-          },
-        }),
-      });
+      // Check if error is retryable
+      const statusMatch = lastError.message.match(/(\d{3})/);
+      const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
 
-      const proxyResult = await proxyResponse.json();
-
-      if (!proxyResult.ok) {
-        throw new Error(`Jina API error: ${proxyResult.status} - ${proxyResult.error || proxyResult.body}`);
+      // If not retryable or last attempt, throw immediately
+      if (!isRetryableError(status) || attempt === retryConfig.maxRetries - 1) {
+        throw lastError;
       }
 
-      // Parse the body from proxy response
-      responseData = typeof proxyResult.body === 'string' ? JSON.parse(proxyResult.body) : proxyResult.body;
-    } else {
-      // Direct fetch (will fail with CORS in browser, but works server-side)
-      // NOTE: URL should NOT be encoded - Jina expects raw URL after base
-      const response = await fetch(`${JINA_READER_URL}${url}`, {
+      // Calculate backoff delay
+      const delayMs = retryConfig.initialDelayMs * Math.pow(retryConfig.backoffMultiplier, attempt);
+      await sleep(delayMs);
+    }
+  }
+
+  // Should never reach here, but TypeScript doesn't know that
+  throw lastError || new Error('Failed to extract content');
+};
+
+/**
+ * Internal function to perform the actual extraction
+ */
+const doExtraction = async (
+  url: string,
+  apiKey: string,
+  proxyConfig?: ProxyConfig
+): Promise<JinaExtraction> => {
+  let responseData: JinaResponse;
+
+  if (proxyConfig?.supabaseUrl) {
+    // Use Supabase Edge Function proxy to avoid CORS
+    const proxyUrl = `${proxyConfig.supabaseUrl}/functions/v1/fetch-proxy`;
+    // NOTE: URL should NOT be encoded - Jina expects raw URL after base
+    const jinaUrl = `${JINA_READER_URL}${url}`;
+
+    const proxyResponse = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': proxyConfig.supabaseAnonKey,
+      },
+      body: JSON.stringify({
+        url: jinaUrl,
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -144,36 +171,62 @@ export const extractPageContent = async (
           // Set cookie to accept consent (workaround for cookie banners)
           'X-Set-Cookie': 'cookieconsent_status=dismiss; CookieConsent=true',
         },
-      });
+      }),
+    });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Jina API error: ${response.status} - ${errorText}`);
-      }
+    const proxyResult = await proxyResponse.json();
 
-      responseData = await response.json();
+    if (!proxyResult.ok) {
+      throw new Error(`Jina API error: ${proxyResult.status} - ${proxyResult.error || proxyResult.body}`);
     }
 
-    const data = responseData;
+    // Parse the body from proxy response
+    responseData = typeof proxyResult.body === 'string' ? JSON.parse(proxyResult.body) : proxyResult.body;
+  } else {
+    // Direct fetch (will fail with CORS in browser, but works server-side)
+    // NOTE: URL should NOT be encoded - Jina expects raw URL after base
+    const response = await fetch(`${JINA_READER_URL}${url}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Accept': 'application/json',
+        'X-Return-Format': 'markdown',
+        'X-With-Links-Summary': 'true',
+        'X-With-Images-Summary': 'true',
+        'X-With-Generated-Alt': 'true', // Generate alt text for images
+        // Remove cookie banners and popups before extraction
+        'X-Remove-Selector': REMOVE_SELECTORS,
+        // Wait for main content to be visible (not just body)
+        'X-Wait-For-Selector': 'main, article, .content, #content, body',
+        // Set cookie to accept consent (workaround for cookie banners)
+        'X-Set-Cookie': 'cookieconsent_status=dismiss; CookieConsent=true',
+      },
+    });
 
-    // Parse the markdown content to extract structured data
-    const extraction = parseJinaContent(data.data.content, url);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Jina API error: ${response.status} - ${errorText}`);
+    }
 
-    return {
-      title: data.data.title || '',
-      description: data.data.description || '',
-      content: data.data.content || '',
-      headings: extraction.headings,
-      links: extraction.links,
-      images: extraction.images,
-      schema: extraction.schema,
-      wordCount: extraction.wordCount,
-      readingTime: extraction.readingTime,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown Jina API error';
-    throw new Error(`Failed to extract content from ${url}: ${message}`);
+    responseData = await response.json();
   }
+
+  const data = responseData;
+
+  // Parse the markdown content to extract structured data
+  const extraction = parseJinaContent(data.data.content, url);
+
+  return {
+    title: data.data.title || '',
+    description: data.data.description || '',
+    content: data.data.content || '',
+    headings: extraction.headings,
+    links: extraction.links,
+    images: extraction.images,
+    schema: extraction.schema,
+    wordCount: extraction.wordCount,
+    readingTime: extraction.readingTime,
+  };
 };
 
 /**
