@@ -268,6 +268,39 @@ export interface BriefSection {
     subsections?: BriefSection[]; // Nested subsections (H3s under H2s)
 }
 
+// === Rules Engine Types ===
+
+export interface ValidationViolation {
+  rule: string;
+  text: string;
+  position: number;
+  suggestion: string;
+  severity: 'error' | 'warning';
+}
+
+export interface ValidationResult {
+  passed: boolean;
+  violations: ValidationViolation[];
+  fixInstructions: string;
+}
+
+export interface DiscourseContext {
+  previousParagraph: string;
+  lastSentence: string;
+  lastObject: string;
+  subjectHint: string;
+}
+
+export interface SectionGenerationContext {
+  section: BriefSection;
+  brief: ContentBrief;
+  businessInfo: BusinessInfo;
+  discourseContext?: DiscourseContext;
+  allSections: BriefSection[];
+  isYMYL: boolean;
+  ymylCategory?: 'HEALTH' | 'FINANCE' | 'LEGAL' | 'SAFETY';
+}
+
 export interface VisualSemantics {
     type: 'INFOGRAPHIC' | 'CHART' | 'PHOTO' | 'DIAGRAM';
     description: string;
