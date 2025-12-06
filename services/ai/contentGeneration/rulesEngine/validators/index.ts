@@ -1,6 +1,6 @@
 // services/ai/contentGeneration/rulesEngine/validators/index.ts
 
-import { ValidationResult, ValidationViolation, SectionGenerationContext } from '../../../../../types';
+import { RulesValidationResult, ValidationViolation, SectionGenerationContext } from '../../../../../types';
 import { ProhibitedLanguageValidator } from './prohibitedLanguage';
 import { EAVDensityValidator } from './eavDensity';
 import { ModalityValidator } from './modalityValidator';
@@ -12,7 +12,7 @@ export class RulesValidator {
   /**
    * Run all validators against generated content
    */
-  static validate(content: string, context: SectionGenerationContext): ValidationResult {
+  static validate(content: string, context: SectionGenerationContext): RulesValidationResult {
     const violations: ValidationViolation[] = [];
 
     // 1. Prohibited Language

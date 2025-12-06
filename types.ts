@@ -278,7 +278,7 @@ export interface ValidationViolation {
   severity: 'error' | 'warning';
 }
 
-export interface ValidationResult {
+export interface RulesValidationResult {
   passed: boolean;
   violations: ValidationViolation[];
   fixInstructions: string;
