@@ -1,6 +1,6 @@
 
 // components/ProjectDashboardContainer.tsx
-import React, { useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { useAppState } from '../state/appState';
 import { AppStep, SEOPillars, EnrichedTopic, ContentBrief, BusinessInfo, TopicalMap, TopicRecommendation, GscRow, ValidationIssue, MergeSuggestion, ResponseCode, FreshnessProfile, MapImprovementSuggestion, SemanticTriple, ExpansionMode, AuditRuleResult, ContextualFlowIssue, FoundationPage, FoundationPageType, NAPData, NavigationStructure } from '../types';
 import * as aiService from '../services/ai/index';
@@ -15,6 +15,8 @@ import { useKnowledgeGraph } from '../hooks/useKnowledgeGraph';
 import { useTopicEnrichment } from '../hooks/useTopicEnrichment';
 import { sanitizeTopicFromDb, sanitizeBriefFromDb, safeString, normalizeRpcData, parseTopicalMap } from '../utils/parsers';
 import { generateMasterExport, generateFullZipExport } from '../utils/exportUtils';
+import { ExportSettingsModal, ExportSettings } from './ExportSettingsModal';
+import { generateEnhancedExport, EnhancedExportInput } from '../utils/enhancedExportUtils';
 
 // Import Screens
 import MapSelectionScreen from './MapSelectionScreen';
@@ -44,6 +46,9 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
     useEffect(() => {
         stateRef.current = state;
     }, [state]);
+
+    // Export settings modal state
+    const [showExportSettings, setShowExportSettings] = useState(false);
 
     const activeProject = useMemo(() => state.projects.find(p => p.id === activeProjectId), [state.projects, activeProjectId]);
     const activeMap = useMemo(() => topicalMaps.find(m => m.id === activeMapId), [topicalMaps, activeMapId]);
@@ -1619,38 +1624,59 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
 
     const handleExportData = async (format: 'csv' | 'xlsx' | 'zip') => {
         if (!activeMap) return;
-        dispatch({ type: 'SET_LOADING', payload: { key: 'export', value: true } });
-        try {
-            const filename = `${activeProject?.project_name || 'Project'}_${activeMap.name}_HolisticMap`;
-            const metrics = state.validationResult;
 
-            if (format === 'zip') {
-                // Full ZIP export with all data
-                await generateFullZipExport({
-                    topics: allTopics,
-                    briefs: briefs,
-                    pillars: activeMap.pillars as SEOPillars,
-                    metrics,
-                    businessInfo: effectiveBusinessInfo,
-                    mapName: activeMap.name
-                }, filename);
-            } else {
-                // Standard CSV/XLSX export
+        if (format === 'csv') {
+            // Quick CSV export - use simple export
+            dispatch({ type: 'SET_LOADING', payload: { key: 'export', value: true } });
+            try {
+                const filename = `${activeProject?.project_name || 'Project'}_${activeMap.name}_HolisticMap`;
                 generateMasterExport({
                     topics: allTopics,
                     briefs: briefs,
                     pillars: activeMap.pillars as SEOPillars,
-                    metrics
-                }, format, filename);
+                    metrics: state.validationResult
+                }, 'csv', filename);
+                dispatch({ type: 'SET_NOTIFICATION', payload: 'Export generated successfully.' });
+            } catch (e) {
+                dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Export failed.' });
+            } finally {
+                dispatch({ type: 'SET_LOADING', payload: { key: 'export', value: false } });
             }
+        } else {
+            // For xlsx/zip, show settings modal for enhanced export
+            setShowExportSettings(true);
+        }
+    };
 
-            dispatch({ type: 'SET_NOTIFICATION', payload: 'Export generated successfully.' });
+    const handleEnhancedExport = async (settings: ExportSettings) => {
+        if (!activeMap) return;
+        setShowExportSettings(false);
+
+        dispatch({ type: 'SET_LOADING', payload: { key: 'export', value: true } });
+        try {
+            const input: EnhancedExportInput = {
+                topics: allTopics,
+                briefs: briefs,
+                pillars: activeMap.pillars,
+                eavs: activeMap.eavs,
+                competitors: activeMap.competitors,
+                metrics: state.validationResult,
+                businessInfo: effectiveBusinessInfo,
+                mapName: activeMap.name,
+                projectName: activeProject?.project_name
+            };
+
+            const filename = `${activeProject?.project_name || 'project'}_${activeMap.name || 'map'}_${new Date().toISOString().split('T')[0]}`;
+
+            await generateEnhancedExport(input, settings, filename);
+
+            dispatch({ type: 'SET_NOTIFICATION', payload: 'Enhanced export generated successfully.' });
         } catch (e) {
             dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Export failed.' });
         } finally {
             dispatch({ type: 'SET_LOADING', payload: { key: 'export', value: false } });
         }
-    }
+    };
 
     // --- MIGRATION MODE HANDLERS ---
     const handleSwitchToMigration = useCallback(() => {
@@ -2142,6 +2168,15 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 onApplyAllFixes={handleApplyAllUnifiedFixes}
                 isApplyingFix={!!isLoading.applyingFix}
                 historyEntries={state.unifiedAudit.fixHistory}
+            />
+
+            {/* Export Settings Modal */}
+            <ExportSettingsModal
+                isOpen={showExportSettings}
+                onClose={() => setShowExportSettings(false)}
+                onExport={handleEnhancedExport}
+                hasSchemas={false}
+                hasAuditResults={!!state.validationResult}
             />
         </>
     );
