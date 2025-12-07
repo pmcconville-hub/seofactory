@@ -130,6 +130,20 @@ export class ProhibitedLanguageValidator {
       }
     }
 
+    // Check passive voice
+    for (const pattern of PROHIBITED_PATTERNS.PASSIVE_VOICE) {
+      const matches = content.matchAll(new RegExp(pattern.source, 'gi'));
+      for (const match of matches) {
+        violations.push({
+          rule: 'PASSIVE_VOICE',
+          text: match[0],
+          position: match.index || 0,
+          suggestion: `Convert passive voice "${match[0]}" to active voice - clarify the subject/agent`,
+          severity: 'warning',
+        });
+      }
+    }
+
     return violations;
   }
 

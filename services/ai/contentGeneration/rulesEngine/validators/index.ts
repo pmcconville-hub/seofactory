@@ -7,6 +7,9 @@ import { ModalityValidator } from './modalityValidator';
 import { CenterpieceValidator } from './centerpieceValidator';
 import { YMYLValidator } from './ymylValidator';
 import { FormatCodeValidator } from './formatCodeValidator';
+import { StructureValidator } from './structureValidator';
+import { ContextualBridgeValidator } from './contextualBridgeValidator';
+import { RepetitionValidator } from './repetitionValidator';
 
 export class RulesValidator {
   /**
@@ -39,6 +42,15 @@ export class RulesValidator {
       violations.push(...YMYLValidator.validate(content, context));
     }
 
+    // 7. S-P-O Structure
+    violations.push(...StructureValidator.validate(content, context));
+
+    // 8. Contextual Bridge (for SUPPLEMENTARY zones)
+    violations.push(...ContextualBridgeValidator.validate(content, context));
+
+    // 9. Repetition Detection
+    violations.push(...RepetitionValidator.validate(content));
+
     // Build fix instructions
     const fixInstructions = this.buildFixInstructions(violations);
 
@@ -70,3 +82,7 @@ export { ModalityValidator } from './modalityValidator';
 export { CenterpieceValidator } from './centerpieceValidator';
 export { YMYLValidator } from './ymylValidator';
 export { FormatCodeValidator } from './formatCodeValidator';
+export { StructureValidator } from './structureValidator';
+export { ContextualBridgeValidator } from './contextualBridgeValidator';
+export { HierarchyValidator } from './hierarchyValidator';
+export { RepetitionValidator } from './repetitionValidator';
