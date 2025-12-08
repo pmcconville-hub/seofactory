@@ -17,9 +17,24 @@ export const CONTENT_BRIEF_SCHEMA = {
             properties: {
                 heading: { type: Type.STRING },
                 level: { type: Type.NUMBER },
+                format_code: { type: Type.STRING },
+                attribute_category: { type: Type.STRING },
+                content_zone: { type: Type.STRING },
                 subordinate_text_hint: { type: Type.STRING },
-                methodology_note: { type: Type.STRING }
-            }
+                methodology_note: { type: Type.STRING },
+                required_phrases: { type: Type.ARRAY, items: { type: Type.STRING } },
+                anchor_texts: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            phrase: { type: Type.STRING },
+                            target_topic_id: { type: Type.STRING }
+                        }
+                    }
+                }
+            },
+            required: ["heading", "level"]
         }
     },
     perspectives: { type: Type.ARRAY, items: { type: Type.STRING } },
@@ -114,7 +129,7 @@ export const CONTENT_BRIEF_SCHEMA = {
     },
     discourse_anchors: { type: Type.ARRAY, items: { type: Type.STRING } }
   },
-  required: ["title", "slug", "metaDescription", "keyTakeaways", "outline", "serpAnalysis", "visuals", "contextualVectors", "contextualBridge", "visual_semantics", "discourse_anchors"]
+  required: ["title", "slug", "metaDescription", "keyTakeaways", "outline", "structured_outline", "serpAnalysis", "visuals", "contextualVectors", "contextualBridge", "visual_semantics", "discourse_anchors"]
 };
 
 export const CONTENT_BRIEF_FALLBACK = {

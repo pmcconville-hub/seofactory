@@ -40,6 +40,7 @@ import PillarChangeConfirmationModal from './PillarChangeConfirmationModal';
 import EavManagerModal from './EavManagerModal';
 import CompetitorManagerModal from './CompetitorManagerModal';
 import TopicExpansionModal from './TopicExpansionModal';
+import TopicResourcesModal from './TopicResourcesModal';
 
 import { Button } from './ui/Button';
 
@@ -436,6 +437,11 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                 isOpen={!!modals.schema}
                 onClose={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'schema', visible: false } })}
                 result={state.schemaResult}
+            />
+            <TopicResourcesModal
+                isOpen={!!modals.topicResources}
+                topic={state.activeBriefTopic}
+                onClose={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'topicResources', visible: false } })}
             />
             <KnowledgeDomainModal
                 isOpen={!!modals.knowledgeDomain}

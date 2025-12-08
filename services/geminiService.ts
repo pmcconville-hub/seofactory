@@ -9,6 +9,7 @@ import {
   SemanticTriple,
   EnrichedTopic,
   ContentBrief,
+  BriefSection,
   ResponseCode,
   GscRow,
   GscOpportunity,
@@ -116,7 +117,10 @@ const callApi = async <T>(
     const ai = getAi(apiKey);
     
     try {
-        const config: any = {};
+        const config: any = {
+            // Set high output token limit to prevent truncation for long content
+            maxOutputTokens: 8192,
+        };
         if (isJson) config.responseMimeType = "application/json";
         if (responseSchema) config.responseSchema = responseSchema;
 
@@ -132,17 +136,31 @@ const callApi = async <T>(
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: validatedModel,
             contents: contents,
-            config: Object.keys(config).length > 0 ? config : undefined,
+            config: config,
         });
-        
+
         const responseText = response.text;
-        
+
         if (!responseText) {
           throw new Error("Received an empty response from the Gemini API.");
         }
-        
+
+        // Check for truncation indicators
+        const candidates = response.candidates;
+        if (candidates && candidates.length > 0) {
+            const finishReason = candidates[0].finishReason;
+            if (finishReason === 'MAX_TOKENS') {
+                dispatch({ type: 'LOG_EVENT', payload: {
+                    service: 'Gemini',
+                    message: 'WARNING: Response was truncated due to max token limit. Content may be incomplete.',
+                    status: 'warning',
+                    timestamp: Date.now()
+                }});
+            }
+        }
+
         dispatch({ type: 'LOG_EVENT', payload: { service: 'Gemini', message: `Received response. Sanitizing...`, status: 'info', timestamp: Date.now(), data: { response: responseText.substring(0, 200) + '...' } } });
-        
+
         return sanitizerFn(responseText);
 
     } catch (error) {
@@ -354,9 +372,9 @@ export const generateContentBrief = async (
         metaDescription: String,
         keyTakeaways: Array,
         outline: String,
-        structured_outline: Array, // New field
-        perspectives: Array, // New field
-        methodology_note: String, // New field
+        structured_outline: Array,
+        perspectives: Array,
+        methodology_note: String,
         serpAnalysis: {
             peopleAlsoAsk: Array,
             competitorHeadings: Array,
@@ -371,7 +389,17 @@ export const generateContentBrief = async (
             content: String,
             links: Array
         },
-        predicted_user_journey: String
+        predicted_user_journey: String,
+        // Holistic SEO Fields
+        query_type_format: String,
+        featured_snippet_target: {
+            question: String,
+            answer_target_length: Number,
+            required_predicates: Array,
+            target_type: String
+        },
+        visual_semantics: Array,
+        discourse_anchors: Array
     };
     
     return callApi(
@@ -1121,4 +1149,194 @@ Return a JSON array of TopicSimilarityResult objects.`;
     });
     throw error;
   }
+};
+
+// === BRIEF EDITING FUNCTIONS ===
+
+/**
+ * Regenerate an entire content brief with user feedback/instructions
+ */
+export const regenerateBrief = async (
+  businessInfo: BusinessInfo,
+  topic: EnrichedTopic,
+  currentBrief: ContentBrief,
+  userInstructions: string,
+  pillars: SEOPillars,
+  allTopics: EnrichedTopic[],
+  dispatch: React.Dispatch<any>
+): Promise<ContentBrief> => {
+  const sanitizer = new AIResponseSanitizer(dispatch);
+  const prompt = prompts.REGENERATE_BRIEF_PROMPT(
+    businessInfo,
+    topic,
+    currentBrief,
+    userInstructions,
+    pillars,
+    allTopics
+  );
+
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: {
+      service: 'Gemini',
+      message: `Regenerating brief for "${topic.title}" with user instructions`,
+      status: 'info',
+      timestamp: Date.now(),
+    },
+  });
+
+  const schema = {
+    title: String,
+    slug: String,
+    metaDescription: String,
+    keyTakeaways: Array,
+    outline: String,
+    structured_outline: Array,
+    perspectives: Array,
+    methodology_note: String,
+    featured_snippet_target: Object,
+    visual_semantics: Array,
+    discourse_anchors: Array,
+    contextualBridge: Object,
+    predicted_user_journey: String,
+    query_type_format: String,
+  };
+
+  const result = await callApi(
+    prompt,
+    businessInfo,
+    dispatch,
+    (text) => sanitizer.sanitize(text, schema, CONTENT_BRIEF_FALLBACK),
+    true,
+    CONTENT_BRIEF_SCHEMA
+  );
+
+  // Preserve the original ID and topic_id
+  return {
+    ...result,
+    id: currentBrief.id,
+    topic_id: currentBrief.topic_id,
+  } as ContentBrief;
+};
+
+/**
+ * AI-assisted refinement of a single brief section
+ */
+export const refineBriefSection = async (
+  section: BriefSection,
+  userInstruction: string,
+  briefContext: ContentBrief,
+  businessInfo: BusinessInfo,
+  dispatch: React.Dispatch<any>
+): Promise<BriefSection> => {
+  const sanitizer = new AIResponseSanitizer(dispatch);
+  const prompt = prompts.REFINE_BRIEF_SECTION_PROMPT(
+    section,
+    userInstruction,
+    briefContext,
+    businessInfo
+  );
+
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: {
+      service: 'Gemini',
+      message: `Refining section "${section.heading}" with AI assistance`,
+      status: 'info',
+      timestamp: Date.now(),
+    },
+  });
+
+  const schema = {
+    heading: String,
+    level: Number,
+    format_code: String,
+    attribute_category: String,
+    content_zone: String,
+    subordinate_text_hint: String,
+    methodology_note: String,
+    required_phrases: Array,
+    anchor_texts: Array,
+  };
+
+  const fallback: BriefSection = { ...section };
+
+  const result = await callApi(
+    prompt,
+    businessInfo,
+    dispatch,
+    (text) => sanitizer.sanitize(text, schema, fallback)
+  );
+
+  // Preserve the key from the original section
+  return {
+    ...result,
+    key: section.key,
+  } as BriefSection;
+};
+
+/**
+ * Generate a new section to be inserted at a specific position
+ */
+export const generateNewSection = async (
+  insertPosition: number,
+  parentHeading: string | null,
+  userInstruction: string,
+  briefContext: ContentBrief,
+  businessInfo: BusinessInfo,
+  pillars: SEOPillars,
+  dispatch: React.Dispatch<any>
+): Promise<BriefSection> => {
+  const sanitizer = new AIResponseSanitizer(dispatch);
+  const prompt = prompts.GENERATE_NEW_SECTION_PROMPT(
+    insertPosition,
+    parentHeading,
+    userInstruction,
+    briefContext,
+    businessInfo,
+    pillars
+  );
+
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: {
+      service: 'Gemini',
+      message: `Generating new section at position ${insertPosition + 1}`,
+      status: 'info',
+      timestamp: Date.now(),
+    },
+  });
+
+  const schema = {
+    heading: String,
+    level: Number,
+    format_code: String,
+    attribute_category: String,
+    content_zone: String,
+    subordinate_text_hint: String,
+    methodology_note: String,
+    required_phrases: Array,
+    anchor_texts: Array,
+  };
+
+  const fallback: BriefSection = {
+    heading: 'New Section',
+    level: parentHeading ? 3 : 2,
+    format_code: 'PROSE',
+    subordinate_text_hint: '',
+    methodology_note: '',
+  };
+
+  const result = await callApi(
+    prompt,
+    businessInfo,
+    dispatch,
+    (text) => sanitizer.sanitize(text, schema, fallback)
+  );
+
+  // Generate a unique key for the new section
+  return {
+    ...result,
+    key: `section-${Date.now()}`,
+  } as BriefSection;
 };

@@ -1,6 +1,6 @@
 
 // config/prompts.ts
-import { BusinessInfo, SEOPillars, SemanticTriple, EnrichedTopic, ContentBrief, ResponseCode, GscRow, ValidationIssue, ExpansionMode, AuthorProfile, ContextualFlowIssue, FoundationPage, NavigationStructure } from '../types';
+import { BusinessInfo, SEOPillars, SemanticTriple, EnrichedTopic, ContentBrief, BriefSection, ResponseCode, GscRow, ValidationIssue, ExpansionMode, AuthorProfile, ContextualFlowIssue, FoundationPage, NavigationStructure } from '../types';
 import { KnowledgeGraph } from '../lib/knowledgeGraph';
 
 const jsonResponseInstruction = `
@@ -2517,4 +2517,267 @@ Write a NEW introduction (150-250 words) in ${info.language || 'English'} that:
 5. **IS WRITTEN ENTIRELY IN ${info.language || 'English'}** for ${info.targetMarket || 'the target market'}
 
 Output ONLY the introduction paragraph content in ${info.language || 'English'}. Do not include "## Introduction" heading.
+`;
+
+// === BRIEF EDITING PROMPTS ===
+
+/**
+ * Regenerate an entire content brief based on user feedback
+ */
+// Helper to create a condensed brief for the prompt (to avoid huge request bodies)
+const condenseBriefForPrompt = (brief: ContentBrief): string => {
+  // Create a condensed version with essential data only
+  const condensed = {
+    title: brief.title,
+    slug: brief.slug,
+    metaDescription: brief.metaDescription,
+    keyTakeaways: brief.keyTakeaways,
+    // Condensed outline - just headings and key metadata
+    structured_outline: brief.structured_outline?.map(s => ({
+      heading: s.heading,
+      level: s.level,
+      format_code: s.format_code,
+      attribute_category: s.attribute_category,
+      content_zone: s.content_zone,
+      // Include hints but truncate if too long
+      subordinate_text_hint: s.subordinate_text_hint?.substring(0, 200),
+      methodology_note: s.methodology_note?.substring(0, 200),
+    })) || [],
+    // Include counts instead of full data for large arrays
+    contextualVectors_count: brief.contextualVectors?.length || 0,
+    visual_semantics_count: brief.visual_semantics?.length || 0,
+    perspectives: brief.perspectives,
+    discourse_anchors: brief.discourse_anchors,
+    contextualBridge: brief.contextualBridge,
+    predicted_user_journey: brief.predicted_user_journey,
+    query_type_format: brief.query_type_format,
+    featured_snippet_target: brief.featured_snippet_target,
+  };
+  return JSON.stringify(condensed, null, 2);
+};
+
+export const REGENERATE_BRIEF_PROMPT = (
+  info: BusinessInfo,
+  topic: EnrichedTopic,
+  currentBrief: ContentBrief,
+  userInstructions: string,
+  pillars: SEOPillars,
+  allTopics: EnrichedTopic[]
+): string => `
+You are an expert Algorithmic Architect and Holistic SEO Strategist.
+The user has reviewed their existing content brief and wants specific changes.
+
+**LANGUAGE: ${info.language || 'English'} | Target Market: ${info.targetMarket || 'Global'}**
+
+## Current Brief (condensed for reference - ${currentBrief.structured_outline?.length || 0} sections)
+${condenseBriefForPrompt(currentBrief)}
+
+## User's Feedback & Instructions
+"${userInstructions}"
+
+## Context
+${businessContext(info)}
+**SEO Pillars:**
+- Central Entity: ${pillars.centralEntity}
+- Source Context: ${pillars.sourceContext}
+- Central Search Intent: ${pillars.centralSearchIntent}
+
+**Available Topics for Internal Linking:** ${allTopics.map(t => t.title).join(', ')}
+
+---
+
+## Your Task
+Regenerate the content brief incorporating the user's feedback. You MUST:
+
+1. **Address User Feedback Directly**: Make the specific changes the user requested
+2. **CRITICAL - PRESERVE SECTIONS**: The current brief has ${currentBrief.structured_outline?.length || 0} sections.
+   - You MUST return a complete structured_outline array with sections
+   - Modify sections per user feedback, but DO NOT return an empty array
+   - If user wants to remove sections, only remove those specifically mentioned
+   - If unsure, keep all existing sections and modify them
+3. **Maintain Framework Rules**:
+   - Central Entity Focus: Every heading modifies "${pillars.centralEntity}"
+   - Source Context Alignment: Filter for "${pillars.sourceContext}"
+   - Attribute Priority: UNIQUE → ROOT → RARE → COMMON ordering
+4. **Preserve Quality**: Keep format_codes, subordinate_text_hints, and methodology_notes
+5. **Keep Language**: All content in ${info.language || 'English'}
+
+${getStylometryInstructions(info.authorProfile)}
+
+${jsonResponseInstruction}
+
+Return the complete regenerated brief as a JSON object with this structure:
+{
+  "title": "string",
+  "slug": "string",
+  "metaDescription": "string (155 chars max)",
+  "keyTakeaways": ["string", "string", "string"],
+  "outline": "string (markdown format)",
+  "structured_outline": [
+    {
+      "heading": "string",
+      "level": number,
+      "format_code": "FS | PAA | LISTING | DEFINITIVE | TABLE | PROSE",
+      "attribute_category": "ROOT | UNIQUE | RARE | COMMON",
+      "content_zone": "MAIN | SUPPLEMENTARY",
+      "subordinate_text_hint": "string",
+      "methodology_note": "string",
+      "required_phrases": ["string"],
+      "anchor_texts": [{ "phrase": "string", "target_topic_id": "string" }]
+    }
+  ],
+  "perspectives": ["string"],
+  "methodology_note": "string",
+  "featured_snippet_target": {
+    "question": "string",
+    "answer_target_length": number,
+    "required_predicates": ["string"],
+    "target_type": "PARAGRAPH | LIST | TABLE"
+  },
+  "visual_semantics": [
+    { "type": "INFOGRAPHIC | CHART | PHOTO | DIAGRAM", "description": "string", "caption_data": "string" }
+  ],
+  "discourse_anchors": ["string"],
+  "contextualBridge": {
+    "type": "section",
+    "content": "string",
+    "links": [{ "targetTopic": "string", "anchorText": "string", "annotation_text_hint": "string", "reasoning": "string" }]
+  },
+  "predicted_user_journey": "string",
+  "query_type_format": "string"
+}
+`;
+
+/**
+ * Refine a single section of a content brief based on user instruction
+ */
+export const REFINE_BRIEF_SECTION_PROMPT = (
+  section: BriefSection,
+  userInstruction: string,
+  briefContext: ContentBrief,
+  info: BusinessInfo
+): string => `
+You are an expert Holistic SEO Strategist editing a single section of a content brief.
+
+**LANGUAGE: ${info.language || 'English'} | Target Market: ${info.targetMarket || 'Global'}**
+
+## Current Section
+${JSON.stringify(section, null, 2)}
+
+## User's Instruction
+"${userInstruction}"
+
+## Brief Context (for coherence)
+- Title: ${briefContext.title}
+- Seed Keyword: ${info.seedKeyword}
+- Other Sections: ${briefContext.structured_outline?.map(s => s.heading).join(' → ') || 'N/A'}
+- Key Takeaways: ${briefContext.keyTakeaways?.join(', ') || 'N/A'}
+
+${businessContext(info)}
+
+---
+
+## Your Task
+Refine this section based on the user's instruction while maintaining:
+
+1. **Holistic SEO Framework Rules**:
+   - Central Entity as subject where appropriate
+   - format_code compliance (FS=40-50 words, LISTING=preamble required, etc.)
+   - attribute_category alignment (ROOT for definitions, UNIQUE for differentiators, etc.)
+
+2. **Section Coherence**:
+   - subordinate_text_hint must dictate first sentence syntax
+   - methodology_note must include format code and required phrases
+   - Keep heading hierarchy logical (level 2 = H2, level 3 = H3)
+
+3. **Language**: All content in ${info.language || 'English'}
+
+${getStylometryInstructions(info.authorProfile)}
+
+${jsonResponseInstruction}
+
+Return the refined section as a JSON object:
+{
+  "heading": "string",
+  "level": number,
+  "format_code": "FS | PAA | LISTING | DEFINITIVE | TABLE | PROSE",
+  "attribute_category": "ROOT | UNIQUE | RARE | COMMON",
+  "content_zone": "MAIN | SUPPLEMENTARY",
+  "subordinate_text_hint": "string (first sentence syntax instruction)",
+  "methodology_note": "string (formatting notes with codes)",
+  "required_phrases": ["string"],
+  "anchor_texts": [{ "phrase": "string", "target_topic_id": "string" }]
+}
+`;
+
+/**
+ * Generate a new section to insert into a content brief
+ */
+export const GENERATE_NEW_SECTION_PROMPT = (
+  insertPosition: number,
+  parentHeading: string | null,
+  userInstruction: string,
+  briefContext: ContentBrief,
+  info: BusinessInfo,
+  pillars: SEOPillars
+): string => `
+You are an expert Holistic SEO Strategist creating a new section for a content brief.
+
+**LANGUAGE: ${info.language || 'English'} | Target Market: ${info.targetMarket || 'Global'}**
+
+## Position Information
+- Insert at position: ${insertPosition + 1} (after ${insertPosition === 0 ? 'the beginning' : `section ${insertPosition}`})
+- Parent Heading (if H3): ${parentHeading || 'None (creating H2)'}
+
+## User's Request
+"${userInstruction}"
+
+## Existing Sections
+${briefContext.structured_outline?.map((s, i) => `${i + 1}. [H${s.level}] ${s.heading} (${s.format_code || 'PROSE'})`).join('\n') || 'No existing sections'}
+
+## Brief Context
+- Title: ${briefContext.title}
+- Key Takeaways: ${briefContext.keyTakeaways?.join(', ') || 'N/A'}
+
+${businessContext(info)}
+
+**SEO Pillars:**
+- Central Entity: ${pillars.centralEntity}
+- Source Context: ${pillars.sourceContext}
+- Central Search Intent: ${pillars.centralSearchIntent}
+
+---
+
+## Your Task
+Create a new section that:
+
+1. **Fits Naturally**: Logical flow from previous section to this one to next
+2. **Follows Framework Rules**:
+   - Heading must modify Central Entity "${pillars.centralEntity}"
+   - Choose appropriate format_code (FS for featured snippet targets, PAA for questions, LISTING for lists, etc.)
+   - Assign correct attribute_category (ROOT, UNIQUE, RARE, or COMMON)
+
+3. **Provides Complete Guidance**:
+   - subordinate_text_hint: Exact syntax for first sentence
+   - methodology_note: Format requirements and codes
+   - required_phrases: Key terms that must appear
+
+4. **Language**: All content in ${info.language || 'English'}
+
+${getStylometryInstructions(info.authorProfile)}
+
+${jsonResponseInstruction}
+
+Return the new section as a JSON object:
+{
+  "heading": "string",
+  "level": ${parentHeading ? 3 : 2},
+  "format_code": "FS | PAA | LISTING | DEFINITIVE | TABLE | PROSE",
+  "attribute_category": "ROOT | UNIQUE | RARE | COMMON",
+  "content_zone": "MAIN | SUPPLEMENTARY",
+  "subordinate_text_hint": "string (first sentence syntax instruction)",
+  "methodology_note": "string (formatting notes with codes)",
+  "required_phrases": ["string"],
+  "anchor_texts": [{ "phrase": "string", "target_topic_id": "string" }]
+}
 `;

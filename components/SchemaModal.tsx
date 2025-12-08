@@ -45,8 +45,21 @@ const SchemaModal: React.FC<SchemaModalProps> = ({
   const enhancedResult = isEnhanced ? result as EnhancedSchemaResult : null;
   const legacyResult = !isEnhanced ? result as SchemaGenerationResult : null;
 
-  // Get schema string
-  const schemaString = enhancedResult?.schemaString || legacyResult?.schema || '';
+  // Get schema string - handle both string and object formats
+  const getSchemaString = (): string => {
+    if (enhancedResult?.schemaString) {
+      return enhancedResult.schemaString;
+    }
+    if (legacyResult?.schema) {
+      // Handle case where schema is already an object (from AI response parsing)
+      if (typeof legacyResult.schema === 'object') {
+        return JSON.stringify(legacyResult.schema, null, 2);
+      }
+      return legacyResult.schema;
+    }
+    return '';
+  };
+  const schemaString = getSchemaString();
 
   useEffect(() => {
     if (isOpen) {

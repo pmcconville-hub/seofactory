@@ -136,7 +136,7 @@ export function useContentGeneration({
     };
   }, [job?.id, supabase]);
 
-  // Check for existing job on mount (including completed jobs)
+  // Check for existing job on mount (including completed jobs) and auto-resume if needed
   useEffect(() => {
     const checkExisting = async () => {
       if (!orchestratorRef.current || !briefId) return;
@@ -161,10 +161,29 @@ export function useContentGeneration({
 
             if (draftToSync) {
               console.log('[useContentGeneration] Syncing draft to brief:', draftToSync.length, 'chars');
-              onComplete(draftToSync, latestJob.final_audit_score || 0);
+              // Pass schema data if available (for jobs completed with Pass 9)
+              const schemaResult = latestJob.schema_data as EnhancedSchemaResult | undefined;
+              onComplete(draftToSync, latestJob.final_audit_score || 0, schemaResult);
             } else {
               console.warn('[useContentGeneration] No draft content found in completed job');
             }
+          }
+          // Auto-resume in_progress or pending jobs after page refresh
+          else if (latestJob.status === 'in_progress' || latestJob.status === 'pending') {
+            console.log('[useContentGeneration] Auto-resuming job:', latestJob.id, 'status:', latestJob.status);
+            onLog('Resuming generation after page refresh...', 'info');
+            abortRef.current = false;
+            // Mark as in_progress if it was pending
+            if (latestJob.status === 'pending') {
+              await orchestratorRef.current.updateJob(latestJob.id, { status: 'in_progress' });
+            }
+            setJob({ ...latestJob, status: 'in_progress' });
+            // Run passes with a small delay to ensure state is set
+            setTimeout(() => {
+              if (orchestratorRef.current) {
+                runPasses(orchestratorRef.current, { ...latestJob, status: 'in_progress' });
+              }
+            }, 100);
           }
         }
       } catch (err) {
@@ -173,7 +192,7 @@ export function useContentGeneration({
       }
     };
     checkExisting();
-  }, [briefId, onComplete]);
+  }, [briefId]); // Removed onComplete to prevent re-running on every render
 
   const runPasses = async (orchestrator: ContentGenerationOrchestrator, currentJob: ContentGenerationJob) => {
     let updatedJob = currentJob;
@@ -372,14 +391,18 @@ export function useContentGeneration({
     setError(null);
 
     try {
-      // Check for existing job first - resume it or delete failed ones
-      let existingJob = await orchestratorRef.current.getExistingJob(briefId);
+      // Check for existing job first (including completed ones for regeneration)
+      let existingJob = await orchestratorRef.current.getLatestJob(briefId);
 
       if (existingJob) {
-        // If existing job failed or is paused, delete it and start fresh
-        if (existingJob.status === 'failed' || existingJob.status === 'cancelled') {
+        // If existing job failed, cancelled, or completed - delete it and start fresh
+        if (existingJob.status === 'failed' || existingJob.status === 'cancelled' || existingJob.status === 'completed') {
+          onLog(existingJob.status === 'completed' ? 'Clearing previous draft for regeneration...' : 'Clearing failed job...', 'info');
           await orchestratorRef.current.deleteJob(existingJob.id);
           existingJob = null;
+          // Clear local state
+          setJob(null);
+          setSections([]);
         } else if (existingJob.status === 'paused' || existingJob.status === 'pending') {
           // Resume the existing job
           onLog('Resuming existing job...', 'info');

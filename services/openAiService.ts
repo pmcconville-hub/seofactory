@@ -2,7 +2,7 @@
 import OpenAI from 'openai';
 import {
     BusinessInfo, CandidateEntity, SourceContextOption, SEOPillars,
-    SemanticTriple, EnrichedTopic, ContentBrief, ResponseCode,
+    SemanticTriple, EnrichedTopic, ContentBrief, BriefSection, ResponseCode,
     GscRow, GscOpportunity, ValidationResult, ValidationIssue,
     MapImprovementSuggestion, MergeSuggestion, SemanticAnalysisResult,
     ContextualCoverageMetrics, InternalLinkAuditResult, TopicalAuthorityScore,
@@ -56,6 +56,7 @@ const callApi = async <T>(
                 { role: "system", content: "You are a helpful, expert SEO strategist and content architect. You output strict JSON when requested." },
                 { role: "user", content: prompt }
             ],
+            max_tokens: 8192, // Prevent truncation for long content
             response_format: isJson ? { type: "json_object" } : undefined,
         });
 
@@ -400,4 +401,177 @@ export const reanalyzeTopicSimilarity = async (
   // Delegate to Gemini implementation for now
   const geminiService = await import('./geminiService');
   return geminiService.reanalyzeTopicSimilarity(topicsA, topicsB, existingDecisions, { ...businessInfo, aiProvider: 'gemini' }, dispatch);
+};
+
+// ============================================
+// BRIEF EDITING FUNCTIONS
+// Native OpenAI implementation - respects user's provider choice
+// ============================================
+
+export const regenerateBrief = async (
+  businessInfo: BusinessInfo,
+  topic: EnrichedTopic,
+  currentBrief: ContentBrief,
+  userInstructions: string,
+  pillars: SEOPillars,
+  allTopics: EnrichedTopic[],
+  dispatch: React.Dispatch<any>
+): Promise<ContentBrief> => {
+  const sanitizer = new AIResponseSanitizer(dispatch);
+  const prompt = prompts.REGENERATE_BRIEF_PROMPT(
+    businessInfo,
+    topic,
+    currentBrief,
+    userInstructions,
+    pillars,
+    allTopics
+  );
+
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: {
+      service: 'OpenAI',
+      message: `Regenerating brief for "${topic.title}" with user instructions`,
+      status: 'info',
+      timestamp: Date.now(),
+    },
+  });
+
+  const schema = {
+    title: String, slug: String, metaDescription: String, keyTakeaways: Array, outline: String,
+    structured_outline: Array, perspectives: Array, methodology_note: String,
+    serpAnalysis: { peopleAlsoAsk: Array, competitorHeadings: Array },
+    visuals: { featuredImagePrompt: String, imageAltText: String },
+    contextualVectors: Array,
+    contextualBridge: { type: String, content: String, links: Array },
+    predicted_user_journey: String,
+    query_type_format: String, featured_snippet_target: Object,
+    visual_semantics: Array, discourse_anchors: Array
+  };
+
+  const result = await callApi(
+    prompt,
+    businessInfo,
+    dispatch,
+    (text) => sanitizer.sanitize(text, schema, CONTENT_BRIEF_FALLBACK)
+  );
+
+  // Preserve the original ID and topic_id
+  return {
+    ...result,
+    id: currentBrief.id,
+    topic_id: currentBrief.topic_id,
+  } as ContentBrief;
+};
+
+export const refineBriefSection = async (
+  section: BriefSection,
+  userInstruction: string,
+  briefContext: ContentBrief,
+  businessInfo: BusinessInfo,
+  dispatch: React.Dispatch<any>
+): Promise<BriefSection> => {
+  const sanitizer = new AIResponseSanitizer(dispatch);
+  const prompt = prompts.REFINE_BRIEF_SECTION_PROMPT(
+    section,
+    userInstruction,
+    briefContext,
+    businessInfo
+  );
+
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: {
+      service: 'OpenAI',
+      message: `Refining section "${section.heading}" with AI assistance`,
+      status: 'info',
+      timestamp: Date.now(),
+    },
+  });
+
+  const schema = {
+    heading: String,
+    level: Number,
+    format_code: String,
+    attribute_category: String,
+    content_zone: String,
+    subordinate_text_hint: String,
+    methodology_note: String,
+    required_phrases: Array,
+    anchor_texts: Array,
+  };
+
+  const fallback: BriefSection = { ...section };
+
+  const result = await callApi(
+    prompt,
+    businessInfo,
+    dispatch,
+    (text) => sanitizer.sanitize(text, schema, fallback)
+  );
+
+  return {
+    ...result,
+    key: section.key, // Preserve the original key
+  } as BriefSection;
+};
+
+export const generateNewSection = async (
+  insertPosition: number,
+  parentHeading: string | null,
+  userInstruction: string,
+  briefContext: ContentBrief,
+  businessInfo: BusinessInfo,
+  pillars: SEOPillars,
+  dispatch: React.Dispatch<any>
+): Promise<BriefSection> => {
+  const sanitizer = new AIResponseSanitizer(dispatch);
+  const prompt = prompts.GENERATE_NEW_SECTION_PROMPT(
+    insertPosition,
+    parentHeading,
+    userInstruction,
+    briefContext,
+    businessInfo,
+    pillars
+  );
+
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: {
+      service: 'OpenAI',
+      message: `Generating new section at position ${insertPosition}`,
+      status: 'info',
+      timestamp: Date.now(),
+    },
+  });
+
+  const schema = {
+    heading: String,
+    level: Number,
+    format_code: String,
+    attribute_category: String,
+    content_zone: String,
+    subordinate_text_hint: String,
+    methodology_note: String,
+    required_phrases: Array,
+    anchor_texts: Array,
+  };
+
+  const fallback: BriefSection = {
+    key: `section-${Date.now()}`,
+    heading: 'New Section',
+    level: 2,
+  };
+
+  const result = await callApi(
+    prompt,
+    businessInfo,
+    dispatch,
+    (text) => sanitizer.sanitize(text, schema, fallback)
+  );
+
+  return {
+    ...result,
+    key: `section-${Date.now()}`,
+  } as BriefSection;
 };

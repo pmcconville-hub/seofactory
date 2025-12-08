@@ -1,7 +1,7 @@
 
 import {
     BusinessInfo, CandidateEntity, SourceContextOption, SEOPillars,
-    SemanticTriple, EnrichedTopic, ContentBrief, ResponseCode,
+    SemanticTriple, EnrichedTopic, ContentBrief, BriefSection, ResponseCode,
     GscRow, GscOpportunity, ValidationResult, ValidationIssue,
     MapImprovementSuggestion, MergeSuggestion, SemanticAnalysisResult,
     ContextualCoverageMetrics, InternalLinkAuditResult, TopicalAuthorityScore,
@@ -60,6 +60,37 @@ const callApi = async <T>(
     const isValidClaudeModel = businessInfo.aiModel && validClaudeModels.includes(businessInfo.aiModel);
     const modelToUse = isValidClaudeModel ? businessInfo.aiModel : defaultModel;
 
+    // Validate configuration before making request
+    if (!businessInfo.supabaseAnonKey) {
+        console.warn('[Anthropic callApi] Supabase anon key is missing - request may fail');
+    }
+
+    const requestBody = {
+        model: modelToUse,
+        max_tokens: 16384,
+        messages: [
+            { role: "user", content: effectivePrompt }
+        ],
+        system: "You are a helpful, expert SEO strategist. You ALWAYS output valid JSON when requested. Never include explanatory text, markdown formatting, or code blocks around your JSON response. Start directly with { and end with }. Keep responses concise - focus on quality topics rather than quantity."
+    };
+
+    const bodyString = JSON.stringify(requestBody);
+    const bodySizeKB = (bodyString.length / 1024).toFixed(2);
+
+    console.log('[Anthropic callApi] Making request to proxy:', {
+        proxyUrl,
+        model: modelToUse,
+        hasApiKey: !!businessInfo.anthropicApiKey,
+        hasAnonKey: !!businessInfo.supabaseAnonKey,
+        promptLength: effectivePrompt.length,
+        requestBodySizeKB: bodySizeKB
+    });
+
+    // Warn if request body is very large (could cause issues)
+    if (bodyString.length > 500000) { // 500KB
+        console.warn(`[Anthropic callApi] Request body is very large (${bodySizeKB}KB). This may cause issues.`);
+    }
+
     try {
         const response = await fetch(proxyUrl, {
             method: 'POST',
@@ -68,14 +99,7 @@ const callApi = async <T>(
                 'x-anthropic-api-key': businessInfo.anthropicApiKey,
                 'apikey': businessInfo.supabaseAnonKey || '',
             },
-            body: JSON.stringify({
-                model: modelToUse,
-                max_tokens: 16384,
-                messages: [
-                    { role: "user", content: effectivePrompt }
-                ],
-                system: "You are a helpful, expert SEO strategist. You ALWAYS output valid JSON when requested. Never include explanatory text, markdown formatting, or code blocks around your JSON response. Start directly with { and end with }. Keep responses concise - focus on quality topics rather than quantity."
-            }),
+            body: bodyString,
         });
 
         if (!response.ok) {
@@ -142,7 +166,21 @@ const callApi = async <T>(
         return sanitizerFn(responseText);
 
     } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown Anthropic error";
+        let message = error instanceof Error ? error.message : "Unknown Anthropic error";
+
+        // Provide more specific error messages for common issues
+        if (message === 'Failed to fetch' || message.includes('NetworkError')) {
+            console.error('[Anthropic callApi] Network error details:', {
+                proxyUrl,
+                hasApiKey: !!businessInfo.anthropicApiKey,
+                hasAnonKey: !!businessInfo.supabaseAnonKey,
+                supabaseUrl: businessInfo.supabaseUrl
+            });
+            message = `Network error connecting to proxy. Please check: 1) Your internet connection, 2) Supabase URL is correct (${businessInfo.supabaseUrl}), 3) The anthropic-proxy function is deployed.`;
+        } else if (message.includes('TypeError')) {
+            message = `Configuration error: ${message}. Check that all required API keys are configured.`;
+        }
+
         dispatch({ type: 'LOG_EVENT', payload: { service: 'Anthropic', message: `Error: ${message}`, status: 'failure', timestamp: Date.now(), data: error } });
         throw new Error(`Anthropic API Call Failed: ${message}`);
     }
@@ -697,4 +735,177 @@ export const reanalyzeTopicSimilarity = async (
   // Delegate to Gemini implementation for now
   const geminiService = await import('./geminiService');
   return geminiService.reanalyzeTopicSimilarity(topicsA, topicsB, existingDecisions, { ...businessInfo, aiProvider: 'gemini' }, dispatch);
+};
+
+// ============================================
+// BRIEF EDITING FUNCTIONS
+// Native Anthropic implementation - respects user's provider choice
+// ============================================
+
+export const regenerateBrief = async (
+  businessInfo: BusinessInfo,
+  topic: EnrichedTopic,
+  currentBrief: ContentBrief,
+  userInstructions: string,
+  pillars: SEOPillars,
+  allTopics: EnrichedTopic[],
+  dispatch: React.Dispatch<any>
+): Promise<ContentBrief> => {
+  const sanitizer = new AIResponseSanitizer(dispatch);
+  const prompt = prompts.REGENERATE_BRIEF_PROMPT(
+    businessInfo,
+    topic,
+    currentBrief,
+    userInstructions,
+    pillars,
+    allTopics
+  );
+
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: {
+      service: 'Anthropic',
+      message: `Regenerating brief for "${topic.title}" with user instructions`,
+      status: 'info',
+      timestamp: Date.now(),
+    },
+  });
+
+  const schema = {
+    title: String, slug: String, metaDescription: String, keyTakeaways: Array, outline: String,
+    structured_outline: Array, perspectives: Array, methodology_note: String,
+    serpAnalysis: { peopleAlsoAsk: Array, competitorHeadings: Array },
+    visuals: { featuredImagePrompt: String, imageAltText: String },
+    contextualVectors: Array,
+    contextualBridge: { type: String, content: String, links: Array },
+    predicted_user_journey: String,
+    query_type_format: String, featured_snippet_target: Object,
+    visual_semantics: Array, discourse_anchors: Array
+  };
+
+  const result = await callApi(
+    prompt,
+    businessInfo,
+    dispatch,
+    (text) => sanitizer.sanitize(text, schema, CONTENT_BRIEF_FALLBACK)
+  );
+
+  // Preserve the original ID and topic_id
+  return {
+    ...result,
+    id: currentBrief.id,
+    topic_id: currentBrief.topic_id,
+  } as ContentBrief;
+};
+
+export const refineBriefSection = async (
+  section: BriefSection,
+  userInstruction: string,
+  briefContext: ContentBrief,
+  businessInfo: BusinessInfo,
+  dispatch: React.Dispatch<any>
+): Promise<BriefSection> => {
+  const sanitizer = new AIResponseSanitizer(dispatch);
+  const prompt = prompts.REFINE_BRIEF_SECTION_PROMPT(
+    section,
+    userInstruction,
+    briefContext,
+    businessInfo
+  );
+
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: {
+      service: 'Anthropic',
+      message: `Refining section "${section.heading}" with AI assistance`,
+      status: 'info',
+      timestamp: Date.now(),
+    },
+  });
+
+  const schema = {
+    heading: String,
+    level: Number,
+    format_code: String,
+    attribute_category: String,
+    content_zone: String,
+    subordinate_text_hint: String,
+    methodology_note: String,
+    required_phrases: Array,
+    anchor_texts: Array,
+  };
+
+  const fallback: BriefSection = { ...section };
+
+  const result = await callApi(
+    prompt,
+    businessInfo,
+    dispatch,
+    (text) => sanitizer.sanitize(text, schema, fallback)
+  );
+
+  return {
+    ...result,
+    key: section.key, // Preserve the original key
+  } as BriefSection;
+};
+
+export const generateNewSection = async (
+  insertPosition: number,
+  parentHeading: string | null,
+  userInstruction: string,
+  briefContext: ContentBrief,
+  businessInfo: BusinessInfo,
+  pillars: SEOPillars,
+  dispatch: React.Dispatch<any>
+): Promise<BriefSection> => {
+  const sanitizer = new AIResponseSanitizer(dispatch);
+  const prompt = prompts.GENERATE_NEW_SECTION_PROMPT(
+    insertPosition,
+    parentHeading,
+    userInstruction,
+    briefContext,
+    businessInfo,
+    pillars
+  );
+
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: {
+      service: 'Anthropic',
+      message: `Generating new section at position ${insertPosition}`,
+      status: 'info',
+      timestamp: Date.now(),
+    },
+  });
+
+  const schema = {
+    heading: String,
+    level: Number,
+    format_code: String,
+    attribute_category: String,
+    content_zone: String,
+    subordinate_text_hint: String,
+    methodology_note: String,
+    required_phrases: Array,
+    anchor_texts: Array,
+  };
+
+  const fallback: BriefSection = {
+    key: `section-${Date.now()}`,
+    heading: 'New Section',
+    level: 2,
+  };
+
+  const result = await callApi(
+    prompt,
+    businessInfo,
+    dispatch,
+    (text) => sanitizer.sanitize(text, schema, fallback)
+  );
+
+  return {
+    ...result,
+    key: `section-${Date.now()}`,
+  } as BriefSection;
 };

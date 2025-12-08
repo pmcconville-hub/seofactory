@@ -338,11 +338,22 @@ export const sanitizeBriefFromDb = (dbBrief: any): ContentBrief => {
     
     const parseStructuredOutline = (data: any): BriefSection[] => {
         const raw = safeArray(data); // Handle stringified arrays
-        return raw.map((item: any) => ({
+        return raw.map((item: any, index: number) => ({
+            // Core fields
+            key: item.key || `section-${index}-${Date.now()}`,
             heading: safeString(item.heading),
             level: typeof item.level === 'number' ? item.level : 2,
             subordinate_text_hint: safeString(item.subordinate_text_hint),
-            methodology_note: item.methodology_note ? safeString(item.methodology_note) : undefined
+            methodology_note: item.methodology_note ? safeString(item.methodology_note) : undefined,
+            // Holistic SEO fields
+            format_code: item.format_code || 'PROSE',
+            attribute_category: item.attribute_category || 'COMMON',
+            content_zone: item.content_zone || 'MAIN',
+            required_phrases: Array.isArray(item.required_phrases) ? item.required_phrases : [],
+            anchor_texts: Array.isArray(item.anchor_texts) ? item.anchor_texts.map((a: any) => ({
+                phrase: safeString(a.phrase),
+                target_topic_id: a.target_topic_id ? safeString(a.target_topic_id) : undefined
+            })) : []
         }));
     };
 

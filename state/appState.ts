@@ -9,6 +9,7 @@ import {
     TopicalMap,
     EnrichedTopic,
     ContentBrief,
+    BriefSection,
     KnowledgeGraph as KnowledgeGraphType,
     GenerationLogEntry,
     ValidationResult,
@@ -21,6 +22,7 @@ import {
     PublicationPlan,
     ContentIntegrityResult,
     SchemaGenerationResult,
+    EnhancedSchemaResult,
     GscOpportunity,
     SEOPillars,
     SemanticTriple,
@@ -39,6 +41,9 @@ import {
     UnifiedAuditResult,
     AuditFixHistoryEntry,
 } from '../types';
+
+// Union type for schema results - supports both legacy and enhanced schema
+export type SchemaResult = SchemaGenerationResult | EnhancedSchemaResult;
 import { AuditProgress } from '../services/ai/unifiedAudit';
 import { KnowledgeGraph } from '../lib/knowledgeGraph';
 import { defaultBusinessInfo } from '../config/defaults';
@@ -85,7 +90,7 @@ export interface AppState {
     topicalAuthorityScore: TopicalAuthorityScore | null;
     publicationPlan: PublicationPlan | null;
     contentIntegrityResult: ContentIntegrityResult | null;
-    schemaResult: SchemaGenerationResult | null;
+    schemaResult: SchemaResult | null;
     flowAuditResult: FlowAuditResult | null;
 
     // Site Analysis V2 state (persisted across tab navigation)
@@ -175,7 +180,7 @@ export type AppAction =
   | { type: 'SET_TOPICAL_AUTHORITY_SCORE'; payload: TopicalAuthorityScore | null }
   | { type: 'SET_PUBLICATION_PLAN'; payload: PublicationPlan | null }
   | { type: 'SET_CONTENT_INTEGRITY_RESULT'; payload: ContentIntegrityResult | null }
-  | { type: 'SET_SCHEMA_RESULT'; payload: SchemaGenerationResult | null }
+  | { type: 'SET_SCHEMA_RESULT'; payload: SchemaResult | null }
   | { type: 'SET_FLOW_AUDIT_RESULT'; payload: FlowAuditResult | null }
   // Site Analysis V2 actions
   | { type: 'SET_SITE_ANALYSIS_VIEW_MODE'; payload: AppState['siteAnalysis']['viewMode'] }
@@ -211,7 +216,13 @@ export type AppAction =
   | { type: 'SET_UNIFIED_AUDIT_HISTORY'; payload: AuditFixHistoryEntry[] }
   | { type: 'ADD_UNIFIED_AUDIT_HISTORY'; payload: AuditFixHistoryEntry }
   | { type: 'SET_UNIFIED_AUDIT_ID'; payload: string | null }
-  | { type: 'RESET_UNIFIED_AUDIT' };
+  | { type: 'RESET_UNIFIED_AUDIT' }
+  // Brief Editing actions
+  | { type: 'UPDATE_BRIEF_SECTION'; payload: { mapId: string; topicId: string; sectionIndex: number; section: BriefSection } }
+  | { type: 'DELETE_BRIEF_SECTION'; payload: { mapId: string; topicId: string; sectionIndex: number } }
+  | { type: 'ADD_BRIEF_SECTION'; payload: { mapId: string; topicId: string; sectionIndex: number; section: BriefSection } }
+  | { type: 'REORDER_BRIEF_SECTIONS'; payload: { mapId: string; topicId: string; sections: BriefSection[] } }
+  | { type: 'REPLACE_BRIEF'; payload: { mapId: string; topicId: string; brief: ContentBrief } };
 
 export const initialState: AppState = {
     user: null,
@@ -305,6 +316,11 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
         case 'DELETE_TOPIC':
         case 'ADD_BRIEF':
         case 'UPDATE_BRIEF_LINKS':
+        case 'UPDATE_BRIEF_SECTION':
+        case 'DELETE_BRIEF_SECTION':
+        case 'ADD_BRIEF_SECTION':
+        case 'REORDER_BRIEF_SECTIONS':
+        case 'REPLACE_BRIEF':
             return {
                 ...state,
                 topicalMaps: state.topicalMaps.map(map => 'mapId' in action.payload && map.id === action.payload.mapId ? mapReducer(map, action) : map)
@@ -568,7 +584,7 @@ const mapReducer = (map: TopicalMap, action: any): TopicalMap => {
             const { sourceTopicId, linkToAdd } = action.payload;
             const brief = map.briefs?.[sourceTopicId];
             if (!brief) return map;
-            
+
             let newBridge: typeof brief.contextualBridge;
             if (Array.isArray(brief.contextualBridge)) {
                 newBridge = [...brief.contextualBridge, linkToAdd];
@@ -582,9 +598,84 @@ const mapReducer = (map: TopicalMap, action: any): TopicalMap => {
                 // Default Fallback
                 newBridge = [linkToAdd];
             }
-            
+
             const updatedBrief = { ...brief, contextualBridge: newBridge };
             return { ...map, briefs: { ...(map.briefs || {}), [sourceTopicId]: updatedBrief } };
+        }
+        // Brief Section Editing cases
+        case 'UPDATE_BRIEF_SECTION': {
+            const { topicId, sectionIndex, section } = action.payload;
+            const brief = map.briefs?.[topicId];
+            if (!brief || !brief.structured_outline) return map;
+
+            const newOutline = [...brief.structured_outline];
+            newOutline[sectionIndex] = section;
+
+            return {
+                ...map,
+                briefs: {
+                    ...(map.briefs || {}),
+                    [topicId]: { ...brief, structured_outline: newOutline }
+                }
+            };
+        }
+        case 'DELETE_BRIEF_SECTION': {
+            const { topicId, sectionIndex } = action.payload;
+            const brief = map.briefs?.[topicId];
+            if (!brief || !brief.structured_outline) return map;
+
+            const newOutline = brief.structured_outline.filter((_, idx) => idx !== sectionIndex);
+
+            return {
+                ...map,
+                briefs: {
+                    ...(map.briefs || {}),
+                    [topicId]: { ...brief, structured_outline: newOutline }
+                }
+            };
+        }
+        case 'ADD_BRIEF_SECTION': {
+            const { topicId, sectionIndex, section } = action.payload;
+            const brief = map.briefs?.[topicId];
+            if (!brief) return map;
+
+            const currentOutline = brief.structured_outline || [];
+            const newOutline = [
+                ...currentOutline.slice(0, sectionIndex),
+                section,
+                ...currentOutline.slice(sectionIndex)
+            ];
+
+            return {
+                ...map,
+                briefs: {
+                    ...(map.briefs || {}),
+                    [topicId]: { ...brief, structured_outline: newOutline }
+                }
+            };
+        }
+        case 'REORDER_BRIEF_SECTIONS': {
+            const { topicId, sections } = action.payload;
+            const brief = map.briefs?.[topicId];
+            if (!brief) return map;
+
+            return {
+                ...map,
+                briefs: {
+                    ...(map.briefs || {}),
+                    [topicId]: { ...brief, structured_outline: sections }
+                }
+            };
+        }
+        case 'REPLACE_BRIEF': {
+            const { topicId, brief } = action.payload;
+            return {
+                ...map,
+                briefs: {
+                    ...(map.briefs || {}),
+                    [topicId]: brief
+                }
+            };
         }
         default: return map;
     }

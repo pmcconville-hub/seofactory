@@ -2,7 +2,9 @@
 // components/ProjectDashboardContainer.tsx
 import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { useAppState } from '../state/appState';
-import { AppStep, SEOPillars, EnrichedTopic, ContentBrief, BusinessInfo, TopicalMap, TopicRecommendation, GscRow, ValidationIssue, MergeSuggestion, ResponseCode, FreshnessProfile, MapImprovementSuggestion, SemanticTriple, ExpansionMode, AuditRuleResult, ContextualFlowIssue, FoundationPage, FoundationPageType, NAPData, NavigationStructure } from '../types';
+import { AppStep, SEOPillars, EnrichedTopic, ContentBrief, BusinessInfo, TopicalMap, TopicRecommendation, GscRow, ValidationIssue, MergeSuggestion, ResponseCode, FreshnessProfile, MapImprovementSuggestion, SemanticTriple, ExpansionMode, AuditRuleResult, ContextualFlowIssue, FoundationPage, FoundationPageType, NAPData, NavigationStructure, EnhancedSchemaResult } from '../types';
+import { ContentGenerationOrchestrator } from '../services/ai/contentGeneration/orchestrator';
+import { executePass9 } from '../services/ai/contentGeneration/passes/pass9SchemaGeneration';
 import * as aiService from '../services/ai/index';
 import * as foundationPagesService from '../services/ai/foundationPages';
 import { getSupabaseClient } from '../services/supabaseClient';
@@ -1360,6 +1362,78 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
     const onGenerateSchema = useCallback(async (brief: ContentBrief) => {
         dispatch({ type: 'SET_LOADING', payload: { key: 'schema', value: true } });
         try {
+            // First, check if there's an existing Pass 9 schema from content generation
+            if (brief.id && effectiveBusinessInfo.supabaseUrl && effectiveBusinessInfo.supabaseAnonKey) {
+                const orchestrator = new ContentGenerationOrchestrator(
+                    effectiveBusinessInfo.supabaseUrl,
+                    effectiveBusinessInfo.supabaseAnonKey,
+                    {
+                        onPassStart: () => {},
+                        onPassComplete: () => {},
+                        onSectionStart: () => {},
+                        onSectionComplete: () => {},
+                        onError: () => {},
+                        onJobComplete: () => {}
+                    }
+                );
+
+                const latestJob = await orchestrator.getLatestJob(brief.id);
+
+                // Case 1: Job has schema - display it
+                if (latestJob?.schema_data) {
+                    const schemaResult = latestJob.schema_data as EnhancedSchemaResult;
+                    console.log('[onGenerateSchema] Using existing Pass 9 schema:', schemaResult.pageType);
+                    dispatch({ type: 'SET_SCHEMA_RESULT', payload: schemaResult });
+                    dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'schema', visible: true } });
+                    dispatch({ type: 'SET_LOADING', payload: { key: 'schema', value: false } });
+                    return;
+                }
+
+                // Case 2: Job exists with draft but no schema - run Pass 9
+                if (latestJob?.draft_content && latestJob.status === 'completed') {
+                    console.log('[onGenerateSchema] Running Pass 9 for job without schema');
+                    dispatch({ type: 'SET_NOTIFICATION', payload: 'Running Pass 9 schema generation...' });
+
+                    // Build SEO pillars from active map or defaults
+                    const safePillars: SEOPillars = {
+                        centralEntity: brief.targetKeyword || '',
+                        sourceContext: effectiveBusinessInfo.industry || '',
+                        centralSearchIntent: brief.searchIntent || 'informational'
+                    };
+
+                    // Get topic from state if available
+                    const topic = state.activeBriefTopic;
+
+                    const pass9Result = await executePass9(
+                        latestJob.id,
+                        brief,
+                        effectiveBusinessInfo,
+                        safePillars,
+                        latestJob.draft_content,
+                        topic || undefined,
+                        latestJob.progressive_schema_data,
+                        effectiveBusinessInfo.supabaseUrl,
+                        effectiveBusinessInfo.supabaseAnonKey,
+                        state.user?.id || '',
+                        undefined,
+                        (msg) => console.log('[Pass9]', msg)
+                    );
+
+                    if (pass9Result.success && pass9Result.schemaResult) {
+                        console.log('[onGenerateSchema] Pass 9 completed:', pass9Result.schemaResult.pageType);
+                        dispatch({ type: 'SET_SCHEMA_RESULT', payload: pass9Result.schemaResult });
+                        dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'schema', visible: true } });
+                        dispatch({ type: 'SET_NOTIFICATION', payload: `Schema generated: ${pass9Result.schemaResult.pageType}` });
+                    } else {
+                        throw new Error(pass9Result.error || 'Schema generation failed');
+                    }
+                    dispatch({ type: 'SET_LOADING', payload: { key: 'schema', value: false } });
+                    return;
+                }
+            }
+
+            // No job or no draft - fall back to legacy schema generation
+            console.log('[onGenerateSchema] No completed job found, using legacy generation');
             const result = await aiService.generateSchema(brief, effectiveBusinessInfo, dispatch);
             dispatch({ type: 'SET_SCHEMA_RESULT', payload: result });
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'schema', visible: true } });
@@ -1368,7 +1442,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
         } finally {
              dispatch({ type: 'SET_LOADING', payload: { key: 'schema', value: false } });
         }
-    }, [effectiveBusinessInfo, dispatch]);
+    }, [effectiveBusinessInfo, dispatch, state.activeBriefTopic, state.user?.id]);
 
     const handleAnalyzeGsc = useCallback(async (gscData: GscRow[]) => {
         if (!knowledgeGraph) {

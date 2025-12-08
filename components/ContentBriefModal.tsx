@@ -11,6 +11,7 @@ import { useContentGeneration } from '../hooks/useContentGeneration';
 import ContentGenerationProgress from './ContentGenerationProgress';
 import { ContentGenerationSettingsPanel } from './ContentGenerationSettingsPanel';
 import { PassControlPanel } from './PassControlPanel';
+import { BriefEditModal } from './brief/BriefEditModal';
 import {
   ContentGenerationSettings,
   PRIORITY_PRESETS,
@@ -35,9 +36,11 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
     // Multi-pass generation state
     const [useMultiPass, setUseMultiPass] = useState(true);
     const [generationLogs, setGenerationLogs] = useState<Array<{ message: string; status: string; timestamp: number }>>([]);
+    const [isStartingGeneration, setIsStartingGeneration] = useState(false);
 
     // Settings panel state
     const [showSettings, setShowSettings] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
     const [contentSettings, setContentSettings] = useState<ContentGenerationSettings>({
         ...DEFAULT_CONTENT_GENERATION_SETTINGS,
         id: 'temp',
@@ -114,11 +117,16 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
         dispatch({ type: 'SET_ACTIVE_BRIEF_TOPIC', payload: null });
     };
 
-    const handleGenerateDraft = () => {
+    const handleGenerateDraft = async () => {
       if (brief) {
         if (useMultiPass) {
+          setIsStartingGeneration(true);
           setGenerationLogs([]);
-          startGeneration();
+          try {
+            await startGeneration();
+          } finally {
+            setIsStartingGeneration(false);
+          }
         } else {
           onGenerateDraft(brief);
         }
@@ -143,9 +151,9 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
     // Show progress UI when actively generating OR paused (to show pass status)
     const showProgressUI = isGenerating || isPaused || (job && !isComplete);
 
-    // Allow settings when: multi-pass enabled, no draft yet, and NOT actively generating
-    // Settings should be accessible even when paused or with a failed job
-    const canShowSettings = useMultiPass && !brief.articleDraft && !isGenerating;
+    // Allow settings when: multi-pass enabled and NOT actively generating
+    // Settings should be accessible even when there's an existing draft (for regeneration)
+    const canShowSettings = useMultiPass && !isGenerating;
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4" onClick={handleClose}>
@@ -156,6 +164,14 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                         <p className="text-sm text-gray-400">{safeString(brief.title) || 'Untitled Topic'}</p>
                     </div>
                     <div className="flex items-center gap-3">
+                        {/* Edit Brief button */}
+                        <button
+                            onClick={() => setShowEditModal(true)}
+                            className="text-xs px-3 py-1.5 rounded border transition-colors bg-emerald-900/50 border-emerald-600 text-emerald-200 hover:bg-emerald-900/70"
+                            title="Edit brief sections and settings"
+                        >
+                            Edit Brief
+                        </button>
                         {/* Settings toggle in header - show when multi-pass and no draft */}
                         {canShowSettings && (
                             <button
@@ -223,9 +239,24 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                                     <span className="ml-2">| Schema: <strong className="text-blue-400">{(job.schema_data as EnhancedSchemaResult).pageType}</strong></span>
                                 )}
                             </p>
-                            <Button onClick={handleViewDraft} variant="primary" className="mt-3">
-                                View Generated Draft
-                            </Button>
+                            <div className="flex gap-2 mt-3">
+                                <Button onClick={handleViewDraft} variant="primary">
+                                    View Generated Draft
+                                </Button>
+                                {job.schema_data && (
+                                    <Button
+                                        onClick={() => {
+                                            const schemaResult = job.schema_data as EnhancedSchemaResult;
+                                            dispatch({ type: 'SET_SCHEMA_RESULT', payload: schemaResult });
+                                            dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'schema', visible: true } });
+                                        }}
+                                        variant="secondary"
+                                        className="border-blue-600 text-blue-400 hover:bg-blue-900/20"
+                                    >
+                                        View Schema
+                                    </Button>
+                                )}
+                            </div>
                         </div>
                     )}
 
@@ -415,8 +446,8 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                 <footer className="p-4 bg-gray-800 border-t border-gray-700 flex justify-between items-center flex-shrink-0">
                     <div className="flex items-center gap-4">
                         {brief.articleDraft && <span className="text-sm text-green-400">Article draft is ready.</span>}
-                        {/* Show multi-pass toggle when: no draft and not actively generating */}
-                        {!brief.articleDraft && !isGenerating && (
+                        {/* Show multi-pass toggle when not actively generating */}
+                        {!isGenerating && (
                             <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
                                 <input
                                     type="checkbox"
@@ -429,24 +460,66 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                         )}
                     </div>
                     <div className="flex gap-2">
-                        {/* Show generate button when not actively generating */}
+                        {/* View All Resources button */}
+                        <Button
+                            onClick={() => {
+                                dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'topicResources', visible: true } });
+                            }}
+                            variant="secondary"
+                            className="text-xs border-gray-600"
+                        >
+                            All Resources
+                        </Button>
+                        {/* Show generate/view buttons when not actively generating */}
                         {!isGenerating && (
-                            <Button
-                                onClick={brief.articleDraft ? handleViewDraft : handleGenerateDraft}
-                                variant="primary"
-                                disabled={isDrafting || isGenerating}
-                            >
-                                {isDrafting ? (
-                                    <div className="flex items-center gap-2"><Loader className="w-4 h-4" /> <span>Generating...</span></div>
-                                ) : (
-                                    brief.articleDraft ? 'View Draft' : (useMultiPass ? 'Generate (Multi-Pass)' : 'Generate Article Draft')
+                            <>
+                                {/* Show Regenerate button when there's an existing draft */}
+                                {brief.articleDraft && (
+                                    <Button
+                                        onClick={handleGenerateDraft}
+                                        variant="secondary"
+                                        disabled={isDrafting || isStartingGeneration}
+                                        className="text-xs border-amber-600 text-amber-300 hover:bg-amber-900/30"
+                                        title="Regenerate the article draft based on the current brief"
+                                    >
+                                        {isStartingGeneration ? (
+                                            <div className="flex items-center gap-2"><Loader className="w-3 h-3" /> <span>Starting...</span></div>
+                                        ) : (
+                                            'Regenerate Draft'
+                                        )}
+                                    </Button>
                                 )}
-                            </Button>
+                                <Button
+                                    onClick={brief.articleDraft ? handleViewDraft : handleGenerateDraft}
+                                    variant="primary"
+                                    disabled={isDrafting || isGenerating}
+                                >
+                                    {isDrafting ? (
+                                        <div className="flex items-center gap-2"><Loader className="w-4 h-4" /> <span>Generating...</span></div>
+                                    ) : (
+                                        brief.articleDraft ? 'View Draft' : (useMultiPass ? 'Generate (Multi-Pass)' : 'Generate Article Draft')
+                                    )}
+                                </Button>
+                            </>
                         )}
                         <Button onClick={handleClose} variant="secondary">Close</Button>
                     </div>
                 </footer>
             </Card>
+
+            {/* Brief Edit Modal */}
+            {showEditModal && brief && activeBriefTopic && activeMap && activeMapId && (
+                <BriefEditModal
+                    isOpen={showEditModal}
+                    brief={brief}
+                    topic={activeBriefTopic}
+                    pillars={activeMap.pillars || { centralEntity: '', sourceContext: '', centralSearchIntent: '' }}
+                    allTopics={allTopics}
+                    mapId={activeMapId}
+                    onClose={() => setShowEditModal(false)}
+                    onSaved={() => setShowEditModal(false)}
+                />
+            )}
         </div>
     );
 };

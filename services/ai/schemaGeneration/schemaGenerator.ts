@@ -12,9 +12,9 @@ import type {
   EnhancedSchemaResult,
   SchemaValidationResult,
   Pass9Config,
-  ProgressiveSchemaData,
-  DEFAULT_PASS9_CONFIG
+  ProgressiveSchemaData
 } from '../../../types';
+import { DEFAULT_PASS9_CONFIG } from '../../../types';
 import {
   detectPageType,
   shouldUseBlogPosting,
