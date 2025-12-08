@@ -5,6 +5,11 @@
 const Deno = (globalThis as any).Deno;
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+// Supabase Edge Functions have different timeout limits:
+// - Free plan: ~10 seconds
+// - Pro plan: ~150 seconds
+// Set internal timeout slightly below to provide better error messages
+const FETCH_TIMEOUT_MS = 120000; // 120 seconds - allows for long AI responses
 
 function corsHeaders(origin = "*") {
   return {
@@ -26,6 +31,7 @@ function json(body: any, status = 200, origin = "*") {
 
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin") ?? "*";
+  const startTime = Date.now();
 
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -51,39 +57,73 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Missing required fields: model and messages' }, 400, origin);
     }
 
-    // Forward the request to Anthropic
-    const anthropicResponse = await fetch(ANTHROPIC_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: body.model,
-        max_tokens: body.max_tokens || 4096,
-        messages: body.messages,
-        system: body.system,
-      }),
-    });
+    console.log(`[anthropic-proxy] Starting request to model: ${body.model}, max_tokens: ${body.max_tokens || 4096}`);
 
-    // Check for errors from Anthropic
-    if (!anthropicResponse.ok) {
-      const errorText = await anthropicResponse.text();
-      console.error('[anthropic-proxy] Anthropic API error:', errorText);
-      return json(
-        { error: `Anthropic API error: ${anthropicResponse.status} ${anthropicResponse.statusText}`, details: errorText },
-        anthropicResponse.status,
-        origin
-      );
+    // Create AbortController for timeout management
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      console.error(`[anthropic-proxy] Request timed out after ${FETCH_TIMEOUT_MS}ms`);
+    }, FETCH_TIMEOUT_MS);
+
+    try {
+      // Forward the request to Anthropic with timeout
+      const anthropicResponse = await fetch(ANTHROPIC_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: body.model,
+          max_tokens: body.max_tokens || 4096,
+          messages: body.messages,
+          system: body.system,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      const elapsed = Date.now() - startTime;
+      console.log(`[anthropic-proxy] Anthropic responded in ${elapsed}ms with status ${anthropicResponse.status}`);
+
+      // Check for errors from Anthropic
+      if (!anthropicResponse.ok) {
+        const errorText = await anthropicResponse.text();
+        console.error('[anthropic-proxy] Anthropic API error:', errorText);
+        return json(
+          { error: `Anthropic API error: ${anthropicResponse.status} ${anthropicResponse.statusText}`, details: errorText },
+          anthropicResponse.status,
+          origin
+        );
+      }
+
+      // Return the Anthropic response
+      const data = await anthropicResponse.json();
+      return json(data, 200, origin);
+
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+
+      if (fetchError.name === 'AbortError') {
+        console.error(`[anthropic-proxy] Request aborted due to timeout (${FETCH_TIMEOUT_MS}ms)`);
+        return json({
+          error: `Request timed out after ${FETCH_TIMEOUT_MS / 1000} seconds. The Anthropic API may be slow or your Supabase plan may have lower timeout limits.`,
+          suggestion: 'Try a simpler request or upgrade your Supabase plan for longer timeouts.'
+        }, 504, origin);
+      }
+
+      throw fetchError;
     }
 
-    // Return the Anthropic response
-    const data = await anthropicResponse.json();
-    return json(data, 200, origin);
-
-  } catch (error) {
-    console.error('[anthropic-proxy] Function error:', error);
-    return json({ error: error.message || 'Internal server error' }, 500, origin);
+  } catch (error: any) {
+    const elapsed = Date.now() - startTime;
+    console.error(`[anthropic-proxy] Function error after ${elapsed}ms:`, error);
+    return json({
+      error: error.message || 'Internal server error',
+      elapsed_ms: elapsed
+    }, 500, origin);
   }
 });
