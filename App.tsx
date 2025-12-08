@@ -134,10 +134,33 @@ const App: React.FC = () => {
             if (error) throw error;
 
             // Parse/Sanitize the data before state update to prevent "Minified React Error #31"
-            // This ensures columns that are strings (like 'pillars' or 'business_info' if stored as strings in some versions, 
+            // This ensures columns that are strings (like 'pillars' or 'business_info' if stored as strings in some versions,
             // or objects containing bad data) are converted to safe Application Domain Objects.
             const sanitizedMaps = (data || []).map((map: any) => parseTopicalMap(map));
-            
+
+            // Fetch topic counts for each map to display in merge modal and other places
+            const mapIds = sanitizedMaps.map(m => m.id);
+            if (mapIds.length > 0) {
+                const { data: topicsData, error: topicsError } = await supabase
+                    .from('topics')
+                    .select('id, map_id, title, type')
+                    .in('map_id', mapIds);
+
+                if (!topicsError && topicsData) {
+                    // Group topics by map_id
+                    const topicsByMap = topicsData.reduce((acc, topic) => {
+                        if (!acc[topic.map_id]) acc[topic.map_id] = [];
+                        acc[topic.map_id].push(topic);
+                        return acc;
+                    }, {} as Record<string, typeof topicsData>);
+
+                    // Populate topics array on each map (minimal data for counts/display)
+                    sanitizedMaps.forEach(map => {
+                        map.topics = (topicsByMap[map.id] || []) as any;
+                    });
+                }
+            }
+
             // FIX: Corrected the dispatch order to prevent a race condition.
             // SET_ACTIVE_PROJECT clears the old map state, THEN SET_TOPICAL_MAPS populates it with new data.
             dispatch({ type: 'SET_ACTIVE_PROJECT', payload: projectId });
