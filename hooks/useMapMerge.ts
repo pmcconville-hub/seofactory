@@ -59,6 +59,8 @@ type MapMergeAction =
   | { type: 'ADD_IMPORT_HISTORY'; payload: ImportHistoryEntry }
   | { type: 'SET_ANALYZING'; payload: boolean }
   | { type: 'SET_ANALYSIS_ERROR'; payload: string | null }
+  | { type: 'SET_CREATING'; payload: boolean }
+  | { type: 'BULK_EAV_ACTION'; payload: { action: 'include' | 'exclude'; mapId?: string } }
   | { type: 'RESET' };
 
 function mapMergeReducer(state: MapMergeState, action: MapMergeAction): MapMergeState {
@@ -127,6 +129,28 @@ function mapMergeReducer(state: MapMergeState, action: MapMergeAction): MapMerge
       return { ...state, isAnalyzing: action.payload };
     case 'SET_ANALYSIS_ERROR':
       return { ...state, analysisError: action.payload };
+    case 'SET_CREATING':
+      return { ...state, isCreating: action.payload };
+    case 'BULK_EAV_ACTION': {
+      const allEavIds = state.sourceMaps.flatMap((map) =>
+        (map.eavs || []).map((_, eavIdx) => ({
+          eavId: `${map.id}_${eavIdx}`,
+          mapId: map.id,
+        }))
+      );
+      const filtered = action.payload.mapId
+        ? allEavIds.filter(e => e.mapId === action.payload.mapId)
+        : allEavIds;
+      const newDecisions: EavDecision[] = filtered.map(({ eavId, mapId }) => ({
+        eavId,
+        sourceMapId: mapId,
+        action: action.payload.action,
+      }));
+      // Merge with existing decisions
+      const existingByEavId = new Map(state.eavDecisions.map(d => [d.eavId, d]));
+      newDecisions.forEach(d => existingByEavId.set(d.eavId, d));
+      return { ...state, eavDecisions: Array.from(existingByEavId.values()) };
+    }
     case 'RESET':
       return initialState;
     default:
@@ -176,6 +200,20 @@ export function useMapMerge() {
     dispatch({ type: 'RESET' });
   }, []);
 
+  const bulkEavAction = useCallback(
+    (action: 'include_all' | 'exclude_all', mapId?: string) => {
+      dispatch({
+        type: 'BULK_EAV_ACTION',
+        payload: { action: action === 'include_all' ? 'include' : 'exclude', mapId },
+      });
+    },
+    []
+  );
+
+  const setCreating = useCallback((creating: boolean) => {
+    dispatch({ type: 'SET_CREATING', payload: creating });
+  }, []);
+
   return {
     state,
     dispatch,
@@ -187,6 +225,8 @@ export function useMapMerge() {
     addNewTopic,
     toggleExcludedTopic,
     setNewMapName,
+    bulkEavAction,
+    setCreating,
     reset,
   };
 }
