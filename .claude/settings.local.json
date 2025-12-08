@@ -24,7 +24,12 @@
       "Bash(npm run test:e2e:ui:*)",
       "Bash(git init:*)",
       "Bash(gh auth:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git worktree:*)",
+      "Skill(superpowers:executing-plans)",
+      "Bash(git commit:*)",
+      "Skill(superpowers:brainstorming)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []
