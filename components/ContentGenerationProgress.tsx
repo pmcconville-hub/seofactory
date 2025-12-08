@@ -1,6 +1,7 @@
 // components/ContentGenerationProgress.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import { ContentGenerationJob, ContentGenerationSection, PASS_NAMES, PassesStatus } from '../types';
+import { SimpleMarkdown } from './ui/SimpleMarkdown';
 
 interface ContentGenerationProgressProps {
   job: ContentGenerationJob;
@@ -49,11 +50,38 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
   onResume,
   onCancel
 }) => {
+  const [showLivePreview, setShowLivePreview] = useState(false);
+
+  // Get completed sections with content for preview
+  const completedSections = sections
+    .filter(s => s.status === 'completed' && s.current_content)
+    .sort((a, b) => a.section_order - b.section_order);
+
+  // Calculate word count of generated content
+  const totalWords = completedSections.reduce((sum, s) => {
+    const words = s.current_content?.split(/\s+/).length || 0;
+    return sum + words;
+  }, 0);
+
   return (
     <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-      <h3 className="text-lg font-semibold mb-4 text-white">
-        Generating Article Draft
-      </h3>
+      <div className="flex justify-between items-start mb-4">
+        <h3 className="text-lg font-semibold text-white">
+          Generating Article Draft
+        </h3>
+        {completedSections.length > 0 && (
+          <button
+            onClick={() => setShowLivePreview(!showLivePreview)}
+            className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+              showLivePreview
+                ? 'bg-blue-900/50 border-blue-600 text-blue-200'
+                : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            {showLivePreview ? '▲ Hide Preview' : '▼ Live Preview'} ({totalWords} words)
+          </button>
+        )}
+      </div>
 
       {/* Overall Progress */}
       <div className="mb-4">
@@ -157,6 +185,40 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
           </button>
         )}
       </div>
+
+      {/* Live Preview Panel */}
+      {showLivePreview && completedSections.length > 0 && (
+        <div className="mt-4 border-t border-gray-700 pt-4">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-gray-300">
+              Live Preview ({completedSections.length} sections generated)
+            </h4>
+            <span className="text-xs text-gray-500">
+              Content will be refined in subsequent passes
+            </span>
+          </div>
+          <div className="max-h-[400px] overflow-y-auto bg-gray-900/50 rounded-lg p-4 border border-gray-700">
+            <div className="prose prose-invert prose-sm max-w-none">
+              {completedSections.map((section, idx) => (
+                <div key={`preview-${section.section_key}-${idx}`} className="mb-4 pb-4 border-b border-gray-800 last:border-b-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded">
+                      {section.section_order + 1}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {section.section_heading}
+                    </span>
+                  </div>
+                  <SimpleMarkdown content={section.current_content || ''} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <p className="text-xs text-amber-400/70 mt-2 italic">
+            ⚠️ This is draft content. If you see issues, you can Pause or Cancel and adjust the brief before continuing.
+          </p>
+        </div>
+      )}
     </div>
   );
 };

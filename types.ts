@@ -321,6 +321,7 @@ export interface ContentBrief {
   topic_id: string;
   title: string;
   slug: string;
+  created_at?: string;
   metaDescription: string;
   keyTakeaways: string[];
   outline: string;

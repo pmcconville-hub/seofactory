@@ -45,7 +45,7 @@ export class ContentGenerationOrchestrator {
       .single();
 
     if (error) throw new Error(`Failed to create job: ${error.message}`);
-    return data as ContentGenerationJob;
+    return data as unknown as ContentGenerationJob;
   }
 
   async getExistingJob(briefId: string): Promise<ContentGenerationJob | null> {
@@ -57,7 +57,7 @@ export class ContentGenerationOrchestrator {
       .maybeSingle();
 
     if (error) throw new Error(`Failed to check existing job: ${error.message}`);
-    return data as ContentGenerationJob | null;
+    return data as unknown as ContentGenerationJob | null;
   }
 
   /**
@@ -74,13 +74,13 @@ export class ContentGenerationOrchestrator {
       .maybeSingle();
 
     if (error) throw new Error(`Failed to get latest job: ${error.message}`);
-    return data as ContentGenerationJob | null;
+    return data as unknown as ContentGenerationJob | null;
   }
 
   async updateJob(jobId: string, updates: Partial<ContentGenerationJob>): Promise<void> {
     const { error } = await this.supabase
       .from('content_generation_jobs')
-      .update({ ...updates, updated_at: new Date().toISOString() })
+      .update({ ...updates, updated_at: new Date().toISOString() } as unknown as Record<string, unknown>)
       .eq('id', jobId);
 
     if (error) throw new Error(`Failed to update job: ${error.message}`);
@@ -94,7 +94,7 @@ export class ContentGenerationOrchestrator {
       .single();
 
     if (error) throw new Error(`Failed to get job: ${error.message}`);
-    return data as ContentGenerationJob;
+    return data as unknown as ContentGenerationJob;
   }
 
   async getSections(jobId: string): Promise<ContentGenerationSection[]> {
@@ -109,9 +109,10 @@ export class ContentGenerationOrchestrator {
   }
 
   async upsertSection(section: Partial<ContentGenerationSection> & { job_id: string; section_key: string }): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await this.supabase
       .from('content_generation_sections')
-      .upsert(section, { onConflict: 'job_id,section_key' });
+      .upsert(section as any, { onConflict: 'job_id,section_key' });
 
     if (error) throw new Error(`Failed to upsert section: ${error.message}`);
   }

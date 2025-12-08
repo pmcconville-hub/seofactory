@@ -367,6 +367,182 @@ export type Database = {
           },
         ]
       }
+      content_generation_jobs: {
+        Row: {
+          id: string
+          brief_id: string
+          user_id: string
+          map_id: string
+          status: string
+          current_pass: number
+          passes_status: Json
+          total_sections: number | null
+          completed_sections: number | null
+          current_section_key: string | null
+          draft_content: string | null
+          final_audit_score: number | null
+          audit_details: Json | null
+          last_error: string | null
+          retry_count: number | null
+          max_retries: number | null
+          created_at: string | null
+          updated_at: string | null
+          started_at: string | null
+          completed_at: string | null
+          schema_data: Json | null
+          schema_validation_results: Json | null
+          schema_entities: Json | null
+          schema_page_type: string | null
+          progressive_schema_data: Json | null
+        }
+        Insert: {
+          id?: string
+          brief_id: string
+          user_id: string
+          map_id: string
+          status?: string
+          current_pass?: number
+          passes_status?: Json
+          total_sections?: number | null
+          completed_sections?: number | null
+          current_section_key?: string | null
+          draft_content?: string | null
+          final_audit_score?: number | null
+          audit_details?: Json | null
+          last_error?: string | null
+          retry_count?: number | null
+          max_retries?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+          started_at?: string | null
+          completed_at?: string | null
+          schema_data?: Json | null
+          schema_validation_results?: Json | null
+          schema_entities?: Json | null
+          schema_page_type?: string | null
+          progressive_schema_data?: Json | null
+        }
+        Update: {
+          id?: string
+          brief_id?: string
+          user_id?: string
+          map_id?: string
+          status?: string
+          current_pass?: number
+          passes_status?: Json
+          total_sections?: number | null
+          completed_sections?: number | null
+          current_section_key?: string | null
+          draft_content?: string | null
+          final_audit_score?: number | null
+          audit_details?: Json | null
+          last_error?: string | null
+          retry_count?: number | null
+          max_retries?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+          started_at?: string | null
+          completed_at?: string | null
+          schema_data?: Json | null
+          schema_validation_results?: Json | null
+          schema_entities?: Json | null
+          schema_page_type?: string | null
+          progressive_schema_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_generation_jobs_brief_id_fkey"
+            columns: ["brief_id"]
+            isOneToOne: true
+            referencedRelation: "content_briefs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_generation_jobs_map_id_fkey"
+            columns: ["map_id"]
+            isOneToOne: false
+            referencedRelation: "topical_maps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_generation_sections: {
+        Row: {
+          id: string
+          job_id: string
+          section_key: string
+          section_heading: string | null
+          section_order: number
+          section_level: number | null
+          pass_1_content: string | null
+          pass_2_content: string | null
+          pass_3_content: string | null
+          pass_4_content: string | null
+          pass_5_content: string | null
+          pass_6_content: string | null
+          pass_7_content: string | null
+          pass_8_content: string | null
+          current_content: string | null
+          current_pass: number | null
+          audit_scores: Json | null
+          status: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          job_id: string
+          section_key: string
+          section_heading?: string | null
+          section_order: number
+          section_level?: number | null
+          pass_1_content?: string | null
+          pass_2_content?: string | null
+          pass_3_content?: string | null
+          pass_4_content?: string | null
+          pass_5_content?: string | null
+          pass_6_content?: string | null
+          pass_7_content?: string | null
+          pass_8_content?: string | null
+          current_content?: string | null
+          current_pass?: number | null
+          audit_scores?: Json | null
+          status?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          job_id?: string
+          section_key?: string
+          section_heading?: string | null
+          section_order?: number
+          section_level?: number | null
+          pass_1_content?: string | null
+          pass_2_content?: string | null
+          pass_3_content?: string | null
+          pass_4_content?: string | null
+          pass_5_content?: string | null
+          pass_6_content?: string | null
+          pass_7_content?: string | null
+          pass_8_content?: string | null
+          current_content?: string | null
+          current_pass?: number | null
+          audit_scores?: Json | null
+          status?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_generation_sections_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "content_generation_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       foundation_pages: {
         Row: {
           created_at: string | null

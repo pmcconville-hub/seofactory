@@ -44,6 +44,15 @@ export async function executePass9(
   const supabase = createClient(supabaseUrl, supabaseKey);
   const fullConfig: Pass9Config = { ...DEFAULT_PASS9_CONFIG, ...config };
 
+  // Fetch current job to get existing passes_status for merging
+  const { data: currentJob } = await supabase
+    .from('content_generation_jobs')
+    .select('passes_status')
+    .eq('id', jobId)
+    .single();
+
+  const currentPassesStatus = currentJob?.passes_status || {};
+
   try {
     onProgress?.('Starting Pass 9: Schema Generation');
 
@@ -149,7 +158,8 @@ export async function executePass9(
     await saveSchemaToJob(
       supabase,
       jobId,
-      schemaResult
+      schemaResult,
+      currentPassesStatus
     );
 
     onProgress?.('Pass 9 complete!');
@@ -163,12 +173,13 @@ export async function executePass9(
     const errorMessage = error instanceof Error ? error.message : 'Unknown error in Pass 9';
     console.error('[Pass9] Error:', error);
 
-    // Update job with error
+    // Update job with error - merge with existing passes_status
     await supabase
       .from('content_generation_jobs')
       .update({
         last_error: errorMessage,
         passes_status: {
+          ...currentPassesStatus,
           pass_9_schema: 'failed'
         },
         updated_at: new Date().toISOString()
@@ -190,7 +201,8 @@ async function saveSchemaToJob(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   jobId: string,
-  schemaResult: EnhancedSchemaResult
+  schemaResult: EnhancedSchemaResult,
+  currentPassesStatus: Record<string, string>
 ): Promise<void> {
   const { error } = await supabase
     .from('content_generation_jobs')
@@ -200,6 +212,7 @@ async function saveSchemaToJob(
       schema_entities: schemaResult.resolvedEntities,
       schema_page_type: schemaResult.pageType,
       passes_status: {
+        ...currentPassesStatus,
         pass_9_schema: 'completed'
       },
       current_pass: 9,
@@ -285,12 +298,22 @@ export async function regenerateSchema(
   newConfig: Partial<Pass9Config>,
   onProgress?: (message: string) => void
 ): Promise<Pass9Result> {
-  // Mark as in progress
+  // Mark as in progress - fetch current passes_status first to preserve it
   const supabase = createClient(supabaseUrl, supabaseKey);
+
+  const { data: currentJob } = await supabase
+    .from('content_generation_jobs')
+    .select('passes_status')
+    .eq('id', jobId)
+    .single();
+
+  const currentPassesStatus = currentJob?.passes_status || {};
+
   await supabase
     .from('content_generation_jobs')
     .update({
       passes_status: {
+        ...currentPassesStatus,
         pass_9_schema: 'in_progress'
       },
       updated_at: new Date().toISOString()
