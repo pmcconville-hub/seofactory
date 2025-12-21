@@ -296,6 +296,14 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
         return;
       }
 
+      // CRITICAL: Skip database sync check when user has unsaved local changes
+      // This prevents the "Load Optimized Version" banner from appearing after Polish
+      // which would confuse users and potentially revert their polished content
+      if (hasUnsavedChanges) {
+        console.log('[DraftingModal] Skipping database sync check - user has unsaved changes');
+        return;
+      }
+
       try {
         const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
 
@@ -471,7 +479,7 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
     // Check after a short delay to avoid race conditions
     const timeoutId = setTimeout(checkDatabaseForNewerContent, 500);
     return () => clearTimeout(timeoutId);
-  }, [isOpen, brief?.id, draftContent, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
+  }, [isOpen, brief?.id, draftContent, hasUnsavedChanges, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
 
   // Sync draft from database
   const handleSyncFromDatabase = async () => {
@@ -580,11 +588,35 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
 
         if (error) throw error;
 
+        // Also update the content_generation_job's draft_content if one exists
+        // This keeps both tables in sync, especially important after Polish
+        // which creates shorter but better content
+        if (databaseJobInfo?.jobId) {
+          const { error: jobError } = await supabase
+            .from('content_generation_jobs')
+            .update({ draft_content: draftContent, updated_at: new Date().toISOString() })
+            .eq('id', databaseJobInfo.jobId);
+
+          if (jobError) {
+            console.warn('[DraftingModal] Failed to sync job draft_content:', jobError.message);
+            // Don't throw - brief was saved successfully, job sync is secondary
+          } else {
+            console.log('[DraftingModal] Synced draft to content_generation_jobs:', draftContent.length, 'chars');
+          }
+        }
+
         // Update state
         const updatedBrief = { ...brief, articleDraft: draftContent };
         dispatch({ type: 'ADD_BRIEF', payload: { mapId: state.activeMapId, topicId: brief.topic_id, brief: updatedBrief } });
         dispatch({ type: 'SET_NOTIFICATION', payload: 'Draft saved successfully.' });
         setHasUnsavedChanges(false);
+
+        // Update the loaded draft length ref to match saved content
+        // This prevents the database sync check from offering older content
+        loadedDraftLengthRef.current = draftContent.length;
+
+        // Clear the database sync banner since we just saved to both tables
+        setDatabaseDraft(null);
 
     } catch (e) {
         dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : "Failed to save draft." });
