@@ -301,6 +301,15 @@ export const useBriefEditor = (
         try {
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
 
+            // Debug: Log save context to help diagnose RLS issues
+            console.log('[useBriefEditor] Save context:', {
+                supabaseUrl: businessInfo.supabaseUrl,
+                userId: user.id,
+                topicId: editedBrief.topic_id,
+                briefId: editedBrief.id,
+                mapId
+            });
+
             // Ensure key takeaways are safe for JSONB storage
             const sanitizedTakeaways = Array.isArray(editedBrief.keyTakeaways)
                 ? editedBrief.keyTakeaways.map(k => typeof k === 'string' ? k : JSON.stringify(k))
@@ -332,6 +341,16 @@ export const useBriefEditor = (
 
             if (dbError) {
                 console.error('[useBriefEditor] Database save error:', dbError);
+
+                // Provide more helpful error message for RLS issues
+                if (dbError.message?.includes('row-level security')) {
+                    console.error('[useBriefEditor] RLS error - check:', {
+                        'User owns the topic/map': 'Verify in Supabase Dashboard',
+                        'Supabase URL matches migration target': businessInfo.supabaseUrl,
+                        'User ID': user.id
+                    });
+                    throw new Error(`Permission denied: Unable to save brief. This may be due to a database migration issue. Please contact support. (RLS violation)`);
+                }
                 throw dbError;
             }
 

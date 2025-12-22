@@ -35,11 +35,36 @@ const App: React.FC = () => {
 
     useEffect(() => {
         const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             dispatch({ type: 'SET_USER', payload: session?.user ?? null });
             if (session?.user) {
                 // Set global usage context for AI telemetry tracking
                 setGlobalUsageContext({ userId: session.user.id });
+
+                // Claim migrated data - updates user_id references after database migration
+                // This is a one-time operation that ensures data is linked to the correct user
+                if (event === 'SIGNED_IN') {
+                    try {
+                        // Use type assertion since this function may not be in generated types
+                        const { data, error } = await (supabase.rpc as any)('claim_migrated_data');
+                        if (error) {
+                            // Function may not exist on older databases - this is expected
+                            if (!error.message.includes('does not exist')) {
+                                console.warn('[App] claim_migrated_data warning:', error.message);
+                            }
+                        } else if (data && typeof data === 'object' && 'success' in data) {
+                            const result = data as { success: boolean; projects_updated?: number; maps_updated?: number; topics_updated?: number; briefs_updated?: number };
+                            const totalUpdated = (result.projects_updated || 0) + (result.maps_updated || 0) +
+                                                (result.topics_updated || 0) + (result.briefs_updated || 0);
+                            if (totalUpdated > 0) {
+                                console.log('[App] Migrated data claimed:', result);
+                            }
+                        }
+                    } catch (e) {
+                        // Silently ignore - function may not exist
+                    }
+                }
+
                 // Only redirect to selection if we are currently on the Auth screen (login/signup)
                 // This prevents resetting the view when switching tabs (which triggers session refresh)
                 if (appStepRef.current === AppStep.AUTH) {
