@@ -78,24 +78,38 @@ export class ContentGenerationOrchestrator {
   }
 
   async updateJob(jobId: string, updates: Partial<ContentGenerationJob>): Promise<void> {
-    const { error } = await this.supabase
+    const { data, error } = await this.supabase
       .from('content_generation_jobs')
       .update({ ...updates, updated_at: new Date().toISOString() } as unknown as Record<string, unknown>)
-      .eq('id', jobId);
+      .eq('id', jobId)
+      .select('id');
 
     if (error) throw new Error(`Failed to update job: ${error.message}`);
+
+    // Verify the update actually happened (RLS can silently fail)
+    if (!data || data.length === 0) {
+      console.error('[Orchestrator] Job update returned no rows - likely RLS issue:', jobId);
+      throw new Error('Job was not updated - no rows affected. This may be a permissions issue.');
+    }
   }
 
   async updateImagePlaceholders(jobId: string, placeholders: ImagePlaceholder[]): Promise<void> {
-    const { error } = await this.supabase
+    const { data, error } = await this.supabase
       .from('content_generation_jobs')
       .update({
         image_placeholders: placeholders as unknown as Record<string, unknown>[],
         updated_at: new Date().toISOString()
       })
-      .eq('id', jobId);
+      .eq('id', jobId)
+      .select('id');
 
     if (error) throw new Error(`Failed to update image placeholders: ${error.message}`);
+
+    // Verify the update actually happened
+    if (!data || data.length === 0) {
+      console.error('[Orchestrator] Image placeholders update returned no rows - likely RLS issue:', jobId);
+      throw new Error('Image placeholders were not saved - no rows affected. This may be a permissions issue.');
+    }
   }
 
   async getJob(jobId: string): Promise<ContentGenerationJob | null> {
@@ -151,17 +165,41 @@ export class ContentGenerationOrchestrator {
   /**
    * Sync the generated draft to the content_briefs table
    * This makes the draft available in the Article Draft Workspace
+   * CRITICAL: This MUST succeed or the user loses their generated content!
    */
   async syncDraftToBrief(briefId: string, draft: string): Promise<void> {
-    const { error } = await this.supabase
+    const { data, error } = await this.supabase
       .from('content_briefs')
       .update({ article_draft: draft })
-      .eq('id', briefId);
+      .eq('id', briefId)
+      .select('id, article_draft');
 
     if (error) {
       console.error('[Orchestrator] Failed to sync draft to brief:', error);
-      // Don't throw - this is not critical to the generation process
+      throw new Error(`Failed to save article draft: ${error.message}`);
     }
+
+    // CRITICAL: Verify the update actually happened (RLS can silently fail)
+    if (!data || data.length === 0) {
+      console.error('[Orchestrator] Draft sync returned no rows - likely RLS issue. BriefId:', briefId);
+      throw new Error('Article draft was not saved - no rows were updated. This may be a permissions issue.');
+    }
+
+    // Verify the draft was actually saved with the expected content
+    const savedLength = data[0]?.article_draft?.length || 0;
+    const expectedLength = draft.length;
+
+    if (savedLength === 0) {
+      console.error('[Orchestrator] Draft sync saved empty content!');
+      throw new Error('Article draft was saved as empty - content was lost during save.');
+    }
+
+    if (Math.abs(savedLength - expectedLength) > 100) {
+      console.warn('[Orchestrator] Draft sync length mismatch:', { expected: expectedLength, saved: savedLength });
+      // Don't throw for minor differences, but log warning
+    }
+
+    console.log('[Orchestrator] Draft synced to brief successfully:', { briefId, draftLength: savedLength });
   }
 
   calculateProgress(job: ContentGenerationJob): number {

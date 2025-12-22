@@ -79,7 +79,7 @@ function getWarnings(topic: EnrichedTopic, brief: ContentBrief | null | undefine
     noBrief: !brief,
     noOutline: brief ? (!brief.structured_outline || brief.structured_outline.length === 0) : false,
     lowQuality: quality ? quality.score < 40 : false,
-    noQueryType: !metadata.query_type && !brief?.searchIntent,  // No query type AND no fallback intent
+    noQueryType: !metadata.query_type && !brief?.searchIntent && !brief?.query_type_format,  // No query type AND no fallback
     noDraft: brief ? !brief.articleDraft : false,
     missingMeta: brief ? (!brief.metaDescription || brief.metaDescription.length < 50) : false,
     noCanonicalQuery: !metadata.canonical_query && !brief?.targetKeyword,  // No canonical query

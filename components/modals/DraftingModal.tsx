@@ -581,12 +581,28 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
     setIsSaving(true);
     try {
         const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-        const { error } = await supabase
+
+        // Use .select() to verify the update actually happened
+        const { data: updateData, error } = await supabase
             .from('content_briefs')
             .update({ article_draft: draftContent })
-            .eq('id', brief.id);
+            .eq('id', brief.id)
+            .select('id, article_draft');
 
         if (error) throw error;
+
+        // Verify the save actually worked
+        const savedLength = updateData?.[0]?.article_draft?.length || 0;
+        console.log('[DraftingModal] Draft save verified:', { expected: draftContent.length, saved: savedLength });
+
+        if (savedLength === 0) {
+            throw new Error('Draft was not saved - no rows were updated. This may be a permissions issue.');
+        }
+
+        if (Math.abs(savedLength - draftContent.length) > 100) {
+            console.warn('[DraftingModal] Draft save length mismatch!', { expected: draftContent.length, saved: savedLength });
+            dispatch({ type: 'SET_ERROR', payload: `Warning: Draft may not have saved completely. Expected ${draftContent.length} chars, got ${savedLength}.` });
+        }
 
         // Also update the content_generation_job's draft_content if one exists
         // This keeps both tables in sync, especially important after Polish

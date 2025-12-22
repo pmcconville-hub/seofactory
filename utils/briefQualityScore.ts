@@ -6,6 +6,8 @@
  */
 
 import { ContentBrief, BriefVisualSemantics } from '../types';
+import { analyzeImageRequirements } from '../services/visualSemanticsService';
+import { calculateMoneyPagePillarsScore, shouldAnalyze4Pillars } from './moneyPagePillarScore';
 
 export type BriefHealthLevel = 'complete' | 'partial' | 'empty';
 
@@ -119,8 +121,10 @@ function calculateVisualSemanticsScore(visualSemantics: BriefVisualSemantics | u
 
 /**
  * Calculate brief quality score
+ * @param brief The content brief to evaluate
+ * @param topicClass Optional topic class to enable Money Page 4 Pillars check for monetization topics
  */
-export function calculateBriefQualityScore(brief: ContentBrief | null | undefined): BriefQualityResult {
+export function calculateBriefQualityScore(brief: ContentBrief | null | undefined, topicClass?: string): BriefQualityResult {
   if (!brief) {
     return {
       score: 0,
@@ -186,7 +190,13 @@ export function calculateBriefQualityScore(brief: ContentBrief | null | undefine
   }
 
   // Visual Semantics (20%) - Koray's "Pixels, Letters, and Bytes" framework
-  const visualSemanticsScore = calculateVisualSemanticsScore(brief.enhanced_visual_semantics);
+  // Use enhanced_visual_semantics if present, otherwise compute on-the-fly
+  let visualSemantics = brief.enhanced_visual_semantics;
+  if (!visualSemantics && brief.structured_outline && brief.structured_outline.length > 0) {
+    // Compute visual semantics dynamically if we have sections
+    visualSemantics = analyzeImageRequirements(brief, 'informational');
+  }
+  const visualSemanticsScore = calculateVisualSemanticsScore(visualSemantics);
   if (visualSemanticsScore > 0) {
     // Scale the visual semantics score (0-100) to the weight (0-20)
     const scaledScore = Math.round((visualSemanticsScore / 100) * FIELD_WEIGHTS.visualSemantics);
@@ -196,6 +206,23 @@ export function calculateBriefQualityScore(brief: ContentBrief | null | undefine
   }
 
   // Note: targetKeyword and searchIntent are not checked because they can't be persisted to DB
+
+  // Money Page 4 Pillars Check (for monetization topics)
+  // If topic is a money page, critical missing elements should affect the score
+  if (topicClass && shouldAnalyze4Pillars(topicClass)) {
+    const pillarsResult = calculateMoneyPagePillarsScore(brief);
+    if (pillarsResult.missing_critical.length > 0) {
+      // Add critical missing items to the list
+      pillarsResult.missing_critical.forEach(item => {
+        if (!missingFields.includes(item)) {
+          missingFields.push(item);
+        }
+      });
+      // Deduct points for critical missing items (max 20 points penalty)
+      const penalty = Math.min(pillarsResult.missing_critical.length * 5, 20);
+      score = Math.max(0, score - penalty);
+    }
+  }
 
   // Determine health level
   const level = getBriefHealthLevel(score);

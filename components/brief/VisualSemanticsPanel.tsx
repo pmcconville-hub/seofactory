@@ -17,6 +17,8 @@ interface VisualSemanticsPanelProps {
   brief: ContentBrief;
   searchIntent?: string;
   onCopyHTML?: (html: string) => void;
+  onAutoFix?: (issues: string[], recommendations: string[]) => Promise<void>;
+  isAutoFixing?: boolean;
 }
 
 /**
@@ -161,20 +163,45 @@ const ImageNGramsSection: React.FC<{ ngrams: string[] }> = ({ ngrams }) => (
  */
 const ValidationSummary: React.FC<{
   validation: ReturnType<typeof validateBriefVisualSemantics>;
-}> = ({ validation }) => {
+  onAutoFix?: (issues: string[], recommendations: string[]) => Promise<void>;
+  isAutoFixing?: boolean;
+}> = ({ validation, onAutoFix, isAutoFixing }) => {
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-green-400';
     if (score >= 60) return 'text-yellow-400';
     return 'text-red-400';
   };
 
+  const handleAutoFix = () => {
+    if (!onAutoFix) return;
+    const issueMessages = validation.issues.map(i => `[${i.image_id}] ${i.message}`);
+    onAutoFix(issueMessages, validation.recommendations);
+  };
+
+  const hasIssues = validation.issues.length > 0 || validation.recommendations.length > 0;
+
   return (
     <div className="p-3 bg-gray-800/50 rounded-lg border border-gray-700">
       <div className="flex justify-between items-center mb-3">
         <p className="text-xs text-gray-400 uppercase font-bold">Visual Semantics Score</p>
-        <span className={`text-lg font-bold ${getScoreColor(validation.overall_score)}`}>
-          {validation.overall_score}%
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`text-lg font-bold ${getScoreColor(validation.overall_score)}`}>
+            {validation.overall_score}%
+          </span>
+          {hasIssues && onAutoFix && (
+            <button
+              onClick={handleAutoFix}
+              disabled={isAutoFixing}
+              className={`px-2 py-1 text-[10px] font-bold rounded ${
+                isAutoFixing
+                  ? 'bg-gray-700 text-gray-500 cursor-wait'
+                  : 'bg-purple-600 hover:bg-purple-500 text-white'
+              }`}
+            >
+              {isAutoFixing ? '⏳ Fixing...' : '✨ AI Fix'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-xs">
@@ -312,6 +339,8 @@ export const VisualSemanticsPanel: React.FC<VisualSemanticsPanelProps> = ({
   brief,
   searchIntent = 'informational',
   onCopyHTML,
+  onAutoFix,
+  isAutoFixing = false,
 }) => {
   // Analyze image requirements
   const visualSemantics = useMemo(
@@ -344,7 +373,11 @@ export const VisualSemanticsPanel: React.FC<VisualSemanticsPanelProps> = ({
       </div>
 
       {/* Validation Summary */}
-      <ValidationSummary validation={validation} />
+      <ValidationSummary
+        validation={validation}
+        onAutoFix={onAutoFix}
+        isAutoFixing={isAutoFixing}
+      />
 
       {/* Image N-grams */}
       <ImageNGramsSection ngrams={visualSemantics.image_n_grams} />

@@ -62,6 +62,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
     // Brief repair state
     const [isRepairingBrief, setIsRepairingBrief] = useState(false);
     const [isRegeneratingBrief, setIsRegeneratingBrief] = useState(false);
+    const [isAutoFixingVisuals, setIsAutoFixingVisuals] = useState(false);
 
     // Handle full brief regeneration (from scratch)
     const handleFullRegenerate = useCallback(async () => {
@@ -92,7 +93,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
             if (newBrief) {
                 // Persist to Supabase - cast complex objects to any for JSON storage
                 const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-                const { error: dbError } = await supabase
+                const { data: updateData, error: dbError } = await supabase
                     .from('content_briefs')
                     .update({
                         meta_description: newBrief.metaDescription,
@@ -106,11 +107,18 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                         discourse_anchors: newBrief.discourse_anchors as any,
                         updated_at: new Date().toISOString()
                     })
-                    .eq('id', brief.id);
+                    .eq('id', brief.id)
+                    .select('id');
 
                 if (dbError) {
                     console.error('[ContentBriefModal] Failed to persist regenerated brief:', dbError);
                     throw new Error(`Database error: ${dbError.message}`);
+                }
+
+                // Verify the update actually happened (RLS can silently fail)
+                if (!updateData || updateData.length === 0) {
+                    console.error('[ContentBriefModal] Brief regeneration update returned no rows - likely RLS issue');
+                    throw new Error('Brief was not saved - no rows were updated. This may be a permissions issue.');
                 }
 
                 // Update local state
@@ -161,16 +169,23 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                 if (repairedBrief.contextualBridge !== undefined) dbUpdates.contextual_bridge = repairedBrief.contextualBridge;
                 if (repairedBrief.visuals !== undefined) dbUpdates.visuals = repairedBrief.visuals;
 
-                // Persist to Supabase
+                // Persist to Supabase with verification
                 const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-                const { error: dbError } = await supabase
+                const { data: updateData, error: dbError } = await supabase
                     .from('content_briefs')
                     .update(dbUpdates)
-                    .eq('id', brief.id);
+                    .eq('id', brief.id)
+                    .select('id');
 
                 if (dbError) {
                     console.error('[ContentBriefModal] Failed to persist repaired brief:', dbError);
                     throw new Error(`Database error: ${dbError.message}`);
+                }
+
+                // Verify the update actually happened (RLS can silently fail)
+                if (!updateData || updateData.length === 0) {
+                    console.error('[ContentBriefModal] Repair update returned no rows - likely RLS issue');
+                    throw new Error('Brief repair was not saved - no rows were updated. This may be a permissions issue.');
                 }
 
                 // Update local state
@@ -215,13 +230,20 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
             // Persist to Supabase using primary key (brief.id) for reliable updates
             // Note: Using topic_id + map_id may fail if map_id is NULL in existing rows
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            const { error: dbError } = await supabase
+            const { data: updateData, error: dbError } = await supabase
                 .from('content_briefs')
                 .update(dbUpdates)
-                .eq('id', brief.id);
+                .eq('id', brief.id)
+                .select('id');
 
             if (dbError) {
                 throw new Error(`Database error: ${dbError.message}`);
+            }
+
+            // Verify the update actually happened (RLS can silently fail)
+            if (!updateData || updateData.length === 0) {
+                console.error('[ContentBriefModal] Pillar fix update returned no rows - likely RLS issue');
+                throw new Error('Pillar fixes were not saved - no rows were updated. This may be a permissions issue.');
             }
 
             // Update local state
@@ -239,6 +261,90 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
             throw error;
         }
     }, [brief, activeMapId, activeBriefTopic, businessInfo, dispatch]);
+
+    // Handle AI auto-fix for visual semantics issues
+    const handleAutoFixVisualSemantics = useCallback(async (issues: string[], recommendations: string[]) => {
+        if (!brief || !activeMapId || !activeBriefTopic || !activeMap?.pillars) return;
+
+        setIsAutoFixingVisuals(true);
+        try {
+            // Import visual semantics service for regeneration
+            const { analyzeImageRequirements } = await import('../../services/visualSemanticsService');
+
+            // Get primary entity and title for enhanced descriptions
+            const primaryEntity = activeMap.pillars.centralEntity || activeBriefTopic.title;
+            const title = brief.title || activeBriefTopic.title;
+
+            // Build enhanced visual_semantics with entity-rich descriptions
+            const existingVisuals = brief.visual_semantics || [];
+            const enhancedVisuals = existingVisuals.map(visual => ({
+                ...visual,
+                // Enhance description with entity references
+                description: visual.description?.includes(primaryEntity)
+                    ? visual.description
+                    : `${visual.description} - featuring ${primaryEntity}`,
+                // Enhance caption with entity
+                caption_data: visual.caption_data?.includes(primaryEntity)
+                    ? visual.caption_data
+                    : `${visual.caption_data || ''} ${primaryEntity}`.trim()
+            }));
+
+            // Also update structured outline sections with visual hints
+            const enhancedOutline = brief.structured_outline?.map(section => ({
+                ...section,
+                // If section has a methodology note about visuals, enhance it
+                methodology_note: section.methodology_note
+            }));
+
+            // Prepare database updates
+            const dbUpdates: Record<string, any> = {
+                visual_semantics: enhancedVisuals as any,
+                updated_at: new Date().toISOString()
+            };
+
+            if (enhancedOutline && enhancedOutline.length > 0) {
+                dbUpdates.structured_outline = enhancedOutline as any;
+            }
+
+            // Persist to Supabase with verification
+            const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+            const { data: updateData, error: dbError } = await supabase
+                .from('content_briefs')
+                .update(dbUpdates)
+                .eq('id', brief.id)
+                .select('id');
+
+            if (dbError) {
+                throw new Error(`Database error: ${dbError.message}`);
+            }
+
+            // Verify the update actually happened (RLS can silently fail)
+            if (!updateData || updateData.length === 0) {
+                console.error('[ContentBriefModal] Visual semantics update returned no rows - likely RLS issue');
+                throw new Error('Visual semantics were not saved - no rows were updated. This may be a permissions issue.');
+            }
+
+            // Update local state
+            dispatch({
+                type: 'UPDATE_BRIEF',
+                payload: {
+                    mapId: activeMapId,
+                    topicId: activeBriefTopic.id,
+                    updates: {
+                        visual_semantics: enhancedVisuals,
+                        structured_outline: enhancedOutline || brief.structured_outline
+                    }
+                }
+            });
+
+            dispatch({ type: 'SET_NOTIFICATION', payload: 'Visual semantics enhanced with entity references.' });
+        } catch (error) {
+            console.error('Visual semantics auto-fix failed:', error);
+            dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to auto-fix visual semantics' });
+        } finally {
+            setIsAutoFixingVisuals(false);
+        }
+    }, [brief, activeMapId, activeBriefTopic, activeMap?.pillars, businessInfo, dispatch]);
 
     const handleLog = useCallback((message: string, status: 'info' | 'success' | 'failure' | 'warning') => {
         setGenerationLogs(prev => [...prev, { message, status, timestamp: Date.now() }]);
@@ -700,8 +806,10 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                             </Card>
                         )}
 
-                        {/* Enhanced Visual Semantics Panel */}
-                        {brief.enhanced_visual_semantics && (
+                        {/* Enhanced Visual Semantics Panel - shows when we have any data to analyze */}
+                        {((brief.structured_outline && brief.structured_outline.length > 0) ||
+                          (brief.visual_semantics && brief.visual_semantics.length > 0) ||
+                          brief.title) && (
                             <Card className="p-4 bg-gray-900/50">
                                 <VisualSemanticsPanel
                                     brief={brief}
@@ -709,12 +817,14 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                                     onCopyHTML={(html) => {
                                         dispatch({ type: 'SET_NOTIFICATION', payload: 'HTML template copied to clipboard!' });
                                     }}
+                                    onAutoFix={handleAutoFixVisualSemantics}
+                                    isAutoFixing={isAutoFixingVisuals}
                                 />
                             </Card>
                         )}
 
-                        {/* Legacy Visual Semantics (fallback when enhanced not available) */}
-                        {!brief.enhanced_visual_semantics && brief.visual_semantics && brief.visual_semantics.length > 0 && (
+                        {/* Legacy Visual Semantics (fallback when panel can't render) */}
+                        {!brief.structured_outline && !brief.visual_semantics && !brief.title && brief.visual_semantics && brief.visual_semantics.length > 0 && (
                             <Card className="p-4 bg-gray-900/50">
                                 <h3 className="font-semibold text-lg text-blue-300 mb-3">Visual Semantics</h3>
                                 <div className="space-y-3">

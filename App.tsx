@@ -21,9 +21,13 @@ import GlobalLoadingBar from './components/ui/GlobalLoadingBar';
 import LoggingPanel from './components/LoggingPanel';
 import FooterDock, { DockIcons } from './components/ui/FooterDock';
 import MainLayout from './components/layout/MainLayout';
+import { useVersionCheck, UpdateBanner } from './hooks/useVersionCheck';
 
 const App: React.FC = () => {
     const [state, dispatch] = useReducer(appReducer, initialState);
+
+    // Version check for detecting app updates after deployments
+    const { updateAvailable, handleReload, dismissUpdate } = useVersionCheck(60000); // Check every 60s
 
     // Use a ref to track the current step without triggering re-renders or effect dependencies
     const appStepRef = useRef(state.appStep);
@@ -413,6 +417,11 @@ const App: React.FC = () => {
             <MainLayout>
                 <div className="bg-gray-900 text-gray-200 min-h-screen font-sans">
                     <GlobalLoadingBar />
+                    <UpdateBanner
+                        updateAvailable={updateAvailable}
+                        onReload={handleReload}
+                        onDismiss={dismissUpdate}
+                    />
                     <NotificationBanner
                         message={state.notification}
                         onDismiss={() => dispatch({ type: 'SET_NOTIFICATION', payload: null })}

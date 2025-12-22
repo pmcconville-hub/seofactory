@@ -144,7 +144,19 @@ export const useTopicEnrichment = (
                     };
 
                     // Cast to any to avoid TypeScript error regarding Json compatibility with interfaces
-                    await supabase.from('topics').update({ metadata: updatedMetadata as any }).eq('id', result.id);
+                    // Add verification to catch silent RLS failures
+                    const { data: enrichData, error: enrichError } = await supabase
+                        .from('topics')
+                        .update({ metadata: updatedMetadata as any })
+                        .eq('id', result.id)
+                        .select('id');
+
+                    if (enrichError) {
+                        console.error('[TopicEnrichment] Failed to update topic metadata:', result.id, enrichError.message);
+                        // Continue with next topic instead of failing the whole batch
+                    } else if (!enrichData || enrichData.length === 0) {
+                        console.warn('[TopicEnrichment] Topic metadata update returned no rows - possible RLS issue:', result.id);
+                    }
 
                     dispatch({
                         type: 'UPDATE_TOPIC',
@@ -208,7 +220,18 @@ export const useTopicEnrichment = (
                                     search_volume: searchVolume
                                 };
 
-                                await supabase.from('topics').update({ metadata: updatedMetadata }).eq('id', topic.id);
+                                // Add verification to catch silent RLS failures
+                                const { data: volData, error: volError } = await supabase
+                                    .from('topics')
+                                    .update({ metadata: updatedMetadata })
+                                    .eq('id', topic.id)
+                                    .select('id');
+
+                                if (volError) {
+                                    console.error('[TopicEnrichment] Failed to update search volume:', topic.id, volError.message);
+                                } else if (!volData || volData.length === 0) {
+                                    console.warn('[TopicEnrichment] Search volume update returned no rows - possible RLS issue:', topic.id);
+                                }
 
                                 dispatch({
                                     type: 'UPDATE_TOPIC',
@@ -309,7 +332,18 @@ export const useTopicEnrichment = (
                     };
 
                     // Cast to any to avoid TypeScript error regarding Json compatibility with interfaces
-                    await supabase.from('topics').update({ metadata: updatedMetadata as any }).eq('id', result.id);
+                    // Add verification to catch silent RLS failures
+                    const { data: bpData, error: bpError } = await supabase
+                        .from('topics')
+                        .update({ metadata: updatedMetadata as any })
+                        .eq('id', result.id)
+                        .select('id');
+
+                    if (bpError) {
+                        console.error('[TopicEnrichment] Failed to update blueprint:', result.id, bpError.message);
+                    } else if (!bpData || bpData.length === 0) {
+                        console.warn('[TopicEnrichment] Blueprint update returned no rows - possible RLS issue:', result.id);
+                    }
 
                     dispatch({
                         type: 'UPDATE_TOPIC',
