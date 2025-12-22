@@ -115,6 +115,40 @@ export default [
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^_',
       }],
+
+      // File size limits - prevent monolithic files
+      'max-lines': ['warn', {
+        max: 500,
+        skipBlankLines: true,
+        skipComments: true,
+      }],
+
+      // Function size limits - encourage smaller functions
+      'max-lines-per-function': ['warn', {
+        max: 100,
+        skipBlankLines: true,
+        skipComments: true,
+        IIFEs: true,
+      }],
+    },
+  },
+  // Override for known large files (legacy - to be refactored)
+  {
+    files: [
+      '**/ProjectDashboardContainer.tsx',
+      '**/DraftingModal.tsx',
+      '**/PageAuditDetailV2.tsx',
+      '**/NavigationDesigner.tsx',
+      '**/TopicalMapDisplay.tsx',
+      '**/appState.ts',
+      '**/parsers.ts',
+      '**/exportUtils.ts',
+      '**/enhancedExportUtils.ts',
+      '**/pdfExportService.ts',
+    ],
+    rules: {
+      'max-lines': 'off',
+      'max-lines-per-function': 'off',
     },
   },
 ];
