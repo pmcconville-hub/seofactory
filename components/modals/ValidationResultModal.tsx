@@ -51,14 +51,14 @@ const ValidationResultModal: React.FC<ValidationResultModalProps> = ({
 
   // Tab configuration
   const tabs = [
-    { id: 'issues', label: 'Validation Issues', show: true, color: 'blue' },
-    { id: 'metrics', label: 'Holistic Quality Metrics', show: !!result?.metrics, color: 'blue' },
+    { id: 'issues', label: 'Validation Issues', show: true, color: 'blue', badge: undefined as string | number | undefined },
+    { id: 'metrics', label: 'Holistic Quality Metrics', show: !!result?.metrics, color: 'blue', badge: undefined as string | number | undefined },
     { id: 'foundation', label: 'Foundation Pages', show: !!result?.foundationPageIssues, color: 'purple',
       badge: result?.foundationPageIssues && (result.foundationPageIssues.missingPages.length + result.foundationPageIssues.incompletePages.length) > 0
         ? result.foundationPageIssues.missingPages.length + result.foundationPageIssues.incompletePages.length : undefined },
     { id: 'navigation', label: 'Navigation', show: !!result?.navigationIssues, color: 'teal',
       badge: result?.navigationIssues && (result.navigationIssues.missingInHeader.length > 0 || result.navigationIssues.missingInFooter.length > 0) ? '!' : undefined }
-  ] as const;
+  ];
 
   const visibleTabs = tabs.filter(t => t.show);
 

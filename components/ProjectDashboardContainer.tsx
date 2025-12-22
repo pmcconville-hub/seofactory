@@ -8,6 +8,7 @@ import { executePass9 } from '../services/ai/contentGeneration/passes/pass9Schem
 import * as aiService from '../services/aiService';
 import * as foundationPagesService from '../services/ai/foundationPages';
 import { getSupabaseClient } from '../services/supabaseClient';
+import type { Json } from '../database.types';
 import { v4 as uuidv4 } from 'uuid';
 import { slugify, cleanSlug } from '../utils/helpers';
 import { KnowledgeGraph } from '../lib/knowledgeGraph';
@@ -18,6 +19,7 @@ import { useTopicEnrichment } from '../hooks/useTopicEnrichment';
 import { sanitizeTopicFromDb, sanitizeBriefFromDb, safeString, normalizeRpcData, parseTopicalMap, repairBriefsInMap } from '../utils/parsers';
 import { generateMasterExport, generateFullZipExport } from '../utils/exportUtils';
 import { generateEnhancedExport, EnhancedExportInput } from '../utils/enhancedExportUtils';
+import { verifiedInsert, verifiedBulkInsert, verifiedUpdate, verifiedDelete, verifiedBulkDelete } from '../services/verifiedDatabaseService';
 
 // Import Screens
 import { MapSelectionScreen } from './screens';
@@ -390,8 +392,18 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 }});
 
                 const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-                const { error: insertError } = await supabase.from('topics').insert(dbTopics);
-                if (insertError) throw insertError;
+
+                // Use verified bulk insert to ensure all topics are saved
+                const insertResult = await verifiedBulkInsert(
+                    supabase,
+                    { table: 'topics', operationDescription: `save ${dbTopics.length} generated topics` },
+                    dbTopics,
+                    'id'
+                );
+
+                if (!insertResult.success) {
+                    throw new Error(insertResult.error || 'Topic insert verification failed');
+                }
             }
 
             // Update State
@@ -404,7 +416,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 dispatch({ type: 'SET_ERROR', payload: 'The AI returned no topics. This can happen if: (1) The pillars/seed keyword context is too vague, (2) There was an API parsing error, or (3) The AI model is unavailable. Please check the Logs panel for details and try again.' });
                 dispatch({ type: 'LOG_EVENT', payload: { service: 'MapGeneration', message: 'AI returned empty topic arrays. Check business context and API configuration.', status: 'warning', timestamp: Date.now(), data: { coreCount: coreTopics.length, outerCount: outerTopics.length, effectiveModel: effectiveBusinessInfo.aiModel, effectiveProvider: effectiveBusinessInfo.aiProvider } } });
             } else {
-                dispatch({ type: 'SET_NOTIFICATION', payload: `Initial topical map generated: ${coreTopics.length} core topics and ${outerTopics.length} supporting topics.` });
+                dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Initial topical map generated and verified: ${coreTopics.length} core topics and ${outerTopics.length} supporting topics.` });
             }
 
         } catch (e) {
@@ -483,9 +495,20 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 dispatch({ type: 'SET_KNOWLEDGE_GRAPH', payload: knowledgeGraph });
                 
                 const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-                await supabase.from('topical_maps').update({ eavs: updatedEavs as any }).eq('id', activeMapId);
-                
-                dispatch({ type: 'SET_NOTIFICATION', payload: `Added ${newTriples.length} new semantic concepts to the Knowledge Graph.` });
+
+                // Use verified update to ensure EAVs are persisted
+                const updateResult = await verifiedUpdate(
+                    supabase,
+                    { table: 'topical_maps', operationDescription: 'save expanded EAVs' },
+                    activeMapId,
+                    { eavs: updatedEavs as any }
+                );
+
+                if (!updateResult.success) {
+                    dispatch({ type: 'SET_ERROR', payload: `⚠️ Added concepts to graph but failed to persist: ${updateResult.error}` });
+                } else {
+                    dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Added ${newTriples.length} new semantic concepts to the Knowledge Graph.` });
+                }
             } else {
                  dispatch({ type: 'SET_NOTIFICATION', payload: 'AI did not find any significant new concepts to add.' });
             }
@@ -549,15 +572,25 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
 
     const onSavePillars = useCallback(async (newPillars: SEOPillars) => {
         if (!activeMapId) return;
-        
+
         const hasChanges = JSON.stringify(activeMap?.pillars) !== JSON.stringify(newPillars);
 
         if (hasChanges) {
             dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: true } });
             try {
                 const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-                const { error } = await supabase.from('topical_maps').update({ pillars: newPillars as any }).eq('id', activeMapId);
-                if (error) throw error;
+
+                // Use verified update to ensure pillars are persisted
+                const updateResult = await verifiedUpdate(
+                    supabase,
+                    { table: 'topical_maps', operationDescription: 'save SEO pillars' },
+                    activeMapId,
+                    { pillars: newPillars as any }
+                );
+
+                if (!updateResult.success) {
+                    throw new Error(updateResult.error || 'Pillar update verification failed');
+                }
 
                 dispatch({ type: 'SET_PILLARS', payload: { mapId: activeMapId, pillars: newPillars } });
 
@@ -565,7 +598,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                     dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'pillarConfirmation', visible: true } });
                 }
             } catch (e) {
-                dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to update pillars.' });
+                dispatch({ type: 'SET_ERROR', payload: `❌ ${e instanceof Error ? e.message : 'Failed to update pillars.'}` });
             } finally {
                  dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: false } });
             }
@@ -579,15 +612,34 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: true } });
             try {
                 const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-                const { error } = await supabase.from('topics').delete().eq('map_id', activeMapId);
-                if(error) throw error;
+
+                // Get all topic IDs for this map to verify deletion
+                const { data: existingTopics } = await supabase
+                    .from('topics')
+                    .select('id')
+                    .eq('map_id', activeMapId);
+
+                const topicIds = (existingTopics || []).map(t => t.id);
+
+                if (topicIds.length > 0) {
+                    // Use verified bulk delete
+                    const deleteResult = await verifiedBulkDelete(
+                        supabase,
+                        { table: 'topics', operationDescription: 'delete all topics before regeneration' },
+                        topicIds
+                    );
+
+                    if (!deleteResult.success) {
+                        throw new Error(deleteResult.error || 'Topic deletion verification failed');
+                    }
+                }
 
                 dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: activeMapId, topics: [] } });
                 // Trigger the AI regeneration
                 await handleGenerateInitialMap();
 
             } catch (e) {
-                dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to regenerate map.' });
+                dispatch({ type: 'SET_ERROR', payload: `❌ ${e instanceof Error ? e.message : 'Failed to regenerate map.'}` });
             }
             finally {
                 dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: false } });
@@ -673,15 +725,30 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             };
             
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            // FIX: Inject user_id
-            const { data: insertedTopic, error } = await supabase.from('topics').insert({
-                ...newTopic,
-                user_id: user.id
-            }).select().single();
-            
-            if (error) throw error;
-            
-            const safeTopic = sanitizeTopicFromDb(insertedTopic);
+
+            // Use verified insert to ensure topic is saved
+            const insertResult = await verifiedInsert(
+                supabase,
+                { table: 'topics', operationDescription: `add topic "${newTopic.title}"` },
+                {
+                    id: newTopic.id,
+                    map_id: newTopic.map_id,
+                    title: newTopic.title,
+                    slug: newTopic.slug,
+                    description: newTopic.description,
+                    type: newTopic.type,
+                    parent_topic_id: newTopic.parent_topic_id,
+                    freshness: newTopic.freshness,
+                    metadata: (newTopic.metadata || {}) as Json,
+                    user_id: user.id
+                }
+            );
+
+            if (!insertResult.success || !insertResult.data) {
+                throw new Error(insertResult.error || 'Topic insert verification failed');
+            }
+
+            const safeTopic = sanitizeTopicFromDb(insertResult.data);
             dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic: safeTopic } });
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'addTopic', visible: false } });
         } catch (e) {
@@ -720,12 +787,15 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 newCoreIdMap.set(input.data.title, newId);
                 
                 coreTopicsToInsert.push({
-                    ...input.data,
                     id: newId,
                     map_id: activeMapId,
+                    title: input.data.title,
                     slug: slugify(input.data.title),
+                    description: input.data.description || '',
                     parent_topic_id: null,
                     type: 'core',
+                    freshness: input.data.freshness || 'EVERGREEN',
+                    metadata: (input.data.metadata || {}) as Json,
                     user_id: user.id
                 });
             }
@@ -733,9 +803,19 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             // Insert Core Topics First (to satisfy FK constraints for children)
             if (coreTopicsToInsert.length > 0) {
                 const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-                const { error: coreError } = await supabase.from('topics').insert(coreTopicsToInsert).select();
-                if (coreError) throw coreError;
-                
+
+                // Use verified bulk insert
+                const coreResult = await verifiedBulkInsert(
+                    supabase,
+                    { table: 'topics', operationDescription: `save ${coreTopicsToInsert.length} core topics` },
+                    coreTopicsToInsert,
+                    'id'
+                );
+
+                if (!coreResult.success) {
+                    throw new Error(coreResult.error || 'Core topic insert verification failed');
+                }
+
                 // Dispatch Core Topics immediately
                 coreTopicsToInsert.forEach(topic => {
                     const safeTopic = sanitizeTopicFromDb(topic);
@@ -784,12 +864,15 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 }
 
                 return {
-                    ...topicData,
                     id: uuidv4(),
                     map_id: activeMapId,
+                    title: topicData.title,
                     slug: `${parentSlug}/${cleanSlug(parentSlug, topicData.title)}`.replace(/^\//, ''),
+                    description: topicData.description || '',
                     parent_topic_id: parentId,
                     type: type,
+                    freshness: topicData.freshness || 'EVERGREEN',
+                    metadata: (topicData.metadata || {}) as Json,
                     user_id: user.id
                 };
             }));
@@ -797,8 +880,18 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             // Insert Outer Topics
             if (outerTopicsToInsert.length > 0) {
                 const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-                const { error: outerError } = await supabase.from('topics').insert(outerTopicsToInsert);
-                if (outerError) throw outerError;
+
+                // Use verified bulk insert
+                const outerResult = await verifiedBulkInsert(
+                    supabase,
+                    { table: 'topics', operationDescription: `save ${outerTopicsToInsert.length} outer topics` },
+                    outerTopicsToInsert as any,
+                    'id'
+                );
+
+                if (!outerResult.success) {
+                    throw new Error(outerResult.error || 'Outer topic insert verification failed');
+                }
 
                 // Track outer topic IDs for child topic resolution & Dispatch Outer Topics
                 outerTopicsToInsert.forEach(topic => {
@@ -839,12 +932,15 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 }
 
                 return {
-                    ...topicData,
                     id: uuidv4(),
                     map_id: activeMapId,
+                    title: topicData.title,
                     slug: `${parentSlug}/${cleanSlug(parentSlug, topicData.title)}`.replace(/^\//, ''),
+                    description: topicData.description || '',
                     parent_topic_id: parentId,
-                    type: 'child',
+                    type: 'child' as const,
+                    freshness: topicData.freshness || 'EVERGREEN',
+                    metadata: (topicData.metadata || {}) as Json,
                     user_id: user.id
                 };
             });
@@ -852,8 +948,18 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             // Insert Child Topics
             if (childTopicsToInsert.length > 0) {
                 const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-                const { error: childError } = await supabase.from('topics').insert(childTopicsToInsert);
-                if (childError) throw childError;
+
+                // Use verified bulk insert
+                const childResult = await verifiedBulkInsert(
+                    supabase,
+                    { table: 'topics', operationDescription: `save ${childTopicsToInsert.length} child topics` },
+                    childTopicsToInsert as any,
+                    'id'
+                );
+
+                if (!childResult.success) {
+                    throw new Error(childResult.error || 'Child topic insert verification failed');
+                }
 
                 // Dispatch Child Topics
                 childTopicsToInsert.forEach(topic => {
@@ -863,7 +969,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             }
 
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'addTopic', visible: false } });
-            dispatch({ type: 'SET_NOTIFICATION', payload: `Successfully added ${coreTopicsToInsert.length + outerTopicsToInsert.length + childTopicsToInsert.length} new topics.` });
+            dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Successfully added and verified ${coreTopicsToInsert.length + outerTopicsToInsert.length + childTopicsToInsert.length} new topics.` });
 
         } catch (e) {
             dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to add topics.' });
@@ -913,14 +1019,22 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 freshness: 'STANDARD'
             }));
 
-            const { data, error } = await supabase.from('topics').insert(topicsToAdd).select();
+            // Use verified bulk insert
+            const insertResult = await verifiedBulkInsert(
+                supabase,
+                { table: 'topics', operationDescription: `expand "${coreTopic.title}" with ${topicsToAdd.length} new topics` },
+                topicsToAdd,
+                '*'
+            );
 
-            if (error) throw error;
+            if (!insertResult.success || !insertResult.data) {
+                throw new Error(insertResult.error || 'Topic expansion insert verification failed');
+            }
 
             // Batch add all topics at once to prevent HMR-related state issues
-            const safeTopics = (data || []).map(dbTopic => sanitizeTopicFromDb(dbTopic));
+            const safeTopics = (insertResult.data || []).map(dbTopic => sanitizeTopicFromDb(dbTopic));
             dispatch({ type: 'ADD_TOPICS', payload: { mapId: activeMapId, topics: safeTopics }});
-            dispatch({ type: 'SET_NOTIFICATION', payload: `Successfully expanded "${coreTopic.title}" with ${topicsToAdd.length} new topics.` });
+            dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Successfully expanded "${coreTopic.title}" with ${topicsToAdd.length} new topics (verified).` });
         } catch(e) {
              dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to expand topic.' });
         } finally {
@@ -1206,16 +1320,25 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                         newCoresByTitle.set(ct.title.toLowerCase(), ct.id);
                     });
 
-                    const { data: addedCores, error: addCoreError } = await supabase.from('topics').insert(coreDbTopics).select();
-                    if (addCoreError) throw addCoreError;
+                    // Use verified bulk insert
+                    const coreResult = await verifiedBulkInsert(
+                        supabase,
+                        { table: 'topics', operationDescription: `add ${coreDbTopics.length} core topics from improvement` },
+                        coreDbTopics,
+                        '*'
+                    );
 
-                    (addedCores || []).forEach(topic => {
+                    if (!coreResult.success) {
+                        throw new Error(coreResult.error || 'Core topic insert verification failed');
+                    }
+
+                    (coreResult.data || []).forEach(topic => {
                         dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic: sanitizeTopicFromDb(topic) } });
                     });
 
                     dispatch({ type: 'LOG_EVENT', payload: {
                         service: 'MapImprovement',
-                        message: `Added ${addedCores?.length || 0} new core topics`,
+                        message: `✓ Added ${coreResult.data?.length || 0} new core topics (verified)`,
                         status: 'info',
                         timestamp: Date.now()
                     }});
@@ -1262,10 +1385,19 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                         };
                     });
 
-                    const { data: addedOuters, error: addOuterError } = await supabase.from('topics').insert(outerDbTopics).select();
-                    if (addOuterError) throw addOuterError;
+                    // Use verified bulk insert
+                    const outerResult = await verifiedBulkInsert(
+                        supabase,
+                        { table: 'topics', operationDescription: `add ${outerDbTopics.length} outer topics from improvement` },
+                        outerDbTopics,
+                        '*'
+                    );
 
-                    (addedOuters || []).forEach(topic => {
+                    if (!outerResult.success) {
+                        throw new Error(outerResult.error || 'Outer topic insert verification failed');
+                    }
+
+                    (outerResult.data || []).forEach(topic => {
                         dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic: sanitizeTopicFromDb(topic) } });
                     });
 
@@ -1274,7 +1406,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                     const orphaned = outerDbTopics.filter(t => !t.parent_topic_id).length;
                     dispatch({ type: 'LOG_EVENT', payload: {
                         service: 'MapImprovement',
-                        message: `Added ${addedOuters?.length || 0} outer topics (${withParent} with parents, ${orphaned} orphaned)`,
+                        message: `✓ Added ${outerResult.data?.length || 0} outer topics (${withParent} with parents, ${orphaned} orphaned) (verified)`,
                         status: orphaned > 0 ? 'warning' : 'info',
                         timestamp: Date.now()
                     }});
@@ -1289,8 +1421,16 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 });
 
                 if (idsToDelete.length > 0) {
-                    const { error: deleteError } = await supabase.from('topics').delete().in('id', idsToDelete);
-                    if (deleteError) throw deleteError;
+                    const deleteResult = await verifiedBulkDelete(
+                        supabase,
+                        { table: 'topics', operationDescription: `delete ${idsToDelete.length} topics from improvement` },
+                        { column: 'id', operator: 'in', value: idsToDelete },
+                        idsToDelete.length
+                    );
+
+                    if (!deleteResult.success) {
+                        throw new Error(deleteResult.error || 'Topic deletion verification failed');
+                    }
 
                     idsToDelete.forEach(id => {
                          dispatch({ type: 'DELETE_TOPIC', payload: { mapId: activeMapId, topicId: id } });
@@ -1298,7 +1438,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
 
                     dispatch({ type: 'LOG_EVENT', payload: {
                         service: 'MapImprovement',
-                        message: `Deleted ${idsToDelete.length} topics`,
+                        message: `✓ Deleted ${idsToDelete.length} topics (verified)`,
                         status: 'info',
                         timestamp: Date.now()
                     }});
@@ -1335,24 +1475,33 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                         }
                     }
 
-                    const { error: updateError } = await supabase
-                        .from('topics')
-                        .update(updateData)
-                        .eq('id', topic.id);
+                    const reclassResult = await verifiedUpdate(
+                        supabase,
+                        { table: 'topics', operationDescription: `reclassify topic "${topic.title}" to ${reclass.newType}` },
+                        topic.id,
+                        updateData,
+                        'id, type, parent_topic_id, slug'
+                    );
 
-                    if (updateError) {
-                        console.error(`Failed to reclassify topic "${topic.title}":`, updateError);
+                    if (!reclassResult.success) {
+                        console.error(`Failed to reclassify topic "${topic.title}":`, reclassResult.error);
+                        dispatch({ type: 'LOG_EVENT', payload: {
+                            service: 'MapImprovement',
+                            message: `⚠ Failed to reclassify "${topic.title}": ${reclassResult.error}`,
+                            status: 'warning',
+                            timestamp: Date.now()
+                        }});
                         continue;
                     }
 
-                    // Update local state
+                    // Update local state with verified data
                     dispatch({ type: 'UPDATE_TOPIC', payload: {
                         mapId: activeMapId,
                         topicId: topic.id,
                         updates: {
-                            type: reclass.newType,
-                            parent_topic_id: newParentId,
-                            slug: updateData.slug || topic.slug
+                            type: reclassResult.data?.type || reclass.newType,
+                            parent_topic_id: reclassResult.data?.parent_topic_id || newParentId,
+                            slug: reclassResult.data?.slug || updateData.slug || topic.slug
                         }
                     }});
                     reclassifiedCount++;
@@ -1393,28 +1542,52 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             const newTopicData = {
                 id: uuidv4(),
                 map_id: activeMapId,
-                user_id: user.id, // FIX: Inject user_id
+                user_id: user.id,
                 title: suggestion.newTopic.title,
                 description: suggestion.newTopic.description,
                 slug: slugify(suggestion.newTopic.title),
-                type: 'core' as 'core' | 'outer', // Explicit cast to match union type
+                type: 'core' as 'core' | 'outer',
                 freshness: 'EVERGREEN',
                 parent_topic_id: null
             };
 
-            const { data: newTopic, error: createError } = await supabase.from('topics').insert(newTopicData).select().single();
-            if (createError) throw createError;
+            // Verified insert for merged topic
+            const insertResult = await verifiedInsert(
+                supabase,
+                { table: 'topics', operationDescription: `create merged topic "${suggestion.newTopic.title}"` },
+                newTopicData,
+                '*'
+            );
 
-            const { error: deleteError } = await supabase.from('topics').delete().in('id', suggestion.topicIds);
-            if (deleteError) throw deleteError;
+            if (!insertResult.success || !insertResult.data) {
+                throw new Error(insertResult.error || 'Merged topic insert verification failed');
+            }
 
-            dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic: sanitizeTopicFromDb(newTopic) } });
+            // Verified delete for old topics
+            const deleteResult = await verifiedBulkDelete(
+                supabase,
+                { table: 'topics', operationDescription: `delete ${suggestion.topicIds.length} topics being merged` },
+                { column: 'id', operator: 'in', value: suggestion.topicIds },
+                suggestion.topicIds.length
+            );
+
+            if (!deleteResult.success) {
+                // Rollback: delete the newly created topic
+                await verifiedDelete(
+                    supabase,
+                    { table: 'topics', operationDescription: 'rollback merged topic' },
+                    newTopicData.id
+                );
+                throw new Error(deleteResult.error || 'Old topics deletion verification failed');
+            }
+
+            dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic: sanitizeTopicFromDb(insertResult.data) } });
             suggestion.topicIds.forEach(id => {
                 dispatch({ type: 'DELETE_TOPIC', payload: { mapId: activeMapId, topicId: id } });
             });
 
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'merge', visible: false } });
-            dispatch({ type: 'SET_NOTIFICATION', payload: 'Topics merged successfully.' });
+            dispatch({ type: 'SET_NOTIFICATION', payload: '✓ Topics merged successfully (verified).' });
 
         } catch (e) {
              dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Merge execution failed.' });
@@ -1435,27 +1608,28 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
 
         try {
             const draft = await aiService.generateArticleDraft(brief, configToUse, dispatch);
-            
+
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            
-            const { error } = await supabase
-                .from('content_briefs')
-                .update({ article_draft: draft })
-                .eq('id', brief.id);
-            
-            if (error) throw error;
+
+            // Verified update for article draft
+            const updateResult = await verifiedUpdate(
+                supabase,
+                { table: 'content_briefs', operationDescription: `save article draft for "${brief.title}"` },
+                brief.id,
+                { article_draft: draft },
+                'id, article_draft'
+            );
+
+            if (!updateResult.success) {
+                throw new Error(updateResult.error || 'Article draft save verification failed');
+            }
 
             // Update the brief in the state with the new draft
             const updatedBrief = { ...brief, articleDraft: draft };
             dispatch({ type: 'ADD_BRIEF', payload: { mapId: activeMapId, topicId: brief.topic_id, brief: updatedBrief } });
-            
-            // Update active brief reference if needed (often redundant as it references map briefs)
-            if (state.activeBriefTopic?.id === brief.topic_id) {
-                 // No special action needed as UI reads from map.briefs
-            }
 
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'drafting', visible: true } });
-            dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'contentBrief', visible: false } }); // Close brief modal if open
+            dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'contentBrief', visible: false } });
 
         } catch (e) {
             dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to generate draft.' });
@@ -1470,23 +1644,31 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
         try {
             const result = await aiService.auditContentIntegrity(brief, draft, effectiveBusinessInfo, dispatch);
             dispatch({ type: 'SET_CONTENT_INTEGRITY_RESULT', payload: result });
-            
-            // Persist the audit result to the database
+
+            // Persist the audit result to the database with verification
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            await supabase
-                .from('content_briefs')
-                .update({ content_audit: result as any })
-                .eq('id', brief.id);
+            const updateResult = await verifiedUpdate(
+                supabase,
+                { table: 'content_briefs', operationDescription: `save content audit for "${brief.title}"` },
+                brief.id,
+                { content_audit: result as any },
+                'id'
+            );
+
+            if (!updateResult.success) {
+                console.warn('[onAuditDraft] Audit result could not be persisted:', updateResult.error);
+                // Non-fatal: still show the result to user
+            }
 
             // Update local brief state with the new audit result
             const updatedBrief = { ...brief, contentAudit: result };
             dispatch({ type: 'ADD_BRIEF', payload: { mapId: activeMapId, topicId: brief.topic_id, brief: updatedBrief } });
-            
+
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'integrity', visible: true } });
         } catch (e) {
             dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Audit failed.' });
         } finally {
-             dispatch({ type: 'SET_LOADING', payload: { key: 'audit', value: false } });
+            dispatch({ type: 'SET_LOADING', payload: { key: 'audit', value: false } });
         }
     }, [activeMapId, businessInfo, effectiveBusinessInfo, dispatch]);
 
@@ -1515,24 +1697,28 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             // Replace the first occurrence of the snippet
             const newDraft = fullDraft.replace(rule.affectedTextSnippet, refinedSnippet);
 
-            // Update DB
+            // Update DB with verification
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            const { error } = await supabase
-                .from('content_briefs')
-                .update({ article_draft: newDraft })
-                .eq('id', brief.id);
-            
-            if (error) throw error;
+            const updateResult = await verifiedUpdate(
+                supabase,
+                { table: 'content_briefs', operationDescription: `save auto-fix for "${brief.title}"` },
+                brief.id,
+                { article_draft: newDraft },
+                'id, article_draft'
+            );
+
+            if (!updateResult.success) {
+                throw new Error(updateResult.error || 'Auto-fix save verification failed');
+            }
 
             // Update State
             const updatedBrief = { ...brief, articleDraft: newDraft };
             dispatch({ type: 'ADD_BRIEF', payload: { mapId: activeMapId, topicId: brief.topic_id, brief: updatedBrief } });
-            
-            // Re-run audit locally to update result (or just close/notify)
-            // For better UX, we'll trigger a fresh audit on the new text
+
+            // Re-run audit locally to update result
             await onAuditDraft(updatedBrief, newDraft);
-            
-            dispatch({ type: 'SET_NOTIFICATION', payload: 'Applied fix successfully.' });
+
+            dispatch({ type: 'SET_NOTIFICATION', payload: '✓ Applied fix successfully (verified).' });
 
         } catch(e) {
             dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Auto-fix failed.' });
@@ -1708,16 +1894,27 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
         dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: true } });
         try {
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            const { error } = await supabase.from('topical_maps').update({ competitors: newCompetitors }).eq('id', activeMapId);
-            if (error) throw error;
+
+            // Verified update for competitors
+            const result = await verifiedUpdate(
+                supabase,
+                { table: 'topical_maps', operationDescription: 'update competitors list' },
+                activeMapId,
+                { competitors: newCompetitors },
+                'id, competitors'
+            );
+
+            if (!result.success) {
+                throw new Error(result.error || 'Competitors update verification failed');
+            }
 
             dispatch({ type: 'SET_COMPETITORS', payload: { mapId: activeMapId, competitors: newCompetitors } });
-            dispatch({ type: 'SET_NOTIFICATION', payload: 'Competitors updated successfully.' });
-             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'competitorManager', visible: false } });
+            dispatch({ type: 'SET_NOTIFICATION', payload: '✓ Competitors updated successfully (verified).' });
+            dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'competitorManager', visible: false } });
         } catch (e) {
             dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to update competitors.' });
         } finally {
-             dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: false } });
+            dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: false } });
         }
     }, [activeMapId, businessInfo, dispatch]);
 
@@ -1803,20 +2000,19 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
 
                 console.log('[handleUpdateTopic] Sending to Supabase:', { topicId, dbUpdates });
 
-                const { error, data } = await supabase
-                    .from('topics')
-                    .update(dbUpdates)
-                    .eq('id', topicId)
-                    .select();
+                const updateResult = await verifiedUpdate(
+                    supabase,
+                    { table: 'topics', operationDescription: `update topic ${topicId}` },
+                    dbUpdates,
+                    { column: 'id', value: topicId },
+                    '*'
+                );
 
-                console.log('[handleUpdateTopic] Supabase response:', { error, data, rowsAffected: data?.length });
+                console.log('[handleUpdateTopic] Verified response:', { success: updateResult.success, data: updateResult.data });
 
-                if (error) throw error;
-
-                // Check if RLS blocked the update (no error but 0 rows affected)
-                if (!data || data.length === 0) {
-                    console.error('[handleUpdateTopic] Update blocked by RLS - 0 rows affected');
-                    throw new Error('Update failed: You may not have permission to update this topic, or your session may have expired. Please try refreshing the page.');
+                if (!updateResult.success) {
+                    console.error('[handleUpdateTopic] Update verification failed:', updateResult.error);
+                    throw new Error(updateResult.error || 'Topic update verification failed. Please try refreshing the page.');
                 }
 
                 // CASCADE TYPE CHANGES TO CHILDREN
@@ -1853,17 +2049,22 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                             // Note: If parent becomes 'child', children can't exist (max 3 levels)
 
                             if (newChildType) {
+                                let successCount = 0;
                                 for (const child of children) {
                                     if (child.type !== newChildType) {
                                         console.log('[handleUpdateTopic] Cascading type change for child:', child.title, '->', newChildType);
-                                        const { error: childError } = await supabase
-                                            .from('topics')
-                                            .update({ type: newChildType, updated_at: new Date().toISOString() })
-                                            .eq('id', child.id);
+                                        const childResult = await verifiedUpdate(
+                                            supabase,
+                                            { table: 'topics', operationDescription: `cascade type to child "${child.title}"` },
+                                            child.id,
+                                            { type: newChildType, updated_at: new Date().toISOString() },
+                                            'id, type'
+                                        );
 
-                                        if (childError) {
-                                            console.error('[handleUpdateTopic] Failed to cascade to child:', child.title, childError);
+                                        if (!childResult.success) {
+                                            console.error('[handleUpdateTopic] Failed to cascade to child:', child.title, childResult.error);
                                         } else {
+                                            successCount++;
                                             // Update local state for this child too
                                             dispatch({
                                                 type: 'UPDATE_TOPIC',
@@ -1876,7 +2077,9 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                                         }
                                     }
                                 }
-                                dispatch({ type: 'SET_NOTIFICATION', payload: `Updated ${children.length} child topic(s) to type "${newChildType}"` });
+                                if (successCount > 0) {
+                                    dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Updated ${successCount} child topic(s) to type "${newChildType}" (verified)` });
+                                }
                             }
                         }
                     }

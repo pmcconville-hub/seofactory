@@ -7,9 +7,10 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Label } from '../ui/Label';
 import { Loader } from '../ui/Loader';
+import { AppStep } from '../../types';
 
 const AuthScreen: React.FC = () => {
-    const { state } = useAppState();
+    const { state, dispatch } = useAppState();
     const { businessInfo } = state;
     const [isSignUp, setIsSignUp] = useState(false);
     const [email, setEmail] = useState('');
@@ -31,17 +32,24 @@ const AuthScreen: React.FC = () => {
                 if (error) throw error;
                 setMessage('Check your email for the confirmation link!');
             } else {
-                const { error } = await supabase.auth.signInWithPassword({ email, password });
+                const { data, error } = await supabase.auth.signInWithPassword({ email, password });
                 if (error) throw error;
-                // The onAuthStateChange listener in App.tsx will handle the redirect.
+
+                // Directly dispatch user and navigation state after successful login
+                // This ensures navigation works even if the onAuthStateChange subscription
+                // was orphaned after a logout that reset the Supabase client
+                if (data.user) {
+                    dispatch({ type: 'SET_USER', payload: data.user });
+                    dispatch({ type: 'SET_STEP', payload: AppStep.PROJECT_SELECTION });
+                }
             }
         } catch (err) {
             let errorMsg = err instanceof Error ? err.message : 'An unknown authentication error occurred.';
-            
+
             if (errorMsg.includes('Failed to fetch')) {
                 errorMsg = 'Connection failed. Please check your Supabase credentials in Settings (⚙️ bottom right).';
             }
-            
+
             setError(errorMsg);
         } finally {
             setLoading(false);

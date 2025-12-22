@@ -6,7 +6,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Loader } from '../ui/Loader';
 import { Modal } from '../ui/Modal';
-import { EnrichedTopic, ContentBrief, ContextualBridgeLink, BriefSection, EnhancedSchemaResult } from '../../types';
+import { EnrichedTopic, ContentBrief, ContextualBridgeLink, BriefSection, EnhancedSchemaResult, ResponseCode } from '../../types';
 import { safeString } from '../../utils/parsers';
 import { useContentGeneration } from '../../hooks/useContentGeneration';
 import ContentGenerationProgress from '../ContentGenerationProgress';
@@ -73,8 +73,8 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
             // Import the brief generation service
             const { generateContentBrief } = await import('../../services/ai/briefGeneration');
 
-            // Determine response code (default to 200 for existing content)
-            const responseCode = activeBriefTopic.metadata?.response_code || 200;
+            // Determine response code (default to INFORMATIONAL for existing content)
+            const responseCode = (activeBriefTopic.metadata?.response_code as ResponseCode) || ResponseCode.INFORMATIONAL;
 
             dispatch({ type: 'SET_LOADING', payload: { key: 'brief', value: true } });
             dispatch({ type: 'SET_NOTIFICATION', payload: 'Regenerating brief from scratch...' });
@@ -677,7 +677,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                         {/* Money Page 4 Pillars - for monetization topics */}
                         <MoneyPagePillarsIndicator
                             brief={brief}
-                            topicClass={activeBriefTopic?.topic_class || activeBriefTopic?.metadata?.topic_class}
+                            topicClass={(activeBriefTopic?.topic_class || activeBriefTopic?.metadata?.topic_class) as string | undefined}
                             businessInfo={businessInfo}
                             pillars={activeMap?.pillars}
                             dispatch={dispatch}
@@ -813,7 +813,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                             <Card className="p-4 bg-gray-900/50">
                                 <VisualSemanticsPanel
                                     brief={brief}
-                                    searchIntent={activeBriefTopic?.metadata?.search_intent}
+                                    searchIntent={activeBriefTopic?.metadata?.search_intent as string | undefined}
                                     onCopyHTML={(html) => {
                                         dispatch({ type: 'SET_NOTIFICATION', payload: 'HTML template copied to clipboard!' });
                                     }}

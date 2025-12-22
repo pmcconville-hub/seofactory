@@ -84,7 +84,9 @@
       "Bash(SUPABASE_SERVICE_ROLE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNodHFzaG1tc3JtdHF1dWh5dXBsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTgwMzk3MSwiZXhwIjoyMDgxMzc5OTcxfQ.ozPGxDAEky3aQoJkdRN007LYlTapkIBbyFCklD1TNe0\" npx tsx \"D:/www/cost-of-retreival-reducer/scripts/diagnose-rls.ts\")",
       "Bash(SUPABASE_SERVICE_ROLE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNodHFzaG1tc3JtdHF1dWh5dXBsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTgwMzk3MSwiZXhwIjoyMDgxMzc5OTcxfQ.ozPGxDAEky3aQoJkdRN007LYlTapkIBbyFCklD1TNe0\" npx tsx \"D:/www/cost-of-retreival-reducer/scripts/check-ownership.ts\")",
       "Bash(SUPABASE_SERVICE_ROLE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNodHFzaG1tc3JtdHF1dWh5dXBsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTgwMzk3MSwiZXhwIjoyMDgxMzc5OTcxfQ.ozPGxDAEky3aQoJkdRN007LYlTapkIBbyFCklD1TNe0\" npx tsx \"D:/www/cost-of-retreival-reducer/scripts/verify-rls-policies.ts\")",
-      "Bash(SUPABASE_SERVICE_ROLE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNodHFzaG1tc3JtdHF1dWh5dXBsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTgwMzk3MSwiZXhwIjoyMDgxMzc5OTcxfQ.ozPGxDAEky3aQoJkdRN007LYlTapkIBbyFCklD1TNe0\" npx tsx \"D:/www/cost-of-retreival-reducer/scripts/check-brief-topic.ts\")"
+      "Bash(SUPABASE_SERVICE_ROLE_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNodHFzaG1tc3JtdHF1dWh5dXBsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTgwMzk3MSwiZXhwIjoyMDgxMzc5OTcxfQ.ozPGxDAEky3aQoJkdRN007LYlTapkIBbyFCklD1TNe0\" npx tsx \"D:/www/cost-of-retreival-reducer/scripts/check-brief-topic.ts\")",
+      "Bash(if not exist \"D:\\\\www\\\\cost-of-retreival-reducer\\\\components\\\\imageGeneration\\\\HeroImageEditor\" mkdir \"D:\\\\www\\\\cost-of-retreival-reducer\\\\components\\\\imageGeneration\\\\HeroImageEditor\")",
+      "Bash(xargs cat:*)"
     ],
     "deny": [],
     "ask": []

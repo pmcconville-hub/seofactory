@@ -32,7 +32,7 @@ async function fixUserIds() {
     return;
   }
 
-  const users = usersData.users;
+  const users = usersData.users as Array<{ id: string; email?: string }>;
   console.log('\nFound users:');
   users.forEach(u => console.log(`  - ${u.email} (${u.id})`));
 

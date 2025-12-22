@@ -778,7 +778,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                             <EnhancedMetricsDashboard
                                 eavs={topicalMap.eavs as SemanticTriple[] || []}
                                 topicCount={allTopics.length}
-                                issues={unifiedAudit?.issues || []}
+                                issues={unifiedAudit?.result?.categories?.flatMap(c => c.issues) || []}
                                 projectName={projectName}
                                 mapName={topicalMap.name}
                             />

@@ -188,7 +188,7 @@ export interface SectionAnalysis {
 export interface PageSegmentInfo {
     url: string;
     title: string;
-    segment: 'core' | 'author' | 'support';
+    segment: 'core' | 'author' | 'support' | 'unknown';
     isHub: boolean;
     spokeCount: number;
     inboundLinks: number;

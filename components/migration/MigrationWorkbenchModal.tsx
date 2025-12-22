@@ -10,6 +10,7 @@ import { SimpleMarkdown } from '../ui/SimpleMarkdown';
 import { getOriginalContent } from '../../services/migrationService';
 import { useAppState } from '../../state/appState';
 import { getSupabaseClient } from '../../services/supabaseClient';
+import { verifiedUpdate, verifiedInsert } from '../../services/verifiedDatabaseService';
 import { safeString } from '../../utils/parsers';
 import { useChunking } from '../../hooks/useChunking';
 import { ChunkList } from './ChunkList';
@@ -225,12 +226,20 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
         // Persist as snapshot so it loads next time
         try {
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            await supabase.from('transition_snapshots').insert({
-                inventory_id: inventoryItem.id,
-                content_markdown: manualInput,
-                snapshot_type: 'ORIGINAL_IMPORT', // Treat manual paste as the source of truth
-                created_at: new Date().toISOString()
-            });
+            const snapshotResult = await verifiedInsert(
+                supabase,
+                { table: 'transition_snapshots', operationDescription: 'save manual paste snapshot' },
+                {
+                    inventory_id: inventoryItem.id,
+                    content_markdown: manualInput,
+                    snapshot_type: 'ORIGINAL_IMPORT', // Treat manual paste as the source of truth
+                    created_at: new Date().toISOString()
+                },
+                'id'
+            );
+            if (!snapshotResult.success) {
+                console.warn("Failed to save manual snapshot:", snapshotResult.error);
+            }
         } catch (e) {
             console.error("Failed to save manual snapshot", e);
         }
@@ -246,26 +255,40 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
         setIsSaving(true);
         try {
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            
-            // If mapped to a topic/brief, save to content_briefs
+
+            // If mapped to a topic/brief, save to content_briefs with verification
             if (linkedBrief) {
-                await supabase
-                    .from('content_briefs')
-                    .update({ article_draft: draftContent })
-                    .eq('id', linkedBrief.id);
+                const result = await verifiedUpdate(
+                    supabase,
+                    { table: 'content_briefs', operationDescription: `save draft for "${linkedBrief.title}"` },
+                    linkedBrief.id,
+                    { article_draft: draftContent },
+                    'id'
+                );
+                if (!result.success) {
+                    throw new Error(result.error || 'Draft save verification failed');
+                }
             }
 
             // Save a snapshot for history
-            await supabase.from('transition_snapshots').insert({
-                inventory_id: inventoryItem.id,
-                content_markdown: draftContent,
-                snapshot_type: 'IN_PROGRESS_SAVE',
-                created_at: new Date().toISOString()
-            });
+            const historyResult = await verifiedInsert(
+                supabase,
+                { table: 'transition_snapshots', operationDescription: 'save in-progress snapshot' },
+                {
+                    inventory_id: inventoryItem.id,
+                    content_markdown: draftContent,
+                    snapshot_type: 'IN_PROGRESS_SAVE',
+                    created_at: new Date().toISOString()
+                },
+                'id'
+            );
+            if (!historyResult.success) {
+                console.warn("Failed to save history snapshot:", historyResult.error);
+            }
 
-            dispatch({ type: 'SET_NOTIFICATION', payload: "Draft saved." });
+            dispatch({ type: 'SET_NOTIFICATION', payload: "✓ Draft saved (verified)." });
         } catch (e) {
-             dispatch({ type: 'SET_ERROR', payload: "Failed to save draft." });
+             dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : "Failed to save draft." });
         } finally {
             setIsSaving(false);
         }

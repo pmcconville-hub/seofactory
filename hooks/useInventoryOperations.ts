@@ -6,6 +6,8 @@ import { sanitizeInventoryFromDb, sanitizeTopicFromDb } from '../utils/parsers';
 import { AppAction } from '../state/appState';
 import { v4 as uuidv4 } from 'uuid';
 import { slugify } from '../utils/helpers';
+import type { Json } from '../database.types';
+import { verifiedUpdate, verifiedInsert } from '../services/verifiedDatabaseService';
 
 export const useInventoryOperations = (
     activeProjectId: string | null,
@@ -49,20 +51,27 @@ export const useInventoryOperations = (
     const updateAction = async (itemId: string, action: ActionType) => {
         try {
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-             const { error } = await supabase
-                .from('site_inventory')
-                .update({
+
+            // Use verified update with read-back verification
+            const result = await verifiedUpdate(
+                supabase,
+                { table: 'site_inventory', operationDescription: `update action to ${action}` },
+                itemId,
+                {
                     action: action,
                     status: 'GAP_ANALYSIS',
                     updated_at: new Date().toISOString()
-                })
-                .eq('id', itemId);
-            
-            if (error) throw error;
-            dispatch({ type: 'SET_NOTIFICATION', payload: `Updated action to: ${action}` });
+                }
+            );
+
+            if (!result.success) {
+                throw new Error(result.error || 'Action update verification failed');
+            }
+
+            dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Updated action to: ${action}` });
             refreshInventory();
         } catch (e) {
-             dispatch({ type: 'SET_ERROR', payload: "Failed to update action." });
+             dispatch({ type: 'SET_ERROR', payload: `❌ ${e instanceof Error ? e.message : "Failed to update action."}` });
         }
     };
 
@@ -71,11 +80,21 @@ export const useInventoryOperations = (
         setInventory(prev => prev.map(i => i.id === itemId ? { ...i, status: newStatus } : i));
         try {
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            const { error } = await supabase.from('site_inventory').update({ status: newStatus }).eq('id', itemId);
-            if (error) throw error;
+
+            // Use verified update with read-back verification
+            const result = await verifiedUpdate(
+                supabase,
+                { table: 'site_inventory', operationDescription: `update status to ${newStatus}` },
+                itemId,
+                { status: newStatus }
+            );
+
+            if (!result.success) {
+                throw new Error(result.error || 'Status update verification failed');
+            }
         } catch (e) {
             console.error("Status update failed:", e);
-            dispatch({ type: 'SET_ERROR', payload: "Failed to update status." });
+            dispatch({ type: 'SET_ERROR', payload: `❌ ${e instanceof Error ? e.message : "Failed to update status."}` });
             refreshInventory(); // Revert on error
         }
     };
@@ -88,25 +107,30 @@ export const useInventoryOperations = (
     const mapInventoryItem = async (inventoryId: string, topicId: string, action: ActionType) => {
         try {
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            
-            const { error } = await supabase
-                .from('site_inventory')
-                .update({
+
+            // Use verified update with read-back verification
+            const result = await verifiedUpdate(
+                supabase,
+                { table: 'site_inventory', operationDescription: `map inventory to topic with ${action}` },
+                inventoryId,
+                {
                     mapped_topic_id: topicId,
                     action: action,
                     status: 'GAP_ANALYSIS', // Move to next stage
                     updated_at: new Date().toISOString()
-                })
-                .eq('id', inventoryId);
-                
-            if (error) throw error;
-            
-            dispatch({ type: 'SET_NOTIFICATION', payload: `Mapped inventory to topic with strategy: ${action}` });
+                }
+            );
+
+            if (!result.success) {
+                throw new Error(result.error || 'Inventory mapping verification failed');
+            }
+
+            dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Mapped inventory to topic with strategy: ${action}` });
             refreshInventory();
 
         } catch (e) {
             console.error("Mapping failed:", e);
-            dispatch({ type: 'SET_ERROR', payload: "Failed to map inventory item." });
+            dispatch({ type: 'SET_ERROR', payload: `❌ ${e instanceof Error ? e.message : "Failed to map inventory item."}` });
         }
     };
 
@@ -143,31 +167,52 @@ export const useInventoryOperations = (
         try {
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
 
-            // 1. Create Topic
-            const { data: topicData, error: topicError } = await supabase.from('topics').insert({
-                ...newTopic,
-                user_id: userId
-            }).select().single();
+            // 1. Create Topic with verification
+            const topicResult = await verifiedInsert(
+                supabase,
+                { table: 'topics', operationDescription: `promote "${cleanTitle}" to core topic` },
+                {
+                    id: newTopic.id,
+                    map_id: newTopic.map_id,
+                    title: newTopic.title,
+                    slug: newTopic.slug,
+                    description: newTopic.description,
+                    type: newTopic.type,
+                    parent_topic_id: newTopic.parent_topic_id,
+                    freshness: newTopic.freshness,
+                    metadata: newTopic.metadata as Json,
+                    user_id: userId
+                }
+            );
 
-            if (topicError) throw topicError;
+            if (!topicResult.success || !topicResult.data) {
+                throw new Error(topicResult.error || 'Topic creation verification failed');
+            }
 
-            // 2. Map Inventory to new Topic
-            const { error: mapError } = await supabase.from('site_inventory').update({
-                mapped_topic_id: newTopic.id,
-                action: 'REWRITE', // Default strategy for promoted content is usually to rewrite/optimize it
-                status: 'GAP_ANALYSIS'
-            }).eq('id', inventoryId);
+            // 2. Map Inventory to new Topic with verification
+            const mapResult = await verifiedUpdate(
+                supabase,
+                { table: 'site_inventory', operationDescription: 'link inventory to promoted topic' },
+                inventoryId,
+                {
+                    mapped_topic_id: newTopic.id,
+                    action: 'REWRITE', // Default strategy for promoted content is usually to rewrite/optimize it
+                    status: 'GAP_ANALYSIS'
+                }
+            );
 
-            if (mapError) throw mapError;
+            if (!mapResult.success) {
+                throw new Error(mapResult.error || 'Inventory link verification failed');
+            }
 
             // 3. Update State
-            dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic: sanitizeTopicFromDb(topicData) } });
-            dispatch({ type: 'SET_NOTIFICATION', payload: `Promoted "${cleanTitle}" to Core Topic.` });
+            dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic: sanitizeTopicFromDb(topicResult.data) } });
+            dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Promoted "${cleanTitle}" to Core Topic (verified).` });
             refreshInventory();
 
         } catch (e) {
             console.error("Promotion failed:", e);
-            dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : "Failed to promote topic." });
+            dispatch({ type: 'SET_ERROR', payload: `❌ ${e instanceof Error ? e.message : "Failed to promote topic."}` });
         }
     };
 

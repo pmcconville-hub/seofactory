@@ -1,6 +1,6 @@
 // components/imageGeneration/ImageGenerationModal.tsx
 import React, { useState, useCallback } from 'react';
-import { ImagePlaceholder, BrandKit, BusinessInfo, ImageGenerationProgress } from '../../types';
+import { ImagePlaceholder, BrandKit, BusinessInfo, ImageGenerationProgress, HeroImageMetadata } from '../../types';
 import { DEFAULT_HERO_TEMPLATES, DEFAULT_MARKUPGO_TEMPLATE_ID } from '../../config/imageTemplates';
 import { generateImage, ImageGenerationOptions } from '../../services/ai/imageGeneration/orchestrator';
 import { Button } from '../ui/Button';
@@ -8,6 +8,7 @@ import { Label } from '../ui/Label';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Textarea } from '../ui/Textarea';
+import { HeroImageEditor } from './HeroImageEditor';
 
 // Re-export for backwards compatibility
 export type { ImageGenerationOptions } from '../../services/ai/imageGeneration/orchestrator';
@@ -42,6 +43,9 @@ export const ImageGenerationModal: React.FC<ImageGenerationModalProps> = ({
   // Progress state
   const [progress, setProgress] = useState<ImageGenerationProgress | null>(null);
   const [generatedPlaceholder, setGeneratedPlaceholder] = useState<ImagePlaceholder | null>(null);
+
+  // Visual editor state
+  const [showVisualEditor, setShowVisualEditor] = useState(false);
 
   const templates = brandKit?.heroTemplates || DEFAULT_HERO_TEMPLATES;
 
@@ -102,6 +106,54 @@ export const ImageGenerationModal: React.FC<ImageGenerationModalProps> = ({
     setProgress(null);
     setGeneratedPlaceholder(null);
   }, []);
+
+  // Handle export from visual editor
+  const handleVisualEditorExport = useCallback((blob: Blob, format: string, metadata: HeroImageMetadata) => {
+    // Convert blob to data URL for the placeholder
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+
+      // Transform HeroImageMetadata to ImageMetadata format
+      const transformedMetadata = {
+        filename: metadata.fileName || 'hero-image',
+        altText: metadata.altText || altText,
+        caption: metadata.iptc?.caption,
+        generatedBy: 'visual-editor',
+        generatedAt: new Date().toISOString(),
+        exif: {
+          author: metadata.exif?.artist || '',
+          copyright: metadata.exif?.copyright || '',
+          software: metadata.exif?.software || 'Visual Editor',
+          description: metadata.exif?.imageDescription || ''
+        },
+        iptc: {
+          creator: metadata.iptc?.creator || '',
+          rights: metadata.iptc?.copyright || '',
+          source: metadata.iptc?.source || '',
+          keywords: metadata.iptc?.keywords || []
+        },
+        schemaOrg: metadata.schemaOrg
+      };
+
+      // Create the generated placeholder with the exported image
+      const newPlaceholder: ImagePlaceholder = {
+        ...placeholder,
+        status: 'generated',
+        generatedUrl: dataUrl,
+        altTextSuggestion: metadata.altText || altText,
+        metadata: {
+          ...placeholder.metadata,
+          ...transformedMetadata
+        }
+      };
+
+      setGeneratedPlaceholder(newPlaceholder);
+      setShowVisualEditor(false);
+      setProgress({ phase: 'complete', progress: 100, message: 'Image created with Visual Editor' });
+    };
+    reader.readAsDataURL(blob);
+  }, [placeholder, altText]);
 
   // Warn user if they try to close with an un-inserted generated image
   const handleClose = useCallback(() => {
@@ -244,6 +296,34 @@ export const ImageGenerationModal: React.FC<ImageGenerationModalProps> = ({
             {/* Hero-specific options */}
             {placeholder.type === 'HERO' && (
               <>
+                {/* Visual Editor Option */}
+                <div className="p-3 bg-blue-900/20 border border-blue-700/50 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-blue-300">Visual Editor</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Create a semantically optimized hero image with layers, text positioning, and IPTC/EXIF metadata
+                      </p>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      onClick={() => setShowVisualEditor(true)}
+                      className="ml-4 flex-shrink-0"
+                    >
+                      Open Editor
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-700"></div>
+                  </div>
+                  <div className="relative flex justify-center text-xs">
+                    <span className="px-2 bg-gray-800 text-gray-500">or use auto-generation</span>
+                  </div>
+                </div>
+
                 <div>
                   <Label>Text Overlay</Label>
                   <Input
@@ -361,6 +441,17 @@ export const ImageGenerationModal: React.FC<ImageGenerationModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Hero Image Visual Editor */}
+      {showVisualEditor && (
+        <HeroImageEditor
+          businessInfo={businessInfo}
+          h1Text={textOverlay || placeholder.specs.textOverlay?.text || 'Your Title Here'}
+          entityName={placeholder.description.split(' ')[0] || 'Entity'}
+          onExport={handleVisualEditorExport}
+          onClose={() => setShowVisualEditor(false)}
+        />
+      )}
     </div>
   );
 };

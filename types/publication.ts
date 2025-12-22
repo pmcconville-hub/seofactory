@@ -199,7 +199,7 @@ export interface PlanningFilters {
   status?: PublicationStatus[];
   phase?: PublicationPhase[];
   priority?: PublicationPriority[];
-  topic_type?: ('core' | 'outer')[];
+  topic_type?: ('core' | 'outer' | 'child')[];
   date_range?: {
     start: string;
     end: string;

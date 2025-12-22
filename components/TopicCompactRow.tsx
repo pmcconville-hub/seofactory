@@ -136,8 +136,9 @@ export const TopicCompactRow: React.FC<TopicCompactRowProps> = ({
     const metadata = topic.metadata || {};
     // First try query_type from topic metadata (framework field)
     if (metadata.query_type) {
-      const key = metadata.query_type.toLowerCase();
-      return QUERY_TYPE_LABELS[key] || { label: metadata.query_type.slice(0, 4), color: 'text-gray-400', title: metadata.query_type };
+      const queryType = metadata.query_type as string;
+      const key = queryType.toLowerCase();
+      return QUERY_TYPE_LABELS[key] || { label: queryType.slice(0, 4), color: 'text-gray-400', title: queryType };
     }
     // Fallback to brief's searchIntent
     if (brief?.searchIntent) {

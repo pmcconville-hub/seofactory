@@ -58,6 +58,7 @@ export const CATEGORY_COLORS: Record<AttributeCategory | 'UNCATEGORIZED', string
   SEARCH_DEMAND: '#f97316',  // Orange - Same as RARE
   COMMON: '#6b7280',         // Gray - Generic
   COMPOSITE: '#6b7280',      // Gray - Same as COMMON
+  UNCLASSIFIED: '#9ca3af',   // Light gray
   UNCATEGORIZED: '#9ca3af'   // Light gray
 };
 
@@ -105,6 +106,7 @@ export const countByCategory = (
     SEARCH_DEMAND: 0,
     COMMON: 0,
     COMPOSITE: 0,
+    UNCLASSIFIED: 0,
     UNCATEGORIZED: 0
   };
 

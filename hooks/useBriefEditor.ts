@@ -7,6 +7,7 @@ import { ContentBrief, BriefSection, EnrichedTopic, SEOPillars } from '../types'
 import { getSupabaseClient } from '../services/supabaseClient';
 import * as briefEditingService from '../services/ai/briefEditing';
 import { RegenerationProgress } from '../services/ai/briefEditing';
+import { verifiedUpsert } from '../services/verifiedDatabaseService';
 
 // Re-export for consumers
 export type { RegenerationProgress };
@@ -315,35 +316,44 @@ export const useBriefEditor = (
                 ? editedBrief.keyTakeaways.map(k => typeof k === 'string' ? k : JSON.stringify(k))
                 : [];
 
-            // Upsert the brief to the database
-            const { error: dbError } = await supabase.from('content_briefs').upsert({
-                id: editedBrief.id,
-                topic_id: editedBrief.topic_id,
-                user_id: user.id,
-                title: editedBrief.title,
-                meta_description: editedBrief.metaDescription,
-                key_takeaways: sanitizedTakeaways as any,
-                outline: editedBrief.outline,
-                serp_analysis: editedBrief.serpAnalysis as any,
-                visuals: editedBrief.visuals as any,
-                contextual_vectors: editedBrief.contextualVectors as any,
-                contextual_bridge: editedBrief.contextualBridge as any,
-                perspectives: editedBrief.perspectives as any,
-                methodology_note: editedBrief.methodology_note,
-                structured_outline: editedBrief.structured_outline as any,
-                structural_template_hash: editedBrief.structural_template_hash,
-                predicted_user_journey: editedBrief.predicted_user_journey,
-                query_type_format: editedBrief.query_type_format,
-                featured_snippet_target: editedBrief.featured_snippet_target as any,
-                visual_semantics: editedBrief.visual_semantics as any,
-                discourse_anchors: editedBrief.discourse_anchors as any
-            }, { onConflict: 'topic_id' });
+            // Upsert the brief with verified write-back
+            const result = await verifiedUpsert(
+                supabase,
+                {
+                    table: 'content_briefs',
+                    operationDescription: 'save content brief',
+                    conflictColumns: ['topic_id']
+                },
+                {
+                    id: editedBrief.id,
+                    topic_id: editedBrief.topic_id,
+                    user_id: user.id,
+                    title: editedBrief.title,
+                    meta_description: editedBrief.metaDescription,
+                    key_takeaways: sanitizedTakeaways as any,
+                    outline: editedBrief.outline,
+                    serp_analysis: editedBrief.serpAnalysis as any,
+                    visuals: editedBrief.visuals as any,
+                    contextual_vectors: editedBrief.contextualVectors as any,
+                    contextual_bridge: editedBrief.contextualBridge as any,
+                    perspectives: editedBrief.perspectives as any,
+                    methodology_note: editedBrief.methodology_note,
+                    structured_outline: editedBrief.structured_outline as any,
+                    structural_template_hash: editedBrief.structural_template_hash,
+                    predicted_user_journey: editedBrief.predicted_user_journey,
+                    query_type_format: editedBrief.query_type_format,
+                    featured_snippet_target: editedBrief.featured_snippet_target as any,
+                    visual_semantics: editedBrief.visual_semantics as any,
+                    discourse_anchors: editedBrief.discourse_anchors as any
+                },
+                'id, title'  // Select columns for verification
+            );
 
-            if (dbError) {
-                console.error('[useBriefEditor] Database save error:', dbError);
+            if (!result.success) {
+                console.error('[useBriefEditor] Database save verification failed:', result.error);
 
                 // Provide more helpful error message for RLS issues
-                if (dbError.message?.includes('row-level security')) {
+                if (result.error?.includes('row-level security') || result.error?.includes('permission')) {
                     console.error('[useBriefEditor] RLS error - check:', {
                         'User owns the topic/map': 'Verify in Supabase Dashboard',
                         'Supabase URL matches migration target': businessInfo.supabaseUrl,
@@ -351,7 +361,7 @@ export const useBriefEditor = (
                     });
                     throw new Error(`Permission denied: Unable to save brief. This may be due to a database migration issue. Please contact support. (RLS violation)`);
                 }
-                throw dbError;
+                throw new Error(result.error || 'Brief save verification failed');
             }
 
             // Update global state
@@ -363,7 +373,7 @@ export const useBriefEditor = (
             // Update original to match saved state
             setOriginalBrief(editedBrief);
 
-            dispatch({ type: 'SET_NOTIFICATION', payload: 'Brief saved successfully.' });
+            dispatch({ type: 'SET_NOTIFICATION', payload: '✓ Brief saved and verified.' });
             return true;
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to save brief to database';

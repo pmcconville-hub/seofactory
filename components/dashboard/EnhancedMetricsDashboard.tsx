@@ -11,12 +11,12 @@ import {
   calculateAuthorityIndicators,
 } from '../../services/reportGenerationService';
 import { exportEnhancedMetricsToHtml } from '../../services/pdfExportService';
-import type { SemanticTriple, ReportIssue } from '../../types';
+import type { SemanticTriple, UnifiedAuditIssue } from '../../types';
 
 interface EnhancedMetricsDashboardProps {
   eavs: SemanticTriple[];
   topicCount: number;
-  issues?: ReportIssue[];
+  issues?: UnifiedAuditIssue[];
   projectName?: string;
   mapName?: string;
   onExport?: () => void;

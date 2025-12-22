@@ -9,6 +9,22 @@ import {
 } from '../types';
 import { safeString } from './parsers';
 
+// Helper type for publication plan in metadata
+interface PublicationPlanMetadata {
+  optimal_publication_date?: string;
+  actual_publication_date?: string;
+  status?: string;
+  phase?: string;
+  priority?: string;
+  priority_score?: number;
+  notes?: string;
+}
+
+// Helper to safely access publication plan
+const getPublicationPlan = (metadata?: Record<string, unknown>): PublicationPlanMetadata | undefined => {
+  return metadata?.publication_plan as PublicationPlanMetadata | undefined;
+};
+
 // Color scheme constants
 const COLORS = {
   // Headers
@@ -1359,23 +1375,27 @@ export class EnhancedExportGenerator {
     const sortedTopics = [...topics].sort((a, b) => {
       const planA = planByTopic.get(a.id);
       const planB = planByTopic.get(b.id);
-      const dateA = planA?.optimal_publication_date || a.metadata?.publication_plan?.optimal_publication_date || '';
-      const dateB = planB?.optimal_publication_date || b.metadata?.publication_plan?.optimal_publication_date || '';
+      const pubPlanA = getPublicationPlan(a.metadata);
+      const pubPlanB = getPublicationPlan(b.metadata);
+      const dateA = planA?.optimal_publication_date || pubPlanA?.optimal_publication_date || '';
+      const dateB = planB?.optimal_publication_date || pubPlanB?.optimal_publication_date || '';
       return dateA.localeCompare(dateB);
     });
 
     // Add data rows
     sortedTopics.forEach((topic, idx) => {
-      const plan = planByTopic.get(topic.id) || topic.metadata?.publication_plan;
+      const pubPlan = getPublicationPlan(topic.metadata);
+      const plan = planByTopic.get(topic.id) || pubPlan;
       const brief = briefs[topic.id];
       const snapshot = performanceSnapshots?.get(topic.id);
 
       const phase = plan?.phase || '';
-      const status = plan?.status || topic.metadata?.publication_plan?.status || 'not_started';
+      // status only exists on PublicationPlanMetadata, not on PublicationPlanResult.topics
+      const status = pubPlan?.status || 'not_started';
       const priority = plan?.priority || '';
       const priorityScore = plan?.priority_score ?? '';
       const plannedDate = plan?.optimal_publication_date || '';
-      const actualDate = topic.metadata?.publication_plan?.actual_publication_date || '';
+      const actualDate = pubPlan?.actual_publication_date || '';
 
       // Calculate variance
       let variance = '';
@@ -1403,7 +1423,7 @@ export class EnhancedExportGenerator {
         snapshot?.gsc_position?.toFixed(1) ?? '',
         brief ? 'Yes' : 'No',
         brief?.articleDraft ? 'Yes' : 'No',
-        topic.metadata?.publication_plan?.notes || ''
+        pubPlan?.notes || ''
       ]);
 
       // Alternating row colors
@@ -1724,7 +1744,7 @@ export class EnhancedExportGenerator {
       // Group by template
       const byTemplate = new Map<string, number>();
       templateTopics.forEach(t => {
-        const templateId = t.metadata?.generated_from_template || 'unknown';
+        const templateId = String(t.metadata?.generated_from_template || 'unknown');
         byTemplate.set(templateId, (byTemplate.get(templateId) || 0) + 1);
       });
 
@@ -1909,16 +1929,20 @@ export function generateImageSitemap(
       });
     }
 
-    // Legacy visual_semantics support
+    // Legacy visual_semantics support (may be object or array)
     if (!vs && brief.visual_semantics) {
-      const legacy = brief.visual_semantics;
-      if (legacy.hero_image_description) {
-        entries.push({
-          imageUrl: `${baseUrl}/images/${topic.slug}-hero.avif`,
-          caption: legacy.hero_image_description,
-          title: topic.title,
-          pageUrl,
-        });
+      const legacyVs = brief.visual_semantics as unknown;
+      // Handle legacy object format with hero_image_description
+      if (legacyVs && typeof legacyVs === 'object' && !Array.isArray(legacyVs) && 'hero_image_description' in legacyVs) {
+        const legacy = legacyVs as { hero_image_description?: string };
+        if (legacy.hero_image_description) {
+          entries.push({
+            imageUrl: `${baseUrl}/images/${topic.slug}-hero.avif`,
+            caption: legacy.hero_image_description,
+            title: topic.title,
+            pageUrl,
+          });
+        }
       }
     }
   });

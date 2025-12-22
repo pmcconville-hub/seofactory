@@ -1,7 +1,7 @@
 // services/__tests__/contentGenerationSettingsService.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ContentGenerationSettingsService } from '../contentGenerationSettingsService';
-import { DEFAULT_CONTENT_GENERATION_SETTINGS, PRIORITY_PRESETS } from '../../types/contentGeneration';
+import { DEFAULT_CONTENT_GENERATION_SETTINGS, PRIORITY_PRESETS, ContentTone, AudienceExpertise } from '../../types/contentGeneration';
 
 // Mock Supabase client
 const mockSupabase = {
@@ -205,8 +205,8 @@ describe('ContentGenerationSettingsService', () => {
         name: 'Updated Settings',
         isDefault: true,
         priorities: PRIORITY_PRESETS.seo_focused,
-        tone: 'academic' as const,
-        audienceExpertise: 'expert' as const,
+        tone: ContentTone.ACADEMIC,
+        audienceExpertise: AudienceExpertise.EXPERT,
         checkpointAfterPass1: true,
         passes: DEFAULT_CONTENT_GENERATION_SETTINGS.passes,
         createdAt: '2024-01-01T00:00:00Z',
@@ -256,8 +256,8 @@ describe('ContentGenerationSettingsService', () => {
         name: 'Settings',
         isDefault: true,
         priorities: PRIORITY_PRESETS.balanced,
-        tone: 'professional' as const,
-        audienceExpertise: 'intermediate' as const,
+        tone: ContentTone.PROFESSIONAL,
+        audienceExpertise: AudienceExpertise.INTERMEDIATE,
         checkpointAfterPass1: false,
         passes: DEFAULT_CONTENT_GENERATION_SETTINGS.passes,
         createdAt: '2024-01-01T00:00:00Z',

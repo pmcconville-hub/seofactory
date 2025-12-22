@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getSupabaseClient } from './supabaseClient';
 import React from 'react';
 import { sanitizeBriefFromDb } from '../utils/parsers';
+import { verifiedInsert } from './verifiedDatabaseService';
 
 export class BatchProcessor {
     private dispatch: React.Dispatch<AppAction>;
@@ -125,38 +126,47 @@ export class BatchProcessor {
                 );
 
                 const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
-                
+
                 // Sanitize keyTakeaways to ensure string array for DB
-                const sanitizedTakeaways = Array.isArray(briefData.keyTakeaways) 
+                const sanitizedTakeaways = Array.isArray(briefData.keyTakeaways)
                     ? briefData.keyTakeaways.map(k => typeof k === 'string' ? k : JSON.stringify(k))
                     : [];
 
-                const { data: newBriefRow, error } = await supabase.from('content_briefs').insert({
-                    topic_id: topic.id,
-                    title: briefData.title,
-                    meta_description: briefData.metaDescription,
-                    key_takeaways: sanitizedTakeaways as any,
-                    user_id: user.id,
-                    // Core fields
-                    outline: briefData.outline,
-                    serp_analysis: briefData.serpAnalysis as any,
-                    visuals: briefData.visuals as any,
-                    contextual_vectors: briefData.contextualVectors as any,
-                    contextual_bridge: briefData.contextualBridge as any,
-                    // Holistic SEO fields
-                    perspectives: briefData.perspectives as any,
-                    methodology_note: briefData.methodology_note,
-                    structured_outline: briefData.structured_outline as any,
-                    predicted_user_journey: briefData.predicted_user_journey,
-                    // New fields
-                    query_type_format: briefData.query_type_format,
-                    featured_snippet_target: briefData.featured_snippet_target as any,
-                    visual_semantics: briefData.visual_semantics as any,
-                    discourse_anchors: briefData.discourse_anchors as any,
-                }).select().single();
+                // Use verified insert with read-back verification
+                const result = await verifiedInsert(
+                    supabase,
+                    { table: 'content_briefs', operationDescription: `save brief for "${topic.title}"` },
+                    {
+                        topic_id: topic.id,
+                        title: briefData.title,
+                        meta_description: briefData.metaDescription,
+                        key_takeaways: sanitizedTakeaways as any,
+                        user_id: user.id,
+                        // Core fields
+                        outline: briefData.outline,
+                        serp_analysis: briefData.serpAnalysis as any,
+                        visuals: briefData.visuals as any,
+                        contextual_vectors: briefData.contextualVectors as any,
+                        contextual_bridge: briefData.contextualBridge as any,
+                        // Holistic SEO fields
+                        perspectives: briefData.perspectives as any,
+                        methodology_note: briefData.methodology_note,
+                        structured_outline: briefData.structured_outline as any,
+                        predicted_user_journey: briefData.predicted_user_journey,
+                        // New fields
+                        query_type_format: briefData.query_type_format,
+                        featured_snippet_target: briefData.featured_snippet_target as any,
+                        visual_semantics: briefData.visual_semantics as any,
+                        discourse_anchors: briefData.discourse_anchors as any,
+                    }
+                );
 
-                if (error) throw error;
-                
+                if (!result.success || !result.data) {
+                    throw new Error(result.error || `Brief for "${topic.title}" was not saved - verification failed`);
+                }
+
+                const newBriefRow = result.data as { id: string } & typeof result.data;
+
                 // Construct the new brief object for state
                 const rawBrief = {
                     ...briefData,

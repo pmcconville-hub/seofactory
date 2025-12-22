@@ -197,10 +197,10 @@ export async function generateSectionsFromScratch(
     }
 
     // Validate and transform each section
-    const validatedSections = resultSections.map((s: any, i: number) => ({
+    const validatedSections: BriefSection[] = resultSections.map((s: any, i: number) => ({
       ...validateSection(s),
       key: s.key || `section-${i}`
-    }));
+    }) as BriefSection);
 
     dispatch({
       type: 'LOG_EVENT',

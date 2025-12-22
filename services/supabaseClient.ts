@@ -15,12 +15,30 @@ export const getSupabaseClient = (supabaseUrl: string, supabaseAnonKey: string) 
     // Only create a new client if the credentials have changed or it doesn't exist yet
     if (!supabase || supabaseUrl !== currentUrl || supabaseAnonKey !== currentKey) {
         // console.log("Initializing new Supabase client..."); // Debug log
-        supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
+        supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+            auth: {
+                // Ensure proper session handling
+                persistSession: true,
+                autoRefreshToken: true,
+                detectSessionInUrl: true,
+            }
+        });
         currentUrl = supabaseUrl;
         currentKey = supabaseAnonKey;
     }
 
     return supabase;
+};
+
+/**
+ * Reset the cached Supabase client.
+ * Call this after signOut to ensure a fresh client is created on next getSupabaseClient call.
+ * This prevents stale auth state from persisting after logout.
+ */
+export const resetSupabaseClient = () => {
+    supabase = null;
+    currentUrl = null;
+    currentKey = null;
 };
 
 export const useSupabase = () => {

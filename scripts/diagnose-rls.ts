@@ -49,7 +49,7 @@ async function diagnose() {
     console.log('   ❌ Error listing users:', usersError.message);
     return;
   }
-  const users = usersData.users;
+  const users = usersData.users as Array<{ id: string; email?: string }>;
   console.log(`   Found ${users.length} users:`);
   users.forEach(u => console.log(`   - ${u.email} (${u.id})`));
 
@@ -64,7 +64,7 @@ async function diagnose() {
   } else {
     console.log(`   Found ${maps?.length || 0} maps:`);
     maps?.forEach(m => {
-      const owner = users.find(u => u.id === m.user_id);
+      const owner = (users as Array<{ id: string; email?: string }>).find(u => u.id === m.user_id);
       console.log(`   - "${m.title}" (${m.id.substring(0, 8)}...) owned by ${owner?.email || m.user_id || 'NULL'}`);
     });
   }
@@ -106,16 +106,24 @@ async function diagnose() {
   } else {
     console.log(`   Found ${briefs?.length || 0} briefs (showing first 10):`);
     briefs?.forEach(b => {
-      const owner = users.find(u => u.id === b.user_id);
+      const owner = (users as Array<{ id: string; email?: string }>).find(u => u.id === b.user_id);
       console.log(`   - "${b.title?.substring(0, 30) || 'No title'}..." owned by ${owner?.email || b.user_id?.substring(0, 8) || 'NULL'}`);
     });
   }
 
   // 6. Check RLS policies
   console.log('\n6. Checking RLS policies on content_briefs...');
-  const { data: policies, error: policiesError } = await supabase.rpc('get_policies_for_table', {
-    table_name: 'content_briefs'
-  }).catch(() => ({ data: null, error: { message: 'Function not available' } }));
+  let policies: unknown = null;
+  let policiesError: { message: string } | null = null;
+  try {
+    const result = await supabase.rpc('get_policies_for_table', {
+      table_name: 'content_briefs'
+    });
+    policies = result.data;
+    policiesError = result.error;
+  } catch {
+    policiesError = { message: 'Function not available' };
+  }
 
   if (policiesError || !policies) {
     // Fallback: query pg_policies directly

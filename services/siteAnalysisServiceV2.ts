@@ -21,6 +21,7 @@ import { importGscCsv, groupQueriesByPage } from './gscImportService';
 import { initNeo4j, buildProjectGraph, calculatePageRank, findOrphanPages, findHubPages, closeNeo4j } from './neo4jService';
 import { ALL_AUDIT_RULES, PHASE_CONFIG, AuditRule, getRulesByPhase } from '../config/pageAuditRules';
 import { AppAction } from '../state/appState';
+import { verifiedBulkInsert, verifiedInsert } from './verifiedDatabaseService';
 
 // ============================================
 // UTILITY FUNCTIONS
@@ -1384,7 +1385,18 @@ const generateAuditTasks = async (
     });
 
   if (tasks.length > 0) {
-    await supabase.from('audit_tasks').insert(tasks);
+    // Use verified bulk insert to ensure all tasks are saved
+    const result = await verifiedBulkInsert(
+      supabase,
+      { table: 'audit_tasks', operationDescription: `save ${tasks.length} audit tasks` },
+      tasks,
+      'id'
+    );
+
+    if (!result.success) {
+      console.error('[SiteAnalysis] Failed to save audit tasks:', result.error);
+      // Non-fatal: continue audit even if task saving fails
+    }
   }
 };
 
@@ -1429,22 +1441,32 @@ const saveAuditHistory = async (
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
-  await supabase.from('audit_history').insert({
-    project_id: project.id,
-    total_pages: project.pages?.length || 0,
-    pages_audited: audits.length,
-    average_score: avgScore,
-    avg_technical_score: Math.round(audits.reduce((s, a) => s + a.technical_score, 0) / audits.length),
-    avg_semantic_score: Math.round(audits.reduce((s, a) => s + a.semantic_score, 0) / audits.length),
-    avg_link_structure_score: Math.round(audits.reduce((s, a) => s + a.link_structure_score, 0) / audits.length),
-    avg_content_quality_score: Math.round(audits.reduce((s, a) => s + a.content_quality_score, 0) / audits.length),
-    avg_visual_schema_score: Math.round(audits.reduce((s, a) => s + a.visual_schema_score, 0) / audits.length),
-    critical_issues: criticalIssues,
-    high_issues: highIssues,
-    medium_issues: mediumIssues,
-    low_issues: lowIssues,
-    top_issues: topIssues,
-  });
+  // Use verified insert to ensure audit history is saved
+  const result = await verifiedInsert(
+    supabase,
+    { table: 'audit_history', operationDescription: 'save audit history snapshot' },
+    {
+      project_id: project.id,
+      total_pages: project.pages?.length || 0,
+      pages_audited: audits.length,
+      average_score: avgScore,
+      avg_technical_score: Math.round(audits.reduce((s, a) => s + a.technical_score, 0) / audits.length),
+      avg_semantic_score: Math.round(audits.reduce((s, a) => s + a.semantic_score, 0) / audits.length),
+      avg_link_structure_score: Math.round(audits.reduce((s, a) => s + a.link_structure_score, 0) / audits.length),
+      avg_content_quality_score: Math.round(audits.reduce((s, a) => s + a.content_quality_score, 0) / audits.length),
+      avg_visual_schema_score: Math.round(audits.reduce((s, a) => s + a.visual_schema_score, 0) / audits.length),
+      critical_issues: criticalIssues,
+      high_issues: highIssues,
+      medium_issues: mediumIssues,
+      low_issues: lowIssues,
+      top_issues: topIssues,
+    }
+  );
+
+  if (!result.success) {
+    console.error('[SiteAnalysis] Failed to save audit history:', result.error);
+    // Non-fatal: continue even if history saving fails
+  }
 };
 
 // ============================================

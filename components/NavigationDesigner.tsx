@@ -90,7 +90,7 @@ const SEOInsightsPanel: React.FC<{
     const withClusterRole = topics.filter(t => t.cluster_role).length;
     const withQueryType = topics.filter(t => t.query_type).length;
     const withSearchVolume = topics.filter(t => t.metadata?.search_volume).length;
-    const withMatchedEavs = topics.filter(t => t.metadata?.matched_eavs?.length > 0).length;
+    const withMatchedEavs = topics.filter(t => Array.isArray(t.metadata?.matched_eavs) && t.metadata.matched_eavs.length > 0).length;
     const monetizationTopics = topics.filter(t => t.topic_class === 'monetization').length;
     const pillarTopics = topics.filter(t => t.cluster_role === 'pillar').length;
     const coreTopics = topics.filter(t => t.type === 'core').length;

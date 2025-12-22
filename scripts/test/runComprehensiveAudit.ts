@@ -13,11 +13,12 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { verifiedDelete, verifiedBulkDelete } from '../../services/verifiedDatabaseService';
 
 // Import AI services for real testing
 import * as aiService from '../../services/ai/index';
 import { AIResponseSanitizer } from '../../services/aiResponseSanitizer';
-import { BusinessInfo, SEOPillars, SemanticTriple, EnrichedTopic, ContentBrief, KnowledgeGraph } from '../../types';
+import { BusinessInfo, SEOPillars, SemanticTriple, EnrichedTopic, ContentBrief, KnowledgeGraph, ResponseCode } from '../../types';
 
 // Load environment variables from .env.local if available
 import * as dotenv from 'dotenv';
@@ -260,16 +261,37 @@ async function setupTestEnvironment(): Promise<boolean> {
         for (const map of maps) {
           const { data: topics } = await supabase.from('topics').select('id').eq('map_id', map.id);
           if (topics) {
-            for (const topic of topics) {
-              await supabase.from('content_briefs').delete().eq('topic_id', topic.id);
+            const topicIds = topics.map(t => t.id);
+            if (topicIds.length > 0) {
+              await verifiedBulkDelete(
+                supabase,
+                { table: 'content_briefs', operationDescription: 'cleanup content_briefs' },
+                { column: 'topic_id', operator: 'in', value: topicIds }
+              );
             }
           }
-          await supabase.from('content_generation_jobs').delete().eq('map_id', map.id);
-          await supabase.from('topics').delete().eq('map_id', map.id);
-          await supabase.from('topical_maps').delete().eq('id', map.id);
+          await verifiedBulkDelete(
+            supabase,
+            { table: 'content_generation_jobs', operationDescription: 'cleanup jobs' },
+            { column: 'map_id', operator: 'eq', value: map.id }
+          );
+          await verifiedBulkDelete(
+            supabase,
+            { table: 'topics', operationDescription: 'cleanup topics' },
+            { column: 'map_id', operator: 'eq', value: map.id }
+          );
+          await verifiedDelete(
+            supabase,
+            { table: 'topical_maps', operationDescription: 'cleanup map' },
+            map.id
+          );
         }
       }
-      await supabase.from('projects').delete().eq('id', project.id);
+      await verifiedDelete(
+        supabase,
+        { table: 'projects', operationDescription: 'cleanup project' },
+        project.id
+      );
     }
     validations.push(validate('Cleanup existing data', true, 'Clean state', 'Cleaned'));
   }
@@ -766,7 +788,7 @@ async function testBriefGeneration(mapId: string, topics: EnrichedTopic[], pilla
         topics,
         pillars,
         kg,
-        topic.topic_class === 'monetization' ? 'monetization' : 'informational',
+        (topic.response_code as ResponseCode) || ResponseCode.INFORMATIONAL,
         mockDispatch
       );
 

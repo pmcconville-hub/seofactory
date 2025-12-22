@@ -3,7 +3,8 @@ import {
   BriefComplianceCheck,
   MissingField,
   AutoSuggestion,
-  BriefFeaturedSnippetTarget
+  BriefFeaturedSnippetTarget,
+  FieldImportance
 } from '../types/contentGeneration';
 
 type Methodology = 'ordered_list' | 'unordered_list' | 'comparison_table' | 'definition_prose' | 'prose';
@@ -127,7 +128,7 @@ export class BriefComplianceService {
     if (!hasStructuredOutline) {
       missingFields.push({
         field: 'structured_outline',
-        importance: 'critical',
+        importance: FieldImportance.CRITICAL,
         description: 'Structured outline with subordinate text hints required for quality content',
         canAutoGenerate: true
       });
@@ -153,7 +154,7 @@ export class BriefComplianceService {
       if (missingSubs.length > 0) {
         missingFields.push({
           field: 'subordinate_text_hints',
-          importance: 'high',
+          importance: FieldImportance.HIGH,
           description: `${missingSubs.length} sections missing subordinate text hints`,
           canAutoGenerate: true
         });
@@ -176,7 +177,7 @@ export class BriefComplianceService {
     if (!hasFeaturedSnippetTarget) {
       missingFields.push({
         field: 'featured_snippet_target',
-        importance: 'medium',
+        importance: FieldImportance.MEDIUM,
         description: 'No featured snippet target defined',
         canAutoGenerate: true
       });
@@ -197,7 +198,7 @@ export class BriefComplianceService {
     if (!hasContextualBridge) {
       missingFields.push({
         field: 'contextualBridge',
-        importance: 'high',
+        importance: FieldImportance.HIGH,
         description: 'No internal linking plan defined',
         canAutoGenerate: true
       });

@@ -6,6 +6,7 @@ import { BusinessInfo, EnrichedTopic } from '../types';
 import * as aiService from '../services/aiService';
 import { sanitizeTopicFromDb } from '../utils/parsers';
 import { User } from '@supabase/supabase-js';
+import { verifiedInsert, verifiedUpdate, verifiedDelete } from '../services/verifiedDatabaseService';
 
 export const useTopicOperations = (
     activeMapId: string | null,
@@ -48,28 +49,36 @@ export const useTopicOperations = (
             }
 
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            const { data, error } = await supabase.from('topics').insert({
-                map_id: activeMapId,
-                user_id: user.id,
-                title: topicData.title,
-                description: topicData.description,
-                slug: topicData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-                type: topicType,
-                parent_topic_id: parentId,
-                freshness: topicData.freshness,
-                metadata: {
-                    topic_class: topicData.topic_class || (topicType === 'core' ? 'monetization' : 'informational'),
-                    cluster_role: topicData.cluster_role,
-                    attribute_focus: topicData.attribute_focus,
-                    canonical_query: topicData.canonical_query,
-                }
-            }).select().single();
 
-            if (error) throw error;
-            
-            const newTopic = sanitizeTopicFromDb(data);
+            // Use verified insert with read-back verification
+            const result = await verifiedInsert(
+                supabase,
+                { table: 'topics', operationDescription: `add topic "${topicData.title}"` },
+                {
+                    map_id: activeMapId,
+                    user_id: user.id,
+                    title: topicData.title,
+                    description: topicData.description,
+                    slug: topicData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+                    type: topicType,
+                    parent_topic_id: parentId,
+                    freshness: topicData.freshness,
+                    metadata: {
+                        topic_class: topicData.topic_class || (topicType === 'core' ? 'monetization' : 'informational'),
+                        cluster_role: topicData.cluster_role,
+                        attribute_focus: topicData.attribute_focus,
+                        canonical_query: topicData.canonical_query,
+                    }
+                }
+            );
+
+            if (!result.success || !result.data) {
+                throw new Error(result.error || 'Failed to add topic - verification failed');
+            }
+
+            const newTopic = sanitizeTopicFromDb(result.data);
             dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic: newTopic } });
-            dispatch({ type: 'SET_NOTIFICATION', payload: `Added topic "${newTopic.title}".` });
+            dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Added and verified topic "${newTopic.title}".` });
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'addTopic', visible: false } });
 
         } catch (e) {
@@ -87,33 +96,46 @@ export const useTopicOperations = (
         const newCoreTopicsMap = new Map<string, string>(); // Title -> UUID
         
         try {
-            // Phase 1: Insert Core Topics
+            let successCount = 0;
+            const failedTopics: string[] = [];
+
+            // Phase 1: Insert Core Topics with verification
             const coreInputs = topics.filter(t => t.data.type === 'core');
             for (const input of coreInputs) {
-                const { data, error } = await supabase.from('topics').insert({
-                    map_id: activeMapId,
-                    user_id: user.id,
-                    title: input.data.title,
-                    description: input.data.description,
-                    slug: input.data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-                    type: 'core',
-                    parent_topic_id: null,
-                    freshness: input.data.freshness,
-                    metadata: {
-                        topic_class: input.data.topic_class || 'monetization',
-                        cluster_role: input.data.cluster_role,
-                        attribute_focus: input.data.attribute_focus,
-                        canonical_query: input.data.canonical_query,
+                const result = await verifiedInsert(
+                    supabase,
+                    { table: 'topics', operationDescription: `add core topic "${input.data.title}"` },
+                    {
+                        map_id: activeMapId,
+                        user_id: user.id,
+                        title: input.data.title,
+                        description: input.data.description,
+                        slug: input.data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                        type: 'core',
+                        parent_topic_id: null,
+                        freshness: input.data.freshness,
+                        metadata: {
+                            topic_class: input.data.topic_class || 'monetization',
+                            cluster_role: input.data.cluster_role,
+                            attribute_focus: input.data.attribute_focus,
+                            canonical_query: input.data.canonical_query,
+                        }
                     }
-                }).select().single();
-                
-                if (error) throw error;
-                const topic = sanitizeTopicFromDb(data);
+                );
+
+                if (!result.success || !result.data) {
+                    failedTopics.push(input.data.title);
+                    console.error(`[BulkAdd] Failed to add core topic "${input.data.title}":`, result.error);
+                    continue;
+                }
+
+                const topic = sanitizeTopicFromDb(result.data);
                 newCoreTopicsMap.set(topic.title, topic.id);
                 dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic } });
+                successCount++;
             }
 
-            // Phase 2: Insert Outer Topics (Resolving Parents)
+            // Phase 2: Insert Outer Topics (Resolving Parents) with verification
             const outerInputs = topics.filter(t => t.data.type === 'outer');
             for (const input of outerInputs) {
                 let parentId: string | null = null;
@@ -130,29 +152,44 @@ export const useTopicOperations = (
                     }
                 }
 
-                const { data, error } = await supabase.from('topics').insert({
-                    map_id: activeMapId,
-                    user_id: user.id,
-                    title: input.data.title,
-                    description: input.data.description,
-                    slug: input.data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-                    type: 'outer',
-                    parent_topic_id: parentId,
-                    freshness: input.data.freshness,
-                    metadata: {
-                        topic_class: input.data.topic_class || 'informational',
-                        cluster_role: input.data.cluster_role,
-                        attribute_focus: input.data.attribute_focus,
-                        canonical_query: input.data.canonical_query,
+                const result = await verifiedInsert(
+                    supabase,
+                    { table: 'topics', operationDescription: `add outer topic "${input.data.title}"` },
+                    {
+                        map_id: activeMapId,
+                        user_id: user.id,
+                        title: input.data.title,
+                        description: input.data.description,
+                        slug: input.data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                        type: 'outer',
+                        parent_topic_id: parentId,
+                        freshness: input.data.freshness,
+                        metadata: {
+                            topic_class: input.data.topic_class || 'informational',
+                            cluster_role: input.data.cluster_role,
+                            attribute_focus: input.data.attribute_focus,
+                            canonical_query: input.data.canonical_query,
+                        }
                     }
-                }).select().single();
+                );
 
-                if (error) throw error;
-                const topic = sanitizeTopicFromDb(data);
+                if (!result.success || !result.data) {
+                    failedTopics.push(input.data.title);
+                    console.error(`[BulkAdd] Failed to add outer topic "${input.data.title}":`, result.error);
+                    continue;
+                }
+
+                const topic = sanitizeTopicFromDb(result.data);
                 dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic } });
+                successCount++;
             }
-            
-            dispatch({ type: 'SET_NOTIFICATION', payload: `Successfully added ${topics.length} topics.` });
+
+            // Report results with clear success/failure counts
+            if (failedTopics.length > 0) {
+                dispatch({ type: 'SET_ERROR', payload: `⚠️ Added ${successCount}/${topics.length} topics. Failed: ${failedTopics.join(', ')}` });
+            } else {
+                dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Successfully added and verified ${successCount} topics.` });
+            }
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'addTopic', visible: false } });
 
         } catch (e) {
@@ -210,13 +247,20 @@ export const useTopicOperations = (
              dbPayload.metadata = mergedMeta;
         }
 
-        const { error } = await supabase.from('topics').update(dbPayload).eq('id', topicId);
-        
-        if (error) {
-            console.error("Failed to update topic:", error);
-            dispatch({ type: 'SET_ERROR', payload: "Failed to save topic changes." });
+        // Use verified update with read-back verification
+        const result = await verifiedUpdate(
+            supabase,
+            { table: 'topics', operationDescription: 'update topic' },
+            topicId,
+            dbPayload
+        );
+
+        if (!result.success) {
+            console.error("Failed to update topic:", result.error);
+            // Revert optimistic update
+            dispatch({ type: 'SET_ERROR', payload: `❌ ${result.error || 'Failed to save topic changes - verification failed'}` });
         } else {
-            dispatch({ type: 'SET_NOTIFICATION', payload: "Topic updated." });
+            dispatch({ type: 'SET_NOTIFICATION', payload: "✓ Topic updated and verified." });
         }
     }, [activeMapId, businessInfo, dispatch]);
 
@@ -227,13 +271,22 @@ export const useTopicOperations = (
         dispatch({ type: 'SET_LOADING', payload: { key: 'deleteTopic', value: true } });
         try {
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            const { error } = await supabase.from('topics').delete().eq('id', topicId);
-            if (error) throw error;
+
+            // Use verified delete with confirmation that record is gone
+            const result = await verifiedDelete(
+                supabase,
+                { table: 'topics', operationDescription: 'delete topic' },
+                topicId
+            );
+
+            if (!result.success) {
+                throw new Error(result.error || 'Delete verification failed - topic may still exist');
+            }
 
             dispatch({ type: 'DELETE_TOPIC', payload: { mapId: activeMapId, topicId } });
-            dispatch({ type: 'SET_NOTIFICATION', payload: "Topic deleted." });
+            dispatch({ type: 'SET_NOTIFICATION', payload: "✓ Topic deleted and verified." });
         } catch (e) {
-            dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : "Failed to delete topic." });
+            dispatch({ type: 'SET_ERROR', payload: `❌ ${e instanceof Error ? e.message : "Failed to delete topic."}` });
         } finally {
             dispatch({ type: 'SET_LOADING', payload: { key: 'deleteTopic', value: false } });
         }

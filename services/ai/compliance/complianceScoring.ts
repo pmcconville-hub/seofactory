@@ -403,10 +403,13 @@ function calculateSchemaCompleteness(
     }
 
     // Check if brief has schema suggestions
-    const briefSchemas = brief.schema_suggestions || [];
+    const briefSchemas = (brief.schema_suggestions || []) as Array<{ '@type'?: string; type?: string; [key: string]: unknown }>;
 
     const missingSchemas = requiredSchemas.filter(s =>
-        !briefSchemas.some(bs => bs.toLowerCase().includes(s.toLowerCase()))
+        !briefSchemas.some(bs => {
+            const schemaType = (bs['@type'] || bs.type || '').toString().toLowerCase();
+            return schemaType.includes(s.toLowerCase());
+        })
     );
 
     if (missingSchemas.length > 0) {
@@ -425,7 +428,10 @@ function calculateSchemaCompleteness(
         s.heading?.toLowerCase().includes('question')
     );
 
-    if (hasFaqSection && !briefSchemas.some(s => s.toLowerCase().includes('faq'))) {
+    if (hasFaqSection && !briefSchemas.some(bs => {
+        const schemaType = (bs['@type'] || bs.type || '').toString().toLowerCase();
+        return schemaType.includes('faq');
+    })) {
         issues.push({
             factor: 'schema_completeness',
             severity: 'minor',

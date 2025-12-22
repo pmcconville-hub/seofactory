@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
+import { verifiedBulkDelete } from '../../services/verifiedDatabaseService';
 
 dotenv.config({ path: '.env.migration' });
 
@@ -138,7 +139,11 @@ async function main() {
     const briefs = JSON.parse(fs.readFileSync(briefsFile, 'utf-8'));
 
     // Clear existing
-    await supabase.from('content_briefs').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await verifiedBulkDelete(
+      supabase,
+      { table: 'content_briefs', operationDescription: 'clear existing content_briefs' },
+      { column: 'id', operator: 'neq', value: '00000000-0000-0000-0000-000000000000' }
+    );
 
     for (let i = 0; i < briefs.length; i += batchSize) {
       const batch = briefs.slice(i, i + batchSize);
@@ -159,7 +164,11 @@ async function main() {
   if (fs.existsSync(jobsFile)) {
     const jobs = JSON.parse(fs.readFileSync(jobsFile, 'utf-8'));
 
-    await supabase.from('content_generation_jobs').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await verifiedBulkDelete(
+      supabase,
+      { table: 'content_generation_jobs', operationDescription: 'clear existing jobs' },
+      { column: 'id', operator: 'neq', value: '00000000-0000-0000-0000-000000000000' }
+    );
 
     const { error } = await supabase
       .from('content_generation_jobs')
@@ -178,7 +187,11 @@ async function main() {
   if (fs.existsSync(sectionsFile)) {
     const sections = JSON.parse(fs.readFileSync(sectionsFile, 'utf-8'));
 
-    await supabase.from('content_generation_sections').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await verifiedBulkDelete(
+      supabase,
+      { table: 'content_generation_sections', operationDescription: 'clear existing sections' },
+      { column: 'id', operator: 'neq', value: '00000000-0000-0000-0000-000000000000' }
+    );
 
     for (let i = 0; i < sections.length; i += batchSize) {
       const batch = sections.slice(i, i + batchSize);

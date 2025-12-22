@@ -8,6 +8,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { EnrichedTopic, PerformanceSnapshot } from '../types';
 import { getSupabaseClient } from './supabaseClient';
+import { verifiedInsert } from './verifiedDatabaseService';
 
 interface GSCRow {
     url?: string;
@@ -263,13 +264,19 @@ export async function importPerformanceData(
                 delta_position: deltaPosition
             };
 
-            const { error } = await supabase.from('performance_snapshots').insert({
-                id: uuidv4(),
-                ...snapshot
-            });
+            // Use verified insert for performance snapshots
+            const insertResult = await verifiedInsert(
+                supabase as any,
+                { table: 'performance_snapshots', operationDescription: `save performance snapshot for "${match.topic_title}"` },
+                {
+                    id: uuidv4(),
+                    ...snapshot
+                },
+                'id'
+            );
 
-            if (error) {
-                errors.push(`Failed to save snapshot for "${match.topic_title}": ${error.message}`);
+            if (!insertResult.success) {
+                errors.push(`Failed to save snapshot for "${match.topic_title}": ${insertResult.error}`);
             } else {
                 snapshotsCreated++;
                 if (isBaseline) {
@@ -299,7 +306,8 @@ export async function loadExistingBaselines(
 ): Promise<Map<string, PerformanceSnapshot>> {
     const supabase = getSupabaseClient(supabaseUrl, supabaseKey);
 
-    const { data, error } = await supabase
+    // Cast to any since performance_snapshots is not in generated types
+    const { data, error } = await (supabase as any)
         .from('performance_snapshots')
         .select('*')
         .eq('map_id', mapId)
@@ -309,7 +317,7 @@ export async function loadExistingBaselines(
         return new Map();
     }
 
-    return new Map(data.map(s => [s.topic_id, s as PerformanceSnapshot]));
+    return new Map((data as PerformanceSnapshot[]).map(s => [s.topic_id, s]));
 }
 
 /**
@@ -322,7 +330,8 @@ export async function getTopicPerformanceHistory(
 ): Promise<PerformanceSnapshot[]> {
     const supabase = getSupabaseClient(supabaseUrl, supabaseKey);
 
-    const { data, error } = await supabase
+    // Cast to any since performance_snapshots is not in generated types
+    const { data, error } = await (supabase as any)
         .from('performance_snapshots')
         .select('*')
         .eq('topic_id', topicId)
@@ -345,8 +354,9 @@ export async function getLatestSnapshotsForMap(
 ): Promise<Map<string, PerformanceSnapshot>> {
     const supabase = getSupabaseClient(supabaseUrl, supabaseKey);
 
+    // Cast to any since performance_snapshots is not in generated types
     // Get the latest snapshot for each topic using distinct on
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
         .from('performance_snapshots')
         .select('*')
         .eq('map_id', mapId)
@@ -358,9 +368,9 @@ export async function getLatestSnapshotsForMap(
 
     // Group by topic_id and take first (most recent)
     const latestByTopic = new Map<string, PerformanceSnapshot>();
-    data.forEach(s => {
+    (data as PerformanceSnapshot[]).forEach(s => {
         if (!latestByTopic.has(s.topic_id)) {
-            latestByTopic.set(s.topic_id, s as PerformanceSnapshot);
+            latestByTopic.set(s.topic_id, s);
         }
     });
 

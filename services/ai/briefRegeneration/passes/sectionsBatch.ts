@@ -169,11 +169,11 @@ export async function regenerateSectionsBatch(
       // Try to use what we can
       if (resultSections.length > 0 && resultSections.length < sections.length) {
         // Partial result - fill in with originals
-        const merged = resultSections.map((s: any, i: number) => ({
+        const merged: BriefSection[] = resultSections.map((s: any, i: number) => ({
           ...sections[i], // Original as base
           ...validateSection(s), // AI result overlay
           key: sections[i].key || `section-${batchStartIndex + i}` // Preserve key
-        }));
+        }) as BriefSection);
         // Add remaining originals
         for (let i = resultSections.length; i < sections.length; i++) {
           merged.push(sections[i]);

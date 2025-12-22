@@ -12,11 +12,15 @@ import PlanningStatistics from './PlanningStatistics';
 import PlanningListView from './PlanningListView';
 import PlanningCalendar from './PlanningCalendar';
 import { generatePublicationPlan, calculateProgress } from '../../services/ai/publicationPlanning';
-import { EnrichedTopic, PublicationPlanResult, ContentBrief } from '../../types';
+import { EnrichedTopic, PublicationPlanResult, ContentBrief, TopicPublicationPlan } from '../../types';
 
 interface PlanningDashboardProps {
     topics: EnrichedTopic[];
 }
+
+// Helper to get publication plan from topic metadata
+const getPublicationPlan = (topic: EnrichedTopic): TopicPublicationPlan | undefined =>
+    topic.metadata?.publication_plan as TopicPublicationPlan | undefined;
 
 const PlanningDashboard: React.FC<PlanningDashboardProps> = ({ topics }) => {
     const { state, dispatch } = useAppState();
@@ -39,7 +43,7 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({ topics }) => {
     const publishedTopicIds = useMemo(() => {
         const published = new Set<string>();
         topics.forEach(t => {
-            const plan = t.metadata?.publication_plan;
+            const plan = getPublicationPlan(t);
             if (plan?.status === 'published') {
                 published.add(t.id);
             }
@@ -59,21 +63,24 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({ topics }) => {
 
         if (filters.status && filters.status.length > 0) {
             filtered = filtered.filter(t => {
-                const status = t.metadata?.publication_plan?.status || 'not_started';
+                const plan = getPublicationPlan(t);
+                const status = plan?.status || 'not_started';
                 return filters.status!.includes(status);
             });
         }
 
         if (filters.phase && filters.phase.length > 0) {
             filtered = filtered.filter(t => {
-                const phase = t.metadata?.publication_plan?.phase;
+                const plan = getPublicationPlan(t);
+                const phase = plan?.phase;
                 return phase && filters.phase!.includes(phase);
             });
         }
 
         if (filters.priority && filters.priority.length > 0) {
             filtered = filtered.filter(t => {
-                const priority = t.metadata?.publication_plan?.priority;
+                const plan = getPublicationPlan(t);
+                const priority = plan?.priority;
                 return priority && filters.priority!.includes(priority);
             });
         }
@@ -94,7 +101,8 @@ const PlanningDashboard: React.FC<PlanningDashboardProps> = ({ topics }) => {
             const start = new Date(filters.date_range.start);
             const end = new Date(filters.date_range.end);
             filtered = filtered.filter(t => {
-                const optimalDate = t.metadata?.publication_plan?.optimal_publication_date;
+                const plan = getPublicationPlan(t);
+                const optimalDate = plan?.optimal_publication_date;
                 if (!optimalDate) return false;
                 const date = new Date(optimalDate);
                 return date >= start && date <= end;

@@ -7,6 +7,7 @@
 import { createClient } from '@supabase/supabase-js';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
+import { verifiedDelete } from '../../services/verifiedDatabaseService';
 
 dotenv.config({ path: path.join(process.cwd(), '.env.migration') });
 
@@ -48,7 +49,11 @@ async function main() {
     console.log('Insert succeeded:', insertData);
 
     // Clean up
-    await supabase.from('topics').delete().eq('id', testId);
+    await verifiedDelete(
+      supabase,
+      { table: 'topics', operationDescription: 'cleanup test topic' },
+      testId
+    );
     console.log('Test topic cleaned up.');
   }
 

@@ -30,7 +30,8 @@ export type AttributeCategory =
   | 'UNIQUE'                 // Legacy - unique differentiators
   | 'ROOT'                   // Legacy - fundamental attributes
   | 'RARE'                   // Legacy - less common attributes
-  | 'COMMON';                // Legacy - frequently used attributes
+  | 'COMMON'                 // Legacy - frequently used attributes
+  | 'UNCLASSIFIED';          // Not yet classified
 
 /**
  * Attribute class for semantic organization

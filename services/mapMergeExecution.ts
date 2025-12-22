@@ -9,6 +9,7 @@ import {
   EnrichedTopic,
   TopicMergeDecision,
 } from '../types';
+import { verifiedInsert, verifiedBulkInsert, verifiedDelete, verifiedBulkDelete } from './verifiedDatabaseService';
 
 /**
  * Execute the merge of multiple topical maps into a single new map.
@@ -23,10 +24,11 @@ export async function executeMerge(
   const warnings: string[] = [];
   const newMapId = uuidv4();
 
-  // Step 1: Create the new map record
-  const { data: mapData, error: mapError } = await supabase
-    .from('topical_maps')
-    .insert({
+  // Step 1: Create the new map record with verification
+  const mapResult = await verifiedInsert(
+    supabase,
+    { table: 'topical_maps', operationDescription: `create merged map "${input.newMapName}"` },
+    {
       id: newMapId,
       project_id: input.projectId,
       user_id: input.userId,
@@ -35,12 +37,11 @@ export async function executeMerge(
       pillars: input.resolvedContext.pillars as any,
       eavs: input.resolvedEavs as any,
       competitors: input.resolvedCompetitors,
-    })
-    .select()
-    .single();
+    }
+  );
 
-  if (mapError) {
-    throw new Error(`Failed to create merged map: ${mapError.message}`);
+  if (!mapResult.success || !mapResult.data) {
+    throw new Error(`Failed to create merged map: ${mapResult.error || 'verification failed'}`);
   }
 
   // Step 2: Build final topic list from decisions
@@ -58,7 +59,7 @@ export async function executeMerge(
     }
   });
 
-  // Insert core topics
+  // Insert core topics with verification
   if (coreTopics.length > 0) {
     const coreDbTopics = coreTopics.map(t => ({
       id: t.id,
@@ -73,11 +74,21 @@ export async function executeMerge(
       metadata: (t.metadata || {}) as any,
     }));
 
-    const { error: coreError } = await supabase.from('topics').insert(coreDbTopics);
-    if (coreError) {
+    const coreResult = await verifiedBulkInsert(
+      supabase,
+      { table: 'topics', operationDescription: `insert ${coreTopics.length} core topics` },
+      coreDbTopics,
+      'id'
+    );
+
+    if (!coreResult.success) {
       // Rollback: delete the map
-      await supabase.from('topical_maps').delete().eq('id', newMapId);
-      throw new Error(`Failed to insert core topics: ${coreError.message}`);
+      await verifiedDelete(
+        supabase,
+        { table: 'topical_maps', operationDescription: 'rollback map creation' },
+        newMapId
+      );
+      throw new Error(`Failed to insert core topics: ${coreResult.error || 'verification failed'}`);
     }
   }
 
@@ -109,12 +120,26 @@ export async function executeMerge(
       };
     });
 
-    const { error: outerError } = await supabase.from('topics').insert(outerDbTopics);
-    if (outerError) {
+    const outerResult = await verifiedBulkInsert(
+      supabase,
+      { table: 'topics', operationDescription: `insert ${outerTopics.length} outer topics` },
+      outerDbTopics,
+      'id'
+    );
+
+    if (!outerResult.success) {
       // Rollback
-      await supabase.from('topics').delete().eq('map_id', newMapId);
-      await supabase.from('topical_maps').delete().eq('id', newMapId);
-      throw new Error(`Failed to insert outer topics: ${outerError.message}`);
+      await verifiedBulkDelete(
+        supabase,
+        { table: 'topics', operationDescription: 'rollback topics' },
+        { column: 'map_id', operator: 'eq', value: newMapId }
+      );
+      await verifiedDelete(
+        supabase,
+        { table: 'topical_maps', operationDescription: 'rollback map' },
+        newMapId
+      );
+      throw new Error(`Failed to insert outer topics: ${outerResult.error || 'verification failed'}`);
     }
   }
 

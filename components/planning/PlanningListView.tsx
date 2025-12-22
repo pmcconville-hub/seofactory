@@ -14,9 +14,14 @@ import {
     PublicationStatus,
     PublicationPhase,
     PublicationPriority,
-    ContentBrief
+    ContentBrief,
+    TopicPublicationPlan
 } from '../../types';
 import { useAppState } from '../../state/appState';
+
+// Helper to get publication plan from topic metadata
+const getPublicationPlan = (topic: EnrichedTopic): TopicPublicationPlan | undefined =>
+    topic.metadata?.publication_plan as TopicPublicationPlan | undefined;
 
 interface PlanningListViewProps {
     topics: EnrichedTopic[];
@@ -79,7 +84,7 @@ function detectStatus(
     }
 
     // Check actual publication date
-    const plan = topic.metadata?.publication_plan;
+    const plan = getPublicationPlan(topic);
     if (plan?.actual_publication_date) {
         const pubDate = new Date(plan.actual_publication_date);
         if (pubDate <= new Date()) {

@@ -61,14 +61,15 @@ const MapUsageReport: React.FC<MapUsageReportProps> = ({ mapId, mapName, onClose
         setError(null);
 
         try {
-            const { data, error: fetchError } = await supabase
+            // Note: ai_usage_logs table may not be in generated types yet
+            const { data, error: fetchError } = await (supabase as any)
                 .from('ai_usage_logs')
                 .select('*')
                 .eq('map_id', mapId)
                 .order('created_at', { ascending: false });
 
             if (fetchError) throw fetchError;
-            setLogs(data || []);
+            setLogs((data || []) as UsageLog[]);
         } catch (e) {
             console.error('Failed to load map usage data:', e);
             setError(e instanceof Error ? e.message : 'Failed to load usage data');

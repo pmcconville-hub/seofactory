@@ -44,8 +44,9 @@ async function main() {
 
   // Get user info
   console.log('\n[2] User Info (map owner):');
-  const { data: users } = await supabase.auth.admin.listUsers();
-  const owner = users?.users?.find(u => u.id === map.user_id);
+  const { data: usersData } = await supabase.auth.admin.listUsers();
+  const users = usersData?.users as Array<{ id: string; email?: string; last_sign_in_at?: string }> | undefined;
+  const owner = users?.find(u => u.id === map.user_id);
 
   if (owner) {
     console.log(`  Email: ${owner.email}`);

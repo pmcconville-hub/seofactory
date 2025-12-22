@@ -351,7 +351,7 @@ function validateEavCoverage(
 
     // Check for required attribute categories
     const requiredCategories = config.eavPriority.requiredCategories;
-    const eavPredicates = eavs.map(e => e.predicate?.toLowerCase() || '');
+    const eavPredicates = eavs.map(e => e.predicate?.relation?.toLowerCase() || '');
 
     // Check ROOT attributes
     const rootMissing = requiredCategories.ROOT.filter(attr =>

@@ -12,6 +12,7 @@ import {
   AISuggestion,
   HealthStatus,
   EffortLevel,
+  UnifiedAuditIssue,
 } from '../types';
 import {
   ISSUE_TRANSLATIONS,
@@ -494,7 +495,7 @@ export const calculateAuthorityIndicators = (
 export const generateActionRoadmap = (
   semanticMetrics: EnhancedAuditMetrics['semanticCompliance'],
   authorityIndicators: EnhancedAuditMetrics['authorityIndicators'],
-  issues: ReportIssue[]
+  issues: UnifiedAuditIssue[]
 ): EnhancedAuditMetrics['actionRoadmap'] => {
   const roadmap: EnhancedAuditMetrics['actionRoadmap'] = [];
 
@@ -536,14 +537,14 @@ export const generateActionRoadmap = (
     });
   }
 
-  // Add critical issues from report
-  const criticalIssues = issues.filter(i => i.priority === 'critical').slice(0, 3);
+  // Add critical issues from audit (map UnifiedAuditIssue fields)
+  const criticalIssues = issues.filter(i => i.severity === 'critical').slice(0, 3);
   for (const issue of criticalIssues) {
     roadmap.push({
       priority: 'critical',
-      category: issue.phase || 'Technical',
-      action: issue.suggestedAction || issue.headline,
-      impact: issue.businessImpact || 'Critical - Requires immediate attention',
+      category: issue.category || 'Technical',
+      action: issue.suggestedFix || issue.ruleName,
+      impact: issue.message || 'Critical - Requires immediate attention',
     });
   }
 
@@ -562,7 +563,7 @@ export const generateEnhancedMetrics = (
     object?: { value?: string | number };
   }>,
   topicCount: number,
-  issues: ReportIssue[]
+  issues: UnifiedAuditIssue[]
 ): EnhancedAuditMetrics => {
   // Auto-classify EAVs that don't have categories assigned
   const classifiedEavs = autoClassifyEavs(eavs as any) as typeof eavs;

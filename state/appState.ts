@@ -833,7 +833,9 @@ const mapReducerForPlanning = (map: TopicalMap, action: any): TopicalMap => {
         return (map.topics || []).map(t => {
             if (t.id !== topicId) return t;
             const currentMetadata = t.metadata || {};
-            const currentPlan = currentMetadata.publication_plan || {};
+            const currentPlan = (typeof currentMetadata.publication_plan === 'object' && currentMetadata.publication_plan !== null)
+              ? currentMetadata.publication_plan
+              : {};
             return {
                 ...t,
                 metadata: {
@@ -868,7 +870,9 @@ const mapReducerForPlanning = (map: TopicalMap, action: any): TopicalMap => {
             const updatedTopics = (map.topics || []).map(t => {
                 if (!topicIds.includes(t.id)) return t;
                 const currentMetadata = t.metadata || {};
-                const currentPlan = currentMetadata.publication_plan || {};
+                const currentPlan = (typeof currentMetadata.publication_plan === 'object' && currentMetadata.publication_plan !== null)
+                  ? currentMetadata.publication_plan
+                  : {};
                 return {
                     ...t,
                     metadata: {

@@ -269,7 +269,7 @@ export const useTopicEnrichment = (
             }
 
             // Build final notification message
-            const topicsWithEavs = allTopics.filter(t => t.metadata?.matched_eavs?.length > 0).length;
+            const topicsWithEavs = allTopics.filter(t => Array.isArray(t.metadata?.matched_eavs) && t.metadata.matched_eavs.length > 0).length;
             let message = `Successfully enriched ${enrichedCount} topics.`;
             if (eavs && eavs.length > 0 && topicsWithEavs > 0) {
                 message += ` ${topicsWithEavs} topics matched with EAVs.`;

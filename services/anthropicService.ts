@@ -294,7 +294,7 @@ const callApiWithStreaming = async <T>(
             dispatch({ type: 'LOG_EVENT', payload: {
                 service: 'Anthropic',
                 message: `CRITICAL: Streaming returned empty content after ${chunkCount} chunks. Check console for details.`,
-                status: 'error',
+                status: 'failure',
                 timestamp: Date.now()
             }});
             throw new Error('Streaming completed but no content was received. The AI response may have been empty or malformed.');

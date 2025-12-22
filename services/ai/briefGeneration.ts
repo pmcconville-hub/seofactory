@@ -286,7 +286,7 @@ export const enrichBriefWithVisualSemantics = (
 ): Omit<ContentBrief, 'id' | 'topic_id' | 'articleDraft'> => {
     try {
         // Determine search intent from topic metadata
-        const searchIntent = topic.metadata?.search_intent ||
+        const searchIntent: string = (typeof topic.metadata?.search_intent === 'string' ? topic.metadata.search_intent : null) ||
             (topic.topic_class === 'monetization' ? 'transactional' : 'informational');
 
         // Generate enhanced visual semantics

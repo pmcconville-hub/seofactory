@@ -4,6 +4,7 @@ import React, { useEffect, useReducer, useRef } from 'react';
 import { AppStateContext, appReducer, initialState } from './state/appState';
 import { AppStep, BusinessInfo, Project, TopicalMap } from './types';
 import { getSupabaseClient } from './services/supabaseClient';
+import { verifiedDelete, verifiedBulkDelete } from './services/verifiedDatabaseService';
 import { parseTopicalMap, normalizeRpcData, parseProject, repairBriefsInMap } from './utils/parsers';
 import { setGlobalUsageContext, clearGlobalUsageContext } from './services/telemetryService';
 
@@ -305,29 +306,82 @@ const App: React.FC = () => {
                             const { data: topics } = await supabase.from('topics').select('id').eq('map_id', mapId);
                             const topicIds = (topics || []).map(t => t.id);
 
-                            // Delete content_briefs by topic_id (in chunks to avoid query limits)
-                            for (const topicId of topicIds) {
-                                await supabase.from('content_briefs').delete().eq('topic_id', topicId);
+                            // Delete content_briefs by topic_id (cascade)
+                            if (topicIds.length > 0) {
+                                const briefsResult = await verifiedBulkDelete(
+                                    supabase,
+                                    { table: 'content_briefs', operationDescription: `delete briefs for map ${mapId}` },
+                                    { column: 'topic_id', operator: 'in', value: topicIds }
+                                );
+                                if (!briefsResult.success) {
+                                    console.warn(`[DeleteProject] Content briefs deletion issue for map ${mapId}:`, briefsResult.error);
+                                }
                             }
 
-                            // Delete topics
-                            await supabase.from('topics').delete().eq('map_id', mapId);
+                            // Delete topics - verified since this is critical
+                            if (topicIds.length > 0) {
+                                const topicsResult = await verifiedBulkDelete(
+                                    supabase,
+                                    { table: 'topics', operationDescription: `delete topics for map ${mapId}` },
+                                    { column: 'map_id', operator: 'eq', value: mapId },
+                                    topicIds.length
+                                );
+                                if (!topicsResult.success) {
+                                    console.warn(`[DeleteProject] Topics deletion issue for map ${mapId}:`, topicsResult.error);
+                                }
+                            }
 
-                            // Delete foundation pages and navigation (may not exist, ignore errors)
-                            await supabase.from('foundation_pages').delete().eq('map_id', mapId).then(() => {}, () => {});
-                            await supabase.from('navigation_structures').delete().eq('map_id', mapId).then(() => {}, () => {});
-                            await supabase.from('navigation_sync_status').delete().eq('map_id', mapId).then(() => {}, () => {});
+                            // Delete foundation pages and navigation (optional - may not exist)
+                            const foundationResult = await verifiedBulkDelete(
+                                supabase,
+                                { table: 'foundation_pages', operationDescription: `delete foundation pages for map ${mapId}` },
+                                { column: 'map_id', operator: 'eq', value: mapId }
+                            );
+                            if (!foundationResult.success && foundationResult.error && !foundationResult.error.includes('0 records')) {
+                                console.warn(`[DeleteProject] Foundation pages deletion issue:`, foundationResult.error);
+                            }
 
-                            // Delete the map itself
-                            await supabase.from('topical_maps').delete().eq('id', mapId);
+                            const navStructResult = await verifiedBulkDelete(
+                                supabase,
+                                { table: 'navigation_structures', operationDescription: `delete navigation structures for map ${mapId}` },
+                                { column: 'map_id', operator: 'eq', value: mapId }
+                            );
+                            if (!navStructResult.success && navStructResult.error && !navStructResult.error.includes('0 records')) {
+                                console.warn(`[DeleteProject] Navigation structures deletion issue:`, navStructResult.error);
+                            }
+
+                            const navSyncResult = await verifiedBulkDelete(
+                                supabase,
+                                { table: 'navigation_sync_status', operationDescription: `delete navigation sync status for map ${mapId}` },
+                                { column: 'map_id', operator: 'eq', value: mapId }
+                            );
+                            if (!navSyncResult.success && navSyncResult.error && !navSyncResult.error.includes('0 records')) {
+                                console.warn(`[DeleteProject] Navigation sync status deletion issue:`, navSyncResult.error);
+                            }
+
+                            // Delete the map itself - verified
+                            const mapResult = await verifiedDelete(
+                                supabase,
+                                { table: 'topical_maps', operationDescription: `delete map ${mapId}` },
+                                { column: 'id', value: mapId }
+                            );
+                            if (!mapResult.success) {
+                                console.warn(`[DeleteProject] Map deletion issue for ${mapId}:`, mapResult.error);
+                            }
                         }
 
-                        // Delete the project itself
-                        const { error } = await supabase.from('projects').delete().eq('id', project.id);
-                        if (error) throw error;
+                        // Delete the project itself - verified
+                        const projectResult = await verifiedDelete(
+                            supabase,
+                            { table: 'projects', operationDescription: `delete project "${project.project_name}"` },
+                            { column: 'id', value: project.id }
+                        );
+                        if (!projectResult.success) {
+                            throw new Error(projectResult.error || 'Project deletion verification failed');
+                        }
 
                         dispatch({ type: 'DELETE_PROJECT', payload: { projectId: project.id } });
-                        dispatch({ type: 'SET_NOTIFICATION', payload: `Project "${project.project_name}" deleted.` });
+                        dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Project "${project.project_name}" deleted (verified).` });
                     } catch (e) {
                         console.error('Delete project error:', e);
                         dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to delete project.' });

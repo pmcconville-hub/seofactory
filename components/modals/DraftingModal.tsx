@@ -9,6 +9,8 @@ import { Loader } from '../ui/Loader';
 import { safeString } from '../../utils/parsers';
 import { Textarea } from '../ui/Textarea';
 import { getSupabaseClient } from '../../services/supabaseClient';
+import { verifiedInsert, verifiedDelete } from '../../services/verifiedDatabaseService';
+import type { Json } from '../../database.types';
 import { SimpleMarkdown } from '../ui/SimpleMarkdown';
 import * as aiService from '../../services/aiService';
 import { AIModelSelector } from '../ui/AIModelSelector';
@@ -581,32 +583,62 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
     setIsSaving(true);
     try {
         const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+        const expectedLength = draftContent.length;
 
-        // Use .select() to verify the update actually happened
-        const { data: updateData, error } = await supabase
+        console.log('[DraftingModal] Starting save - brief.id:', brief.id, 'content length:', expectedLength);
+
+        // Step 1: Perform the update
+        const { error: updateError, count: updateCount } = await supabase
             .from('content_briefs')
-            .update({ article_draft: draftContent })
+            .update({ article_draft: draftContent, updated_at: new Date().toISOString() })
+            .eq('id', brief.id);
+
+        if (updateError) {
+            console.error('[DraftingModal] Update error:', updateError);
+            throw new Error(`Database update failed: ${updateError.message}`);
+        }
+
+        console.log('[DraftingModal] Update completed, rows affected:', updateCount);
+
+        // Step 2: CRITICAL - Do a SEPARATE read to VERIFY the data actually persisted
+        // This catches RLS issues where update appears to succeed but doesn't actually write
+        const { data: verifyData, error: verifyError } = await supabase
+            .from('content_briefs')
+            .select('id, article_draft, updated_at')
             .eq('id', brief.id)
-            .select('id, article_draft');
+            .single<{ id: string; article_draft: string | null; updated_at: string }>();
 
-        if (error) throw error;
-
-        // Verify the save actually worked
-        const savedLength = updateData?.[0]?.article_draft?.length || 0;
-        console.log('[DraftingModal] Draft save verified:', { expected: draftContent.length, saved: savedLength });
-
-        if (savedLength === 0) {
-            throw new Error('Draft was not saved - no rows were updated. This may be a permissions issue.');
+        if (verifyError) {
+            console.error('[DraftingModal] Verification read failed:', verifyError);
+            throw new Error(`Save verification failed: ${verifyError.message}. The draft may not have been saved due to permissions.`);
         }
 
-        if (Math.abs(savedLength - draftContent.length) > 100) {
-            console.warn('[DraftingModal] Draft save length mismatch!', { expected: draftContent.length, saved: savedLength });
-            dispatch({ type: 'SET_ERROR', payload: `Warning: Draft may not have saved completely. Expected ${draftContent.length} chars, got ${savedLength}.` });
+        if (!verifyData) {
+            console.error('[DraftingModal] No data returned from verification read');
+            throw new Error('Save verification failed: Could not read back saved data. Check database permissions.');
         }
 
-        // Also update the content_generation_job's draft_content if one exists
-        // This keeps both tables in sync, especially important after Polish
-        // which creates shorter but better content
+        const savedLength = verifyData.article_draft?.length || 0;
+        console.log('[DraftingModal] Verification result:', {
+            expected: expectedLength,
+            saved: savedLength,
+            diff: savedLength - expectedLength,
+            updated_at: verifyData.updated_at
+        });
+
+        // Check if the save actually worked
+        if (savedLength === 0 && expectedLength > 0) {
+            throw new Error('SAVE FAILED: The draft was not persisted to the database. This is likely a permissions issue. Please contact support.');
+        }
+
+        // Check for significant content mismatch
+        if (Math.abs(savedLength - expectedLength) > 100) {
+            console.warn('[DraftingModal] Content length mismatch after save!');
+            dispatch({ type: 'SET_ERROR', payload: `WARNING: Draft may be corrupted. Expected ${expectedLength.toLocaleString()} chars, but database has ${savedLength.toLocaleString()} chars. Please try saving again.` });
+            return; // Don't proceed as if save was successful
+        }
+
+        // Step 3: Also update the content_generation_job's draft_content if one exists
         if (databaseJobInfo?.jobId) {
           const { error: jobError } = await supabase
             .from('content_generation_jobs')
@@ -615,27 +647,29 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
 
           if (jobError) {
             console.warn('[DraftingModal] Failed to sync job draft_content:', jobError.message);
-            // Don't throw - brief was saved successfully, job sync is secondary
           } else {
-            console.log('[DraftingModal] Synced draft to content_generation_jobs:', draftContent.length, 'chars');
+            console.log('[DraftingModal] Synced draft to content_generation_jobs');
           }
         }
 
-        // Update state
+        // Step 4: Update local state only AFTER database verification succeeded
         const updatedBrief = { ...brief, articleDraft: draftContent };
         dispatch({ type: 'ADD_BRIEF', payload: { mapId: state.activeMapId, topicId: brief.topic_id, brief: updatedBrief } });
-        dispatch({ type: 'SET_NOTIFICATION', payload: 'Draft saved successfully.' });
+
+        // Show clear success message with actual saved count
+        dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Draft saved and verified! ${savedLength.toLocaleString()} characters persisted to database.` });
         setHasUnsavedChanges(false);
 
         // Update the loaded draft length ref to match saved content
-        // This prevents the database sync check from offering older content
-        loadedDraftLengthRef.current = draftContent.length;
+        loadedDraftLengthRef.current = savedLength;
 
-        // Clear the database sync banner since we just saved to both tables
+        // Clear the database sync banner since we just saved
         setDatabaseDraft(null);
 
     } catch (e) {
-        dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : "Failed to save draft." });
+        const errorMessage = e instanceof Error ? e.message : "Failed to save draft.";
+        console.error('[DraftingModal] Save error:', e);
+        dispatch({ type: 'SET_ERROR', payload: `❌ SAVE FAILED: ${errorMessage}` });
     } finally {
         setIsSaving(false);
     }
@@ -678,48 +712,74 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
 
         const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
 
-        // Insert Topic
-        const { error: topicError } = await supabase.from('topics').insert({
-            ...newTopic,
-            user_id: state.user.id
-        });
-        if (topicError) throw topicError;
+        // Insert Topic with verification
+        const topicResult = await verifiedInsert(
+            supabase,
+            { table: 'topics', operationDescription: `create imported topic "${newTopic.title}"` },
+            {
+                id: newTopic.id,
+                map_id: newTopic.map_id,
+                title: newTopic.title,
+                slug: newTopic.slug,
+                description: newTopic.description,
+                type: newTopic.type,
+                parent_topic_id: newTopic.parent_topic_id,
+                freshness: newTopic.freshness,
+                metadata: (newTopic.metadata || {}) as Json,
+                user_id: state.user.id
+            },
+            'id'
+        );
+        if (!topicResult.success) {
+            throw new Error(topicResult.error || 'Topic insert verification failed');
+        }
 
-        // Insert Brief
-         const { error: briefError } = await supabase.from('content_briefs').insert({
-            id: newBrief.id,
-            topic_id: newTopic.id,
-            user_id: state.user.id,
-            title: newBrief.title,
-            meta_description: newBrief.metaDescription,
-            key_takeaways: newBrief.keyTakeaways as any,
-            outline: newBrief.outline,
-            article_draft: newBrief.articleDraft,
-            serp_analysis: newBrief.serpAnalysis as any,
-            visuals: newBrief.visuals as any,
-            contextual_vectors: newBrief.contextualVectors as any,
-            contextual_bridge: newBrief.contextualBridge as any,
-            // Holistic SEO fields
-            perspectives: newBrief.perspectives as any,
-            methodology_note: newBrief.methodology_note,
-            structured_outline: newBrief.structured_outline as any,
-            predicted_user_journey: newBrief.predicted_user_journey,
-            // New fields
-            query_type_format: newBrief.query_type_format,
-            featured_snippet_target: newBrief.featured_snippet_target as any,
-            visual_semantics: newBrief.visual_semantics as any,
-            discourse_anchors: newBrief.discourse_anchors as any,
-            created_at: new Date().toISOString()
-         });
+        // Insert Brief with verification
+        const briefResult = await verifiedInsert(
+            supabase,
+            { table: 'content_briefs', operationDescription: `create brief for imported topic "${newBrief.title}"` },
+            {
+                id: newBrief.id,
+                topic_id: newTopic.id,
+                user_id: state.user.id,
+                title: newBrief.title,
+                meta_description: newBrief.metaDescription,
+                key_takeaways: newBrief.keyTakeaways as any,
+                outline: newBrief.outline,
+                article_draft: newBrief.articleDraft,
+                serp_analysis: newBrief.serpAnalysis as any,
+                visuals: newBrief.visuals as any,
+                contextual_vectors: newBrief.contextualVectors as any,
+                contextual_bridge: newBrief.contextualBridge as any,
+                perspectives: newBrief.perspectives as any,
+                methodology_note: newBrief.methodology_note,
+                structured_outline: newBrief.structured_outline as any,
+                predicted_user_journey: newBrief.predicted_user_journey,
+                query_type_format: newBrief.query_type_format,
+                featured_snippet_target: newBrief.featured_snippet_target as any,
+                visual_semantics: newBrief.visual_semantics as any,
+                discourse_anchors: newBrief.discourse_anchors as any,
+                created_at: new Date().toISOString()
+            },
+            'id'
+        );
 
-         if (briefError) throw briefError;
+        if (!briefResult.success) {
+            // Rollback: delete the topic we just created
+            await verifiedDelete(
+                supabase,
+                { table: 'topics', operationDescription: `rollback topic "${newTopic.title}"` },
+                newTopic.id
+            );
+            throw new Error(briefResult.error || 'Brief insert verification failed');
+        }
 
         // Update Global State
         dispatch({ type: 'ADD_TOPIC', payload: { mapId: state.activeMapId, topic: newTopic } });
         dispatch({ type: 'ADD_BRIEF', payload: { mapId: state.activeMapId, topicId: newTopicId, brief: newBrief } });
         dispatch({ type: 'SET_ACTIVE_BRIEF_TOPIC', payload: newTopic });
 
-        dispatch({ type: 'SET_NOTIFICATION', payload: 'Imported page saved to map successfully.' });
+        dispatch({ type: 'SET_NOTIFICATION', payload: '✓ Imported page saved to map successfully (verified).' });
         setHasUnsavedChanges(false);
 
     } catch (e) {
@@ -780,7 +840,7 @@ ${JSON.stringify(schemaData, null, 2)}
   </script>` : '';
 
     // Get featured image for Open Graph
-    const featuredImage = imagePlaceholders.find(img => img.type === 'hero' || img.type === 'featured');
+    const featuredImage = imagePlaceholders.find(img => img.type === 'HERO');
     const ogImage = featuredImage?.generatedUrl || featuredImage?.userUploadUrl || '';
 
     // Build Open Graph meta tags
@@ -1254,7 +1314,7 @@ Image ${i + 1}: ${img.type}
     }
 
     // Get featured image for Open Graph and LCP preloading
-    const featuredImage = imagePlaceholders.find(img => img.type === 'hero' || img.type === 'featured');
+    const featuredImage = imagePlaceholders.find(img => img.type === 'HERO');
     const ogImageUrl = featuredImage?.generatedUrl || featuredImage?.userUploadUrl || '';
     const ogImage = imageUrlMap.get(ogImageUrl) || ogImageUrl;
 

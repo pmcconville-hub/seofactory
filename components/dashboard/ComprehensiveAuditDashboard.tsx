@@ -22,12 +22,12 @@ import {
   StoredEnhancedMetricsSnapshot,
 } from '../../services/auditPersistenceService';
 import { getSupabaseClient } from '../../services/supabaseClient';
-import type { SemanticTriple, ReportIssue } from '../../types';
+import type { SemanticTriple, UnifiedAuditIssue } from '../../types';
 
 interface ComprehensiveAuditDashboardProps {
   eavs: SemanticTriple[];
   topicCount: number;
-  issues?: ReportIssue[];
+  issues?: UnifiedAuditIssue[];
   mapId?: string;
   projectName?: string;
   mapName?: string;

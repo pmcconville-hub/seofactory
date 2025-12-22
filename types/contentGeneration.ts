@@ -434,8 +434,8 @@ export const DEFAULT_CONTENT_GENERATION_SETTINGS: Omit<ContentGenerationSettings
   isDefault: true,
   mapId: undefined,
   priorities: PRIORITY_PRESETS.balanced,
-  tone: 'professional',
-  audienceExpertise: 'intermediate',
+  tone: ContentTone.PROFESSIONAL,
+  audienceExpertise: AudienceExpertise.INTERMEDIATE,
   checkpointAfterPass1: false,
   passes: {
     pass_2_headers: { enabled: true, storeVersion: true },

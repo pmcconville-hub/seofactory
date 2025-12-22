@@ -7,6 +7,7 @@ import { Button } from '../ui/Button';
 import { Loader } from '../ui/Loader';
 import { useAppState } from '../../state/appState';
 import { getSupabaseClient } from '../../services/supabaseClient';
+import { sanitizeTopicFromDb } from '../../utils/parsers';
 import { loadAllInsightsData, aggregateInsights, LocalStateOverrides } from '../../services/insights/insightsAggregator';
 import { expandSemanticTriples } from '../../services/aiService';
 import type { InsightsTabId, AggregatedInsights, InsightActionType } from '../../types/insights';
@@ -265,9 +266,10 @@ export const InsightsHub: React.FC<InsightsHubProps> = ({
 
       // Update local state
       if (insertedTopics && insertedTopics.length > 0) {
+        const sanitizedTopics = insertedTopics.map(t => sanitizeTopicFromDb(t));
         dispatch({
           type: 'ADD_TOPICS',
-          payload: { mapId: effectiveMapId, topics: insertedTopics }
+          payload: { mapId: effectiveMapId, topics: sanitizedTopics }
         });
 
         // Build detailed feedback message

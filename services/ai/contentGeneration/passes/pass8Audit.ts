@@ -1,5 +1,5 @@
 // services/ai/contentGeneration/passes/pass8Audit.ts
-import { ContentBrief, ContentGenerationJob, BusinessInfo, AuditDetails, HolisticSummaryContext, EnrichedTopic, SemanticTriple } from '../../../../types';
+import { ContentBrief, ContentGenerationJob, BusinessInfo, AuditDetails, HolisticSummaryContext, EnrichedTopic, SemanticTriple, FreshnessProfile } from '../../../../types';
 import { ContentGenerationOrchestrator } from '../orchestrator';
 import { runAlgorithmicAudit } from './auditChecks';
 import { buildHolisticSummary } from '../holisticAnalyzer';
@@ -55,11 +55,13 @@ export async function executePass8(
   // Create a minimal topic object for compliance calculation
   const topic: EnrichedTopic = {
     id: brief.id || 'temp',
+    map_id: job.map_id || '',
     title: brief.topic || brief.title || '',
+    slug: (brief.topic || brief.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
     description: brief.description || '',
     type: 'core',
     parent_topic_id: null,
-    freshness: brief.freshness || 'STANDARD',
+    freshness: (brief.freshness as FreshnessProfile) || FreshnessProfile.STANDARD,
     response_code: brief.response_code,
     metadata: {}
   };

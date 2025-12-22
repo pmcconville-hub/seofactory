@@ -11,6 +11,7 @@ import { useTopicalMapReport } from '../hooks/useReportGeneration';
 import * as aiService from '../services/aiService';
 import { useAppState } from '../state/appState';
 import { getSupabaseClient } from '../services/supabaseClient';
+import { verifiedDelete, verifiedBulkDelete } from '../services/verifiedDatabaseService';
 import { v4 as uuidv4 } from 'uuid';
 import { slugify } from '../utils/helpers';
 import MergeConfirmationModal from './ui/MergeConfirmationModal';
@@ -282,15 +283,29 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
       const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
 
       // First delete any content briefs associated with this topic
-      await supabase.from('content_briefs').delete().eq('topic_id', topicId);
+      const briefsResult = await verifiedBulkDelete(
+        supabase,
+        { table: 'content_briefs', operationDescription: `delete briefs for topic ${topicId}` },
+        { column: 'topic_id', operator: 'eq', value: topicId }
+      );
+      if (!briefsResult.success && briefsResult.error && !briefsResult.error.includes('0 records')) {
+        console.warn(`[DeleteTopic] Content briefs deletion issue:`, briefsResult.error);
+      }
 
-      // Then delete the topic itself
-      const { error } = await supabase.from('topics').delete().eq('id', topicId);
-      if (error) throw error;
+      // Then delete the topic itself with verification
+      const result = await verifiedDelete(
+        supabase,
+        { table: 'topics', operationDescription: `delete topic ${topicId}` },
+        { column: 'id', value: topicId }
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || 'Topic deletion verification failed');
+      }
 
       // Update local state
       dispatch({ type: 'DELETE_TOPIC', payload: { mapId: activeMapId, topicId } });
-      dispatch({ type: 'SET_NOTIFICATION', payload: "Topic deleted successfully." });
+      dispatch({ type: 'SET_NOTIFICATION', payload: "✓ Topic deleted successfully (verified)." });
     } catch (e) {
       console.error('Delete topic error:', e);
       dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : "Failed to delete topic." });

@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-interface CardProps {
+export interface CardProps {
   children: React.ReactNode;
   className?: string;
   onClick?: (e: React.MouseEvent) => void;
@@ -11,6 +11,10 @@ interface CardProps {
   onDragEnd?: (e: React.DragEvent) => void;
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
+  role?: string;
+  'aria-checked'?: boolean;
+  tabIndex?: number;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
 }
 
 export const Card: React.FC<CardProps> = ({
@@ -21,7 +25,11 @@ export const Card: React.FC<CardProps> = ({
   onDragStart,
   onDragEnd,
   onDragOver,
-  onDrop
+  onDrop,
+  role,
+  'aria-checked': ariaChecked,
+  tabIndex,
+  onKeyDown
 }) => {
   return (
     <div
@@ -32,6 +40,10 @@ export const Card: React.FC<CardProps> = ({
       onDragEnd={onDragEnd}
       onDragOver={onDragOver}
       onDrop={onDrop}
+      role={role}
+      aria-checked={ariaChecked}
+      tabIndex={tabIndex}
+      onKeyDown={onKeyDown}
     >
       {children}
     </div>

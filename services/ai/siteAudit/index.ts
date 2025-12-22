@@ -330,25 +330,33 @@ function generateAuditId(): string {
 // EXPORTS
 // =============================================================================
 
-export {
-    // Types
+// Re-export types (isolatedModules requires explicit type exports)
+export type {
     SiteAuditResult,
     AuditConfig,
     AuditProgress,
     AuditPhase,
     AuditStatus,
-    DEFAULT_AUDIT_CONFIG,
     PageTechnicalInfo,
+    PriorityGroup,
+    RoadmapTask,
+} from './types';
 
-    // Phase executors (for individual phase runs)
+// Re-export values
+export {
+    DEFAULT_AUDIT_CONFIG,
+} from './types';
+
+// Export phase executors
+export {
     executePhase0,
     executePhase1,
     executePhase2,
     executePhase3,
     executePhase4,
-
-    // Helpers
-    createPageTechnicalInfo
 };
 
-export * from './types';
+// Export helpers
+export {
+    createPageTechnicalInfo
+};

@@ -35,6 +35,9 @@ import {
   STATUS_COLORS
 } from '../types/reports';
 
+// Type for checklist items
+type ChecklistItem = ArticleDraftReportData['publicationChecklist']['categories'][number]['items'][number];
+
 // ============================================
 // UTILITY FUNCTIONS
 // ============================================
@@ -534,7 +537,7 @@ export const transformContentBriefData = (
       featuredImagePrompt: brief.visuals?.featuredImagePrompt || '',
       inlineImages: (brief.visual_semantics || []).map(img => ({
         description: img.description || '',
-        altText: img.caption_data || img.alt_text_suggestion || '',
+        altText: img.caption_data || '',
         type: img.type || 'image',
         dimensions: img.width_hint && img.height_hint ? `${img.width_hint} x ${img.height_hint}` : undefined,
         captionData: img.caption_data || ''
@@ -921,7 +924,7 @@ export const transformArticleDraftData = (
     businessName: getBusinessTerm(rule.ruleName),
     description: getRuleDescription(rule.ruleName),
     passed: rule.isPassing,
-    score: rule.score || (rule.isPassing ? 100 : 0),
+    score: rule.isPassing ? 100 : 0,
     details: rule.details || '',
     recommendation: rule.isPassing ? undefined : `Review and fix: ${rule.details || 'Address this quality issue'}`,
     impact: getRuleImpact(rule.ruleName)
@@ -1285,31 +1288,31 @@ const buildArticlePublicationChecklist = (
   let completedItems = 0;
 
   // Content Quality
-  const contentItems = [
+  const contentItems: ChecklistItem[] = [
     {
       item: 'Word count meets target',
-      status: wordCount >= targetWordCount ? 'complete' : 'incomplete' as const,
+      status: wordCount >= targetWordCount ? 'complete' : 'incomplete',
       required: true,
       reason: `Current: ${wordCount}, Target: ${targetWordCount}`,
       action: wordCount < targetWordCount ? 'Add more content to reach target' : undefined
     },
     {
       item: 'H1 contains target keyword',
-      status: content.match(new RegExp(`^#\\s+.*${brief.targetKeyword}`, 'im')) ? 'complete' : 'incomplete' as const,
+      status: content.match(new RegExp(`^#\\s+.*${brief.targetKeyword}`, 'im')) ? 'complete' : 'incomplete',
       required: true,
       reason: 'Primary keyword must appear in the main headline',
       action: 'Edit H1 to include target keyword'
     },
     {
       item: 'Meta description optimized',
-      status: (brief.metaDescription?.length || 0) >= 140 && (brief.metaDescription?.length || 0) <= 160 ? 'complete' : 'incomplete' as const,
+      status: (brief.metaDescription?.length || 0) >= 140 && (brief.metaDescription?.length || 0) <= 160 ? 'complete' : 'incomplete',
       required: true,
       reason: `Length: ${brief.metaDescription?.length || 0} chars (target: 140-160)`,
       action: 'Adjust meta description length'
     },
     {
       item: 'All facts verified',
-      status: facts.every(f => f.verificationStatus === 'verified') ? 'complete' : 'incomplete' as const,
+      status: facts.every(f => f.verificationStatus === 'verified') ? 'complete' : 'incomplete',
       required: true,
       reason: `${facts.filter(f => f.verificationStatus === 'needs-check').length} facts need verification`,
       action: 'Verify all claims with reliable sources'
@@ -1320,24 +1323,24 @@ const buildArticlePublicationChecklist = (
   completedItems += contentItems.filter(i => i.status === 'complete').length;
 
   // SEO Requirements
-  const seoItems = [
+  const seoItems: ChecklistItem[] = [
     {
       item: 'Minimum internal links included',
-      status: linkCount >= 3 ? 'complete' : 'incomplete' as const,
+      status: linkCount >= 3 ? 'complete' : 'incomplete',
       required: true,
       reason: `Current: ${linkCount}, Minimum: 3`,
       action: linkCount < 3 ? 'Add more internal links' : undefined
     },
     {
       item: 'Images have alt text',
-      status: 'complete' as const, // Assume AI-generated content has alt text
+      status: 'complete', // Assume AI-generated content has alt text
       required: true,
       reason: 'All images must have descriptive alt text',
       action: undefined
     },
     {
       item: 'All validation rules pass',
-      status: validationRules.every(r => r.passed) ? 'complete' : 'incomplete' as const,
+      status: validationRules.every(r => r.passed) ? 'complete' : 'incomplete',
       required: false,
       reason: `${validationRules.filter(r => r.passed).length}/${validationRules.length} rules passing`,
       action: 'Review and fix failing validation rules'
@@ -1348,17 +1351,17 @@ const buildArticlePublicationChecklist = (
   completedItems += seoItems.filter(i => i.status === 'complete').length;
 
   // Visual Elements
-  const visualItems = [
+  const visualItems: ChecklistItem[] = [
     {
       item: 'Featured image ready',
-      status: imageCount >= 1 ? 'complete' : 'incomplete' as const,
+      status: imageCount >= 1 ? 'complete' : 'incomplete',
       required: true,
       reason: 'Featured image required for social sharing',
       action: 'Upload a featured image'
     },
     {
       item: 'Inline images placed',
-      status: imageCount >= 2 ? 'complete' : 'incomplete' as const,
+      status: imageCount >= 2 ? 'complete' : 'incomplete',
       required: false,
       reason: `Current: ${imageCount} images`,
       action: imageCount < 2 ? 'Add more images to break up content' : undefined
@@ -1369,24 +1372,24 @@ const buildArticlePublicationChecklist = (
   completedItems += visualItems.filter(i => i.status === 'complete').length;
 
   // Final Review
-  const reviewItems = [
+  const reviewItems: ChecklistItem[] = [
     {
       item: 'Proofread for spelling/grammar',
-      status: 'incomplete' as const,
+      status: 'incomplete',
       required: true,
       reason: 'Human review required before publication',
       action: 'Complete proofreading'
     },
     {
       item: 'Brand voice check',
-      status: 'incomplete' as const,
+      status: 'incomplete',
       required: true,
       reason: 'Ensure content aligns with brand guidelines',
       action: 'Review tone and style'
     },
     {
       item: 'Legal/compliance review (if applicable)',
-      status: 'na' as const,
+      status: 'na',
       required: false,
       reason: 'May be required for certain industries',
       action: undefined

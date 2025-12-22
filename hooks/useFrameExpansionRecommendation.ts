@@ -183,7 +183,7 @@ export function calculateFrameRecommendation(
     score += 10;
   }
 
-  if (metadata.estimated_search_volume && metadata.estimated_search_volume < 100) {
+  if (metadata.estimated_search_volume && typeof metadata.estimated_search_volume === 'number' && metadata.estimated_search_volume < 100) {
     reasons.push('Low search volume topic');
     score += 20;
   }

@@ -5,6 +5,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { safeString } from '../../utils/parsers';
 import { getSupabaseClient } from '../../services/supabaseClient';
+import { verifiedUpsert } from '../../services/verifiedDatabaseService';
 import { Loader } from '../ui/Loader';
 import { Modal } from '../ui/Modal';
 import { BriefSection, ContextualBridgeLink } from '../../types';
@@ -37,38 +38,41 @@ const BriefReviewModal: React.FC<BriefReviewModalProps> = ({ isOpen }) => {
                 ? brief.keyTakeaways.map(k => typeof k === 'string' ? k : JSON.stringify(k))
                 : [];
 
-            // Upsert the brief to the database
-            // We use upsert to handle cases where a brief might already exist for this topic
-            const { error } = await supabase.from('content_briefs').upsert({
-                id: brief.id, // Ensure we use the ID generated during creation
-                topic_id: brief.topic_id,
-                user_id: state.user?.id, // Enforce user ownership
-                title: brief.title,
-                meta_description: brief.metaDescription,
-                key_takeaways: sanitizedTakeaways as any,
-                outline: brief.outline,
-                serp_analysis: brief.serpAnalysis as any,
-                visuals: brief.visuals as any,
-                contextual_vectors: brief.contextualVectors as any,
-                contextual_bridge: brief.contextualBridge as any,
-                
-                // New Holistic SEO Fields persistence
-                perspectives: brief.perspectives as any,
-                methodology_note: brief.methodology_note,
-                structured_outline: brief.structured_outline as any,
-                structural_template_hash: brief.structural_template_hash,
-                predicted_user_journey: brief.predicted_user_journey,
-                
-                // New Fields
-                query_type_format: brief.query_type_format,
-                featured_snippet_target: brief.featured_snippet_target as any,
-                visual_semantics: brief.visual_semantics as any,
-                discourse_anchors: brief.discourse_anchors as any,
+            // Upsert the brief to the database with verification
+            const result = await verifiedUpsert(
+                supabase,
+                { table: 'content_briefs', operationDescription: `save brief for "${brief.title}"`, conflictColumns: ['topic_id'] },
+                {
+                    id: brief.id,
+                    topic_id: brief.topic_id,
+                    user_id: state.user?.id,
+                    title: brief.title,
+                    meta_description: brief.metaDescription,
+                    key_takeaways: sanitizedTakeaways as any,
+                    outline: brief.outline,
+                    serp_analysis: brief.serpAnalysis as any,
+                    visuals: brief.visuals as any,
+                    contextual_vectors: brief.contextualVectors as any,
+                    contextual_bridge: brief.contextualBridge as any,
+                    // Holistic SEO Fields
+                    perspectives: brief.perspectives as any,
+                    methodology_note: brief.methodology_note,
+                    structured_outline: brief.structured_outline as any,
+                    structural_template_hash: brief.structural_template_hash,
+                    predicted_user_journey: brief.predicted_user_journey,
+                    // New Fields
+                    query_type_format: brief.query_type_format,
+                    featured_snippet_target: brief.featured_snippet_target as any,
+                    visual_semantics: brief.visual_semantics as any,
+                    discourse_anchors: brief.discourse_anchors as any,
+                    created_at: new Date().toISOString()
+                },
+                'id, title'
+            );
 
-                created_at: new Date().toISOString()
-            }, { onConflict: 'topic_id' });
-
-            if (error) throw error;
+            if (!result.success) {
+                throw new Error(result.error || 'Brief save verification failed');
+            }
 
             // Update local state
             // We reconstruct the object to ensure the state matches exactly what we just saved
@@ -78,7 +82,7 @@ const BriefReviewModal: React.FC<BriefReviewModalProps> = ({ isOpen }) => {
             };
 
             dispatch({ type: 'ADD_BRIEF', payload: { mapId: activeMapId, topicId: brief.topic_id, brief: savedBrief } });
-            dispatch({ type: 'SET_NOTIFICATION', payload: `Brief for "${brief.title}" saved successfully.` });
+            dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Brief for "${brief.title}" saved successfully (verified).` });
             
             // Close modal
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'briefReview', visible: false } });

@@ -100,7 +100,7 @@ function buildEntityIndex(eavs: SemanticTriple[]): Map<string, EntityInfo> {
         if (!subjectInfo.attributes.has(attrKey)) {
             subjectInfo.attributes.set(attrKey, []);
         }
-        subjectInfo.attributes.get(attrKey)!.push(eav.value);
+        subjectInfo.attributes.get(attrKey)!.push(String(eav.value));
 
         // Track context if available
         if (eav.context) {
@@ -455,7 +455,7 @@ function identifyKGIssues(
         if (!entityAttrValues.get(entityKey)!.has(attrKey)) {
             entityAttrValues.get(entityKey)!.set(attrKey, []);
         }
-        entityAttrValues.get(entityKey)!.get(attrKey)!.push(eav.value);
+        entityAttrValues.get(entityKey)!.get(attrKey)!.push(String(eav.value));
     }
 
     entityAttrValues.forEach((attrs, entity) => {
@@ -592,7 +592,7 @@ function calculateCoverage(eavs: SemanticTriple[], pages: PageSemanticInfo[]) {
         if (!entityAttrValues.get(entityKey)!.has(attrKey)) {
             entityAttrValues.get(entityKey)!.set(attrKey, []);
         }
-        entityAttrValues.get(entityKey)!.get(attrKey)!.push(eav.value);
+        entityAttrValues.get(entityKey)!.get(attrKey)!.push(String(eav.value));
     }
 
     entityAttrValues.forEach(attrs => {
