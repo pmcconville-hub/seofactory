@@ -65,8 +65,8 @@ Return a JSON object:
     "content": "string (1-2 paragraph bridge connecting to related topics)",
     "links": [
       {
-        "targetTopic": "string (topic title from available topics)",
-        "anchorText": "string (contextually relevant anchor text)",
+        "targetTopic": "EXACT topic title from available topics - copy verbatim, no modifications",
+        "anchorText": "2-5 word anchor phrase (e.g. 'semantic content strategy')",
         "annotation_text_hint": "string (how to introduce this link)",
         "reasoning": "string (why this link adds value)"
       }
@@ -83,6 +83,10 @@ Return a JSON object:
     }
   ]
 }
+
+**CRITICAL RULES:**
+- targetTopic MUST be the EXACT title from Available Topics list - no reasoning, no embellishments, just the title
+- anchorText MUST be 2-5 words ONLY - this is the clickable link text
 
 Include 2-4 internal links, 3-5 discourse anchors, and 2-4 visual semantics.
 Respond with ONLY valid JSON. No markdown formatting.

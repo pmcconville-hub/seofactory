@@ -619,11 +619,12 @@ ${businessContext(info)}
 #### **V. INTERLINKING**
 1.  **Post-Definition Linking (Rule V.C):** In the 'contextualBridge' instructions, specify that links must be placed *after* the entity has been defined, never in the first sentence of a paragraph.
 2.  **Generate 2-4 Internal Links (Rule V.A):** You MUST populate the 'contextualBridge.links' array with 2-4 internal link suggestions. For each link:
-    - **targetTopic**: Select a topic from "Available Topics for Linking" that is semantically related
-    - **anchorText**: Craft a natural anchor phrase (2-5 words) that fits naturally in content
+    - **targetTopic**: Use the EXACT topic title from "Available Topics for Linking" - copy it exactly, no modifications or explanations
+    - **anchorText**: Write a SHORT natural anchor phrase (2-5 words ONLY) that can be used as clickable hyperlink text. Example: "semantic content strategy" or "topical map structure"
     - **annotation_text_hint**: Provide context on where this link should be placed
     - **reasoning**: Explain why this link adds value for the reader's journey
 3.  **Semantic Relevance (Rule V.B):** Prioritize links to topics that share semantic overlap with this article. Sibling topics and parent topics are ideal candidates.
+4.  **CRITICAL**: targetTopic MUST be a verbatim copy of a topic title from the available list. anchorText MUST be 2-5 words only.
 
 #### **VI. FORMAT CODE ASSIGNMENT**
 1.  **[FS] Featured Snippet**: Assign to the primary definition/answer section. 40-50 words max.
@@ -702,8 +703,8 @@ Respond with a SINGLE valid JSON object. Generate the 'structured_outline' FIRST
     "content": "string (The transition paragraph text that bridges macro context to this article's micro context)",
     "links": [
       {
-        "targetTopic": "Related Topic Title (REQUIRED - must be actual topic title from the map)",
-        "anchorText": "natural anchor phrase (REQUIRED - the exact text to use as hyperlink)",
+        "targetTopic": "EXACT topic title from Available Topics list - NO reasoning, NO embellishments, JUST the title",
+        "anchorText": "2-5 word anchor phrase (REQUIRED - this is the clickable hyperlink text, e.g. 'semantic content strategy')",
         "annotation_text_hint": "Context sentence explaining where this link fits",
         "reasoning": "Why this link adds value for the reader"
       }
