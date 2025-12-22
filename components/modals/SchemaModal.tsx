@@ -109,32 +109,6 @@ const SchemaModal: React.FC<SchemaModalProps> = ({
     });
   };
 
-  // Syntax highlighting for JSON
-  const formatJson = (json: string) => {
-    if (!json) return '';
-
-    const encoded = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-    return encoded.replace(
-      /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
-      function (match) {
-        let cls = 'text-yellow-400'; // number
-        if (/^"/.test(match)) {
-          if (/:$/.test(match)) {
-            cls = 'text-purple-400'; // key
-          } else {
-            cls = 'text-green-400'; // string
-          }
-        } else if (/true|false/.test(match)) {
-          cls = 'text-blue-400'; // boolean
-        } else if (/null/.test(match)) {
-          cls = 'text-gray-500'; // null
-        }
-        return '<span class="' + cls + '">' + match + '</span>';
-      }
-    );
-  };
-
   // Custom header with tabs
   const customHeader = (
     <div className="sticky top-0 bg-gray-800 p-4 border-b border-gray-700 z-10 flex-shrink-0 rounded-t-xl">
@@ -274,8 +248,8 @@ const SchemaModal: React.FC<SchemaModalProps> = ({
                 >
                   {copyButtonText}
                 </Button>
-                <pre className="overflow-x-auto text-sm max-h-96 overflow-y-auto">
-                  <code dangerouslySetInnerHTML={{ __html: formatJson(schemaString) }} />
+                <pre className="overflow-x-auto text-sm max-h-96 overflow-y-auto text-green-400">
+                  <code>{schemaString}</code>
                 </pre>
               </div>
             </div>

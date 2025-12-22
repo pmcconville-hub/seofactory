@@ -7,6 +7,7 @@
  */
 
 import React, { forwardRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { ArticleDraftReportData, ArticleDraftReportConfig, ReportActionItem } from '../../types/reports';
 import { ReportHeader } from './ReportHeader';
 import { ReportFooter, PageBreak } from './ReportFooter';
@@ -428,18 +429,26 @@ export const ArticleDraftReport = forwardRef<HTMLDivElement, ArticleDraftReportP
           <div className="mb-4">
             <h4 className="text-sm font-semibold text-gray-700 mb-3">Full Article Content</h4>
             <div className="bg-white border border-gray-200 rounded-lg p-6 max-h-96 overflow-y-auto prose prose-sm max-w-none">
-              <div
-                className="whitespace-pre-wrap text-gray-800 text-sm leading-relaxed"
-                dangerouslySetInnerHTML={{
-                  __html: data.articleContent.fullContent
-                    .replace(/^# (.*$)/gm, '<h1 class="text-xl font-bold mt-4 mb-2">$1</h1>')
-                    .replace(/^## (.*$)/gm, '<h2 class="text-lg font-semibold mt-4 mb-2">$1</h2>')
-                    .replace(/^### (.*$)/gm, '<h3 class="text-base font-medium mt-3 mb-1">$1</h3>')
-                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                    .replace(/\n/g, '<br />')
+              <ReactMarkdown
+                components={{
+                  h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2">{children}</h1>,
+                  h2: ({ children }) => <h2 className="text-lg font-semibold mt-4 mb-2">{children}</h2>,
+                  h3: ({ children }) => <h3 className="text-base font-medium mt-3 mb-1">{children}</h3>,
+                  p: ({ children }) => <p className="text-gray-800 text-sm leading-relaxed mb-3">{children}</p>,
+                  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                  em: ({ children }) => <em className="italic">{children}</em>,
+                  ul: ({ children }) => <ul className="list-disc ml-4 mb-3">{children}</ul>,
+                  ol: ({ children }) => <ol className="list-decimal ml-4 mb-3">{children}</ol>,
+                  li: ({ children }) => <li className="text-gray-800 text-sm mb-1">{children}</li>,
+                  a: ({ href, children }) => (
+                    <a href={href} className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">
+                      {children}
+                    </a>
+                  ),
                 }}
-              />
+              >
+                {data.articleContent.fullContent}
+              </ReactMarkdown>
             </div>
           </div>
 

@@ -1,159 +1,173 @@
 
 import React, { useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 
 interface SimpleMarkdownProps {
   content: string;
 }
 
 export const SimpleMarkdown: React.FC<SimpleMarkdownProps> = ({ content }) => {
-  const html = useMemo(() => {
+  // Track if we've seen the first image for hero treatment
+  let isFirstImage = true;
+
+  const components: Components = useMemo(() => ({
+    h1: ({ children }) => (
+      <h1 className="text-2xl font-bold text-white mt-6 mb-4 border-b border-gray-700 pb-2">
+        {children}
+      </h1>
+    ),
+    h2: ({ children }) => (
+      <h2 className="text-xl font-bold text-white mt-5 mb-3">{children}</h2>
+    ),
+    h3: ({ children }) => (
+      <h3 className="text-lg font-bold text-white mt-4 mb-2">{children}</h3>
+    ),
+    h4: ({ children }) => (
+      <h4 className="text-base font-bold text-white mt-3 mb-2">{children}</h4>
+    ),
+    p: ({ children }) => (
+      <p className="mb-4 leading-relaxed text-gray-300">{children}</p>
+    ),
+    strong: ({ children }) => (
+      <strong className="text-white font-bold">{children}</strong>
+    ),
+    em: ({ children }) => (
+      <em className="italic text-gray-400">{children}</em>
+    ),
+    code: ({ children, className }) => {
+      // Check if this is inline code (no className with language-)
+      const isInline = !className;
+      if (isInline) {
+        return (
+          <code className="bg-gray-800 px-1 rounded font-mono text-sm text-pink-300 border border-gray-700">
+            {children}
+          </code>
+        );
+      }
+      // Block code
+      return (
+        <code className={className}>{children}</code>
+      );
+    },
+    pre: ({ children }) => (
+      <pre className="bg-gray-800 p-4 rounded-lg overflow-x-auto my-4 border border-gray-700">
+        {children}
+      </pre>
+    ),
+    a: ({ href, children }) => (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-400 hover:text-blue-300 hover:underline"
+      >
+        {children}
+      </a>
+    ),
+    img: ({ src, alt }) => {
+      const heroTreatment = isFirstImage;
+      if (isFirstImage) isFirstImage = false;
+
+      if (heroTreatment) {
+        return (
+          <figure className="my-6">
+            <img
+              src={src}
+              alt={alt || ''}
+              className="w-full h-auto rounded-lg shadow-lg"
+              loading="eager"
+            />
+            {alt && (
+              <figcaption className="text-center text-xs text-gray-500 mt-2 italic">
+                {alt}
+              </figcaption>
+            )}
+          </figure>
+        );
+      }
+
+      return (
+        <img
+          src={src}
+          alt={alt || ''}
+          className="max-w-full h-auto rounded-lg shadow-md my-4 mx-auto block"
+          loading="lazy"
+        />
+      );
+    },
+    ul: ({ children }) => (
+      <ul className="ml-2 mb-4 space-y-1">{children}</ul>
+    ),
+    ol: ({ children }) => (
+      <ol className="ml-2 mb-4 space-y-1">{children}</ol>
+    ),
+    li: ({ children, ordered, index }) => {
+      if (ordered) {
+        return (
+          <li className="flex items-start gap-2">
+            <span className="text-gray-500 font-mono text-xs mt-1">
+              {(index ?? 0) + 1}.
+            </span>
+            <span className="text-gray-300">{children}</span>
+          </li>
+        );
+      }
+      return (
+        <li className="flex items-start gap-2">
+          <span className="text-blue-500 mt-1.5">•</span>
+          <span className="text-gray-300">{children}</span>
+        </li>
+      );
+    },
+    table: ({ children }) => (
+      <div className="overflow-x-auto my-6 border border-gray-700 rounded-lg shadow-sm">
+        <table className="min-w-full text-left text-sm">{children}</table>
+      </div>
+    ),
+    thead: ({ children }) => (
+      <thead className="bg-gray-800 text-gray-200 font-semibold uppercase tracking-wider text-xs">
+        {children}
+      </thead>
+    ),
+    tbody: ({ children }) => (
+      <tbody className="divide-y divide-gray-700">{children}</tbody>
+    ),
+    tr: ({ children }) => (
+      <tr className="hover:bg-gray-800/50 transition-colors">{children}</tr>
+    ),
+    th: ({ children }) => (
+      <th className="px-4 py-3 border-b border-gray-700">{children}</th>
+    ),
+    td: ({ children }) => (
+      <td className="px-4 py-3 text-gray-300 whitespace-pre-wrap">{children}</td>
+    ),
+    blockquote: ({ children }) => (
+      <blockquote className="border-l-4 border-gray-600 pl-4 my-4 italic text-gray-400">
+        {children}
+      </blockquote>
+    ),
+    hr: () => <hr className="border-gray-700 my-6" />,
+  }), []);
+
+  // Handle image placeholders before passing to ReactMarkdown
+  const processedContent = useMemo(() => {
     if (!content) return '';
 
-    // 1. Basic HTML Escaping to prevent XSS from raw input
-    let text = content
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-
-    const lines = text.split('\n');
-    let inTable = false;
-    const processedLines: string[] = [];
-
-    for (let i = 0; i < lines.length; i++) {
-        let line = lines[i];
-
-        // --- Block Level Elements ---
-
-        // Headers
-        if (line.startsWith('# ')) {
-            line = `<h1 class="text-2xl font-bold text-white mt-6 mb-4 border-b border-gray-700 pb-2">${line.substring(2)}</h1>`;
-        } else if (line.startsWith('## ')) {
-            line = `<h2 class="text-xl font-bold text-white mt-5 mb-3">${line.substring(3)}</h2>`;
-        } else if (line.startsWith('### ')) {
-            line = `<h3 class="text-lg font-bold text-white mt-4 mb-2">${line.substring(4)}</h3>`;
-        } else if (line.startsWith('#### ')) {
-            line = `<h4 class="text-base font-bold text-white mt-3 mb-2">${line.substring(5)}</h4>`;
-        }
-
-        // --- Inline Formatting (Applied to all lines) ---
-
-        // Bold (**text**)
-        line = line.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white font-bold">$1</strong>');
-        
-        // Italic (*text*)
-        line = line.replace(/\*([^*]+)\*/g, '<em class="italic text-gray-400">$1</em>');
-        
-        // Inline Code (`text`)
-        line = line.replace(/`([^`]+)`/g, '<code class="bg-gray-800 px-1 rounded font-mono text-sm text-pink-300 border border-gray-700">$1</code>');
-
-        // Images (![alt](url)) - MUST come before links
-        // First image (hero) gets special full-width treatment
-        const isFirstImage = !processedLines.some(l => l.includes('<img '));
-        if (isFirstImage && line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/)) {
-          // Full-line hero image - give it special styling
-          line = line.replace(
-            /!\[([^\]]*)\]\(([^)]+)\)/g,
-            '<figure class="my-6"><img src="$2" alt="$1" class="w-full h-auto rounded-lg shadow-lg" loading="eager" /><figcaption class="text-center text-xs text-gray-500 mt-2 italic">$1</figcaption></figure>'
-          );
-        } else {
-          line = line.replace(
-            /!\[([^\]]*)\]\(([^)]+)\)/g,
-            '<img src="$2" alt="$1" class="max-w-full h-auto rounded-lg shadow-md my-4 mx-auto block" loading="lazy" />'
-          );
-        }
-
-        // Image placeholders [IMAGE: description | alt="text"] - show as pending placeholder
-        line = line.replace(
-          /\[IMAGE:\s*([^|]+)\s*\|\s*alt="([^"]+)"\]/g,
-          '<div class="my-4 p-4 bg-gray-800 border-2 border-dashed border-gray-600 rounded-lg text-center"><div class="text-gray-400 text-sm mb-1">📷 Image Placeholder</div><div class="text-gray-300 text-xs">$1</div><div class="text-gray-500 text-xs italic mt-1">Alt: $2</div></div>'
-        );
-
-        // Links ([text](url))
-        line = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 hover:underline">$1</a>');
-
-        // --- Lists ---
-
-        if (line.trim().startsWith('- ')) {
-            line = `<div class="flex items-start gap-2 ml-2 mb-1"><span class="text-blue-500 mt-1.5">•</span><span class="text-gray-300">${line.trim().substring(2)}</span></div>`;
-        } else if (line.trim().match(/^\d+\.\s/)) {
-             // Extract number
-             const match = line.trim().match(/^(\d+)\.\s/);
-             const num = match ? match[1] : '•';
-             const content = line.trim().replace(/^\d+\.\s/, '');
-             line = `<div class="flex items-start gap-2 ml-2 mb-1"><span class="text-gray-500 font-mono text-xs mt-1">${num}.</span><span class="text-gray-300">${content}</span></div>`;
-        }
-
-        // --- Tables ---
-        
-        // Detect if line is part of a table (starts and ends with | or contains multiple |)
-        const isTableLine = line.trim().startsWith('|') && (line.trim().endsWith('|') || line.split('|').length > 2);
-
-        if (isTableLine) {
-            // Filter empty cells caused by leading/trailing pipes
-            const cells = line.split('|').map(c => c.trim()).filter((c, idx, arr) => {
-                 // Keep internal empty cells, but remove the very first/last if they are empty strings resulting from split
-                 if (idx === 0 && c === '') return false;
-                 if (idx === arr.length - 1 && c === '') return false;
-                 return true;
-            });
-
-            // Check if this is a separator line (e.g. |---|---|)
-            const isSeparator = cells.every(c => c.match(/^[-:]+$/));
-
-            if (isSeparator) {
-                if (!inTable) { 
-                     processedLines.push('<div class="overflow-x-auto my-6 border border-gray-700 rounded-lg shadow-sm"><table class="min-w-full text-left text-sm">');
-                     inTable = true;
-                }
-                continue; 
-            }
-
-            if (!inTable) {
-                processedLines.push('<div class="overflow-x-auto my-6 border border-gray-700 rounded-lg shadow-sm"><table class="min-w-full text-left text-sm">');
-                inTable = true;
-                
-                let headerHtml = '<thead class="bg-gray-800 text-gray-200 font-semibold uppercase tracking-wider text-xs"><tr>';
-                cells.forEach(cell => {
-                    headerHtml += `<th class="px-4 py-3 border-b border-gray-700">${cell}</th>`;
-                });
-                headerHtml += '</tr></thead><tbody class="divide-y divide-gray-700">';
-                processedLines.push(headerHtml);
-
-            } else {
-                let rowHtml = '<tr class="hover:bg-gray-800/50 transition-colors">';
-                cells.forEach(cell => {
-                    rowHtml += `<td class="px-4 py-3 text-gray-300 whitespace-pre-wrap">${cell}</td>`;
-                });
-                rowHtml += '</tr>';
-                processedLines.push(rowHtml);
-            }
-        } else {
-            if (inTable) {
-                processedLines.push('</tbody></table></div>');
-                inTable = false;
-            }
-
-            // Don't wrap block-level elements in <p> tags
-            const isBlockElement = line.startsWith('<h') || line.startsWith('<div') ||
-                                   line.startsWith('<figure') || line.startsWith('<img ');
-            if (!isBlockElement) {
-                if (line.trim() === '') {
-                    line = '<div class="h-4"></div>';
-                } else {
-                    line = `<p class="mb-4 leading-relaxed text-gray-300">${line}</p>`;
-                }
-            }
-            processedLines.push(line);
-        }
-    }
-
-    if (inTable) {
-        processedLines.push('</tbody></table></div>');
-    }
-
-    return processedLines.join('\n');
-
+    // Convert image placeholders to a visible format
+    return content.replace(
+      /\[IMAGE:\s*([^|]+)\s*\|\s*alt="([^"]+)"\]/g,
+      '\n\n> 📷 **Image Placeholder**\n> $1\n> *Alt: $2*\n\n'
+    );
   }, [content]);
 
-  return <div className="simple-markdown-container" dangerouslySetInnerHTML={{ __html: html }} />;
+  if (!content) return null;
+
+  return (
+    <div className="simple-markdown-container">
+      <ReactMarkdown components={components}>
+        {processedContent}
+      </ReactMarkdown>
+    </div>
+  );
 };
