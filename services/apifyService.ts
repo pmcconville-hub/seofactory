@@ -45,6 +45,10 @@ const runApifyActor = async (actorId: string, apiToken: string, runInput: any): 
         await sleep(5000);
         const statusUrl = `${API_BASE_URL}/actor-runs/${run.id}?token=${apiToken}`;
         const statusResponse = await fetch(statusUrl);
+        if (!statusResponse.ok) {
+            console.error('[Apify] Status check failed:', statusResponse.status);
+            throw new Error(`Apify status check failed (${statusResponse.status}): ${statusResponse.statusText}`);
+        }
         const { data: currentRun }: { data: ApifyRun } = await statusResponse.json();
         run = currentRun;
         if (run.status === 'SUCCEEDED') break;
@@ -511,6 +515,11 @@ export const checkApifyRunStatus = async (
 ): Promise<{ status: string; datasetId?: string }> => {
   const statusUrl = `${API_BASE_URL}/actor-runs/${runId}?token=${apiToken}`;
   const response = await fetch(statusUrl);
+
+  if (!response.ok) {
+    throw new Error(`Failed to check Apify run status: ${response.status} ${response.statusText}`);
+  }
+
   const { data }: { data: ApifyRun } = await response.json();
 
   return {

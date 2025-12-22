@@ -175,6 +175,11 @@ const doExtraction = async (
       }),
     });
 
+    if (!proxyResponse.ok) {
+      const errorText = await proxyResponse.text();
+      throw new Error(`Proxy request failed: ${proxyResponse.status} - ${errorText}`);
+    }
+
     const proxyResult = await proxyResponse.json();
 
     if (!proxyResult.ok) {
