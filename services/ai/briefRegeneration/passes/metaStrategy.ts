@@ -10,6 +10,7 @@ import * as anthropicService from '../../../anthropicService';
 import * as perplexityService from '../../../perplexityService';
 import * as openRouterService from '../../../openRouterService';
 import { dispatchToProvider } from '../../providerDispatcher';
+import { getLanguageName } from '../../../../utils/languageUtils';
 import React from 'react';
 
 export interface MetaStrategyResult {
@@ -37,7 +38,8 @@ const META_STRATEGY_PROMPT = (
 ): string => `
 You are an expert Holistic SEO Strategist updating the META information of a content brief.
 
-**LANGUAGE: ${info.language || 'English'} | Target Market: ${info.targetMarket || 'Global'}**
+**LANGUAGE: ${getLanguageName(info.language)} | Target Market: ${info.targetMarket || 'Global'}**
+**CRITICAL: Write ALL content in ${getLanguageName(info.language)} only.**
 
 ## Current Meta Information
 - Title: ${currentBrief.title}
@@ -60,7 +62,7 @@ You are an expert Holistic SEO Strategist updating the META information of a con
 - Target Audience: ${info.audience}
 
 ## Your Task
-Regenerate ONLY the meta information based on user feedback. Keep all content in ${info.language || 'English'}.
+Regenerate ONLY the meta information based on user feedback. Keep all content in ${getLanguageName(info.language)}.
 
 Return a JSON object with these fields:
 {

@@ -10,6 +10,7 @@ import * as anthropicService from '../../../anthropicService';
 import * as perplexityService from '../../../perplexityService';
 import * as openRouterService from '../../../openRouterService';
 import { dispatchToProvider } from '../../providerDispatcher';
+import { getLanguageName } from '../../../../utils/languageUtils';
 import React from 'react';
 
 export interface SectionsGenerationResult {
@@ -29,7 +30,8 @@ const GENERATE_SECTIONS_PROMPT = (
 ): string => `
 You are an expert Holistic SEO Strategist creating a COMPREHENSIVE STRUCTURED OUTLINE for a content brief.
 
-**LANGUAGE: ${info.language || 'English'} | Target Market: ${info.targetMarket || 'Global'}**
+**LANGUAGE: ${getLanguageName(info.language)} | Target Market: ${info.targetMarket || 'Global'}**
+**CRITICAL: Write ALL section headings and content in ${getLanguageName(info.language)} only.**
 
 ## Topic
 - Title: "${topic.title}"
@@ -120,7 +122,7 @@ Return a JSON object with this EXACT structure:
 4. Include at least one LISTING section
 5. Each section must have meaningful subordinate_text_hint and methodology_note
 6. Use actual topic IDs from the Available Topics list for anchor_texts
-7. Sections must be in ${info.language || 'English'}
+7. Sections must be in ${getLanguageName(info.language)}
 8. Key field must be "section-0", "section-1", etc.
 
 Respond with ONLY valid JSON. No markdown code blocks. No explanations.

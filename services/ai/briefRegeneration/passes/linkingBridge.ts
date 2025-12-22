@@ -9,6 +9,7 @@ import * as anthropicService from '../../../anthropicService';
 import * as perplexityService from '../../../perplexityService';
 import * as openRouterService from '../../../openRouterService';
 import { dispatchToProvider } from '../../providerDispatcher';
+import { getLanguageName } from '../../../../utils/languageUtils';
 import React from 'react';
 
 export interface LinkingBridgeResult {
@@ -32,7 +33,8 @@ const LINKING_BRIDGE_PROMPT = (
 ): string => `
 You are an expert Holistic SEO Strategist finalizing the LINKING and CONTEXTUAL elements of a content brief.
 
-**LANGUAGE: ${info.language || 'English'} | Target Market: ${info.targetMarket || 'Global'}**
+**LANGUAGE: ${getLanguageName(info.language)} | Target Market: ${info.targetMarket || 'Global'}**
+**CRITICAL: Write ALL content in ${getLanguageName(info.language)} only.**
 
 ## Brief Context
 - Title: ${currentBrief.title}

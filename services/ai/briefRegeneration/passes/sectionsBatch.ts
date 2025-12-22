@@ -10,6 +10,7 @@ import * as anthropicService from '../../../anthropicService';
 import * as perplexityService from '../../../perplexityService';
 import * as openRouterService from '../../../openRouterService';
 import { dispatchToProvider } from '../../providerDispatcher';
+import { getLanguageName } from '../../../../utils/languageUtils';
 import React from 'react';
 
 export interface SectionsBatchResult {
@@ -31,7 +32,8 @@ const SECTIONS_BATCH_PROMPT = (
 ): string => `
 You are an expert Holistic SEO Strategist updating SPECIFIC SECTIONS of a content brief.
 
-**LANGUAGE: ${info.language || 'English'} | Target Market: ${info.targetMarket || 'Global'}**
+**LANGUAGE: ${getLanguageName(info.language)} | Target Market: ${info.targetMarket || 'Global'}**
+**CRITICAL: Write ALL content in ${getLanguageName(info.language)} only.**
 
 ## Brief Context
 - Title: ${currentBrief.title}

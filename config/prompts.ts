@@ -4,6 +4,7 @@ import { BusinessInfo, SEOPillars, SemanticTriple, EnrichedTopic, ContentBrief, 
 import { KnowledgeGraph } from '../lib/knowledgeGraph';
 import { getWebsiteTypeConfig } from './websiteTypeTemplates';
 import { getMonetizationPromptEnhancement, shouldApplyMonetizationEnhancement } from '../utils/monetizationPromptUtils';
+import { getLanguageName } from '../utils/languageUtils';
 
 const jsonResponseInstruction = `
 Respond with a valid JSON object. Do not include any explanatory text or markdown formatting before or after the JSON.
@@ -22,7 +23,7 @@ Business Context:
 - Stated Expertise Level: ${info.expertise}
 - Main Topic / Seed Keyword: ${info.seedKeyword}
 - Target Market: ${info.targetMarket}
-- Language: ${info.language}
+- Language: ${getLanguageName(info.language)}
 ${info.authorName ? `- Author: ${info.authorName} (${info.authorBio || ''})` : ''}
 ${info.authorCredentials ? `- Author Credentials: ${info.authorCredentials}` : ''}
 ${info.uniqueDataAssets ? `- Unique Data Assets: ${info.uniqueDataAssets}` : ''}
@@ -335,7 +336,7 @@ An **OUTER TOPIC (Spoke)** is a VARIATION, MODIFIER, or SPECIFIC INSTANCE of a C
 - Different problem domains (Detection vs Prevention vs Response)
 - Different functional areas (Assessment vs Implementation vs Support)
 
-**Expansion Strategy (Think in ${info.language}):**
+**Expansion Strategy (Think in ${getLanguageName(info.language)}):**
 1.  **Monetization Section (Core Section / Money Pages):**
     *   **MANDATORY: Generate a MINIMUM of 6 SEMANTICALLY DISTINCT Core Topics.**
     *   Each Core Topic MUST target a different attribute/facet of "${pillars.centralEntity}"
@@ -427,7 +428,7 @@ An **OUTER TOPIC (Spoke)** is a VARIATION, MODIFIER, or SPECIFIC INSTANCE of a C
 - "url_slug_hint": URL-friendly version (2-3 words)
 - "spokes": Array of supporting topics (variations/modifiers) with same structure
 
-Think in ${info.language}. Keep descriptions concise.
+Think in ${getLanguageName(info.language)}. Keep descriptions concise.
 
 Output a JSON object with a single key "topics" containing an array of Core Topics.
 
@@ -468,7 +469,7 @@ An **OUTER TOPIC (Spoke)** is a specific aspect, sub-question, or variation with
 - "url_slug_hint": URL-friendly version (2-3 words)
 - "spokes": Array of specific aspects/questions within this domain
 
-Think in ${info.language}. Keep descriptions concise.
+Think in ${getLanguageName(info.language)}. Keep descriptions concise.
 
 Output a JSON object with a single key "topics" containing an array of Core Topics.
 
@@ -2518,7 +2519,7 @@ export const GENERATE_SECTION_DRAFT_PROMPT = (
   return `
 You are an expert content writer following the Holistic SEO framework.
 
-**CRITICAL LANGUAGE REQUIREMENT**: Write ALL content in ${info.language || 'English'}. Target market: ${info.targetMarket || 'Global'}. Do NOT write in English unless that is the specified language.
+**CRITICAL LANGUAGE REQUIREMENT**: Write ALL content in ${getLanguageName(info.language)}. Target market: ${info.targetMarket || 'Global'}. Do NOT write in English unless that is the specified language.
 
 Write ONLY the content for this specific section. Do NOT include the heading itself - just the body text.
 
@@ -2554,7 +2555,7 @@ ${businessContext(info)}
 1. **STAY ON TOPIC**: Write ONLY about "${section.heading}". Do NOT introduce topics covered in other sections. Do NOT add tangential information.
 2. **FOLLOW THE BRIEF**: If a "MANDATORY FIRST SENTENCE STRUCTURE" is provided, your first sentence MUST follow that exact pattern.
 3. **COMPLETE YOUR THOUGHTS**: Every sentence must be complete. Never end mid-sentence or trail off.
-4. **LANGUAGE**: Write entirely in ${info.language || 'English'}. Match native speaker quality for ${info.targetMarket || 'the target market'}.
+4. **LANGUAGE**: Write entirely in ${getLanguageName(info.language)}. Match native speaker quality for ${info.targetMarket || 'the target market'}.
 5. **Varied Openings**: Start the section DIFFERENTLY from typical patterns - use questions, statistics, scenarios, comparisons, or direct statements.
 6. **EAV Density**: Each sentence must contain an Entity-Attribute-Value triple about "${section.heading}"
 7. **Subject Positioning**: "${info.seedKeyword}" should be the grammatical SUBJECT in some sentences
@@ -2564,14 +2565,14 @@ ${businessContext(info)}
 
 ${getStylometryInstructions(info.authorProfile)}
 
-Write 150-300 words of content for this section in ${info.language || 'English'}. Output ONLY the prose content, no headings or metadata.
+Write 150-300 words of content for this section in ${getLanguageName(info.language)}. Output ONLY the prose content, no headings or metadata.
 
 CRITICAL CONSTRAINTS:
 - Write ONLY about the topic indicated by the heading "${section.heading}"
 - Do NOT mention schema markup, structured data, or technical SEO unless the heading specifically covers those topics
 - Do NOT preview or discuss content from other sections in the article structure
 - COMPLETE every sentence - never leave thoughts unfinished
-- Write in ${info.language || 'English'} with native-level fluency
+- Write in ${getLanguageName(info.language)} with native-level fluency
 `;
 };
 
@@ -2582,7 +2583,7 @@ export const PASS_2_HEADER_OPTIMIZATION_PROMPT = (
 ): string => `
 You are a Holistic SEO editor specializing in heading optimization.
 
-**LANGUAGE: ${info.language || 'English'} | Target: ${info.targetMarket || 'Global'}** - Maintain the original language throughout.
+**LANGUAGE: ${getLanguageName(info.language)} | Target: ${info.targetMarket || 'Global'}** - Maintain the original language throughout.
 
 ## Current Draft
 ${draft}
@@ -2596,7 +2597,7 @@ ${draft}
 3. **Contextual Overlap**: Each H2/H3 must contain terms linking back to the Central Entity
 4. **No Level Skips**: Never skip from H2 to H4
 5. **Heading Order**: Definition → Types → Benefits → How-to → Risks → Conclusion
-6. **Query Pattern Matching**: Headings should match likely search queries in ${info.language || 'English'}
+6. **Query Pattern Matching**: Headings should match likely search queries in ${getLanguageName(info.language)}
 
 ## Instructions:
 1. Review all headings for hierarchy and flow
@@ -2604,9 +2605,9 @@ ${draft}
 3. Reorder sections if they don't follow logical flow
 4. Fix any level skips
 5. Make headings more specific where generic
-6. **KEEP ALL CONTENT IN ${info.language || 'English'}** - Do not translate or change language
+6. **KEEP ALL CONTENT IN ${getLanguageName(info.language)}** - Do not translate or change language
 
-Return the COMPLETE optimized article with all content preserved. Do not summarize or truncate. Maintain ${info.language || 'English'} language.
+Return the COMPLETE optimized article with all content preserved. Do not summarize or truncate. Maintain ${getLanguageName(info.language)} language.
 `;
 
 export const PASS_3_LIST_TABLE_PROMPT = (
@@ -2616,7 +2617,7 @@ export const PASS_3_LIST_TABLE_PROMPT = (
 ): string => `
 You are a Holistic SEO editor specializing in structured data optimization.
 
-**LANGUAGE: ${info.language || 'English'} | Target: ${info.targetMarket || 'Global'}** - Maintain the original language throughout.
+**LANGUAGE: ${getLanguageName(info.language)} | Target: ${info.targetMarket || 'Global'}** - Maintain the original language throughout.
 
 ## Current Draft
 ${draft}
@@ -2634,9 +2635,9 @@ ${draft}
 2. Ensure every list has a proper count preamble
 3. Verify ordered vs unordered is semantically correct
 4. Keep prose where it's more appropriate than lists
-5. **KEEP ALL CONTENT IN ${info.language || 'English'}** - Do not translate
+5. **KEEP ALL CONTENT IN ${getLanguageName(info.language)}** - Do not translate
 
-Return the COMPLETE optimized article in ${info.language || 'English'}. Do not summarize or truncate.
+Return the COMPLETE optimized article in ${getLanguageName(info.language)}. Do not summarize or truncate.
 `;
 
 export const PASS_4_VISUAL_SEMANTICS_PROMPT = (
@@ -2646,7 +2647,7 @@ export const PASS_4_VISUAL_SEMANTICS_PROMPT = (
 ): string => `
 You are a Holistic SEO editor specializing in visual semantics.
 
-**LANGUAGE: ${info.language || 'English'} | Target: ${info.targetMarket || 'Global'}**
+**LANGUAGE: ${getLanguageName(info.language)} | Target: ${info.targetMarket || 'Global'}**
 
 ## Current Draft
 ${draft}
@@ -2690,7 +2691,7 @@ Examples:
 
 [IMAGE: Step-by-step diagram showing document approval workflow from submission to signature | alt="automated document approval process stages"]
 
-**Write all descriptions and alt text in ${info.language || 'English'}.**
+**Write all descriptions and alt text in ${getLanguageName(info.language)}.**
 
 Return the COMPLETE article with image placeholders inserted. Do not summarize or truncate.
 `;
@@ -2702,7 +2703,7 @@ export const PASS_5_MICRO_SEMANTICS_PROMPT = (
 ): string => `
 You are a Holistic SEO editor specializing in micro-semantic optimization. This is the most comprehensive linguistic optimization pass.
 
-**LANGUAGE: ${info.language || 'English'} | Target: ${info.targetMarket || 'Global'}** - Maintain the original language throughout all optimizations.
+**LANGUAGE: ${getLanguageName(info.language)} | Target: ${info.targetMarket || 'Global'}** - Maintain the original language throughout all optimizations.
 
 ## Current Draft
 ${draft}
@@ -2756,9 +2757,9 @@ ${draft}
 
 ## Instructions:
 Apply ALL rules above. Go sentence by sentence if needed. This pass dramatically impacts search engine comprehension.
-**KEEP ALL CONTENT IN ${info.language || 'English'}** - Do not translate.
+**KEEP ALL CONTENT IN ${getLanguageName(info.language)}** - Do not translate.
 
-Return the COMPLETE optimized article in ${info.language || 'English'}. Do not summarize or truncate.
+Return the COMPLETE optimized article in ${getLanguageName(info.language)}. Do not summarize or truncate.
 `;
 
 export const PASS_6_DISCOURSE_PROMPT = (
@@ -2768,7 +2769,7 @@ export const PASS_6_DISCOURSE_PROMPT = (
 ): string => `
 You are a Holistic SEO editor specializing in discourse integration.
 
-**LANGUAGE: ${info.language || 'English'} | Target: ${info.targetMarket || 'Global'}** - Maintain the original language throughout.
+**LANGUAGE: ${getLanguageName(info.language)} | Target: ${info.targetMarket || 'Global'}** - Maintain the original language throughout.
 
 ## Current Draft
 ${draft}
@@ -2788,9 +2789,9 @@ ${brief.discourse_anchors?.join(', ') || 'contextual, semantic, optimization, fr
 2. Ensure internal links have proper annotation text
 3. Use discourse anchors naturally at paragraph transitions
 4. Smooth any abrupt topic changes
-5. **KEEP ALL CONTENT IN ${info.language || 'English'}** - Do not translate
+5. **KEEP ALL CONTENT IN ${getLanguageName(info.language)}** - Do not translate
 
-Return the COMPLETE article with improved flow in ${info.language || 'English'}. Do not summarize or truncate.
+Return the COMPLETE article with improved flow in ${getLanguageName(info.language)}. Do not summarize or truncate.
 `;
 
 export const PASS_7_INTRO_SYNTHESIS_PROMPT = (
@@ -2800,7 +2801,7 @@ export const PASS_7_INTRO_SYNTHESIS_PROMPT = (
 ): string => `
 You are a Holistic SEO editor rewriting the introduction AFTER the full article exists.
 
-**LANGUAGE: ${info.language || 'English'} | Target: ${info.targetMarket || 'Global'}** - Write the introduction in ${info.language || 'English'}.
+**LANGUAGE: ${getLanguageName(info.language)} | Target: ${info.targetMarket || 'Global'}** - Write the introduction in ${getLanguageName(info.language)}.
 
 ## Full Article
 ${draft}
@@ -2819,14 +2820,14 @@ Featured Snippet Target: ${brief.featured_snippet_target?.question || 'N/A'}
 5. **No Fluff**: Maximum information density
 
 ## Instructions:
-Write a NEW introduction (150-250 words) in ${info.language || 'English'} that:
+Write a NEW introduction (150-250 words) in ${getLanguageName(info.language)} that:
 1. Starts with a direct definition/answer (centerpiece annotation)
 2. Previews ALL major sections in order
 3. Includes key terms from each section
 4. Sets reader expectations clearly
-5. **IS WRITTEN ENTIRELY IN ${info.language || 'English'}** for ${info.targetMarket || 'the target market'}
+5. **IS WRITTEN ENTIRELY IN ${getLanguageName(info.language)}** for ${info.targetMarket || 'the target market'}
 
-Output ONLY the introduction paragraph content in ${info.language || 'English'}. Do not include "## Introduction" heading.
+Output ONLY the introduction paragraph content in ${getLanguageName(info.language)}. Do not include "## Introduction" heading.
 `;
 
 // === BRIEF EDITING PROMPTS ===
@@ -2877,7 +2878,7 @@ export const REGENERATE_BRIEF_PROMPT = (
 You are an expert Algorithmic Architect and Holistic SEO Strategist.
 The user has reviewed their existing content brief and wants specific changes.
 
-**LANGUAGE: ${info.language || 'English'} | Target Market: ${info.targetMarket || 'Global'}**
+**LANGUAGE: ${getLanguageName(info.language)} | Target Market: ${info.targetMarket || 'Global'}**
 
 ## Current Brief (condensed for reference - ${currentBrief.structured_outline?.length || 0} sections)
 ${condenseBriefForPrompt(currentBrief)}
@@ -2910,7 +2911,7 @@ Regenerate the content brief incorporating the user's feedback. You MUST:
    - Source Context Alignment: Filter for "${pillars.sourceContext}"
    - Attribute Priority: UNIQUE → ROOT → RARE → COMMON ordering
 4. **Preserve Quality**: Keep format_codes, subordinate_text_hints, and methodology_notes
-5. **Keep Language**: All content in ${info.language || 'English'}
+5. **Keep Language**: All content in ${getLanguageName(info.language)}
 
 ${getStylometryInstructions(info.authorProfile)}
 
@@ -2982,7 +2983,7 @@ export const REFINE_BRIEF_SECTION_PROMPT = (
 ): string => `
 You are an expert Holistic SEO Strategist editing a single section of a content brief.
 
-**LANGUAGE: ${info.language || 'English'} | Target Market: ${info.targetMarket || 'Global'}**
+**LANGUAGE: ${getLanguageName(info.language)} | Target Market: ${info.targetMarket || 'Global'}**
 
 ## Current Section
 ${JSON.stringify(section, null, 2)}
@@ -3013,7 +3014,7 @@ Refine this section based on the user's instruction while maintaining:
    - methodology_note must include format code and required phrases
    - Keep heading hierarchy logical (level 2 = H2, level 3 = H3)
 
-3. **Language**: All content in ${info.language || 'English'}
+3. **Language**: All content in ${getLanguageName(info.language)}
 
 ${getStylometryInstructions(info.authorProfile)}
 
@@ -3046,7 +3047,7 @@ export const GENERATE_NEW_SECTION_PROMPT = (
 ): string => `
 You are an expert Holistic SEO Strategist creating a new section for a content brief.
 
-**LANGUAGE: ${info.language || 'English'} | Target Market: ${info.targetMarket || 'Global'}**
+**LANGUAGE: ${getLanguageName(info.language)} | Target Market: ${info.targetMarket || 'Global'}**
 
 ## Position Information
 - Insert at position: ${insertPosition + 1} (after ${insertPosition === 0 ? 'the beginning' : `section ${insertPosition}`})
@@ -3085,7 +3086,7 @@ Create a new section that:
    - methodology_note: Format requirements and codes
    - required_phrases: Key terms that must appear
 
-4. **Language**: All content in ${info.language || 'English'}
+4. **Language**: All content in ${getLanguageName(info.language)}
 
 ${getStylometryInstructions(info.authorProfile)}
 

@@ -8,6 +8,7 @@ import {
   BusinessInfo
 } from '../../../../../types';
 import { serializeHolisticContext } from '../../holisticAnalyzer';
+import { getLanguageName, getLanguageInstruction } from '../../../../../utils/languageUtils';
 
 /**
  * Section-level prompt builders for optimization passes 2-7.
@@ -24,7 +25,7 @@ import { serializeHolisticContext } from '../../holisticAnalyzer';
 
 export function buildPass2Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, adjacentContext, brief, businessInfo } = ctx;
-  const lang = businessInfo.language || 'English';
+  const lang = getLanguageName(businessInfo.language);
 
   return `You are a Holistic SEO editor specializing in heading optimization.
 
@@ -75,7 +76,7 @@ ${adjacentContext.nextSection ? `
 
 export function buildPass3Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, brief, businessInfo } = ctx;
-  const lang = businessInfo.language || 'English';
+  const lang = getLanguageName(businessInfo.language);
 
   return `You are a Holistic SEO editor specializing in structured data optimization.
 
@@ -122,7 +123,7 @@ export function buildPass3BatchPrompt(
   brief: ContentBrief,
   businessInfo: BusinessInfo
 ): string {
-  const lang = businessInfo.language || 'English';
+  const lang = getLanguageName(businessInfo.language);
 
   // Build section entries
   const sectionEntries = batch.map(section => {
@@ -182,7 +183,7 @@ Preserve prose where structured content is not needed.
 
 export function buildPass4Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, brief, businessInfo } = ctx;
-  const lang = businessInfo.language || 'English';
+  const lang = getLanguageName(businessInfo.language);
   const isFirstSection = section.section_order === 0 || section.section_key === 'intro';
 
   return `You are a Holistic SEO editor specializing in visual semantics.
@@ -241,7 +242,7 @@ ${holistic.vocabularyMetrics.overusedTerms.slice(0, 5).map(t => t.term).join(', 
 
 export function buildPass5Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, businessInfo } = ctx;
-  const lang = businessInfo.language || 'English';
+  const lang = getLanguageName(businessInfo.language);
 
   return `You are a Holistic SEO editor specializing in micro-semantic optimization.
 
@@ -299,7 +300,7 @@ Apply ALL rules. Maintain content meaning. Keep language in ${lang}.
 
 export function buildPass6Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, adjacentContext, businessInfo, brief } = ctx;
-  const lang = businessInfo.language || 'English';
+  const lang = getLanguageName(businessInfo.language);
 
   // Extract contextual bridge links from brief if available
   const contextualBridgeLinks = extractContextualBridgeLinks(brief);
@@ -399,7 +400,7 @@ function extractContextualBridgeLinks(brief?: ContentBrief): Array<{
 
 export function buildPass7Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, brief, businessInfo } = ctx;
-  const lang = businessInfo.language || 'English';
+  const lang = getLanguageName(businessInfo.language);
 
   // This pass only processes the introduction section
   // It rewrites the intro AFTER the full article exists
@@ -459,7 +460,7 @@ Write a NEW introduction (NOT just edit the old one) that:
 
 export function buildPass7ConclusionPrompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, brief, businessInfo } = ctx;
-  const lang = businessInfo.language || 'English';
+  const lang = getLanguageName(businessInfo.language);
 
   // Determine if this is a monetization topic (needs CTA)
   const isMonetization = brief.topic_class === 'monetization' ||
