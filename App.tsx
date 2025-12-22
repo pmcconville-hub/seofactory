@@ -406,28 +406,31 @@ const App: React.FC = () => {
                     </div>
 
                     {/* Footer Dock - collapsible corner toolbar */}
-                    <FooterDock
-                        items={[
-                            {
-                                id: 'logs',
-                                icon: DockIcons.logs,
-                                label: 'Activity Logs',
-                                onClick: () => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'logs', visible: !state.modals.logs } }),
-                            },
-                            {
-                                id: 'help',
-                                icon: DockIcons.help,
-                                label: 'Help',
-                                onClick: () => openHelpWindow(),
-                            },
-                            {
-                                id: 'settings',
-                                icon: DockIcons.settings,
-                                label: 'Settings',
-                                onClick: () => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'settings', visible: true } }),
-                            },
-                        ]}
-                    />
+                    {/* Only show when logged in - settings and logs should not be accessible on login screen */}
+                    {state.user && (
+                        <FooterDock
+                            items={[
+                                {
+                                    id: 'logs',
+                                    icon: DockIcons.logs,
+                                    label: 'Activity Logs',
+                                    onClick: () => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'logs', visible: !state.modals.logs } }),
+                                },
+                                {
+                                    id: 'help',
+                                    icon: DockIcons.help,
+                                    label: 'Help',
+                                    onClick: () => openHelpWindow(),
+                                },
+                                {
+                                    id: 'settings',
+                                    icon: DockIcons.settings,
+                                    label: 'Settings',
+                                    onClick: () => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'settings', visible: true } }),
+                                },
+                            ]}
+                        />
+                    )}
 
                     {/* Logging Panel (shown when logs modal is visible) */}
                     {state.modals.logs && <LoggingPanel />}

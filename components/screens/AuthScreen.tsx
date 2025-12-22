@@ -48,25 +48,30 @@ const AuthScreen: React.FC = () => {
         }
     };
 
+    // Signup is temporarily disabled - users can only be created by admin
+    const signupDisabled = true;
+
     return (
         <div className="flex items-center justify-center min-h-screen">
             <Card className="w-full max-w-md p-8">
                 <h1 className="text-3xl font-bold text-center text-white mb-2">Holistic SEO Workbench</h1>
                 <p className="text-center text-gray-400 mb-6">{isSignUp ? 'Create a new account' : 'Sign in to your account'}</p>
-                
+
                 <div className="flex justify-center mb-6 border-b border-gray-700">
-                    <button 
+                    <button
                         onClick={() => setIsSignUp(false)}
                         className={`px-4 py-2 text-sm font-medium ${!isSignUp ? 'text-blue-400 border-b-2 border-blue-500' : 'text-gray-400'}`}
                     >
                         Sign In
                     </button>
-                    <button 
-                        onClick={() => setIsSignUp(true)}
-                        className={`px-4 py-2 text-sm font-medium ${isSignUp ? 'text-blue-400 border-b-2 border-blue-500' : 'text-gray-400'}`}
-                    >
-                        Sign Up
-                    </button>
+                    {!signupDisabled && (
+                        <button
+                            onClick={() => setIsSignUp(true)}
+                            className={`px-4 py-2 text-sm font-medium ${isSignUp ? 'text-blue-400 border-b-2 border-blue-500' : 'text-gray-400'}`}
+                        >
+                            Sign Up
+                        </button>
+                    )}
                 </div>
                 
                 <form onSubmit={handleAuth} className="space-y-6">
