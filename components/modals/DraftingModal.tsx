@@ -1541,6 +1541,86 @@ ${convertToSemanticHtml(draftContent)}
     dispatch({ type: 'SET_NOTIFICATION', payload: `HTML file downloaded: ${slug}.html (SEO-optimized${embeddedCount > 0 ? `, ${embeddedCount} images embedded` : ''})` });
   };
 
+  // Copy HTML to clipboard for WordPress
+  // Generates clean semantic HTML without full document wrapper - ready to paste into WordPress editor
+  const handleCopyHtml = async () => {
+    if (!brief || !draftContent) return;
+
+    dispatch({ type: 'SET_NOTIFICATION', payload: 'Preparing WordPress-ready HTML...' });
+
+    // Convert markdown to semantic HTML (same logic as download)
+    const convertToSemanticHtml = (md: string): string => {
+      const lines = md.split('\n');
+      let html = '';
+      let inSection = false;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const h2Match = line.match(/^## (.+)$/);
+        const h3Match = line.match(/^### (.+)$/);
+        const h4Match = line.match(/^#### (.+)$/);
+
+        if (h2Match) {
+          if (inSection) html += '</section>\n';
+          html += `<section>\n<h2>${h2Match[1]}</h2>\n`;
+          inSection = true;
+          continue;
+        }
+        if (h3Match) { html += `<h3>${h3Match[1]}</h3>\n`; continue; }
+        if (h4Match) { html += `<h4>${h4Match[1]}</h4>\n`; continue; }
+
+        let processedLine = line
+          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          .replace(/\*(.+?)\*/g, '<em>$1</em>')
+          .replace(/`([^`]+)`/g, '<code>$1</code>');
+
+        // Images - keep original URLs for WordPress (they'll need to be uploaded separately)
+        processedLine = processedLine.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+          if (alt && alt.length > 5) {
+            return `<figure><img src="${src}" alt="${alt}" loading="lazy"><figcaption>${alt}</figcaption></figure>`;
+          }
+          return `<img src="${src}" alt="${alt || ''}" loading="lazy">`;
+        });
+
+        // Links
+        processedLine = processedLine.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+        if (processedLine.trim() === '---') { html += '<hr>\n'; continue; }
+        if (processedLine.startsWith('> ')) { html += `<blockquote>${processedLine.substring(2)}</blockquote>\n`; continue; }
+        if (processedLine.match(/^- (.+)$/)) { html += processedLine.replace(/^- (.+)$/, '<li>$1</li>\n'); continue; }
+        if (processedLine.match(/^\d+\. (.+)$/)) { html += processedLine.replace(/^\d+\. (.+)$/, '<li>$1</li>\n'); continue; }
+
+        const trimmed = processedLine.trim();
+        if (trimmed && !trimmed.startsWith('<')) {
+          html += `<p>${processedLine}</p>\n`;
+        } else if (trimmed) {
+          html += processedLine + '\n';
+        }
+      }
+
+      if (inSection) html += '</section>\n';
+      html = html.replace(/(<li>[\s\S]*?<\/li>\n?)+/g, '<ul>$&</ul>');
+      return html;
+    };
+
+    // Build WordPress-ready HTML (just article body, no doc wrapper)
+    const articleBody = convertToSemanticHtml(draftContent);
+
+    try {
+      await navigator.clipboard.writeText(articleBody);
+
+      // Check if there are images that need to be handled
+      const hasImages = imagePlaceholders.some(p => p.generatedUrl || p.userUploadUrl);
+      const imageNote = hasImages
+        ? ' Note: Images use external URLs. Upload them to WordPress Media Library and update the src attributes.'
+        : '';
+
+      dispatch({ type: 'SET_NOTIFICATION', payload: `HTML copied to clipboard! Paste directly into WordPress HTML editor.${imageNote}` });
+    } catch (err) {
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to copy to clipboard. Please use the download option instead.' });
+    }
+  };
+
   // Open image generation modal with the first placeholder
   const handleOpenImageGeneration = () => {
     if (imagePlaceholders.length > 0) {
@@ -2103,6 +2183,15 @@ ${convertToSemanticHtml(draftContent)}
                         title="View all generated resources"
                     >
                         📦
+                    </Button>
+                    <Button
+                        onClick={handleCopyHtml}
+                        disabled={!draftContent}
+                        variant="secondary"
+                        className="text-xs py-0.5 px-2 bg-blue-600/20 !text-blue-400 hover:bg-blue-600/40 hover:!text-blue-300 border border-blue-500/30"
+                        title="Copy article HTML to clipboard (WordPress-ready, no document wrapper)"
+                    >
+                        📋 Copy HTML
                     </Button>
                     <Button
                         onClick={handleDownloadHtml}
