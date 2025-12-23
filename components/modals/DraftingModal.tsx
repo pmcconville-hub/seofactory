@@ -1542,13 +1542,27 @@ ${convertToSemanticHtml(draftContent)}
   };
 
   // Copy HTML to clipboard for WordPress
-  // Generates clean semantic HTML without full document wrapper - ready to paste into WordPress editor
+  // Uses the SAME sophisticated conversion as handleDownloadHtml for full SEO optimization
   const handleCopyHtml = async () => {
     if (!brief || !draftContent) return;
 
-    dispatch({ type: 'SET_NOTIFICATION', payload: 'Preparing WordPress-ready HTML...' });
+    dispatch({ type: 'SET_NOTIFICATION', payload: 'Preparing optimized HTML with schema markup...' });
 
-    // Convert markdown to semantic HTML (same logic as download)
+    const wordCount = draftContent.split(/\s+/).length;
+    const publishDate = new Date().toISOString();
+    const schemaData = databaseJobInfo?.schemaData;
+
+    // Extract first meaningful paragraph for centerpiece (first 400 chars rule)
+    const extractCenterpiece = (content: string): string => {
+      const paragraphMatch = content.match(/^(?:#{1,6}\s+.+\n+)?([^#\n].+)/m);
+      if (paragraphMatch && paragraphMatch[1]) {
+        return paragraphMatch[1].trim().substring(0, 300);
+      }
+      return brief.metaDescription || '';
+    };
+    const centerpiece = extractCenterpiece(draftContent);
+
+    // Convert markdown to semantic HTML with sections (SAME as download)
     const convertToSemanticHtml = (md: string): string => {
       const lines = md.split('\n');
       let html = '';
@@ -1574,15 +1588,16 @@ ${convertToSemanticHtml(draftContent)}
           .replace(/\*(.+?)\*/g, '<em>$1</em>')
           .replace(/`([^`]+)`/g, '<code>$1</code>');
 
-        // Images - keep original URLs for WordPress (they'll need to be uploaded separately)
+        // Images with dimensions for CLS prevention (Rule: always specify height/width)
         processedLine = processedLine.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+          const dimensionAttrs = ' width="800" height="450"';
           if (alt && alt.length > 5) {
-            return `<figure><img src="${src}" alt="${alt}" loading="lazy"><figcaption>${alt}</figcaption></figure>`;
+            return `<figure><img src="${src}" alt="${alt}"${dimensionAttrs} loading="lazy"><figcaption>${alt}</figcaption></figure>`;
           }
-          return `<img src="${src}" alt="${alt || ''}" loading="lazy">`;
+          return `<img src="${src}" alt="${alt || ''}"${dimensionAttrs} loading="lazy">`;
         });
 
-        // Links
+        // Links - pure HTML (Rule: use pure HTML over JS)
         processedLine = processedLine.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 
         if (processedLine.trim() === '---') { html += '<hr>\n'; continue; }
@@ -1603,19 +1618,58 @@ ${convertToSemanticHtml(draftContent)}
       return html;
     };
 
-    // Build WordPress-ready HTML (just article body, no doc wrapper)
-    const articleBody = convertToSemanticHtml(draftContent);
+    // Build enhanced JSON-LD schema
+    const buildSchema = () => {
+      let schema = schemaData || {
+        '@context': 'https://schema.org',
+        '@type': 'Article',
+        headline: brief.title,
+        description: brief.metaDescription || '',
+        datePublished: publishDate,
+        dateModified: publishDate,
+        wordCount: wordCount,
+      };
+      if (Array.isArray(schema)) schema = schema[0] || {};
+
+      if (businessInfo.authorName && !schema.author) {
+        schema.author = {
+          '@type': 'Person',
+          name: businessInfo.authorName,
+          ...(businessInfo.authorBio && { description: businessInfo.authorBio }),
+        };
+      }
+      return schema;
+    };
+
+    // Build the WordPress-ready HTML with all optimizations
+    const schema = buildSchema();
+    const schemaScript = `<script type="application/ld+json">\n${JSON.stringify(schema, null, 2)}\n</script>`;
+
+    const articleHtml = `<!-- SEO Meta: ${brief.metaDescription || ''} -->
+<!-- Target Keyword: ${brief.targetKeyword || ''} -->
+
+<article>
+<header>
+<h1>${brief.title}</h1>
+${businessInfo.authorName ? `<p class="byline">By <strong>${businessInfo.authorName}</strong> · <time datetime="${publishDate}">${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</time> · ${wordCount.toLocaleString()} words</p>` : ''}
+</header>
+
+<!-- Centerpiece: First 400 chars for search snippets -->
+<p><strong>${centerpiece}</strong></p>
+
+${convertToSemanticHtml(draftContent)}
+</article>
+
+<!-- JSON-LD Schema Markup (paste in Yoast/RankMath custom schema or theme footer) -->
+${schemaScript}`;
 
     try {
-      await navigator.clipboard.writeText(articleBody);
+      await navigator.clipboard.writeText(articleHtml);
 
-      // Check if there are images that need to be handled
       const hasImages = imagePlaceholders.some(p => p.generatedUrl || p.userUploadUrl);
-      const imageNote = hasImages
-        ? ' Note: Images use external URLs. Upload them to WordPress Media Library and update the src attributes.'
-        : '';
+      const imageNote = hasImages ? ' Images have external URLs - they should work directly.' : '';
 
-      dispatch({ type: 'SET_NOTIFICATION', payload: `HTML copied to clipboard! Paste directly into WordPress HTML editor.${imageNote}` });
+      dispatch({ type: 'SET_NOTIFICATION', payload: `Optimized HTML copied! Includes semantic sections, schema markup, and SEO annotations.${imageNote}` });
     } catch (err) {
       dispatch({ type: 'SET_ERROR', payload: 'Failed to copy to clipboard. Please use the download option instead.' });
     }
