@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Total Bundle (all JS)",
+    "path": "dist/assets/*.js",
+    "limit": "2 MB",
+    "gzip": true
+  },
+  {
+    "name": "Main Bundle",
+    "path": "dist/assets/main-*.js",
+    "limit": "1.5 MB",
+    "gzip": true
+  },
+  {
+    "name": "Lazy: PDF Export (jsPDF)",
+    "path": "dist/assets/jspdf.es.min-*.js",
+    "limit": "150 KB",
+    "gzip": true
+  },
+  {
+    "name": "Lazy: PDF Export (html2canvas)",
+    "path": "dist/assets/html2canvas.esm-*.js",
+    "limit": "60 KB",
+    "gzip": true
+  }
+]
