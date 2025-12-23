@@ -48,12 +48,14 @@ const ProjectSelectionScreen: React.FC<ProjectSelectionScreenProps> = ({ onCreat
             {user && (
               <span className="text-sm text-gray-400">{user.email}</span>
             )}
-            <Button
-                onClick={() => dispatch({ type: 'SET_STEP', payload: AppStep.ADMIN })}
-                className="bg-gray-800 hover:bg-gray-700 border border-gray-600 flex items-center gap-2 shadow-lg"
-            >
-                <span className="text-lg">🛡️</span> Admin Dashboard
-            </Button>
+            {user?.user_metadata?.role === 'admin' && (
+              <Button
+                  onClick={() => dispatch({ type: 'SET_STEP', payload: AppStep.ADMIN })}
+                  className="bg-gray-800 hover:bg-gray-700 border border-gray-600 flex items-center gap-2 shadow-lg"
+              >
+                  <span className="text-lg">🛡️</span> Admin Dashboard
+              </Button>
+            )}
             <Button
                 onClick={handleLogout}
                 variant="secondary"

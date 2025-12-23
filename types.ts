@@ -1415,6 +1415,14 @@ export interface Project {
     created_at: string;
 }
 
+/** Extended Project interface for admin management (includes user info) */
+export interface AdminProject extends Project {
+    user_id: string;
+    user_email: string;
+    map_count: number;
+    updated_at: string;
+}
+
 export interface TopicalMap {
     id: string;
     project_id: string;

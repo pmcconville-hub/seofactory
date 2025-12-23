@@ -12,6 +12,7 @@ import { AIProviderSettings, ServiceSettings } from '../modals';
 import { Loader } from '../ui/Loader';
 import HelpEditor from './HelpEditor';
 import AIUsageReport from './AIUsageReport';
+import ProjectManagement from './ProjectManagement';
 
 interface UserData {
     id: string;
@@ -287,7 +288,7 @@ const AdminDashboard: React.FC = () => {
     const [logs, setLogs] = useState<TelemetryLog[]>([]);
     const [isCheckingDB, setIsCheckingDB] = useState(false);
     const [dbStatus, setDbStatus] = useState<'ok' | 'error' | null>(null);
-    const [activeTab, setActiveTab] = useState<'overview' | 'usage' | 'config' | 'users' | 'help'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'usage' | 'config' | 'users' | 'help' | 'projects'>('overview');
 
     useEffect(() => {
         setLogs(getTelemetryLogs());
@@ -362,6 +363,12 @@ const AdminDashboard: React.FC = () => {
                             className={`w-full text-left px-4 py-2 rounded transition-colors ${activeTab === 'help' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
                         >
                             📚 Help Documentation
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('projects')}
+                            className={`w-full text-left px-4 py-2 rounded transition-colors ${activeTab === 'projects' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+                        >
+                            📁 Project Management
                         </button>
                     </nav>
                     <div className="p-4 border-t border-gray-700">
@@ -468,6 +475,10 @@ const AdminDashboard: React.FC = () => {
 
                     {activeTab === 'help' && (
                         <HelpEditor />
+                    )}
+
+                    {activeTab === 'projects' && (
+                        <ProjectManagement />
                     )}
                 </main>
             </div>
