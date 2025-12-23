@@ -20,7 +20,7 @@ import { NotificationBanner } from './components/ui/NotificationBanner';
 import ConfirmationModal from './components/ui/ConfirmationModal';
 import GlobalLoadingBar from './components/ui/GlobalLoadingBar';
 import LoggingPanel from './components/LoggingPanel';
-import FooterDock, { DockIcons } from './components/ui/FooterDock';
+import EdgeToolbar, { ToolbarIcons } from './components/ui/EdgeToolbar';
 import MainLayout from './components/layout/MainLayout';
 import { useVersionCheck, UpdateBanner } from './hooks/useVersionCheck';
 
@@ -521,26 +521,33 @@ const App: React.FC = () => {
                         {renderStep()}
                     </div>
 
-                    {/* Footer Dock - collapsible corner toolbar */}
-                    {/* Only show when logged in and not on auth screen - prevents showing during stale session race conditions */}
+                    {/* Edge Toolbar - compact right-edge toolbar that slides out on hover */}
+                    {/* Only show when logged in and not on auth screen */}
                     {state.user && state.appStep !== AppStep.AUTH && (
-                        <FooterDock
+                        <EdgeToolbar
                             items={[
                                 {
+                                    id: 'strategist',
+                                    icon: ToolbarIcons.strategist,
+                                    label: 'Ask Strategist',
+                                    onClick: () => dispatch({ type: 'TOGGLE_STRATEGIST', payload: true }),
+                                    highlight: true,
+                                },
+                                {
                                     id: 'logs',
-                                    icon: DockIcons.logs,
+                                    icon: ToolbarIcons.logs,
                                     label: 'Activity Logs',
                                     onClick: () => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'logs', visible: !state.modals.logs } }),
                                 },
                                 {
                                     id: 'help',
-                                    icon: DockIcons.help,
+                                    icon: ToolbarIcons.help,
                                     label: 'Help',
                                     onClick: () => openHelpWindow(),
                                 },
                                 {
                                     id: 'settings',
-                                    icon: DockIcons.settings,
+                                    icon: ToolbarIcons.settings,
                                     label: 'Settings',
                                     onClick: () => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'settings', visible: true } }),
                                 },
