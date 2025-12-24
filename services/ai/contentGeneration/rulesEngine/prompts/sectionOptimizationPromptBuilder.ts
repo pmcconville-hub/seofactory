@@ -8,7 +8,7 @@ import {
   BusinessInfo
 } from '../../../../../types';
 import { serializeHolisticContext } from '../../holisticAnalyzer';
-import { getLanguageName, getLanguageInstruction } from '../../../../../utils/languageUtils';
+import { getLanguageName, getLanguageAndRegionInstruction, getRegionalLanguageVariant } from '../../../../../utils/languageUtils';
 
 /**
  * Section-level prompt builders for optimization passes 2-7.
@@ -25,11 +25,12 @@ import { getLanguageName, getLanguageInstruction } from '../../../../../utils/la
 
 export function buildPass2Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, adjacentContext, brief, businessInfo } = ctx;
-  const lang = getLanguageName(businessInfo.language);
+  const regionalLang = getRegionalLanguageVariant(businessInfo.language, businessInfo.region);
 
   return `You are a Holistic SEO editor specializing in heading optimization.
 
-**LANGUAGE: ${lang} | Target: ${businessInfo.targetMarket || 'Global'}**
+${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
+**Target Market: ${businessInfo.targetMarket || 'Global'}**
 
 ## Your Task
 Optimize the heading and content structure for ONE section. Return ONLY the optimized section content.
@@ -76,11 +77,10 @@ ${adjacentContext.nextSection ? `
 
 export function buildPass3Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, brief, businessInfo } = ctx;
-  const lang = getLanguageName(businessInfo.language);
 
   return `You are a Holistic SEO editor specializing in structured data optimization.
 
-**LANGUAGE: ${lang}**
+${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
 
 ## Your Task
 Optimize lists and tables in ONE section for Featured Snippet opportunities. Return ONLY the optimized section.
@@ -123,7 +123,7 @@ export function buildPass3BatchPrompt(
   brief: ContentBrief,
   businessInfo: BusinessInfo
 ): string {
-  const lang = getLanguageName(businessInfo.language);
+  const regionalLang = getRegionalLanguageVariant(businessInfo.language, businessInfo.region);
 
   // Build section entries
   const sectionEntries = batch.map(section => {
@@ -143,7 +143,7 @@ ${section.current_content}
 
   return `You are a Holistic SEO editor optimizing lists and tables for multiple sections.
 
-**LANGUAGE: ${lang}**
+${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
 
 ## Content Format Budget (Baker Principle)
 The article needs balanced prose and structured content:
@@ -174,7 +174,7 @@ For EACH section, output:
 Keep sections in order. Apply list/table ONLY where marked with recommendation.
 Preserve prose where structured content is not needed.
 
-**OUTPUT ONLY the section markers and optimized content in ${lang}. No explanations.**`;
+**OUTPUT ONLY the section markers and optimized content in ${regionalLang}. No explanations.**`;
 }
 
 // ============================================
@@ -183,12 +183,12 @@ Preserve prose where structured content is not needed.
 
 export function buildPass4Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, brief, businessInfo } = ctx;
-  const lang = getLanguageName(businessInfo.language);
+  const regionalLang = getRegionalLanguageVariant(businessInfo.language, businessInfo.region);
   const isFirstSection = section.section_order === 0 || section.section_key === 'intro';
 
   return `You are a Holistic SEO editor specializing in visual semantics.
 
-**LANGUAGE: ${lang}**
+${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
 
 ## Your Task
 Insert image placeholders in ONE section. Return ONLY the optimized section.
@@ -242,11 +242,10 @@ ${holistic.vocabularyMetrics.overusedTerms.slice(0, 5).map(t => t.term).join(', 
 
 export function buildPass5Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, businessInfo } = ctx;
-  const lang = getLanguageName(businessInfo.language);
 
   return `You are a Holistic SEO editor specializing in micro-semantic optimization.
 
-**LANGUAGE: ${lang}**
+${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
 
 ## Your Task
 Apply micro-semantic optimization to ONE section. Return ONLY the optimized section.
@@ -300,7 +299,6 @@ Apply ALL rules. Maintain content meaning. Keep language in ${lang}.
 
 export function buildPass6Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, adjacentContext, businessInfo, brief } = ctx;
-  const lang = getLanguageName(businessInfo.language);
 
   // Extract contextual bridge links from brief if available
   const contextualBridgeLinks = extractContextualBridgeLinks(brief);
@@ -308,7 +306,7 @@ export function buildPass6Prompt(ctx: SectionOptimizationContext): string {
 
   return `You are a Holistic SEO editor specializing in discourse integration.
 
-**LANGUAGE: ${lang}**
+${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
 
 ## Your Task
 Improve discourse flow for ONE section. Return ONLY the optimized section.
@@ -400,7 +398,7 @@ function extractContextualBridgeLinks(brief?: ContentBrief): Array<{
 
 export function buildPass7Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, brief, businessInfo } = ctx;
-  const lang = getLanguageName(businessInfo.language);
+  const regionalLang = getRegionalLanguageVariant(businessInfo.language, businessInfo.region);
 
   // This pass only processes the introduction section
   // It rewrites the intro AFTER the full article exists
@@ -408,7 +406,7 @@ export function buildPass7Prompt(ctx: SectionOptimizationContext): string {
 
   return `You are a Holistic SEO editor rewriting the introduction AFTER the full article exists.
 
-**LANGUAGE: ${lang}**
+${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
 
 ## Your Task
 Write a NEW introduction with a TOPIC-SPECIFIC heading. Return both the heading and content.
@@ -460,7 +458,7 @@ Write a NEW introduction (NOT just edit the old one) that:
 
 export function buildPass7ConclusionPrompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, brief, businessInfo } = ctx;
-  const lang = getLanguageName(businessInfo.language);
+  const regionalLang = getRegionalLanguageVariant(businessInfo.language, businessInfo.region);
 
   // Determine if this is a monetization topic (needs CTA)
   const isMonetization = brief.topic_class === 'monetization' ||
@@ -468,7 +466,7 @@ export function buildPass7ConclusionPrompt(ctx: SectionOptimizationContext): str
 
   return `You are a Holistic SEO editor rewriting the conclusion AFTER the full article exists.
 
-**LANGUAGE: ${lang}**
+${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
 
 ## Your Task
 Write a NEW conclusion with a TOPIC-SPECIFIC heading. Return both the heading and content.

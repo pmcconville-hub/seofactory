@@ -3,7 +3,7 @@
 import { SectionGenerationContext, BriefSection, FormatCode } from '../../../../../types';
 import { BriefCodeParser } from '../briefCodeParser';
 import { PROHIBITED_PATTERNS } from '../validators/prohibitedLanguage';
-import { getLanguageInstruction, getLanguageName } from '../../../../../utils/languageUtils';
+import { getLanguageAndRegionInstruction, getLanguageName } from '../../../../../utils/languageUtils';
 
 export class SectionPromptBuilder {
   /**
@@ -19,7 +19,7 @@ export class SectionPromptBuilder {
 
     let prompt = `You are an expert content writer following the Koray Tuğberk GÜBÜR Semantic Content Framework.
 
-${getLanguageInstruction(businessInfo.language)}
+${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
 Target market: ${businessInfo.targetMarket || 'Global'}.
 
 ## Section to Generate

@@ -10,7 +10,31 @@ import * as prompts from '../../config/prompts';
 import { AIResponseSanitizer } from '../aiResponseSanitizer';
 import { analyzeImageRequirements } from '../visualSemanticsService';
 import { shouldApplyMonetizationEnhancement, getMonetizationValidationRules } from './briefOptimization';
+import { validateLanguageSettings } from '../../utils/languageUtils';
 import React from 'react';
+
+/**
+ * Validate language and region settings before generation
+ * Logs warnings if settings are incomplete (won't block generation)
+ */
+const validateLanguageAndRegion = (
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>
+): void => {
+    const validation = validateLanguageSettings(businessInfo.language, businessInfo.region);
+
+    if (validation.warnings.length > 0) {
+        dispatch({
+            type: 'LOG_EVENT',
+            payload: {
+                service: 'ContentGeneration',
+                message: `Language/Region Settings Warning: ${validation.warnings.join(' | ')}`,
+                status: 'warning',
+                timestamp: Date.now()
+            }
+        });
+    }
+};
 
 /**
  * Validate monetization brief meets minimum requirements
@@ -308,6 +332,9 @@ export const enrichBriefWithVisualSemantics = (
 export const generateContentBrief = async (
     businessInfo: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, knowledgeGraph: KnowledgeGraph, responseCode: ResponseCode, dispatch: React.Dispatch<any>
 ): Promise<Omit<ContentBrief, 'id' | 'topic_id' | 'articleDraft'>> => {
+    // Validate language and region settings before generation
+    validateLanguageAndRegion(businessInfo, dispatch);
+
     const brief = await dispatchToProvider(businessInfo, {
         gemini: () => geminiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch),
         openai: () => openAiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch),
@@ -328,6 +355,9 @@ export const generateContentBrief = async (
 export const generateArticleDraft = (
     brief: ContentBrief, businessInfo: BusinessInfo, dispatch: React.Dispatch<any>
 ): Promise<string> => {
+    // Validate language and region settings before generation
+    validateLanguageAndRegion(businessInfo, dispatch);
+
     return dispatchToProvider(businessInfo, {
         gemini: () => geminiService.generateArticleDraft(brief, businessInfo, dispatch),
         openai: () => openAiService.generateArticleDraft(brief, businessInfo, dispatch),

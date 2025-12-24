@@ -4,7 +4,7 @@ import { BusinessInfo, SEOPillars, SemanticTriple, EnrichedTopic, ContentBrief, 
 import { KnowledgeGraph } from '../lib/knowledgeGraph';
 import { getWebsiteTypeConfig } from './websiteTypeTemplates';
 import { getMonetizationPromptEnhancement, shouldApplyMonetizationEnhancement } from '../utils/monetizationPromptUtils';
-import { getLanguageName } from '../utils/languageUtils';
+import { getLanguageName, getLanguageAndRegionInstruction, getRegionalLanguageVariant } from '../utils/languageUtils';
 
 const jsonResponseInstruction = `
 Respond with a valid JSON object. Do not include any explanatory text or markdown formatting before or after the JSON.
@@ -12,6 +12,7 @@ Respond with a valid JSON object. Do not include any explanatory text or markdow
 
 const businessContext = (info: BusinessInfo): string => {
     const typeConfig = info.websiteType ? getWebsiteTypeConfig(info.websiteType) : null;
+    const regionalVariant = getRegionalLanguageVariant(info.language, info.region);
     return `
 Business Context:
 - Domain: ${info.domain}
@@ -23,7 +24,8 @@ Business Context:
 - Stated Expertise Level: ${info.expertise}
 - Main Topic / Seed Keyword: ${info.seedKeyword}
 - Target Market: ${info.targetMarket}
-- Language: ${getLanguageName(info.language)}
+- Language: ${regionalVariant}
+- Region/Location: ${info.region || 'Not specified'}
 ${info.authorName ? `- Author: ${info.authorName} (${info.authorBio || ''})` : ''}
 ${info.authorCredentials ? `- Author Credentials: ${info.authorCredentials}` : ''}
 ${info.uniqueDataAssets ? `- Unique Data Assets: ${info.uniqueDataAssets}` : ''}
@@ -304,9 +306,13 @@ ${jsonResponseInstruction}
 export const GENERATE_INITIAL_TOPICAL_MAP_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[]): string => {
     const typeConfig = info.websiteType ? getWebsiteTypeConfig(info.websiteType) : null;
     const hubSpokeRatio = typeConfig?.hubSpokeRatio.optimal || 7;
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
 
     return `
 You are a Holistic SEO Architect. Your task is to generate a massive, high-authority Topical Map based on the provided strategic inputs.
+
+${languageInstruction}
+**IMPORTANT:** All topic titles, descriptions, and canonical queries MUST be in ${getRegionalLanguageVariant(info.language, info.region)}. This is critical for SEO targeting.
 
 **CRITICAL OBJECTIVE:** You must exhaustively explore every facet of the topic. You CANNOT be lazy. You MUST generate depth.
 
@@ -388,8 +394,15 @@ ${jsonResponseInstruction}
 };
 
 // Section-specific prompts for chunked generation to avoid token truncation
-export const GENERATE_MONETIZATION_SECTION_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[]): string => `
+export const GENERATE_MONETIZATION_SECTION_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[]): string => {
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
+    const regionalLang = getRegionalLanguageVariant(info.language, info.region);
+
+    return `
 You are a Holistic SEO Architect. Your task is to generate the MONETIZATION SECTION of a topical map.
+
+${languageInstruction}
+**IMPORTANT:** All topic titles, descriptions, and canonical queries MUST be in ${regionalLang}. This is critical for SEO targeting.
 
 Strategic Inputs:
 - SEO Pillars: ${JSON.stringify(pillars, null, 2)}
@@ -421,22 +434,30 @@ An **OUTER TOPIC (Spoke)** is a VARIATION, MODIFIER, or SPECIFIC INSTANCE of a C
 - Spokes should include: location variants, price tiers, urgency levels, comparisons
 
 **For each topic provide:**
-- "title": Topic title (must be distinct attribute, NOT a modifier variant)
-- "description": Brief 1-2 sentence description
-- "canonical_query": The main search query
-- "query_network": 3-5 related keywords
+- "title": Topic title in ${regionalLang} (must be distinct attribute, NOT a modifier variant)
+- "description": Brief 1-2 sentence description in ${regionalLang}
+- "canonical_query": The main search query in ${regionalLang}
+- "query_network": 3-5 related keywords in ${regionalLang}
 - "url_slug_hint": URL-friendly version (2-3 words)
 - "spokes": Array of supporting topics (variations/modifiers) with same structure
 
-Think in ${getLanguageName(info.language)}. Keep descriptions concise.
+Keep descriptions concise.
 
 Output a JSON object with a single key "topics" containing an array of Core Topics.
 
 ${jsonResponseInstruction}
 `;
+};
 
-export const GENERATE_INFORMATIONAL_SECTION_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[]): string => `
+export const GENERATE_INFORMATIONAL_SECTION_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[]): string => {
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
+    const regionalLang = getRegionalLanguageVariant(info.language, info.region);
+
+    return `
 You are a Holistic SEO Architect. Your task is to generate the INFORMATIONAL SECTION of a topical map.
+
+${languageInstruction}
+**IMPORTANT:** All topic titles, descriptions, and canonical queries MUST be in ${regionalLang}. This is critical for SEO targeting.
 
 Strategic Inputs:
 - SEO Pillars: ${JSON.stringify(pillars, null, 2)}
@@ -462,19 +483,20 @@ An **OUTER TOPIC (Spoke)** is a specific aspect, sub-question, or variation with
 - Focus on: educational content, guides, explanations, industry knowledge
 
 **For each topic provide:**
-- "title": Topic title (distinct knowledge domain)
-- "description": Brief 1-2 sentence description
-- "canonical_query": The main search query
-- "query_network": 3-5 related keywords
+- "title": Topic title in ${regionalLang} (distinct knowledge domain)
+- "description": Brief 1-2 sentence description in ${regionalLang}
+- "canonical_query": The main search query in ${regionalLang}
+- "query_network": 3-5 related keywords in ${regionalLang}
 - "url_slug_hint": URL-friendly version (2-3 words)
 - "spokes": Array of specific aspects/questions within this domain
 
-Think in ${getLanguageName(info.language)}. Keep descriptions concise.
+Keep descriptions concise.
 
 Output a JSON object with a single key "topics" containing an array of Core Topics.
 
 ${jsonResponseInstruction}
 `;
+};
 
 // Prompt to classify topics into Core Section (monetization) or Author Section (informational)
 // Also checks topic type (core vs outer) for misclassifications
@@ -559,16 +581,20 @@ Respond with a JSON object containing "responseCode" and "reasoning".
 `;
 
 export const GENERATE_CONTENT_BRIEF_PROMPT = (info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, knowledgeGraph: KnowledgeGraph, responseCode: ResponseCode): string => {
-    const kgContext = knowledgeGraph 
+    const kgContext = knowledgeGraph
         ? JSON.stringify(knowledgeGraph.query(`SELECT ?term WHERE { ?node term ?term . } LIMIT 15`), null, 2)
         : "No Knowledge Graph available.";
 
     const userContextInstruction = topic.metadata?.userContext ? `\n**USER GUIDANCE:** The user specifically requested: "${topic.metadata.userContext}". Ensure the brief aligns with this intent.` : "";
 
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
+
     return `
 You are an expert Algorithmic Architect and Holistic SEO Strategist.
 Your goal is to generate a content brief that strictly minimizes the **Cost of Retrieval** for search engines.
 You do not write generic outlines. You engineer data structures for information retrieval.
+
+${languageInstruction}
 
 **Target Topic:** "${topic.title}"
 **Description:** "${topic.description}"
@@ -751,9 +777,14 @@ ${jsonResponseInstruction}
 Respond with a single JSON object.
 `;
 
-export const GENERATE_ARTICLE_DRAFT_PROMPT = (brief: ContentBrief, info: BusinessInfo): string => `
+export const GENERATE_ARTICLE_DRAFT_PROMPT = (brief: ContentBrief, info: BusinessInfo): string => {
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
+
+    return `
 You are an expert **Algorithmic Author** and Subject Matter Expert in ${info.industry}.
 Your goal is to write a high-authority article that minimizes the **Cost of Retrieval** for search engines while maximizing user value.
+
+${languageInstruction}
 
 **Identity & Voice:**
 Author: ${info.authorProfile?.name || info.authorName || 'Expert Writer'}
@@ -817,10 +848,16 @@ ${brief.visual_semantics ? `- **Defined Visuals:** \n${brief.visual_semantics.ma
 - Use standard H1, H2, H3 tags.
 - Bold the **Answer**, not the keyword.
 `;
+};
 
-export const POLISH_ARTICLE_DRAFT_PROMPT = (draft: string, brief: ContentBrief, info: BusinessInfo): string => `
+export const POLISH_ARTICLE_DRAFT_PROMPT = (draft: string, brief: ContentBrief, info: BusinessInfo): string => {
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
+
+    return `
 You are a Senior Editor and Content Finisher.
 Your goal is to prepare this draft for final publication (Pass 2 Polish).
+
+${languageInstruction}
 
 **Input Draft:**
 ${draft}
@@ -856,10 +893,16 @@ ${getStylometryInstructions(info.authorProfile)}
 **Output:**
 Return the fully polished, publication-ready article draft in Markdown. Do not wrap in JSON. Return raw Markdown.
 `;
+};
 
-export const REFINE_DRAFT_SECTION_PROMPT = (originalText: string, violationType: string, instruction: string, info: BusinessInfo): string => `
+export const REFINE_DRAFT_SECTION_PROMPT = (originalText: string, violationType: string, instruction: string, info: BusinessInfo): string => {
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
+
+    return `
 You are an expert Editor and Algorithmic Author.
 Your task is to rewrite a specific text segment to fix a detected authorship violation.
+
+${languageInstruction}
 
 **Violation Detected:** ${violationType}
 **Specific Instruction:** ${instruction}
@@ -879,6 +922,7 @@ ${getStylometryInstructions(info.authorProfile)}
 ${jsonResponseInstruction}
 Return a JSON object with a single key "refinedText".
 `;
+};
 
 export const AUDIT_CONTENT_INTEGRITY_PROMPT = (brief: ContentBrief, draft: string, info: BusinessInfo): string => `
 You are a strict SEO content auditor. Audit the provided article draft against its content brief and framework rules.
@@ -1706,9 +1750,14 @@ Return a JSON object with:
 - "gapDetails": Array of objects { "paragraphIndex": number, "details": "Why the transition failed", "suggestedBridge": "A phrase to link them" }.
 `;
 
-export const APPLY_FLOW_REMEDIATION_PROMPT = (originalSnippet: string, issueDetails: string, remediationInstruction: string, info: BusinessInfo): string => `
+export const APPLY_FLOW_REMEDIATION_PROMPT = (originalSnippet: string, issueDetails: string, remediationInstruction: string, info: BusinessInfo): string => {
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
+
+    return `
 You are a Semantic Editor.
 Your task is to rewrite a specific text segment to fix a semantic flow issue detected by the audit.
+
+${languageInstruction}
 
 **Business Context:**
 ${businessContext(info)}
@@ -1726,10 +1775,16 @@ Ensure the new text bridges the gap or corrects the flow as requested.
 ${jsonResponseInstruction}
 Return a JSON object with a single key "refinedText".
 `;
+};
 
-export const BATCH_FLOW_REMEDIATION_PROMPT = (fullDraft: string, issues: ContextualFlowIssue[], info: BusinessInfo): string => `
+export const BATCH_FLOW_REMEDIATION_PROMPT = (fullDraft: string, issues: ContextualFlowIssue[], info: BusinessInfo): string => {
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
+
+    return `
 You are a Senior Semantic Editor and Algorithmic Author.
 Your goal is to rewrite the provided article draft to resolve a list of specific flow and vector violations, creating a cohesive, high-authority document.
+
+${languageInstruction}
 
 **Context:**
 ${businessContext(info)}
@@ -1758,6 +1813,7 @@ ${idx + 1}. [${issue.category}] Rule: ${issue.rule}
 ${jsonResponseInstruction}
 Return a JSON object with a single key "polishedDraft" containing the full rewritten markdown.
 `;
+};
 
 // ============================================
 // AI TASK SUGGESTION PROMPTS

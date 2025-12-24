@@ -9,6 +9,7 @@ import * as openRouterService from '../openRouterService';
 import { dispatchToProvider } from './providerDispatcher';
 import { AppAction } from '../../state/appState';
 import { getWebsiteTypeConfig, validateHubSpokeRatio } from '../../config/websiteTypeTemplates';
+import { validateLanguageSettings } from '../../utils/languageUtils';
 import React from 'react';
 
 // ============================================
@@ -203,6 +204,20 @@ export const expandSemanticTriples = (
 export const generateInitialTopicalMap = async (
     businessInfo: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>
 ): Promise<{ coreTopics: EnrichedTopic[], outerTopics: EnrichedTopic[] }> => {
+    // Validate language and region settings before generation
+    const validation = validateLanguageSettings(businessInfo.language, businessInfo.region);
+    if (validation.warnings.length > 0) {
+        dispatch({
+            type: 'LOG_EVENT',
+            payload: {
+                service: 'MapGeneration',
+                message: `Language/Region Settings Warning: ${validation.warnings.join(' | ')}`,
+                status: 'warning',
+                timestamp: Date.now()
+            }
+        });
+    }
+
     // Step 1: Get raw topics from AI provider
     const rawResult = await dispatchToProvider(businessInfo, {
         gemini: () => geminiService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch),
