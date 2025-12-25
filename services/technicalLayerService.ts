@@ -23,7 +23,7 @@ import {
   EntityLinkingAnalysis,
 } from '../types/competitiveIntelligence';
 
-import { extractPageContentWithHtml, JinaExtractionWithHtml } from './jinaService';
+import { fetchHtml, FetcherConfig } from './htmlFetcherService';
 import {
   extractSchemasFromHtml,
   analyzeEntityLinking,
@@ -40,7 +40,7 @@ import { cacheService } from './cacheService';
  * Options for technical layer analysis
  */
 export interface TechnicalAnalysisOptions {
-  /** Skip Jina fetch and use provided HTML */
+  /** Skip fetch and use provided HTML */
   providedHtml?: string;
   /** Skip cache and force fresh analysis */
   skipCache?: boolean;
@@ -48,8 +48,10 @@ export interface TechnicalAnalysisOptions {
   pageContext?: string;
   /** Other pages HTML for cross-page navigation comparison */
   otherPagesHtml?: string[];
-  /** Jina API key (required if not providing HTML) */
+  /** Jina API key (primary scraper) */
   jinaApiKey?: string;
+  /** Firecrawl API key (fallback scraper) */
+  firecrawlApiKey?: string;
   /** Supabase URL for fetch proxy (required for browser CORS) */
   supabaseUrl?: string;
   /** Supabase anon key for fetch proxy */
@@ -166,19 +168,25 @@ export async function analyzeTechnicalForUrl(
     if (options.providedHtml) {
       html = options.providedHtml;
     } else {
-      // Fetch via Jina with HTML
-      if (!options.jinaApiKey) {
-        throw new Error('Jina API key required to fetch HTML. Provide jinaApiKey or providedHtml.');
+      // Fetch via multi-provider fetcher (Jina -> Firecrawl -> Direct)
+      const fetcherConfig: FetcherConfig = {
+        jinaApiKey: options.jinaApiKey,
+        firecrawlApiKey: options.firecrawlApiKey,
+        supabaseUrl: options.supabaseUrl,
+        supabaseAnonKey: options.supabaseAnonKey,
+      };
+
+      // Check if any provider is available
+      if (!options.jinaApiKey && !options.firecrawlApiKey && !(options.supabaseUrl && options.supabaseAnonKey)) {
+        throw new Error('At least one scraping provider (Jina, Firecrawl) or Supabase proxy config required.');
       }
-      // Build proxy config for CORS bypass
-      const proxyConfig = options.supabaseUrl && options.supabaseAnonKey
-        ? { supabaseUrl: options.supabaseUrl, supabaseAnonKey: options.supabaseAnonKey }
-        : undefined;
-      const jinaResult = await extractPageContentWithHtml(url, options.jinaApiKey, proxyConfig);
-      if (!jinaResult || !jinaResult.html) {
+
+      const result = await fetchHtml(url, fetcherConfig);
+      if (!result.html) {
         throw new Error(`Failed to fetch HTML from ${url}`);
       }
-      html = jinaResult.html;
+      html = result.html;
+      console.log(`[TechnicalLayer] Fetched ${url} via ${result.provider}`);
     }
 
     // Extract and analyze schema

@@ -503,18 +503,21 @@ export async function analyzeTopicCompetitors(
           analyzeContentForUrl(url, {
             skipCache: options.skipCache,
             jinaApiKey: options.businessInfo.jinaApiKey,
+            firecrawlApiKey: options.businessInfo.firecrawlApiKey,
             supabaseUrl: options.businessInfo.supabaseUrl,
             supabaseAnonKey: options.businessInfo.supabaseAnonKey,
           }),
           analyzeTechnicalForUrl(url, {
             skipCache: options.skipCache,
             jinaApiKey: options.businessInfo.jinaApiKey,
+            firecrawlApiKey: options.businessInfo.firecrawlApiKey,
             supabaseUrl: options.businessInfo.supabaseUrl,
             supabaseAnonKey: options.businessInfo.supabaseAnonKey,
           }),
           analyzeLinkLayerForUrl(url, {
             skipCache: options.skipCache,
             jinaApiKey: options.businessInfo.jinaApiKey,
+            firecrawlApiKey: options.businessInfo.firecrawlApiKey,
             supabaseUrl: options.businessInfo.supabaseUrl,
             supabaseAnonKey: options.businessInfo.supabaseAnonKey,
           }),

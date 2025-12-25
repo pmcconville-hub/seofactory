@@ -61,8 +61,10 @@ export interface ContentAnalysisOptions {
   competitorEAVs?: CompetitorEAVSource[];
   /** Pre-computed market classification */
   marketClassification?: AttributeClassificationResult[];
-  /** Jina API key (required if not providing content) */
+  /** Jina API key (primary scraper) */
   jinaApiKey?: string;
+  /** Firecrawl API key (fallback scraper) */
+  firecrawlApiKey?: string;
   /** Supabase URL for fetch proxy (required for browser CORS) */
   supabaseUrl?: string;
   /** Supabase anon key for fetch proxy */
