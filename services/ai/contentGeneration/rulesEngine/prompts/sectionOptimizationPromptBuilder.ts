@@ -59,14 +59,14 @@ ${adjacentContext.nextSection ? `
 ## Header Optimization Rules:
 1. **Contextual Overlap**: Heading must contain terms linking to "${holistic.centralEntity}"
 2. **No Level Skips**: Maintain proper H${section.section_level} level
-3. **Query Pattern Matching**: Heading should match likely search queries in ${lang}
+3. **Query Pattern Matching**: Heading should match likely search queries in ${regionalLang}
 4. **Subordinate Text**: First sentence after heading must directly support it
 
 ## Instructions:
 1. Improve the heading if it lacks connection to "${holistic.centralEntity}"
 2. Ensure first paragraph directly answers/defines what the heading promises
 3. Maintain all content - do not summarize
-4. Keep language in ${lang}
+4. Keep language in ${regionalLang}
 
 **OUTPUT ONLY the optimized section content (heading + paragraphs). No explanations.**`;
 }
@@ -231,7 +231,7 @@ ${holistic.vocabularyMetrics.overusedTerms.slice(0, 5).map(t => t.term).join(', 
 1. Insert 0-2 image placeholders where appropriate
 2. Place images AFTER paragraphs, never right after headings
 3. Use vocabulary-extending alt text
-4. Write descriptions and alt text in ${lang}
+4. Write descriptions and alt text in ${regionalLang}
 
 **OUTPUT ONLY the optimized section content with image placeholders. No explanations.**`;
 }
@@ -242,6 +242,7 @@ ${holistic.vocabularyMetrics.overusedTerms.slice(0, 5).map(t => t.term).join(', 
 
 export function buildPass5Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, businessInfo } = ctx;
+  const regionalLang = getRegionalLanguageVariant(businessInfo.language, businessInfo.region);
 
   return `You are a Holistic SEO editor specializing in micro-semantic optimization.
 
@@ -288,7 +289,7 @@ Links at END of sentences, not start:
 Avoid overused terms. Use synonyms for: ${holistic.vocabularyMetrics.overusedTerms.slice(0, 3).map(t => t.term).join(', ')}
 
 ## Instructions:
-Apply ALL rules. Maintain content meaning. Keep language in ${lang}.
+Apply ALL rules. Maintain content meaning. Keep language in ${regionalLang}.
 
 **OUTPUT ONLY the optimized section content. No explanations.**`;
 }
@@ -299,6 +300,7 @@ Apply ALL rules. Maintain content meaning. Keep language in ${lang}.
 
 export function buildPass6Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, adjacentContext, businessInfo, brief } = ctx;
+  const regionalLang = getRegionalLanguageVariant(businessInfo.language, businessInfo.region);
 
   // Extract contextual bridge links from brief if available
   const contextualBridgeLinks = extractContextualBridgeLinks(brief);
@@ -363,7 +365,7 @@ ${contextualBridgeLinks.map(link => `
 2. Add/improve closing sentence that leads to next section (if not last section)
 3. Smooth any abrupt paragraph transitions within the section
 ${hasLinksToBridge ? '4. Insert internal links with proper contextual bridges (see INTERNAL LINKS section)' : ''}
-5. Keep all content in ${lang}
+5. Keep all content in ${regionalLang}
 
 **OUTPUT ONLY the optimized section content. No explanations.**`;
 }
@@ -444,12 +446,12 @@ Write a NEW introduction (NOT just edit the old one) that:
 3. Previews ALL major sections in order they appear
 4. Includes key terms from each section
 5. Sets reader expectations clearly
-6. Is written entirely in ${lang}
+6. Is written entirely in ${regionalLang}
 
 **OUTPUT FORMAT:**
-## [Topic-specific heading in ${lang}]
+## [Topic-specific heading in ${regionalLang}]
 
-[Introduction content in ${lang}]`;
+[Introduction content in ${regionalLang}]`;
 }
 
 // ============================================
@@ -504,12 +506,12 @@ Write a NEW conclusion (NOT just edit the old one) that:
 3. Reinforces the central entity's importance
 4. Provides clear next steps/actionable advice
 ${isMonetization ? '5. Includes appropriate call-to-action' : '5. Closes with educational value statement'}
-6. Is written entirely in ${lang}
+6. Is written entirely in ${regionalLang}
 
 **OUTPUT FORMAT:**
-## [Topic-specific conclusion heading in ${lang}]
+## [Topic-specific conclusion heading in ${regionalLang}]
 
-[Conclusion content in ${lang}]`;
+[Conclusion content in ${regionalLang}]`;
 }
 
 // ============================================
