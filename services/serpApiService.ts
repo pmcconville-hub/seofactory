@@ -192,9 +192,278 @@ export const fetchSerpResults = async (query: string, login: string, password: s
         }
     };
 
-    // Cache SERP results for 1 hour
-    return cacheService.cacheThrough('serp:dataforseo', { query, locationName, languageCode }, fetchFn, 3600);
+    // Cache SERP results for 7 days (604800 seconds)
+    return cacheService.cacheThrough('serp:dataforseo', { query, locationName, languageCode }, fetchFn, 604800);
 };
+
+// =============================================================================
+// FULL SERP DATA EXTRACTION (for Topic-Level Competitive Intelligence)
+// =============================================================================
+
+/**
+ * Full SERP result with all available data from DataForSEO
+ */
+export interface FullSerpResult {
+  // Organic results with extended data
+  organicResults: {
+    position: number;
+    url: string;
+    domain: string;
+    title: string;
+    snippet: string;
+    breadcrumb?: string;
+    rating?: { value: number; count: number };
+    price?: { current: number; currency: string };
+    sitelinks?: { title: string; url: string }[];
+  }[];
+
+  // SERP features detected
+  features: {
+    hasFeaturedSnippet: boolean;
+    featuredSnippet?: {
+      type: 'paragraph' | 'list' | 'table';
+      content: string;
+      url: string;
+      domain: string;
+    };
+    hasPeopleAlsoAsk: boolean;
+    peopleAlsoAsk: { question: string; url?: string; snippet?: string }[];
+    hasImagePack: boolean;
+    imagePackCount: number;
+    hasVideoCarousel: boolean;
+    videoCount: number;
+    hasLocalPack: boolean;
+    localPackCount: number;
+    hasKnowledgePanel: boolean;
+    knowledgePanel?: {
+      title: string;
+      type: string;
+      description?: string;
+    };
+    hasSitelinks: boolean;
+    hasReviews: boolean;
+    hasFaq: boolean;
+    faqCount: number;
+    hasRelatedSearches: boolean;
+    relatedSearches: string[];
+  };
+
+  // Metadata
+  query: string;
+  totalResults: number;
+  fetchedAt: Date;
+  locationName: string;
+  languageCode: string;
+}
+
+/**
+ * Extract full SERP data from DataForSEO response including all features
+ */
+export const fetchFullSerpData = async (
+  query: string,
+  login: string,
+  password: string,
+  locationName: string,
+  languageCode: string
+): Promise<FullSerpResult> => {
+  const fetchFn = async (): Promise<FullSerpResult> => {
+    const postData = [{
+      keyword: query,
+      location_name: locationName,
+      language_code: languageCode,
+      depth: 30,
+    }];
+
+    const url = 'https://api.dataforseo.com/v3/serp/google/organic/live/advanced';
+    const credentials = btoa(`${login}:${password}`);
+
+    const response = await fetchWithProxy(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(postData)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`DataForSEO API HTTP Error: ${response.status} ${response.statusText}. Response: ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    if (data.status_code !== 20000) {
+      throw new Error(`DataForSEO API Error: ${data.status_message}`);
+    }
+
+    const taskResult = data.tasks?.[0]?.result?.[0];
+    if (!taskResult) {
+      return createEmptyFullSerpResult(query, locationName, languageCode);
+    }
+
+    const items = taskResult.items || [];
+
+    // Extract organic results
+    const organicResults = items
+      .filter((item: any) => item.type === 'organic')
+      .map((item: any) => ({
+        position: item.rank_absolute || item.rank_group,
+        url: item.url,
+        domain: item.domain,
+        title: item.title,
+        snippet: item.description || '',
+        breadcrumb: item.breadcrumb,
+        rating: item.rating ? {
+          value: item.rating.rating_value,
+          count: item.rating.votes_count
+        } : undefined,
+        price: item.price ? {
+          current: item.price.current,
+          currency: item.price.currency
+        } : undefined,
+        sitelinks: item.links?.map((link: any) => ({
+          title: link.title,
+          url: link.url
+        }))
+      }));
+
+    // Extract featured snippet
+    const featuredSnippetItem = items.find((item: any) => item.type === 'featured_snippet');
+    const hasFeaturedSnippet = !!featuredSnippetItem;
+    const featuredSnippet = featuredSnippetItem ? {
+      type: detectFeaturedSnippetType(featuredSnippetItem),
+      content: featuredSnippetItem.description || featuredSnippetItem.title || '',
+      url: featuredSnippetItem.url || '',
+      domain: featuredSnippetItem.domain || ''
+    } : undefined;
+
+    // Extract People Also Ask
+    const paaItems = items.filter((item: any) => item.type === 'people_also_ask');
+    const peopleAlsoAsk = paaItems.flatMap((paa: any) =>
+      (paa.items || []).map((q: any) => ({
+        question: q.title || q.question || '',
+        url: q.url,
+        snippet: q.description
+      }))
+    );
+
+    // Extract image pack
+    const imagePackItem = items.find((item: any) => item.type === 'images');
+    const hasImagePack = !!imagePackItem;
+    const imagePackCount = imagePackItem?.items?.length || 0;
+
+    // Extract video carousel
+    const videoItem = items.find((item: any) => item.type === 'video');
+    const hasVideoCarousel = !!videoItem;
+    const videoCount = videoItem?.items?.length || 0;
+
+    // Extract local pack
+    const localPackItem = items.find((item: any) => item.type === 'local_pack');
+    const hasLocalPack = !!localPackItem;
+    const localPackCount = localPackItem?.items?.length || 0;
+
+    // Extract knowledge panel
+    const knowledgePanelItem = items.find((item: any) => item.type === 'knowledge_graph');
+    const hasKnowledgePanel = !!knowledgePanelItem;
+    const knowledgePanel = knowledgePanelItem ? {
+      title: knowledgePanelItem.title || '',
+      type: knowledgePanelItem.sub_title || '',
+      description: knowledgePanelItem.description
+    } : undefined;
+
+    // Check for various features
+    const hasSitelinks = organicResults.some((r: any) => r.sitelinks && r.sitelinks.length > 0);
+    const hasReviews = organicResults.some((r: any) => r.rating);
+
+    // Extract FAQ
+    const faqItems = items.filter((item: any) => item.type === 'faq' || item.type === 'faq_box');
+    const hasFaq = faqItems.length > 0;
+    const faqCount = faqItems.reduce((sum: number, faq: any) => sum + (faq.items?.length || 0), 0);
+
+    // Extract related searches
+    const relatedSearchItem = items.find((item: any) => item.type === 'related_searches');
+    const hasRelatedSearches = !!relatedSearchItem;
+    const relatedSearches = (relatedSearchItem?.items || []).map((r: any) => r.title || r.query || '').filter(Boolean);
+
+    return {
+      organicResults,
+      features: {
+        hasFeaturedSnippet,
+        featuredSnippet,
+        hasPeopleAlsoAsk: peopleAlsoAsk.length > 0,
+        peopleAlsoAsk,
+        hasImagePack,
+        imagePackCount,
+        hasVideoCarousel,
+        videoCount,
+        hasLocalPack,
+        localPackCount,
+        hasKnowledgePanel,
+        knowledgePanel,
+        hasSitelinks,
+        hasReviews,
+        hasFaq,
+        faqCount,
+        hasRelatedSearches,
+        relatedSearches
+      },
+      query,
+      totalResults: taskResult.se_results_count || 0,
+      fetchedAt: new Date(),
+      locationName,
+      languageCode
+    };
+  };
+
+  // Cache full SERP results for 7 days
+  return cacheService.cacheThrough('serp:dataforseo:full', { query, locationName, languageCode }, fetchFn, 604800);
+};
+
+/**
+ * Detect the type of featured snippet
+ */
+function detectFeaturedSnippetType(item: any): 'paragraph' | 'list' | 'table' {
+  if (item.table) return 'table';
+  if (item.items && Array.isArray(item.items)) return 'list';
+  return 'paragraph';
+}
+
+/**
+ * Create an empty full SERP result
+ */
+function createEmptyFullSerpResult(query: string, locationName: string, languageCode: string): FullSerpResult {
+  return {
+    organicResults: [],
+    features: {
+      hasFeaturedSnippet: false,
+      hasPeopleAlsoAsk: false,
+      peopleAlsoAsk: [],
+      hasImagePack: false,
+      imagePackCount: 0,
+      hasVideoCarousel: false,
+      videoCount: 0,
+      hasLocalPack: false,
+      localPackCount: 0,
+      hasKnowledgePanel: false,
+      hasSitelinks: false,
+      hasReviews: false,
+      hasFaq: false,
+      faqCount: 0,
+      hasRelatedSearches: false,
+      relatedSearches: []
+    },
+    query,
+    totalResults: 0,
+    fetchedAt: new Date(),
+    locationName,
+    languageCode
+  };
+}
+
+// =============================================================================
+// COMPETITOR FILTERING (existing code)
+// =============================================================================
 
 // Generic publication/news sites that are NOT competitors
 const EXCLUDED_DOMAINS = [

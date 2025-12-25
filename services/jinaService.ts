@@ -414,3 +414,133 @@ export const generateContentHash = (content: string): string => {
   }
   return Math.abs(hash).toString(16);
 };
+
+// =============================================================================
+// HTML Extraction (for Technical Layer Analysis)
+// =============================================================================
+
+/**
+ * Extended extraction result that includes raw HTML
+ */
+export interface JinaExtractionWithHtml extends JinaExtraction {
+  html: string;
+}
+
+/**
+ * Extract both markdown and HTML content from a URL
+ * Used for technical layer analysis (schema, navigation)
+ */
+export const extractPageContentWithHtml = async (
+  url: string,
+  apiKey: string,
+  proxyConfig?: ProxyConfig,
+  retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
+): Promise<JinaExtractionWithHtml> => {
+  if (!apiKey) {
+    throw new Error('Jina.ai API key is not configured.');
+  }
+
+  // Fetch markdown content first (main extraction)
+  const markdownResult = await extractPageContent(url, apiKey, proxyConfig, retryConfig);
+
+  // Fetch HTML content
+  let html = '';
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < retryConfig.maxRetries; attempt++) {
+    try {
+      html = await doHtmlExtraction(url, apiKey, proxyConfig);
+      break;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      const statusMatch = lastError.message.match(/(\d{3})/);
+      const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+
+      if (!isRetryableError(status) || attempt === retryConfig.maxRetries - 1) {
+        // If HTML extraction fails, return markdown result with empty HTML
+        console.warn(`HTML extraction failed for ${url}:`, lastError.message);
+        break;
+      }
+
+      const delayMs = retryConfig.initialDelayMs * Math.pow(retryConfig.backoffMultiplier, attempt);
+      await sleep(delayMs);
+    }
+  }
+
+  return {
+    ...markdownResult,
+    html,
+  };
+};
+
+/**
+ * Internal function to fetch HTML content
+ */
+const doHtmlExtraction = async (
+  url: string,
+  apiKey: string,
+  proxyConfig?: ProxyConfig
+): Promise<string> => {
+  let responseData: JinaResponse;
+
+  if (proxyConfig?.supabaseUrl) {
+    const proxyUrl = `${proxyConfig.supabaseUrl}/functions/v1/fetch-proxy`;
+    const jinaUrl = `${JINA_READER_URL}${url}`;
+
+    const proxyResponse = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': proxyConfig.supabaseAnonKey,
+        'Authorization': `Bearer ${proxyConfig.supabaseAnonKey}`,
+      },
+      body: JSON.stringify({
+        url: jinaUrl,
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json',
+          'X-Return-Format': 'html',
+          'X-Remove-Selector': REMOVE_SELECTORS,
+          'X-Wait-For-Selector': 'main, article, .content, #content, body',
+          'X-Set-Cookie': 'cookieconsent_status=dismiss; CookieConsent=true',
+        },
+      }),
+    });
+
+    if (!proxyResponse.ok) {
+      const errorText = await proxyResponse.text();
+      throw new Error(`Proxy request failed: ${proxyResponse.status} - ${errorText}`);
+    }
+
+    const proxyResult = await proxyResponse.json();
+
+    if (!proxyResult.ok) {
+      throw new Error(`Jina API error: ${proxyResult.status} - ${proxyResult.error || proxyResult.body}`);
+    }
+
+    responseData = typeof proxyResult.body === 'string' ? JSON.parse(proxyResult.body) : proxyResult.body;
+  } else {
+    const response = await fetch(`${JINA_READER_URL}${url}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Accept': 'application/json',
+        'X-Return-Format': 'html',
+        'X-Remove-Selector': REMOVE_SELECTORS,
+        'X-Wait-For-Selector': 'main, article, .content, #content, body',
+        'X-Set-Cookie': 'cookieconsent_status=dismiss; CookieConsent=true',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Jina API error: ${response.status} - ${errorText}`);
+    }
+
+    responseData = await response.json();
+  }
+
+  return responseData.data.content || '';
+};
