@@ -63,6 +63,10 @@ export interface ContentAnalysisOptions {
   marketClassification?: AttributeClassificationResult[];
   /** Jina API key (required if not providing content) */
   jinaApiKey?: string;
+  /** Supabase URL for fetch proxy (required for browser CORS) */
+  supabaseUrl?: string;
+  /** Supabase anon key for fetch proxy */
+  supabaseAnonKey?: string;
 }
 
 /**
@@ -210,7 +214,11 @@ export async function analyzeContentForUrl(
       if (!options.jinaApiKey) {
         throw new Error('Jina API key required to fetch content. Provide jinaApiKey or providedContent.');
       }
-      const jinaResult = await extractPageContent(url, options.jinaApiKey);
+      // Build proxy config for CORS bypass
+      const proxyConfig = options.supabaseUrl && options.supabaseAnonKey
+        ? { supabaseUrl: options.supabaseUrl, supabaseAnonKey: options.supabaseAnonKey }
+        : undefined;
+      const jinaResult = await extractPageContent(url, options.jinaApiKey, proxyConfig);
       if (!jinaResult || !jinaResult.content) {
         throw new Error(`Failed to fetch content from ${url}`);
       }

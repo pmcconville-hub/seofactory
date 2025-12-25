@@ -50,6 +50,10 @@ export interface TechnicalAnalysisOptions {
   otherPagesHtml?: string[];
   /** Jina API key (required if not providing HTML) */
   jinaApiKey?: string;
+  /** Supabase URL for fetch proxy (required for browser CORS) */
+  supabaseUrl?: string;
+  /** Supabase anon key for fetch proxy */
+  supabaseAnonKey?: string;
 }
 
 /**
@@ -166,7 +170,11 @@ export async function analyzeTechnicalForUrl(
       if (!options.jinaApiKey) {
         throw new Error('Jina API key required to fetch HTML. Provide jinaApiKey or providedHtml.');
       }
-      const jinaResult = await extractPageContentWithHtml(url, options.jinaApiKey);
+      // Build proxy config for CORS bypass
+      const proxyConfig = options.supabaseUrl && options.supabaseAnonKey
+        ? { supabaseUrl: options.supabaseUrl, supabaseAnonKey: options.supabaseAnonKey }
+        : undefined;
+      const jinaResult = await extractPageContentWithHtml(url, options.jinaApiKey, proxyConfig);
       if (!jinaResult || !jinaResult.html) {
         throw new Error(`Failed to fetch HTML from ${url}`);
       }
