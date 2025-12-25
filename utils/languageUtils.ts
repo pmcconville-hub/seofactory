@@ -169,14 +169,38 @@ const LANGUAGE_MAP: Record<string, string> = {
 
 /**
  * Convert a language code or name to a full language name for AI prompts
- * @param language - ISO code (en, nl) or language name (English, Dutch)
+ * @param language - ISO code (en, nl) or language name (English, Dutch) or UI format (Dutch (Nederlands))
  * @returns Full language name in English (e.g., "English", "Dutch")
  */
 export function getLanguageName(language: string | undefined | null): string {
   if (!language) return 'English';
 
-  const normalized = language.trim().toLowerCase();
-  return LANGUAGE_MAP[normalized] || language; // Return original if not found
+  const trimmed = language.trim();
+  const normalized = trimmed.toLowerCase();
+
+  // Direct lookup
+  if (LANGUAGE_MAP[normalized]) {
+    return LANGUAGE_MAP[normalized];
+  }
+
+  // Handle UI dropdown format like "Dutch (Nederlands)" or "English (US)"
+  // Extract the first word before any parenthesis
+  const beforeParen = trimmed.split('(')[0].trim().toLowerCase();
+  if (LANGUAGE_MAP[beforeParen]) {
+    return LANGUAGE_MAP[beforeParen];
+  }
+
+  // Try to extract language from inside parenthesis (e.g., "(Nederlands)" -> Dutch)
+  const parenMatch = trimmed.match(/\(([^)]+)\)/);
+  if (parenMatch) {
+    const insideParen = parenMatch[1].toLowerCase();
+    if (LANGUAGE_MAP[insideParen]) {
+      return LANGUAGE_MAP[insideParen];
+    }
+  }
+
+  // Return original if nothing matched (but capitalize first letter)
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 /**
