@@ -1,6 +1,6 @@
 
 // components/ContentBriefModal.tsx
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useAppState } from '../../state/appState';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -36,6 +36,38 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
 
     const activeMap = topicalMaps.find(m => m.id === activeMapId);
     const brief = activeBriefTopic ? activeMap?.briefs?.[activeBriefTopic.id] : null;
+
+    // Compute effective business info that merges map-level settings (language, region) with global state
+    // This ensures language/region from map.business_info is used for content generation
+    const effectiveBusinessInfo = useMemo(() => {
+        const mapBusinessInfo = activeMap?.business_info as Partial<typeof businessInfo> || {};
+
+        // Extract map business context fields (NOT AI settings - those come from global)
+        const {
+            aiProvider: _mapAiProvider,
+            aiModel: _mapAiModel,
+            geminiApiKey: _gk,
+            openAiApiKey: _ok,
+            anthropicApiKey: _ak,
+            perplexityApiKey: _pk,
+            openRouterApiKey: _ork,
+            ...mapBusinessContext
+        } = mapBusinessInfo;
+
+        return {
+            ...businessInfo,
+            // Spread map-specific business context (language, region, audience, etc.)
+            ...mapBusinessContext,
+            // AI settings ALWAYS from global (user_settings), not from map's business_info
+            aiProvider: businessInfo.aiProvider,
+            aiModel: businessInfo.aiModel,
+            geminiApiKey: businessInfo.geminiApiKey,
+            openAiApiKey: businessInfo.openAiApiKey,
+            anthropicApiKey: businessInfo.anthropicApiKey,
+            perplexityApiKey: businessInfo.perplexityApiKey,
+            openRouterApiKey: businessInfo.openRouterApiKey,
+        };
+    }, [businessInfo, activeMap]);
 
     const isOpen = !!(state.modals.contentBrief && brief);
     const isDrafting = !!isLoading.audit; // 'audit' key is currently reused for drafting in container
@@ -81,7 +113,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
 
             // Generate new brief using existing knowledge graph from state
             const newBrief = await generateContentBrief(
-                businessInfo,
+                effectiveBusinessInfo,
                 activeBriefTopic,
                 allTopics,
                 activeMap.pillars,
@@ -92,7 +124,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
 
             if (newBrief) {
                 // Persist to Supabase - cast complex objects to any for JSON storage
-                const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+                const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
                 const { data: updateData, error: dbError } = await supabase
                     .from('content_briefs')
                     .update({
@@ -139,7 +171,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
             setIsRegeneratingBrief(false);
             dispatch({ type: 'SET_LOADING', payload: { key: 'brief', value: false } });
         }
-    }, [brief, activeMapId, activeBriefTopic, activeMap?.pillars, businessInfo, allTopics, knowledgeGraph, dispatch]);
+    }, [brief, activeMapId, activeBriefTopic, activeMap?.pillars, effectiveBusinessInfo, allTopics, knowledgeGraph, dispatch]);
 
     // Handle repair missing fields
     const handleRepairMissing = useCallback(async (missingFields: string[]) => {
@@ -154,7 +186,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                 missingFields,
                 activeBriefTopic,
                 activeMap.pillars,
-                businessInfo,
+                effectiveBusinessInfo,
                 allTopics,
                 dispatch
             );
@@ -170,7 +202,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                 if (repairedBrief.visuals !== undefined) dbUpdates.visuals = repairedBrief.visuals;
 
                 // Persist to Supabase with verification
-                const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+                const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
                 const { data: updateData, error: dbError } = await supabase
                     .from('content_briefs')
                     .update(dbUpdates)
@@ -205,7 +237,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
         } finally {
             setIsRepairingBrief(false);
         }
-    }, [brief, activeMapId, activeBriefTopic, activeMap?.pillars, businessInfo, allTopics, dispatch]);
+    }, [brief, activeMapId, activeBriefTopic, activeMap?.pillars, effectiveBusinessInfo, allTopics, dispatch]);
 
     // Handle applying pillar fixes
     const handleApplyPillarFixes = useCallback(async (updates: Partial<ContentBrief>) => {
@@ -229,7 +261,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
 
             // Persist to Supabase using primary key (brief.id) for reliable updates
             // Note: Using topic_id + map_id may fail if map_id is NULL in existing rows
-            const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+            const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
             const { data: updateData, error: dbError } = await supabase
                 .from('content_briefs')
                 .update(dbUpdates)
@@ -260,7 +292,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
             dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to apply pillar fixes' });
             throw error;
         }
-    }, [brief, activeMapId, activeBriefTopic, businessInfo, dispatch]);
+    }, [brief, activeMapId, activeBriefTopic, effectiveBusinessInfo, dispatch]);
 
     // Handle AI auto-fix for visual semantics issues
     const handleAutoFixVisualSemantics = useCallback(async (issues: string[], recommendations: string[]) => {
@@ -307,7 +339,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
             }
 
             // Persist to Supabase with verification
-            const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+            const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
             const { data: updateData, error: dbError } = await supabase
                 .from('content_briefs')
                 .update(dbUpdates)
@@ -344,7 +376,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
         } finally {
             setIsAutoFixingVisuals(false);
         }
-    }, [brief, activeMapId, activeBriefTopic, activeMap?.pillars, businessInfo, dispatch]);
+    }, [brief, activeMapId, activeBriefTopic, activeMap?.pillars, effectiveBusinessInfo, dispatch]);
 
     const handleLog = useCallback((message: string, status: 'info' | 'success' | 'failure' | 'warning') => {
         setGenerationLogs(prev => [...prev, { message, status, timestamp: Date.now() }]);
@@ -404,7 +436,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
         briefId: brief?.id || '',
         mapId: activeMapId || '',
         userId: user?.id || '',
-        businessInfo,
+        businessInfo: effectiveBusinessInfo,
         brief: brief || {} as ContentBrief,
         pillars: activeMap?.pillars,
         topic: activeBriefTopic || undefined,
@@ -678,7 +710,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                         <MoneyPagePillarsIndicator
                             brief={brief}
                             topicClass={(activeBriefTopic?.topic_class || activeBriefTopic?.metadata?.topic_class) as string | undefined}
-                            businessInfo={businessInfo}
+                            businessInfo={effectiveBusinessInfo}
                             pillars={activeMap?.pillars}
                             dispatch={dispatch}
                             onApplyFixes={handleApplyPillarFixes}
@@ -893,7 +925,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                 pillars={activeMap.pillars || { centralEntity: '', sourceContext: '', centralSearchIntent: '' }}
                 allTopics={allTopics}
                 mapId={activeMapId}
-                businessInfo={businessInfo}
+                businessInfo={effectiveBusinessInfo}
                 onClose={() => setShowEditModal(false)}
                 onSaved={() => setShowEditModal(false)}
                 onRepairMissing={handleRepairMissing}
@@ -908,7 +940,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                 onClose={reportHook.close}
                 reportType="content-brief"
                 data={reportHook.data}
-                projectName={activeMap?.name || businessInfo?.projectName}
+                projectName={activeMap?.name || effectiveBusinessInfo?.projectName}
             />
         )}
     </>
