@@ -45,6 +45,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { calculateTopicSimilarityPairs } from '../utils/helpers';
 import { logAiUsage, estimateTokens, AIUsageContext } from './telemetryService';
 import { getSupabaseClient } from './supabaseClient';
+import { geminiLogger } from './apiCallLogger';
 
 // Current operation context for logging (set by callers)
 let currentUsageContext: AIUsageContext = {};
@@ -234,6 +235,7 @@ const callApi = async <T>(
     // Helper to make a single API attempt
     const makeSingleAttempt = async (modelToUse: string): Promise<{ result: T | null; responseText: string | null; error: Error | null }> => {
         const requestStartTime = Date.now();
+        const apiCallLog = geminiLogger.start(operation, 'POST');
 
         const config: any = {
             maxOutputTokens: maxTokens,
@@ -292,6 +294,12 @@ const callApi = async <T>(
                     context: currentUsageContext
                 }, supabase).catch(e => console.warn('Failed to log AI usage:', e));
 
+                // Log to API call logger
+                geminiLogger.error(apiCallLog.id, new Error(`Empty response (finishReason: ${finishReason})`), {
+                    model: modelToUse,
+                    requestSize: prompt.length,
+                });
+
                 return { result: null, responseText: null, error: new Error(`Empty response from Gemini (model: ${modelToUse}, finishReason: ${finishReason})`) };
             }
 
@@ -312,6 +320,14 @@ const callApi = async <T>(
                 context: currentUsageContext
             }, supabase).catch(e => console.warn('Failed to log AI usage:', e));
 
+            // Log to API call logger
+            geminiLogger.success(apiCallLog.id, {
+                model: modelToUse,
+                requestSize: prompt.length,
+                responseSize: responseText.length,
+                tokenCount: tokensIn + tokensOut,
+            });
+
             dispatch({ type: 'LOG_EVENT', payload: { service: 'Gemini', message: `Received response (${responseText.length} chars). Sanitizing...`, status: 'info', timestamp: Date.now() } });
 
             return { result: sanitizerFn(responseText), responseText, error: null };
@@ -331,6 +347,12 @@ const callApi = async <T>(
                 errorCode: error?.status?.toString() || error?.code,
                 context: currentUsageContext
             }, supabase).catch(e => console.warn('Failed to log AI usage:', e));
+
+            // Log to API call logger
+            geminiLogger.error(apiCallLog.id, error, {
+                model: modelToUse,
+                requestSize: prompt.length,
+            });
 
             return { result: null, responseText: null, error };
         }

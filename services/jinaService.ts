@@ -2,6 +2,7 @@
 // Jina.ai Reader API for semantic content extraction
 
 import { JinaExtraction } from '../types';
+import { jinaLogger } from './apiCallLogger';
 
 const JINA_READER_URL = 'https://r.jina.ai/';
 
@@ -104,12 +105,24 @@ export const extractPageContent = async (
     throw new Error('Jina.ai API key is not configured.');
   }
 
+  // Start API call logging
+  const apiCallLog = jinaLogger.start('extractPageContent', 'GET');
+
   // Retry loop with exponential backoff
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < retryConfig.maxRetries; attempt++) {
     try {
-      return await doExtraction(url, apiKey, proxyConfig);
+      const result = await doExtraction(url, apiKey, proxyConfig);
+
+      // Log successful API call
+      jinaLogger.success(apiCallLog.id, {
+        url,
+        responseSize: result.content?.length || 0,
+        retryCount: attempt,
+      });
+
+      return result;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
 
@@ -117,8 +130,12 @@ export const extractPageContent = async (
       const statusMatch = lastError.message.match(/(\d{3})/);
       const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
 
-      // If not retryable or last attempt, throw immediately
+      // If not retryable or last attempt, log error and throw
       if (!isRetryableError(status) || attempt === retryConfig.maxRetries - 1) {
+        jinaLogger.error(apiCallLog.id, lastError, {
+          url,
+          retryCount: attempt,
+        });
         throw lastError;
       }
 
@@ -129,6 +146,7 @@ export const extractPageContent = async (
   }
 
   // Should never reach here, but TypeScript doesn't know that
+  jinaLogger.error(apiCallLog.id, lastError || new Error('Failed to extract content'), { url });
   throw lastError || new Error('Failed to extract content');
 };
 

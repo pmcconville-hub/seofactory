@@ -7,6 +7,8 @@
  * @module services/htmlFetcherService
  */
 
+import { jinaLogger, firecrawlLogger, directFetchLogger } from './apiCallLogger';
+
 export interface HtmlFetchResult {
   html: string;
   provider: 'jina' | 'firecrawl' | 'direct';
@@ -46,39 +48,51 @@ export async function fetchHtml(
 
   // Try Jina first (if API key available)
   if (config.jinaApiKey) {
+    const jinaLog = jinaLogger.start('fetchHtml', 'GET');
     try {
       const html = await fetchWithJina(url, config);
       if (html && html.length > 500) {
+        jinaLogger.success(jinaLog.id, { url, responseSize: html.length });
         return { html, provider: 'jina' };
       }
+      jinaLogger.error(jinaLog.id, new Error('Empty or too short response'), { url });
       errors.push('Jina: Empty or too short response');
     } catch (error) {
+      jinaLogger.error(jinaLog.id, error, { url });
       errors.push(`Jina: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   // Try Firecrawl second (if API key available)
   if (config.firecrawlApiKey) {
+    const firecrawlLog = firecrawlLogger.start('fetchHtml', 'POST');
     try {
       const html = await fetchWithFirecrawl(url, config);
       if (html && html.length > 500) {
+        firecrawlLogger.success(firecrawlLog.id, { url, responseSize: html.length });
         return { html, provider: 'firecrawl' };
       }
+      firecrawlLogger.error(firecrawlLog.id, new Error('Empty or too short response'), { url });
       errors.push('Firecrawl: Empty or too short response');
     } catch (error) {
+      firecrawlLogger.error(firecrawlLog.id, error, { url });
       errors.push(`Firecrawl: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   // Try direct fetch via proxy as last resort
   if (config.supabaseUrl && config.supabaseAnonKey) {
+    const directLog = directFetchLogger.start('fetchHtml', 'GET');
     try {
       const html = await fetchDirect(url, config);
       if (html && html.length > 500) {
+        directFetchLogger.success(directLog.id, { url, responseSize: html.length });
         return { html, provider: 'direct' };
       }
+      directFetchLogger.error(directLog.id, new Error('Empty or too short response'), { url });
       errors.push('Direct: Empty or too short response');
     } catch (error) {
+      directFetchLogger.error(directLog.id, error, { url });
       errors.push(`Direct: ${error instanceof Error ? error.message : String(error)}`);
     }
   }

@@ -18,6 +18,7 @@ import React from 'react';
 import { calculateTopicSimilarityPairs } from '../utils/helpers';
 import { logAiUsage, estimateTokens, AIUsageContext } from './telemetryService';
 import { getSupabaseClient } from './supabaseClient';
+import { anthropicLogger } from './apiCallLogger';
 
 // Current operation context for logging (set by callers)
 let currentUsageContext: AIUsageContext = {};
@@ -466,6 +467,9 @@ const callApi = async <T>(
         console.warn(`[Anthropic callApi] Request body is very large (${bodySizeKB}KB). This may cause issues.`);
     }
 
+    // Start API call logging
+    const apiCallLog = anthropicLogger.start(operation, 'POST');
+
     try {
         const response = await fetch(proxyUrl, {
             method: 'POST',
@@ -577,6 +581,14 @@ const callApi = async <T>(
             context: currentUsageContext
         }, supabase).catch(e => console.warn('Failed to log AI usage:', e));
 
+        // Log successful API call
+        anthropicLogger.success(apiCallLog.id, {
+            model: modelToUse,
+            requestSize: bodyString.length,
+            responseSize: responseText?.length || 0,
+            tokenCount: tokensIn + tokensOut,
+        });
+
         return sanitizerFn(responseText);
 
     } catch (error) {
@@ -604,6 +616,12 @@ const callApi = async <T>(
             errorMessage: error instanceof Error ? error.message : 'Unknown error',
             context: currentUsageContext
         }, supabase).catch(e => console.warn('Failed to log AI usage:', e));
+
+        // Log failed API call
+        anthropicLogger.error(apiCallLog.id, error, {
+            model: businessInfo.aiModel || 'unknown',
+            requestSize: bodyString.length,
+        });
 
         let message = error instanceof Error ? error.message : "Unknown Anthropic error";
 

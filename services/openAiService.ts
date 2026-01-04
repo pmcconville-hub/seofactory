@@ -18,6 +18,7 @@ import React from 'react';
 import { calculateTopicSimilarityPairs } from '../utils/helpers';
 import { logAiUsage, estimateTokens, AIUsageContext } from './telemetryService';
 import { getSupabaseClient } from './supabaseClient';
+import { openAiLogger } from './apiCallLogger';
 
 // Current operation context for logging (set by callers)
 let currentUsageContext: AIUsageContext = {};
@@ -117,6 +118,9 @@ const callApi = async <T>(
         // Ignore if supabase not available
     }
 
+    // Start API call logging
+    const apiCallLog = openAiLogger.start(operation, 'POST');
+
     try {
         // Determine which token parameter to use based on model
         // O-series (o3, o4-mini) and GPT-5+ use max_completion_tokens
@@ -159,6 +163,14 @@ const callApi = async <T>(
             context: currentUsageContext
         }, supabase).catch(e => console.warn('Failed to log AI usage:', e));
 
+        // Log successful API call
+        openAiLogger.success(apiCallLog.id, {
+            model: modelToUse,
+            requestSize: prompt.length,
+            responseSize: responseText.length,
+            tokenCount: tokensIn + tokensOut,
+        });
+
         dispatch({ type: 'LOG_EVENT', payload: { service: 'OpenAI', message: `Received response.`, status: 'info', timestamp: Date.now() } });
 
         return sanitizerFn(responseText);
@@ -179,6 +191,12 @@ const callApi = async <T>(
             errorMessage: message,
             context: currentUsageContext
         }, supabase).catch(e => console.warn('Failed to log AI usage:', e));
+
+        // Log failed API call
+        openAiLogger.error(apiCallLog.id, error, {
+            model: modelToUse,
+            requestSize: prompt.length,
+        });
 
         dispatch({ type: 'LOG_EVENT', payload: { service: 'OpenAI', message: `Error: ${message}`, status: 'failure', timestamp: Date.now(), data: error } });
         throw new Error(`OpenAI API Call Failed: ${message}`);

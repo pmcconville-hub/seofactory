@@ -17,6 +17,7 @@ import React from 'react';
 import { calculateTopicSimilarityPairs } from '../utils/helpers';
 import { logAiUsage, estimateTokens, AIUsageContext } from './telemetryService';
 import { getSupabaseClient } from './supabaseClient';
+import { openRouterLogger } from './apiCallLogger';
 
 // Current operation context for logging (set by callers)
 let currentUsageContext: AIUsageContext = {};
@@ -99,6 +100,9 @@ const callApi = async <T>(
         // Ignore if supabase not available
     }
 
+    // Start API call logging
+    const apiCallLog = openRouterLogger.start(operation, 'POST');
+
     try {
         const response = await fetch(API_URL, {
             method: 'POST',
@@ -145,6 +149,14 @@ const callApi = async <T>(
             context: currentUsageContext
         }, supabase).catch(e => console.warn('Failed to log AI usage:', e));
 
+        // Log successful API call
+        openRouterLogger.success(apiCallLog.id, {
+            model: modelToUse,
+            requestSize: prompt.length,
+            responseSize: responseText.length,
+            tokenCount: tokensIn + tokensOut,
+        });
+
         dispatch({ type: 'LOG_EVENT', payload: { service: 'OpenRouter', message: `Received response.`, status: 'info', timestamp: Date.now() } });
 
         return sanitizerFn(responseText);
@@ -165,6 +177,12 @@ const callApi = async <T>(
             errorMessage: message,
             context: currentUsageContext
         }, supabase).catch(e => console.warn('Failed to log AI usage:', e));
+
+        // Log failed API call
+        openRouterLogger.error(apiCallLog.id, error, {
+            model: modelToUse,
+            requestSize: prompt.length,
+        });
 
         dispatch({ type: 'LOG_EVENT', payload: { service: 'OpenRouter', message: `Error: ${message}`, status: 'failure', timestamp: Date.now(), data: error } });
         throw new Error(`OpenRouter API Call Failed: ${message}`);

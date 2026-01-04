@@ -1,6 +1,7 @@
 // services/ai/contentGeneration/orchestrator.ts
 import { getSupabaseClient } from '../../supabaseClient';
 import { ContentGenerationJob, ContentGenerationSection, ContentBrief, PassesStatus, SectionDefinition, PASS_NAMES, ImagePlaceholder } from '../../../types';
+import { performanceLogger, setCurrentJobId } from '../../performanceLogger';
 
 export interface OrchestratorCallbacks {
   onPassStart: (passNumber: number, passName: string) => void;
@@ -33,19 +34,30 @@ export class ContentGenerationOrchestrator {
   }
 
   async createJob(briefId: string, mapId: string, userId: string): Promise<ContentGenerationJob> {
-    const { data, error } = await this.supabase
-      .from('content_generation_jobs')
-      .insert({
-        brief_id: briefId,
-        map_id: mapId,
-        user_id: userId,
-        status: 'pending'
-      })
-      .select()
-      .single();
+    const event = performanceLogger.startEvent('OTHER', 'createJob');
 
-    if (error) throw new Error(`Failed to create job: ${error.message}`);
-    return data as unknown as ContentGenerationJob;
+    try {
+      const { data, error } = await this.supabase
+        .from('content_generation_jobs')
+        .insert({
+          brief_id: briefId,
+          map_id: mapId,
+          user_id: userId,
+          status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (error) throw new Error(`Failed to create job: ${error.message}`);
+
+      const job = data as unknown as ContentGenerationJob;
+      setCurrentJobId(job.id);
+      performanceLogger.endEvent(event.id);
+      return job;
+    } catch (error) {
+      performanceLogger.failEvent(event.id, error instanceof Error ? error.name : 'UNKNOWN');
+      throw error;
+    }
   }
 
   async getExistingJob(briefId: string): Promise<ContentGenerationJob | null> {
@@ -78,18 +90,27 @@ export class ContentGenerationOrchestrator {
   }
 
   async updateJob(jobId: string, updates: Partial<ContentGenerationJob>): Promise<void> {
-    const { data, error } = await this.supabase
-      .from('content_generation_jobs')
-      .update({ ...updates, updated_at: new Date().toISOString() } as unknown as Record<string, unknown>)
-      .eq('id', jobId)
-      .select('id');
+    const event = performanceLogger.startEvent('CHECKPOINT', 'updateJob');
 
-    if (error) throw new Error(`Failed to update job: ${error.message}`);
+    try {
+      const { data, error } = await this.supabase
+        .from('content_generation_jobs')
+        .update({ ...updates, updated_at: new Date().toISOString() } as unknown as Record<string, unknown>)
+        .eq('id', jobId)
+        .select('id');
 
-    // Verify the update actually happened (RLS can silently fail)
-    if (!data || data.length === 0) {
-      console.error('[Orchestrator] Job update returned no rows - likely RLS issue:', jobId);
-      throw new Error('Job was not updated - no rows affected. This may be a permissions issue.');
+      if (error) throw new Error(`Failed to update job: ${error.message}`);
+
+      // Verify the update actually happened (RLS can silently fail)
+      if (!data || data.length === 0) {
+        console.error('[Orchestrator] Job update returned no rows - likely RLS issue:', jobId);
+        throw new Error('Job was not updated - no rows affected. This may be a permissions issue.');
+      }
+
+      performanceLogger.endEvent(event.id);
+    } catch (error) {
+      performanceLogger.failEvent(event.id, error instanceof Error ? error.name : 'UNKNOWN');
+      throw error;
     }
   }
 
@@ -135,12 +156,24 @@ export class ContentGenerationOrchestrator {
   }
 
   async upsertSection(section: Partial<ContentGenerationSection> & { job_id: string; section_key: string }): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await this.supabase
-      .from('content_generation_sections')
-      .upsert(section as any, { onConflict: 'job_id,section_key' });
+    const event = performanceLogger.startEvent('SECTION', 'upsertSection', {
+      sectionId: section.section_key,
+      sectionTitle: section.section_heading,
+    });
 
-    if (error) throw new Error(`Failed to upsert section: ${error.message}`);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await this.supabase
+        .from('content_generation_sections')
+        .upsert(section as any, { onConflict: 'job_id,section_key' });
+
+      if (error) throw new Error(`Failed to upsert section: ${error.message}`);
+
+      performanceLogger.endEvent(event.id);
+    } catch (error) {
+      performanceLogger.failEvent(event.id, error instanceof Error ? error.name : 'UNKNOWN');
+      throw error;
+    }
   }
 
   async deleteJob(jobId: string): Promise<void> {
@@ -310,25 +343,35 @@ export class ContentGenerationOrchestrator {
   }
 
   async assembleDraft(jobId: string): Promise<string> {
-    const sections = await this.getSections(jobId);
+    const event = performanceLogger.startEvent('ASSEMBLY', 'assembleDraft');
 
-    return sections
-      .sort((a, b) => a.section_order - b.section_order)
-      .map(s => {
-        const content = (s.current_content || '').trim();
-        const expectedHeading = s.section_level === 2 ? `## ${s.section_heading}` : `### ${s.section_heading}`;
+    try {
+      const sections = await this.getSections(jobId);
 
-        // Check if content already starts with a markdown heading (## or ###)
-        // This prevents duplicate headers when passes add headings to content
-        const headingPattern = /^#{2,3}\s+/;
-        if (headingPattern.test(content)) {
-          // Content already has a heading - use as-is
-          return content;
-        }
+      const result = sections
+        .sort((a, b) => a.section_order - b.section_order)
+        .map(s => {
+          const content = (s.current_content || '').trim();
+          const expectedHeading = s.section_level === 2 ? `## ${s.section_heading}` : `### ${s.section_heading}`;
 
-        // No heading in content - add it
-        return `${expectedHeading}\n\n${content}`;
-      })
-      .join('\n\n');
+          // Check if content already starts with a markdown heading (## or ###)
+          // This prevents duplicate headers when passes add headings to content
+          const headingPattern = /^#{2,3}\s+/;
+          if (headingPattern.test(content)) {
+            // Content already has a heading - use as-is
+            return content;
+          }
+
+          // No heading in content - add it
+          return `${expectedHeading}\n\n${content}`;
+        })
+        .join('\n\n');
+
+      performanceLogger.endEvent(event.id);
+      return result;
+    } catch (error) {
+      performanceLogger.failEvent(event.id, error instanceof Error ? error.name : 'UNKNOWN');
+      throw error;
+    }
   }
 }
