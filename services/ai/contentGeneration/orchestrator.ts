@@ -48,7 +48,45 @@ export class ContentGenerationOrchestrator {
         .select()
         .single();
 
-      if (error) throw new Error(`Failed to create job: ${error.message}`);
+      if (error) {
+        // Handle 409 Conflict - there's already an active job for this brief
+        if (error.code === '23505' || error.message?.includes('duplicate') || error.message?.includes('unique')) {
+          console.warn('[Orchestrator] Job creation conflict - checking for existing active job');
+
+          // Try to find the existing active job
+          const existingJob = await this.getExistingJob(briefId);
+          if (existingJob) {
+            console.log('[Orchestrator] Found existing active job:', existingJob.id, 'status:', existingJob.status);
+
+            // If it's an old pending job (stuck), cancel it and retry
+            if (existingJob.status === 'pending') {
+              console.log('[Orchestrator] Cancelling stale pending job');
+              await this.updateJob(existingJob.id, { status: 'cancelled' });
+              // Retry creation
+              performanceLogger.endEvent(event.id);
+              return this.createJob(briefId, mapId, userId);
+            }
+
+            // Return the existing job so caller can decide what to do
+            setCurrentJobId(existingJob.id);
+            performanceLogger.endEvent(event.id);
+            return existingJob;
+          }
+
+          // No active job found but still got conflict - might be a completed/failed job
+          // Try to clean up and retry
+          const latestJob = await this.getLatestJob(briefId);
+          if (latestJob) {
+            console.log('[Orchestrator] Found blocking job:', latestJob.id, 'status:', latestJob.status);
+            await this.deleteJob(latestJob.id);
+            // Retry creation
+            performanceLogger.endEvent(event.id);
+            return this.createJob(briefId, mapId, userId);
+          }
+        }
+
+        throw new Error(`Failed to create job: ${error.message}`);
+      }
 
       const job = data as unknown as ContentGenerationJob;
       setCurrentJobId(job.id);
@@ -177,12 +215,22 @@ export class ContentGenerationOrchestrator {
   }
 
   async deleteJob(jobId: string): Promise<void> {
-    const { error } = await this.supabase
+    // Use .select() to verify deletion actually happened
+    const { data, error } = await this.supabase
       .from('content_generation_jobs')
       .delete()
-      .eq('id', jobId);
+      .eq('id', jobId)
+      .select('id');
 
     if (error) throw new Error(`Failed to delete job: ${error.message}`);
+
+    // Verify the delete actually removed a row (RLS can silently fail)
+    if (!data || data.length === 0) {
+      console.warn('[Orchestrator] Delete job returned no rows - job may not exist or RLS blocked:', jobId);
+      // Don't throw here - the job might already be deleted or never existed
+    } else {
+      console.log('[Orchestrator] Job deleted successfully:', jobId);
+    }
   }
 
   async pauseJob(jobId: string): Promise<void> {

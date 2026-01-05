@@ -8,6 +8,9 @@ import { verifiedDelete, verifiedBulkDelete } from './services/verifiedDatabaseS
 import { parseTopicalMap, normalizeRpcData, parseProject, repairBriefsInMap } from './utils/parsers';
 import { setGlobalUsageContext, clearGlobalUsageContext } from './services/telemetryService';
 import { setVerboseLogging } from './utils/debugLogger';
+import { consoleLogger, setLogContext } from './services/consoleLogger';
+import { apiCallLogger } from './services/apiCallLogger';
+import { performanceLogger } from './services/performanceLogger';
 
 // Import Screens
 import { AuthScreen, ProjectSelectionScreen, AnalysisStatusScreen } from './components/screens';
@@ -27,6 +30,20 @@ import { useVersionCheck, UpdateBanner } from './hooks/useVersionCheck';
 
 const App: React.FC = () => {
     const [state, dispatch] = useReducer(appReducer, initialState);
+
+    // Initialize logging services on mount (once only)
+    useEffect(() => {
+        // Install console logger to capture errors and warnings
+        consoleLogger.install();
+        console.log('[App] Logging services initialized');
+
+        return () => {
+            // Flush any pending logs on unmount
+            consoleLogger.flush();
+            apiCallLogger.flush();
+            performanceLogger.flush();
+        };
+    }, []);
 
     // Version check for detecting app updates after deployments
     const { updateAvailable, handleReload, dismissUpdate } = useVersionCheck(60000); // Check every 60s
@@ -172,6 +189,10 @@ const App: React.FC = () => {
                 userId: state.user.id,
                 projectId: state.activeProjectId || undefined,
                 mapId: state.activeMapId || undefined
+            });
+            // Also set logging context for error tracking
+            setLogContext({
+                userId: state.user.id,
             });
         }
     }, [state.user, state.activeProjectId, state.activeMapId]);
