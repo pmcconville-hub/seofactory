@@ -19,6 +19,9 @@ import { createLogger } from '../../../../utils/debugLogger';
 // Create namespaced logger - will respect verbose logging setting
 const createPassLogger = (passNumber: number) => createLogger(`Pass${passNumber}`);
 
+// Checkpoint interval - save progress after every N sections
+const CHECKPOINT_INTERVAL = 3;
+
 /**
  * Execute a content optimization pass with selective + batch processing.
  *
@@ -152,6 +155,7 @@ export async function executeSectionPass(
 
 /**
  * Process sections in batches for reduced API calls.
+ * Includes checkpoint saves after each batch to ensure progress is preserved.
  */
 async function processSectionsBatched(
   orchestrator: ContentGenerationOrchestrator,
@@ -172,6 +176,7 @@ async function processSectionsBatched(
   log.log(`Processing ${sectionsToProcess.length} sections in ${batches.length} batches (batch size: ${batchSize})`);
 
   let processedCount = 0;
+  const jobId = sectionsToProcess[0]?.job_id;
 
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     if (shouldAbort && shouldAbort()) {
@@ -216,15 +221,28 @@ async function processSectionsBatched(
 
       processedCount += batch.length;
 
+      // Checkpoint: Save progress after each batch
+      if (jobId) {
+        log.log(`Checkpoint: Saving progress after batch ${batchIndex + 1}/${batches.length} (${processedCount}/${sectionsToProcess.length} sections)`);
+        const partialDraft = await orchestrator.assembleDraft(jobId);
+        await orchestrator.updateJob(jobId, {
+          draft_content: partialDraft,
+          completed_sections: processedCount,
+          updated_at: new Date().toISOString()
+        });
+      }
+
     } catch (error) {
       log.error(`Error processing batch ${batchIndex + 1}:`, error);
-      // Continue with next batch
+      // Continue with next batch - don't fail entire pass for one batch
     }
   }
 }
 
 /**
  * Process sections individually (original behavior).
+ * Includes checkpoint saves after every CHECKPOINT_INTERVAL sections to ensure
+ * progress is preserved and resumable.
  */
 async function processSectionsIndividually(
   orchestrator: ContentGenerationOrchestrator,
@@ -239,6 +257,7 @@ async function processSectionsIndividually(
 ): Promise<void> {
   const log = createPassLogger(config.passNumber);
   const totalSections = sectionsToProcess.length;
+  let processedCount = 0;
 
   for (let i = 0; i < sectionsToProcess.length; i++) {
     if (shouldAbort && shouldAbort()) {
@@ -292,10 +311,24 @@ async function processSectionsIndividually(
         updated_at: new Date().toISOString()
       });
 
+      processedCount++;
       log.log(`Section ${section.section_key} optimized: ${sectionContent.length} → ${cleanedContent.length} chars`);
+
+      // Checkpoint: Save progress every CHECKPOINT_INTERVAL sections
+      if (processedCount % CHECKPOINT_INTERVAL === 0) {
+        log.log(`Checkpoint: Saving progress after ${processedCount}/${totalSections} sections`);
+        // Assemble and save partial draft to ensure progress is preserved
+        const partialDraft = await orchestrator.assembleDraft(section.job_id);
+        await orchestrator.updateJob(section.job_id, {
+          draft_content: partialDraft,
+          completed_sections: processedCount,
+          updated_at: new Date().toISOString()
+        });
+      }
 
     } catch (error) {
       log.error(`Error optimizing section ${section.section_key}:`, error);
+      // Continue to next section - don't fail entire pass for one section
     }
   }
 }

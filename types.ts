@@ -3213,6 +3213,19 @@ export interface HolisticSummaryContext {
 }
 
 /**
+ * Lightweight holistic summary for quality-preserving polish fallback.
+ * Captures global document context (themes, voice, terminology) to maintain
+ * coherence when processing sections individually during timeout recovery.
+ */
+export interface HolisticSummary {
+  themes: string[];           // Main themes/arguments (3-5)
+  voice: string;              // Writing style description
+  terminology: string[];      // Key terms to maintain consistency
+  semanticAnchors: string[];  // Concepts tying content together
+  structuralFlow: string;     // How sections relate to each other
+}
+
+/**
  * Context provided to each section during optimization passes.
  * Contains the section content, holistic summary, and adjacent sections.
  */

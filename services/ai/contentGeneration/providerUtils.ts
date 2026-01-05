@@ -84,15 +84,50 @@ async function callProvider(
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Default timeout for AI calls (90 seconds - allows for long content generation)
+const AI_CALL_TIMEOUT_MS = 90000;
+
+/**
+ * Wrap a promise with a timeout
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  operationName: string
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`AI call timed out after ${timeoutMs / 1000}s (${operationName}). The model may be overloaded - try again or use a different provider.`));
+    }, timeoutMs);
+  });
+
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    clearTimeout(timeoutId!);
+    return result;
+  } catch (error) {
+    clearTimeout(timeoutId!);
+    throw error;
+  }
+}
+
 /**
  * Call AI provider with automatic fallback on retryable errors
  * Uses the provider specified in businessInfo.aiProvider, falling back to alternatives
  * if a 503/overload error occurs
+ *
+ * Features:
+ * - Per-call timeout (90s default) to prevent hanging
+ * - Automatic retry with exponential backoff
+ * - Fallback to other providers on failure
  */
 export async function callProviderWithFallback(
   info: BusinessInfo,
   prompt: string,
-  maxRetries: number = 2
+  maxRetries: number = 2,
+  timeoutMs: number = AI_CALL_TIMEOUT_MS
 ): Promise<string> {
   const primaryProvider = info.aiProvider || 'gemini';
   console.log(`[ContentGen] Using AI provider: ${primaryProvider} (from businessInfo.aiProvider: ${info.aiProvider})`);
@@ -105,7 +140,12 @@ export async function callProviderWithFallback(
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`[ContentGen] Attempt ${attempt}/${maxRetries} with ${primaryProvider} (prompt: ${prompt.length} chars)`);
-      const response = await callProvider(info, prompt, primaryProvider);
+      // Wrap the AI call with timeout to prevent hanging
+      const response = await withTimeout(
+        callProvider(info, prompt, primaryProvider),
+        timeoutMs,
+        `${primaryProvider} attempt ${attempt}`
+      );
       if (typeof response === 'string') {
         return response.trim();
       }
@@ -147,7 +187,12 @@ export async function callProviderWithFallback(
       triedFallbacks++;
       console.log(`[ContentGen] Attempting fallback to ${fallbackProvider}...`);
       try {
-        const response = await callProvider(info, prompt, fallbackProvider);
+        // Wrap fallback call with timeout too
+        const response = await withTimeout(
+          callProvider(info, prompt, fallbackProvider),
+          timeoutMs,
+          `${fallbackProvider} fallback`
+        );
         if (typeof response === 'string') {
           console.log(`[ContentGen] Fallback to ${fallbackProvider} succeeded!`);
           return response.trim();

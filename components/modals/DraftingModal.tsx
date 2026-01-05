@@ -901,7 +901,8 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
       };
 
       try {
-          const polishedText = await aiService.polishDraft(contentForPolish, briefForPolish as ContentBrief, configToUse, dispatch, handleProgress);
+          // Use smart polish - automatically chunks large drafts for reliability
+          const polishedText = await aiService.polishDraftSmart(contentForPolish, briefForPolish as ContentBrief, configToUse, dispatch, handleProgress);
           if (activityTimeoutId) clearTimeout(activityTimeoutId);
 
           // Note: We don't restore base64 images - they remain as placeholder URLs

@@ -1,6 +1,6 @@
 
 // config/prompts.ts
-import { BusinessInfo, SEOPillars, SemanticTriple, EnrichedTopic, ContentBrief, BriefSection, ResponseCode, GscRow, ValidationIssue, ExpansionMode, AuthorProfile, ContextualFlowIssue, FoundationPage, NavigationStructure, WebsiteType } from '../types';
+import { BusinessInfo, SEOPillars, SemanticTriple, EnrichedTopic, ContentBrief, BriefSection, ResponseCode, GscRow, ValidationIssue, ExpansionMode, AuthorProfile, ContextualFlowIssue, FoundationPage, NavigationStructure, WebsiteType, HolisticSummary } from '../types';
 import { KnowledgeGraph } from '../lib/knowledgeGraph';
 import { getWebsiteTypeConfig } from './websiteTypeTemplates';
 import { getMonetizationPromptEnhancement, shouldApplyMonetizationEnhancement } from '../utils/monetizationPromptUtils';
@@ -892,6 +892,219 @@ ${getStylometryInstructions(info.authorProfile)}
 
 **Output:**
 Return the fully polished, publication-ready article draft in Markdown. Do not wrap in JSON. Return raw Markdown.
+`;
+};
+
+/**
+ * Prompt for polishing a single section of the draft (chunked processing).
+ * Used when the full draft is too large to process at once.
+ */
+export const POLISH_SECTION_PROMPT = (
+    sectionContent: string,
+    sectionIndex: number,
+    totalSections: number,
+    adjacentContext: { prev?: string; next?: string },
+    brief: ContentBrief,
+    info: BusinessInfo
+): string => {
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
+
+    return `
+You are a Senior Editor and Content Finisher.
+Your task is to polish a single section of an article for publication.
+
+${languageInstruction}
+
+**Section ${sectionIndex + 1} of ${totalSections}:**
+${sectionContent}
+
+${adjacentContext.prev ? `**Context - Previous Section (excerpt):**\n${adjacentContext.prev.substring(0, 500)}...\n` : ''}
+${adjacentContext.next ? `**Context - Next Section (excerpt):**\n${adjacentContext.next.substring(0, 500)}...\n` : ''}
+
+**Article Title:** ${brief.title}
+**Target Keyword:** ${brief.targetKeyword || 'N/A'}
+
+**Business Context:**
+${businessContext(info)}
+${getStylometryInstructions(info.authorProfile)}
+
+---
+
+### **POLISHING INSTRUCTIONS**
+
+1.  **${sectionIndex === 0 ? 'Introduction Polish' : 'Section Polish'}:**
+    ${sectionIndex === 0
+        ? '- This is the introduction. Ensure it provides a compelling abstractive summary.'
+        : '- Polish the section content while maintaining its core meaning and structure.'}
+2.  **Convert to HTML Structures:**
+    *   Identify dense paragraphs that list items. Convert them to **Markdown Lists**.
+    *   Identify comparative sections. Convert them to **Markdown Tables**.
+3.  **Review First Sentence:**
+    *   Ensure the first sentence is definitive ("X is Y").
+    *   Remove "fluff" transitions.
+4.  **Formatting:**
+    *   **Bold** key entities and definitions for scannability.
+    *   Ensure proper Markdown formatting.
+
+**Output:**
+Return ONLY the polished section content in Markdown. Do not add commentary. Do not wrap in JSON.
+Preserve the section's heading (H2/H3) at the start.
+`;
+};
+
+/**
+ * Generate a holistic summary of the document for context-aware section polishing.
+ * Used when full document polish times out and we need to fall back to section-by-section processing.
+ */
+export const HOLISTIC_SUMMARY_PROMPT = (
+    draft: string,
+    brief: ContentBrief,
+    info: BusinessInfo
+): string => {
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
+
+    return `
+You are analyzing a content piece for "${brief.title}" about ${brief.targetKeyword}.
+
+${languageInstruction}
+
+**Your Task:**
+Analyze this draft and extract its holistic characteristics to preserve coherence when polishing sections individually.
+
+**Draft to analyze:**
+${draft}
+
+**Extract the following:**
+1. **KEY THEMES**: The 3-5 main arguments or themes in this article
+2. **WRITING VOICE**: Describe the tone, style, and vocabulary level (formal/informal, technical/accessible, etc.)
+3. **CORE TERMINOLOGY**: List 8-12 key terms/phrases that appear consistently and must be maintained
+4. **SEMANTIC ANCHORS**: List 3-5 concepts that tie sections together (recurring ideas, central entities)
+5. **STRUCTURAL FLOW**: Briefly describe how sections relate to each other (e.g., "builds from basics to advanced", "problem-solution pairs")
+
+${jsonResponseInstruction}
+
+Return a JSON object with these exact keys:
+{
+  "themes": ["theme1", "theme2", ...],
+  "voice": "description of writing style",
+  "terminology": ["term1", "term2", ...],
+  "semanticAnchors": ["concept1", "concept2", ...],
+  "structuralFlow": "description of how sections connect"
+}
+`;
+};
+
+/**
+ * Polish a section with holistic context preserved.
+ * Used as part of the hierarchical fallback when full document polish times out.
+ */
+export const POLISH_SECTION_WITH_CONTEXT_PROMPT = (
+    section: string,
+    sectionIndex: number,
+    totalSections: number,
+    holisticSummary: HolisticSummary,
+    adjacentContext: { previous?: string; next?: string },
+    brief: ContentBrief,
+    info: BusinessInfo
+): string => {
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
+
+    return `
+You are polishing section ${sectionIndex + 1} of ${totalSections} for an article about "${brief.targetKeyword}".
+
+${languageInstruction}
+
+**GLOBAL CONTEXT (maintain throughout):**
+- **Themes:** ${holisticSummary.themes.join(', ')}
+- **Voice:** ${holisticSummary.voice}
+- **Key terms to use consistently:** ${holisticSummary.terminology.join(', ')}
+- **Semantic anchors:** ${holisticSummary.semanticAnchors.join(', ')}
+- **Structural flow:** ${holisticSummary.structuralFlow}
+
+${adjacentContext.previous ? `**PREVIOUS SECTION (last 500 chars for continuity):**
+...${adjacentContext.previous}` : ''}
+
+**SECTION TO POLISH:**
+${section}
+
+${adjacentContext.next ? `**NEXT SECTION (first 500 chars for transition):**
+${adjacentContext.next}...` : ''}
+
+**Business Context:**
+${businessContext(info)}
+${getStylometryInstructions(info.authorProfile)}
+
+---
+
+### **POLISHING INSTRUCTIONS**
+
+1. **Maintain Global Coherence:**
+   - Use the terminology listed above consistently
+   - Reinforce the semantic anchors where naturally relevant
+   - Match the voice and tone described above
+
+2. **Smooth Transitions:**
+   ${adjacentContext.previous ? '- Ensure this section flows naturally from the previous one' : '- Create a strong opening as this is near the start'}
+   ${adjacentContext.next ? '- Set up a natural transition to the next section' : '- Create a satisfying conclusion as this is near the end'}
+
+3. **Polish Content:**
+   - Apply Holistic SEO principles
+   - Use definitive first sentences
+   - Bold key entities
+   - Ensure proper Markdown formatting
+
+**Output:**
+Return ONLY the polished section content in Markdown. Do not add commentary. Do not wrap in JSON.
+Preserve the section's heading (H2/H3) at the start.
+`;
+};
+
+/**
+ * Lightweight coherence pass to fix discontinuities after reassembling polished sections.
+ * Used as the final step of hierarchical polish fallback.
+ */
+export const COHERENCE_PASS_PROMPT = (
+    reassembledDraft: string,
+    holisticSummary: HolisticSummary,
+    brief: ContentBrief,
+    info: BusinessInfo
+): string => {
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
+
+    return `
+You are reviewing a reassembled article for "${brief.targetKeyword}" that was polished section-by-section.
+Your task is to make LIGHT EDITS ONLY to ensure coherence.
+
+${languageInstruction}
+
+**Expected characteristics (from original analysis):**
+- **Themes:** ${holisticSummary.themes.join(', ')}
+- **Voice:** ${holisticSummary.voice}
+- **Key terminology:** ${holisticSummary.terminology.slice(0, 8).join(', ')}
+- **Structural flow:** ${holisticSummary.structuralFlow}
+
+**Draft to review:**
+${reassembledDraft}
+
+---
+
+### **COHERENCE REVIEW INSTRUCTIONS**
+
+Make MINIMAL changes. Only fix:
+
+1. **Transition smoothness:** Fix jarring jumps between sections
+2. **Terminology consistency:** Ensure key terms are used consistently
+3. **Thematic continuity:** Ensure themes flow logically throughout
+4. **Tonal consistency:** Fix any jarring shifts in voice or style
+
+**DO NOT:**
+- Rewrite entire sections
+- Add significant new content
+- Change the article structure
+- Remove important information
+
+**Output:**
+Return the coherence-checked draft in full Markdown. Make only the minimal edits needed for smooth reading.
 `;
 };
 

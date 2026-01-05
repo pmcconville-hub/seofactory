@@ -25,83 +25,100 @@ const getSeverityStyles = (issue: ContextualFlowIssue) => {
     return 'border-yellow-500 bg-yellow-900/20 text-yellow-200';
 };
 
+// Generate a unique key for each issue to track status across result updates
+const getIssueKey = (issue: ContextualFlowIssue): string => {
+  return `${issue.rule}-${issue.category}-${(issue.offendingSnippet || '').slice(0, 50)}`;
+};
+
 const FlowAuditModal: React.FC<FlowAuditModalProps> = ({ isOpen, onClose, result, onAutoFix, onBatchAutoFix }) => {
-  const [issueStatus, setIssueStatus] = useState<Record<number, 'IDLE' | 'FIXING' | 'FIXED' | 'DISMISSED'>>({});
-  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [issueStatus, setIssueStatus] = useState<Record<string, 'IDLE' | 'FIXING' | 'FIXED' | 'DISMISSED'>>({});
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [isBatchFixing, setIsBatchFixing] = useState(false);
+  const [wasOpen, setWasOpen] = useState(false);
 
-  // Reset status when a new result loads
+  // Only reset status when modal opens fresh (not on result updates)
   useEffect(() => {
-      if (isOpen) {
+      if (isOpen && !wasOpen) {
+          // Modal just opened - reset everything
           setIssueStatus({});
-          setSelectedIndices(new Set());
+          setSelectedKeys(new Set());
       }
-  }, [isOpen, result]);
+      setWasOpen(isOpen);
+  }, [isOpen, wasOpen]);
 
-  const handleFix = async (index: number, issue: ContextualFlowIssue) => {
-      setIssueStatus(prev => ({ ...prev, [index]: 'FIXING' }));
+  const handleFix = async (issue: ContextualFlowIssue) => {
+      const key = getIssueKey(issue);
+      setIssueStatus(prev => ({ ...prev, [key]: 'FIXING' }));
       try {
           await onAutoFix(issue);
-          setIssueStatus(prev => ({ ...prev, [index]: 'FIXED' }));
+          setIssueStatus(prev => ({ ...prev, [key]: 'FIXED' }));
       } catch (error) {
           console.error("Auto-fix failed", error);
-          setIssueStatus(prev => ({ ...prev, [index]: 'IDLE' })); // Revert on error so user can try again
+          setIssueStatus(prev => ({ ...prev, [key]: 'IDLE' })); // Revert on error so user can try again
       }
   };
 
-  const handleDismiss = (index: number) => {
-      setIssueStatus(prev => ({ ...prev, [index]: 'DISMISSED' }));
-      const newSet = new Set(selectedIndices);
-      newSet.delete(index);
-      setSelectedIndices(newSet);
+  const handleDismiss = (issue: ContextualFlowIssue) => {
+      const key = getIssueKey(issue);
+      setIssueStatus(prev => ({ ...prev, [key]: 'DISMISSED' }));
+      const newSet = new Set(selectedKeys);
+      newSet.delete(key);
+      setSelectedKeys(newSet);
   };
 
-  const toggleSelection = (index: number) => {
-      const newSet = new Set(selectedIndices);
-      if (newSet.has(index)) newSet.delete(index);
-      else newSet.add(index);
-      setSelectedIndices(newSet);
+  const toggleSelection = (issue: ContextualFlowIssue) => {
+      const key = getIssueKey(issue);
+      const newSet = new Set(selectedKeys);
+      if (newSet.has(key)) newSet.delete(key);
+      else newSet.add(key);
+      setSelectedKeys(newSet);
   };
 
   const handleSelectAll = () => {
       if (!result) return;
-      
-      const fixableIndices: number[] = [];
-      result.issues.forEach((issue, idx: number) => {
-          const isActionable = 
-              issue.offendingSnippet && 
-              issue.remediation && 
-              issueStatus[idx] !== 'DISMISSED' && 
-              issueStatus[idx] !== 'FIXED';
-          
+
+      const fixableKeys: string[] = [];
+      result.issues.forEach((issue) => {
+          const key = getIssueKey(issue);
+          const isActionable =
+              issue.offendingSnippet &&
+              issue.remediation &&
+              issueStatus[key] !== 'DISMISSED' &&
+              issueStatus[key] !== 'FIXED';
+
           if (isActionable) {
-              fixableIndices.push(idx);
+              fixableKeys.push(key);
           }
       });
-      
-      setSelectedIndices(new Set(fixableIndices));
+
+      setSelectedKeys(new Set(fixableKeys));
   };
 
   const handleDeselectAll = () => {
-      setSelectedIndices(new Set());
+      setSelectedKeys(new Set());
   };
 
   const handleBatchFixClick = async () => {
       if(!result) return;
       setIsBatchFixing(true);
-      
-      const indicesToFix: number[] = Array.from(selectedIndices);
+
+      // Get issues to fix based on selected keys
+      const issuesToFix = result.issues.filter(issue => selectedKeys.has(getIssueKey(issue)));
+
       // Optimistically mark as fixing
       const newStatus = { ...issueStatus };
-      indicesToFix.forEach((idx: number) => { newStatus[idx] = 'FIXING'; });
+      issuesToFix.forEach((issue) => { newStatus[getIssueKey(issue)] = 'FIXING'; });
       setIssueStatus(newStatus);
 
-      const issuesToFix = indicesToFix.map((idx: number) => result.issues[idx]);
-      
       await onBatchAutoFix(issuesToFix);
-      
+
+      // Mark all as fixed
+      const fixedStatus = { ...issueStatus };
+      issuesToFix.forEach((issue) => { fixedStatus[getIssueKey(issue)] = 'FIXED'; });
+      setIssueStatus(fixedStatus);
+      setSelectedKeys(new Set());
+
       setIsBatchFixing(false);
-      // Note: Parent will update 'result', triggering useEffect to clear selection and statuses, which is correct for a fresh state.
   };
 
   const fixableIssuesCount = result?.issues.filter(i => i.offendingSnippet && i.remediation).length || 0;
@@ -193,30 +210,31 @@ const FlowAuditModal: React.FC<FlowAuditModalProps> = ({ isOpen, onClose, result
                         ) : (
                             <div className="space-y-4 pb-20">
                                 {result.issues.map((issue, idx) => {
-                                    const status = issueStatus[idx] || 'IDLE';
+                                    const key = getIssueKey(issue);
+                                    const status = issueStatus[key] || 'IDLE';
                                     if (status === 'DISMISSED') return null;
 
                                     const canFix = issue.offendingSnippet && issue.remediation;
-                                    const isSelected = selectedIndices.has(idx);
+                                    const isSelected = selectedKeys.has(key);
 
                                     return (
-                                        <div 
-                                            key={idx} 
+                                        <div
+                                            key={`${key}-${idx}`}
                                             className={`p-4 rounded-lg border-l-4 transition-colors ${getSeverityStyles(issue)} ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
                                         >
                                             <div className="flex items-start gap-3">
                                                 {canFix && status !== 'FIXED' && (
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={isSelected} 
-                                                        onChange={() => toggleSelection(idx)}
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => toggleSelection(issue)}
                                                         className="mt-1 h-4 w-4 rounded border-gray-500 bg-gray-800 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                     />
                                                 )}
                                                 <div className="flex-grow">
                                                     <div className="flex justify-between">
                                                         <span className="font-bold text-xs uppercase tracking-wider opacity-80">{issue.category} RULE: {issue.rule}</span>
-                                                        <button onClick={() => handleDismiss(idx)} className="text-gray-400 hover:text-white text-xs font-medium">
+                                                        <button onClick={() => handleDismiss(issue)} className="text-gray-400 hover:text-white text-xs font-medium">
                                                             Dismiss
                                                         </button>
                                                     </div>
@@ -231,7 +249,7 @@ const FlowAuditModal: React.FC<FlowAuditModalProps> = ({ isOpen, onClose, result
                                                             <strong>Suggestion:</strong> {safeString(issue.remediation)}
                                                         </div>
                                                     )}
-                                                    
+
                                                     {/* Action Area */}
                                                     <div className="flex justify-end mt-2 pt-2 border-t border-white/10">
                                                         {status === 'FIXED' ? (
@@ -239,8 +257,8 @@ const FlowAuditModal: React.FC<FlowAuditModalProps> = ({ isOpen, onClose, result
                                                                 ✓ Resolved
                                                             </span>
                                                         ) : canFix ? (
-                                                            <Button 
-                                                                onClick={() => handleFix(idx, issue)} 
+                                                            <Button
+                                                                onClick={() => handleFix(issue)}
                                                                 disabled={status === 'FIXING' || isBatchFixing}
                                                                 className="text-xs !py-1 !px-3 bg-blue-600 hover:bg-blue-700 flex items-center gap-2"
                                                             >
@@ -259,11 +277,11 @@ const FlowAuditModal: React.FC<FlowAuditModalProps> = ({ isOpen, onClose, result
                         )}
                         
                         {/* Floating Action Bar for Batch Fix */}
-                        {selectedIndices.size > 0 && (
+                        {selectedKeys.size > 0 && (
                             <div className="absolute bottom-4 left-6 right-6 bg-blue-900/90 backdrop-blur-md p-4 rounded-lg shadow-2xl border border-blue-500 flex justify-between items-center animate-fade-in-up">
-                                <span className="text-white font-semibold">{selectedIndices.size} issues selected for remediation</span>
+                                <span className="text-white font-semibold">{selectedKeys.size} issues selected for remediation</span>
                                 <Button onClick={handleBatchFixClick} disabled={isBatchFixing} className="bg-white text-blue-900 hover:bg-gray-100 font-bold shadow-md">
-                                    {isBatchFixing ? <div className="flex items-center gap-2"><Loader className="w-4 h-4 text-blue-900"/> <span>Processing Batch...</span></div> : `Fix ${selectedIndices.size} Issues`}
+                                    {isBatchFixing ? <div className="flex items-center gap-2"><Loader className="w-4 h-4 text-blue-900"/> <span>Processing Batch...</span></div> : `Fix ${selectedKeys.size} Issues`}
                                 </Button>
                             </div>
                         )}

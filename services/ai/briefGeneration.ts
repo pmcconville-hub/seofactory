@@ -1,5 +1,5 @@
 
-import { BusinessInfo, ResponseCode, ContentBrief, EnrichedTopic, SEOPillars, KnowledgeGraph, ContentIntegrityResult, SchemaGenerationResult, AuditRuleResult, BriefVisualSemantics, StreamingProgressCallback } from '../../types';
+import { BusinessInfo, ResponseCode, ContentBrief, EnrichedTopic, SEOPillars, KnowledgeGraph, ContentIntegrityResult, SchemaGenerationResult, AuditRuleResult, BriefVisualSemantics, StreamingProgressCallback, HolisticSummary } from '../../types';
 import * as geminiService from '../geminiService';
 import * as openAiService from '../openAiService';
 import * as anthropicService from '../anthropicService';
@@ -385,6 +385,373 @@ export const polishDraft = async (
 
 // Deprecated alias for backward compatibility during refactor
 export const finalizeDraft = polishDraft;
+
+// Threshold for hierarchical fallback (only applies after timeout AND size check)
+const FALLBACK_POLISH_THRESHOLD = 15000;
+
+/**
+ * Split a markdown draft into sections by H2 headings
+ */
+function splitDraftIntoSections(draft: string): string[] {
+    // Split by H2 headings, keeping the heading with each section
+    const sections: string[] = [];
+    const h2Pattern = /^## /m;
+
+    // First, check if there's content before the first H2 (intro)
+    const firstH2Index = draft.search(h2Pattern);
+    if (firstH2Index > 0) {
+        const intro = draft.substring(0, firstH2Index).trim();
+        if (intro) {
+            sections.push(intro);
+        }
+    }
+
+    // Split by H2 headings
+    const parts = draft.split(/(?=^## )/m);
+    for (const part of parts) {
+        const trimmed = part.trim();
+        if (trimmed && trimmed.startsWith('## ')) {
+            sections.push(trimmed);
+        } else if (trimmed && sections.length === 0) {
+            // Content before first H2
+            sections.push(trimmed);
+        }
+    }
+
+    return sections;
+}
+
+/**
+ * Generate a holistic summary of the document for context-aware section polishing.
+ * This captures global themes, voice, terminology, and structure.
+ */
+async function generateHolisticSummary(
+    draft: string,
+    brief: ContentBrief,
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>
+): Promise<HolisticSummary> {
+    const prompt = prompts.HOLISTIC_SUMMARY_PROMPT(draft, brief, businessInfo);
+
+    const response = await dispatchToProvider(businessInfo, {
+        gemini: () => geminiService.generateText(prompt, businessInfo, dispatch),
+        openai: () => openAiService.generateText(prompt, businessInfo, dispatch),
+        anthropic: () => anthropicService.generateText(prompt, businessInfo, dispatch),
+        perplexity: () => perplexityService.generateText(prompt, businessInfo, dispatch),
+        openrouter: () => openRouterService.generateText(prompt, businessInfo, dispatch),
+    });
+
+    // Parse JSON response with fallback defaults
+    try {
+        // Try to extract JSON from the response (in case of markdown wrapping)
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            return JSON.parse(jsonMatch[0]);
+        }
+        return JSON.parse(response);
+    } catch {
+        console.warn('[generateHolisticSummary] Failed to parse JSON, using defaults');
+        return {
+            themes: [brief.targetKeyword || brief.title],
+            voice: 'professional and informative',
+            terminology: [brief.targetKeyword || '', brief.title].filter(Boolean),
+            semanticAnchors: [],
+            structuralFlow: 'sequential'
+        };
+    }
+}
+
+/**
+ * Polish a single section with holistic context preserved.
+ * Part of the hierarchical fallback strategy.
+ */
+async function polishSectionWithContext(
+    section: string,
+    sectionIndex: number,
+    totalSections: number,
+    holisticSummary: HolisticSummary,
+    adjacentContext: { previous?: string; next?: string },
+    brief: ContentBrief,
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>
+): Promise<string> {
+    const prompt = prompts.POLISH_SECTION_WITH_CONTEXT_PROMPT(
+        section,
+        sectionIndex,
+        totalSections,
+        holisticSummary,
+        adjacentContext,
+        brief,
+        businessInfo
+    );
+
+    return dispatchToProvider(businessInfo, {
+        gemini: () => geminiService.generateText(prompt, businessInfo, dispatch),
+        openai: () => openAiService.generateText(prompt, businessInfo, dispatch),
+        anthropic: () => anthropicService.generateText(prompt, businessInfo, dispatch),
+        perplexity: () => perplexityService.generateText(prompt, businessInfo, dispatch),
+        openrouter: () => openRouterService.generateText(prompt, businessInfo, dispatch),
+    });
+}
+
+/**
+ * Run a lightweight coherence pass to fix discontinuities after reassembling polished sections.
+ */
+async function runCoherencePass(
+    polishedDraft: string,
+    holisticSummary: HolisticSummary,
+    brief: ContentBrief,
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>
+): Promise<string> {
+    const prompt = prompts.COHERENCE_PASS_PROMPT(polishedDraft, holisticSummary, brief, businessInfo);
+
+    return dispatchToProvider(businessInfo, {
+        gemini: () => geminiService.generateText(prompt, businessInfo, dispatch),
+        openai: () => openAiService.generateText(prompt, businessInfo, dispatch),
+        anthropic: () => anthropicService.generateText(prompt, businessInfo, dispatch),
+        perplexity: () => perplexityService.generateText(prompt, businessInfo, dispatch),
+        openrouter: () => openRouterService.generateText(prompt, businessInfo, dispatch),
+    });
+}
+
+/**
+ * Polish draft using hierarchical approach that preserves global context.
+ * Used as fallback when full document polish times out.
+ *
+ * Process:
+ * 1. Generate holistic summary (themes, voice, terminology)
+ * 2. Polish each section with summary context prepended
+ * 3. Reassemble sections
+ * 4. Run coherence pass for smooth transitions
+ */
+async function polishDraftHierarchical(
+    draft: string,
+    brief: ContentBrief,
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>,
+    onProgress?: StreamingProgressCallback
+): Promise<string> {
+    // Phase 1: Generate holistic summary
+    dispatch({
+        type: 'LOG_EVENT',
+        payload: {
+            service: 'Polish',
+            message: 'Analyzing document themes and structure for context preservation...',
+            status: 'info',
+            timestamp: Date.now()
+        }
+    });
+
+    const holisticSummary = await generateHolisticSummary(draft, brief, businessInfo, dispatch);
+
+    dispatch({
+        type: 'LOG_EVENT',
+        payload: {
+            service: 'Polish',
+            message: `Holistic summary: ${holisticSummary.themes.length} themes, ${holisticSummary.terminology.length} key terms identified`,
+            status: 'success',
+            timestamp: Date.now()
+        }
+    });
+
+    // Phase 2: Split into sections
+    const sections = splitDraftIntoSections(draft);
+
+    dispatch({
+        type: 'LOG_EVENT',
+        payload: {
+            service: 'Polish',
+            message: `Polishing ${sections.length} sections with global context preserved...`,
+            status: 'info',
+            timestamp: Date.now()
+        }
+    });
+
+    // Phase 3: Polish each section with context
+    const polishedSections: string[] = [];
+    for (let i = 0; i < sections.length; i++) {
+        const sectionName = sections[i].split('\n')[0].replace(/^#+\s*/, '').substring(0, 50);
+
+        if (onProgress) {
+            onProgress({
+                charsReceived: i * 1000,
+                eventsProcessed: i + 1,
+                elapsedMs: Date.now(),
+                lastActivity: Date.now()
+            });
+        }
+
+        dispatch({
+            type: 'LOG_EVENT',
+            payload: {
+                service: 'Polish',
+                message: `Polishing section ${i + 1}/${sections.length}: ${sectionName}...`,
+                status: 'info',
+                timestamp: Date.now()
+            }
+        });
+
+        const adjacentContext = {
+            previous: i > 0 ? sections[i - 1].slice(-500) : undefined,
+            next: i < sections.length - 1 ? sections[i + 1].slice(0, 500) : undefined
+        };
+
+        try {
+            const polished = await polishSectionWithContext(
+                sections[i],
+                i,
+                sections.length,
+                holisticSummary,
+                adjacentContext,
+                brief,
+                businessInfo,
+                dispatch
+            );
+            polishedSections.push(polished.trim());
+
+            dispatch({
+                type: 'LOG_EVENT',
+                payload: {
+                    service: 'Polish',
+                    message: `Section ${i + 1}/${sections.length} polished (${sections[i].length} → ${polished.length} chars)`,
+                    status: 'success',
+                    timestamp: Date.now()
+                }
+            });
+        } catch (error) {
+            console.warn(`[polishDraftHierarchical] Section ${i + 1} polish failed, keeping original:`, error);
+            polishedSections.push(sections[i]);
+
+            dispatch({
+                type: 'LOG_EVENT',
+                payload: {
+                    service: 'Polish',
+                    message: `Section ${i + 1} polish failed, keeping original`,
+                    status: 'warning',
+                    timestamp: Date.now()
+                }
+            });
+        }
+    }
+
+    // Phase 4: Reassemble
+    const reassembled = polishedSections.join('\n\n');
+
+    // Phase 5: Coherence pass
+    dispatch({
+        type: 'LOG_EVENT',
+        payload: {
+            service: 'Polish',
+            message: 'Running coherence pass for smooth transitions...',
+            status: 'info',
+            timestamp: Date.now()
+        }
+    });
+
+    let finalDraft: string;
+    try {
+        finalDraft = await runCoherencePass(reassembled, holisticSummary, brief, businessInfo, dispatch);
+
+        dispatch({
+            type: 'LOG_EVENT',
+            payload: {
+                service: 'Polish',
+                message: `Coherence pass complete: ${reassembled.length} → ${finalDraft.length} chars`,
+                status: 'success',
+                timestamp: Date.now()
+            }
+        });
+    } catch (error) {
+        console.warn('[polishDraftHierarchical] Coherence pass failed, using reassembled draft:', error);
+        finalDraft = reassembled;
+
+        dispatch({
+            type: 'LOG_EVENT',
+            payload: {
+                service: 'Polish',
+                message: 'Coherence pass skipped due to error, using reassembled draft',
+                status: 'warning',
+                timestamp: Date.now()
+            }
+        });
+    }
+
+    dispatch({
+        type: 'LOG_EVENT',
+        payload: {
+            service: 'Polish',
+            message: `Hierarchical polish complete: ${draft.length} → ${finalDraft.length} chars`,
+            status: 'success',
+            timestamp: Date.now()
+        }
+    });
+
+    return finalDraft;
+}
+
+/**
+ * Smart polish with quality-preserving fallback strategy.
+ *
+ * Strategy:
+ * 1. ALWAYS try full document polish first (best quality)
+ * 2. Only fall back to hierarchical approach if:
+ *    - Full polish times out AND
+ *    - Draft is large (>15,000 chars)
+ *
+ * The hierarchical fallback preserves semantic quality by:
+ * - Extracting global context (themes, voice, terminology) first
+ * - Prepending this context to each section during polish
+ * - Running a final coherence pass
+ */
+export const polishDraftSmart = async (
+    draft: string,
+    brief: ContentBrief,
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<any>,
+    onProgress?: StreamingProgressCallback
+): Promise<string> => {
+    // ALWAYS try full polish first - best quality
+    try {
+        dispatch({
+            type: 'LOG_EVENT',
+            payload: {
+                service: 'Polish',
+                message: `Polishing full document (${draft.length} chars)...`,
+                status: 'info',
+                timestamp: Date.now()
+            }
+        });
+
+        return await polishDraft(draft, brief, businessInfo, dispatch, onProgress);
+
+    } catch (error: any) {
+        // Check if it's a timeout AND draft is large enough for fallback
+        const errorMessage = error?.message || '';
+        const isTimeout = errorMessage.includes('timed out') ||
+                          errorMessage.includes('timeout') ||
+                          errorMessage.includes('overloaded');
+        const isLargeEnough = draft.length > FALLBACK_POLISH_THRESHOLD;
+
+        if (!isTimeout || !isLargeEnough) {
+            // Re-throw for non-timeout errors or small drafts
+            throw error;
+        }
+
+        // Fall back to hierarchical approach with quality preservation
+        dispatch({
+            type: 'LOG_EVENT',
+            payload: {
+                service: 'Polish',
+                message: `Full polish timed out (${draft.length} chars). Using hierarchical approach with preserved context...`,
+                status: 'warning',
+                timestamp: Date.now()
+            }
+        });
+
+        return polishDraftHierarchical(draft, brief, businessInfo, dispatch, onProgress);
+    }
+};
 
 export const auditContentIntegrity = async (
     brief: ContentBrief,

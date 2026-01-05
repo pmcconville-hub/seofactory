@@ -1,5 +1,5 @@
 // components/ContentGenerationProgress.tsx
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ContentGenerationJob, ContentGenerationSection, PASS_NAMES, PassesStatus } from '../types';
 import { SimpleMarkdown } from './ui/SimpleMarkdown';
 
@@ -13,6 +13,68 @@ interface ContentGenerationProgressProps {
   onCancel: () => void;
   onRetry?: () => void;
   error?: string | null;
+}
+
+// Estimated average seconds per section per pass (based on historical data)
+const ESTIMATED_SECONDS_PER_SECTION: Record<number, number> = {
+  1: 45,  // Draft generation - longest
+  2: 15,  // Headers optimization
+  3: 15,  // Lists/tables
+  4: 15,  // Visual semantics
+  5: 15,  // Micro semantics
+  6: 15,  // Discourse integration
+  7: 10,  // Introduction (usually just 1 section)
+  8: 20,  // Audit
+  9: 15,  // Schema generation
+};
+
+/**
+ * Calculate estimated time remaining based on current progress
+ */
+function calculateEstimatedTimeRemaining(
+  currentPass: number,
+  totalSections: number,
+  completedSections: number,
+  passesStatus: PassesStatus
+): { minutes: number; seconds: number } | null {
+  if (!totalSections || totalSections === 0) return null;
+
+  let remainingSeconds = 0;
+
+  // Calculate remaining time for current pass
+  if (currentPass === 1) {
+    const sectionsLeft = totalSections - (completedSections || 0);
+    remainingSeconds += sectionsLeft * ESTIMATED_SECONDS_PER_SECTION[1];
+  }
+
+  // Add time for remaining passes
+  for (let pass = Math.max(currentPass, 2); pass <= 9; pass++) {
+    const passKey = `pass_${pass}_${['', 'draft', 'headers', 'lists', 'visuals', 'microsemantics', 'discourse', 'intro', 'audit', 'schema'][pass]}` as keyof PassesStatus;
+    const status = passesStatus[passKey];
+
+    if (status !== 'completed') {
+      // Pass 7 (intro) typically only processes 1 section
+      const sectionsToProcess = pass === 7 ? 1 : Math.ceil(totalSections * 0.7); // ~70% of sections need optimization
+      remainingSeconds += sectionsToProcess * (ESTIMATED_SECONDS_PER_SECTION[pass] || 15);
+    }
+  }
+
+  if (remainingSeconds <= 0) return null;
+
+  return {
+    minutes: Math.floor(remainingSeconds / 60),
+    seconds: remainingSeconds % 60
+  };
+}
+
+/**
+ * Format time remaining as a human-readable string
+ */
+function formatTimeRemaining(estimate: { minutes: number; seconds: number } | null): string {
+  if (!estimate) return '';
+  if (estimate.minutes === 0) return `~${estimate.seconds}s remaining`;
+  if (estimate.minutes < 2) return `~${estimate.minutes}m ${estimate.seconds}s remaining`;
+  return `~${estimate.minutes} min remaining`;
 }
 
 const CheckIcon = () => (
@@ -67,12 +129,30 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
     return sum + words;
   }, 0);
 
+  // Calculate estimated time remaining
+  const estimatedTimeRemaining = useMemo(() => {
+    if (job.status !== 'in_progress') return null;
+    return calculateEstimatedTimeRemaining(
+      job.current_pass,
+      job.total_sections || sections.length,
+      job.completed_sections || completedSections.length,
+      job.passes_status
+    );
+  }, [job.current_pass, job.total_sections, job.completed_sections, job.passes_status, job.status, sections.length, completedSections.length]);
+
+  const timeRemainingText = formatTimeRemaining(estimatedTimeRemaining);
+
   return (
     <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
       <div className="flex justify-between items-start mb-4">
-        <h3 className="text-lg font-semibold text-white">
-          Generating Article Draft
-        </h3>
+        <div>
+          <h3 className="text-lg font-semibold text-white">
+            Generating Article Draft
+          </h3>
+          {timeRemainingText && job.status === 'in_progress' && (
+            <p className="text-xs text-gray-400 mt-1">{timeRemainingText}</p>
+          )}
+        </div>
         {completedSections.length > 0 && (
           <button
             onClick={() => setShowLivePreview(!showLivePreview)}
