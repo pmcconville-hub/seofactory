@@ -9,8 +9,8 @@ const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 // Supabase Edge Functions Pro plan limits:
 // - Request timeout: 150 seconds
 // - Wall clock timeout: 400 seconds
-// Set internal timeout to 140 seconds to allow for network overhead
-const FETCH_TIMEOUT_MS = 140000; // 140 seconds
+// Set internal timeout to 145 seconds to maximize Pro plan limit while leaving buffer for response handling
+const FETCH_TIMEOUT_MS = 145000; // 145 seconds
 
 function corsHeaders(origin = "*") {
   return {
