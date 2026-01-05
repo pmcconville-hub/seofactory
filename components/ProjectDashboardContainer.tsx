@@ -2948,7 +2948,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 onAutoFix={handleFlowAutoFix}
                 onBatchAutoFix={handleBatchFlowAutoFix}
                 onRefreshAnalysis={() => handleAnalyzeFlow()}
-                isRefreshing={state.loading.flowAudit}
+                isRefreshing={!!state.isLoading?.flowAudit}
             />
 
             {/* Unified Audit Dashboard (Phase 6) */}
