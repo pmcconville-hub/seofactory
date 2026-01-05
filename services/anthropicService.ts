@@ -81,6 +81,7 @@ export function setUsageContext(context: AIUsageContext, operation?: string): vo
  * Call Anthropic API via streaming to avoid timeouts on long-running requests
  * Streaming keeps the connection alive while the AI generates its response
  * @param onProgress - Optional callback to report streaming progress (for activity-based timeouts)
+ * @param expectJson - Whether to append JSON formatting instructions (default: true for backward compat)
  */
 const callApiWithStreaming = async <T>(
     prompt: string,
@@ -88,12 +89,13 @@ const callApiWithStreaming = async <T>(
     dispatch: React.Dispatch<AppAction>,
     sanitizerFn: (text: string) => T,
     operationName?: string,
-    onProgress?: StreamingProgressCallback
+    onProgress?: StreamingProgressCallback,
+    expectJson: boolean = true
 ): Promise<T> => {
     const startTime = Date.now();
     const operation = operationName || currentOperation;
 
-    console.log('[Anthropic STREAMING] Starting streaming request:', { operation, model: businessInfo.aiModel, promptLength: prompt.length });
+    console.log('[Anthropic STREAMING] Starting streaming request:', { operation, model: businessInfo.aiModel, promptLength: prompt.length, expectJson });
     dispatch({ type: 'LOG_EVENT', payload: { service: 'Anthropic', message: `Sending streaming request to ${businessInfo.aiModel}...`, status: 'info', timestamp: Date.now() } });
 
     if (!businessInfo.anthropicApiKey) {
@@ -104,7 +106,10 @@ const callApiWithStreaming = async <T>(
         throw new Error("Supabase URL is not configured. Required for Anthropic proxy.");
     }
 
-    const effectivePrompt = `${prompt}\n\nCRITICAL FORMATTING REQUIREMENT: Your response must be ONLY a valid JSON object. Do NOT include any text before or after the JSON. Do NOT wrap it in markdown code blocks. Start your response directly with { and end with }.`;
+    // Only append JSON formatting requirements when expecting JSON output
+    const effectivePrompt = expectJson
+        ? `${prompt}\n\nCRITICAL FORMATTING REQUIREMENT: Your response must be ONLY a valid JSON object. Do NOT include any text before or after the JSON. Do NOT wrap it in markdown code blocks. Start your response directly with { and end with }.`
+        : prompt;
     const proxyUrl = `${businessInfo.supabaseUrl}/functions/v1/anthropic-proxy`;
 
     const validClaudeModels = [
@@ -842,9 +847,19 @@ export const generateContentBrief = async (info: BusinessInfo, topic: EnrichedTo
 };
 
 // Use streaming for article draft generation to avoid timeouts
-export const generateArticleDraft = async (brief: ContentBrief, info: BusinessInfo, dispatch: React.Dispatch<any>) => callApiWithStreaming(prompts.GENERATE_ARTICLE_DRAFT_PROMPT(brief, info), info, dispatch, t => t, 'generateArticleDraft');
+// expectJson: false because this returns markdown content, not JSON
+export const generateArticleDraft = async (brief: ContentBrief, info: BusinessInfo, dispatch: React.Dispatch<any>) => callApiWithStreaming(
+    prompts.GENERATE_ARTICLE_DRAFT_PROMPT(brief, info),
+    info,
+    dispatch,
+    t => t,
+    'generateArticleDraft',
+    undefined, // no progress callback
+    false // expectJson = false, returns markdown
+);
 
 // Use streaming for polish to avoid timeouts with large drafts
+// expectJson: false because this returns polished markdown content, not JSON
 export const polishDraft = async (
     draft: string,
     brief: ContentBrief,
@@ -857,7 +872,8 @@ export const polishDraft = async (
     dispatch,
     extractMarkdownFromResponse,
     'polishDraft',
-    onProgress
+    onProgress,
+    false // expectJson = false, returns markdown
 );
 
 // Use streaming for audit to avoid timeouts with large drafts
