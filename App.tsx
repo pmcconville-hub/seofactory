@@ -1,6 +1,6 @@
 
 // App.tsx
-import React, { useEffect, useReducer, useRef } from 'react';
+import React, { useEffect, useReducer, useRef, useState } from 'react';
 import { AppStateContext, appReducer, initialState } from './state/appState';
 import { AppStep, BusinessInfo, Project, TopicalMap } from './types';
 import { getSupabaseClient, resetSupabaseClient, clearSupabaseAuthStorage } from './services/supabaseClient';
@@ -30,6 +30,10 @@ import { useVersionCheck, UpdateBanner } from './hooks/useVersionCheck';
 
 const App: React.FC = () => {
     const [state, dispatch] = useReducer(appReducer, initialState);
+
+    // Counter to force re-subscription when the Supabase client is reset
+    // This ensures onAuthStateChange cleanup runs and re-subscribes on the new client
+    const [authClientVersion, setAuthClientVersion] = useState(0);
 
     // Initialize logging services on mount (once only)
     useEffect(() => {
@@ -102,6 +106,8 @@ const App: React.FC = () => {
                         clearSupabaseAuthStorage();
                         resetSupabaseClient(false);
                         localStorage.removeItem(reloadKey);
+                        // Increment version to force onAuthStateChange to re-subscribe on the new client
+                        setAuthClientVersion(v => v + 1);
                     }
                 }
             }, 5000);
@@ -136,6 +142,7 @@ const App: React.FC = () => {
     }, [state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
 
     useEffect(() => {
+        console.log('[App] Setting up onAuthStateChange subscription (version:', authClientVersion, ')');
         const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             dispatch({ type: 'SET_USER', payload: session?.user ?? null });
@@ -179,8 +186,11 @@ const App: React.FC = () => {
             }
         });
 
-        return () => subscription.unsubscribe();
-    }, [state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
+        return () => {
+            console.log('[App] Unsubscribing from onAuthStateChange (version:', authClientVersion, ')');
+            subscription.unsubscribe();
+        };
+    }, [state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey, authClientVersion]);
 
     // Update global usage context when project/map changes for AI telemetry
     useEffect(() => {
@@ -528,6 +538,11 @@ const App: React.FC = () => {
                 body: globalSettings
             });
             if (error) throw error;
+
+            // Check response body for errors (Edge Function returns { ok: false, error: "..." } on failure)
+            if (data && !data.ok) {
+                throw new Error(data.error || 'Settings update failed');
+            }
 
             // Update local state with what we sent
             dispatch({ type: 'SET_BUSINESS_INFO', payload: { ...state.businessInfo, ...globalSettings } });
