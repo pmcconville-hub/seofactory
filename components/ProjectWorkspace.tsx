@@ -151,36 +151,14 @@ const ProjectWorkspace: React.FC = () => {
             console.log('currentMap.competitors:', currentMap.competitors);
 
             // 1. Save Wizard Data
+            // Note: Skip getSession() verification - it can hang indefinitely.
+            // RLS policies will reject if not authenticated anyway.
             console.log('Step 1: Saving wizard data to DB...');
-
-            // Verify auth session before making the request - with timeout to prevent hanging
-            console.log('Step 1a: Verifying auth session...');
-            let sessionData: { session: { user?: { id: string } } | null } | null = null;
-            let sessionError: Error | null = null;
-
-            try {
-                const sessionPromise = supabase.auth.getSession();
-                const sessionTimeout = new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error('Session check timed out after 10 seconds')), 10000)
-                );
-                const result = await Promise.race([sessionPromise, sessionTimeout]);
-                sessionData = result.data;
-                sessionError = result.error;
-            } catch (timeoutErr) {
-                console.error('Session check timeout:', timeoutErr);
-                throw new Error('Session check timed out. Please refresh the page and try again.');
-            }
-
-            if (sessionError || !sessionData?.session) {
-                console.error('Auth session error:', sessionError || 'No active session');
-                throw new Error('Authentication session expired. Please refresh the page and try again.');
-            }
-            console.log('Step 1b: Auth session verified, user:', sessionData.session.user?.id);
 
             // Log data sizes for debugging
             const eavCount = currentMap.eavs?.length || 0;
             const competitorCount = currentMap.competitors?.length || 0;
-            console.log(`Step 1c: Data sizes - EAVs: ${eavCount}, Competitors: ${competitorCount}`);
+            console.log(`Step 1a: Data sizes - EAVs: ${eavCount}, Competitors: ${competitorCount}`);
 
             // Add timeout to prevent hanging indefinitely
             const updatePromise = supabase
@@ -197,7 +175,7 @@ const ProjectWorkspace: React.FC = () => {
                 setTimeout(() => reject(new Error('Database update timed out after 30 seconds')), 30000)
             );
 
-            console.log('Step 1d: Executing update...');
+            console.log('Step 1b: Executing update...');
             const { error: updateError } = await Promise.race([updatePromise, timeoutPromise]) as any;
 
             if (updateError) {
