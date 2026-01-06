@@ -79,7 +79,9 @@ const App: React.FC = () => {
             const wasRecovering = localStorage.getItem(reloadKey);
             if (wasRecovering) {
                 console.log('[App] Post-recovery session check - ensuring clean state');
-                clearSupabaseAuthStorage();
+                // CRITICAL: Reset the client FIRST, then clear storage, then create fresh client
+                // This ensures we don't reuse a client that has cached the bad session
+                resetSupabaseClient(true); // This also clears storage
                 localStorage.removeItem(reloadKey);
             }
 
