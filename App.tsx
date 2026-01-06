@@ -119,6 +119,17 @@ const App: React.FC = () => {
             }, 5000);
 
             try {
+                // Fast-path: if no auth token in localStorage, skip getSession() entirely
+                // This prevents getSession() from hanging on network issues when there's clearly no session
+                const hasStoredSession = Object.keys(localStorage).some(k => k.startsWith('sb-') && k.includes('auth'));
+                if (!hasStoredSession) {
+                    console.log('[App] No stored session found, skipping getSession()');
+                    didComplete = true;
+                    clearTimeout(timeoutId);
+                    return;
+                }
+
+                console.log('[App] Found stored session, validating...');
                 const { data: { session }, error } = await supabase.auth.getSession();
                 didComplete = true;
                 clearTimeout(timeoutId);

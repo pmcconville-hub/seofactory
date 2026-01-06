@@ -20,7 +20,9 @@ export const getSupabaseClient = (supabaseUrl: string, supabaseAnonKey: string) 
                 // Ensure proper session handling
                 persistSession: true,
                 autoRefreshToken: true,
-                detectSessionInUrl: true,
+                // Disable URL detection - this app uses email/password auth only
+                // detectSessionInUrl can cause hangs if there's something unexpected in the URL
+                detectSessionInUrl: false,
             }
         });
         currentUrl = supabaseUrl;
