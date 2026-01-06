@@ -9,28 +9,12 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Lazy-loaded supabase client for logging (uses env vars)
-let loggingClient: SupabaseClient | null = null;
-
-function getLoggingClient(): SupabaseClient | null {
-  if (loggingClient) return loggingClient;
-
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-  if (!url || !key) {
-    return null; // Silently fail if not configured
-  }
-
-  // Use persistSession: false to avoid creating another GoTrueClient that conflicts with the main auth client
-  loggingClient = createClient(url, key, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    }
-  });
-  return loggingClient;
+// Logging client disabled - creating separate Supabase clients causes
+// "Multiple GoTrueClient instances" warnings and RLS failures since the
+// logging client doesn't share auth with the main app client.
+// This is optional telemetry, so we disable it to avoid console noise.
+function getLoggingClient(): null {
+  return null;
 }
 
 // =============================================================================
