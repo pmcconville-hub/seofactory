@@ -22,7 +22,14 @@ function getLoggingClient(): SupabaseClient | null {
     return null;
   }
 
-  loggingClient = createClient(url, key);
+  // Use persistSession: false to avoid creating another GoTrueClient that conflicts with the main auth client
+  loggingClient = createClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    }
+  });
   return loggingClient;
 }
 

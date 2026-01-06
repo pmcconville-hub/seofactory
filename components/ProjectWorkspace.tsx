@@ -152,7 +152,22 @@ const ProjectWorkspace: React.FC = () => {
 
             // 1. Save Wizard Data
             console.log('Step 1: Saving wizard data to DB...');
-            const { error: updateError } = await supabase
+
+            // Verify auth session before making the request
+            const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+            if (sessionError || !sessionData?.session) {
+                console.error('Auth session error:', sessionError || 'No active session');
+                throw new Error('Authentication session expired. Please refresh the page and try again.');
+            }
+            console.log('Step 1a: Auth session verified, user:', sessionData.session.user?.id);
+
+            // Log data sizes for debugging
+            const eavCount = currentMap.eavs?.length || 0;
+            const competitorCount = currentMap.competitors?.length || 0;
+            console.log(`Step 1b: Data sizes - EAVs: ${eavCount}, Competitors: ${competitorCount}`);
+
+            // Add timeout to prevent hanging indefinitely
+            const updatePromise = supabase
                 .from('topical_maps')
                 .update({
                     business_info: currentMap.business_info as any,
@@ -161,6 +176,13 @@ const ProjectWorkspace: React.FC = () => {
                     competitors: currentMap.competitors,
                 })
                 .eq('id', activeMapId);
+
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Database update timed out after 30 seconds')), 30000)
+            );
+
+            console.log('Step 1c: Executing update...');
+            const { error: updateError } = await Promise.race([updatePromise, timeoutPromise]) as any;
 
             if (updateError) {
                 console.error('DB update error:', updateError);
