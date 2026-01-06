@@ -360,24 +360,40 @@ export const useBriefEditor = (
 
             let result: { success: boolean; data: any; error: string | null };
 
+            // Timeout helper for database operations
+            const SAVE_TIMEOUT_MS = 30000;
+            const withTimeout = <T>(promise: Promise<T>, operation: string): Promise<T> =>
+                Promise.race([
+                    promise,
+                    new Promise<never>((_, reject) =>
+                        setTimeout(() => reject(new Error(`${operation} timed out after ${SAVE_TIMEOUT_MS / 1000}s`)), SAVE_TIMEOUT_MS)
+                    )
+                ]);
+
             if (existingBrief) {
-                // UPDATE existing brief
+                // UPDATE existing brief (with timeout protection)
                 console.log('[useBriefEditor] Updating existing brief:', existingBrief.id);
-                const { data, error } = await supabase
-                    .from('content_briefs')
-                    .update(briefRecord)
-                    .eq('id', existingBrief.id)
-                    .select('id, title')
-                    .single();
+                const { data, error } = await withTimeout(
+                    supabase
+                        .from('content_briefs')
+                        .update(briefRecord)
+                        .eq('id', existingBrief.id)
+                        .select('id, title')
+                        .single(),
+                    'Brief update'
+                );
                 result = { success: !error, data, error: error?.message || null };
             } else {
-                // INSERT new brief
+                // INSERT new brief (with timeout protection)
                 console.log('[useBriefEditor] Inserting new brief');
-                const { data, error } = await supabase
-                    .from('content_briefs')
-                    .insert({ ...briefRecord, created_at: new Date().toISOString() })
-                    .select('id, title')
-                    .single();
+                const { data, error } = await withTimeout(
+                    supabase
+                        .from('content_briefs')
+                        .insert({ ...briefRecord, created_at: new Date().toISOString() })
+                        .select('id, title')
+                        .single(),
+                    'Brief insert'
+                );
                 result = { success: !error, data, error: error?.message || null };
             }
 

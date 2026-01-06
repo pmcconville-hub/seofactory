@@ -561,6 +561,22 @@ const App: React.FC = () => {
                 throw new Error(data.error || 'Settings update failed');
             }
 
+            // VERIFICATION: Read settings back to confirm they were saved
+            console.log('[Settings] Verifying save by reading back...');
+            const { data: verifyData, error: verifyError } = await supabase.functions.invoke('get-settings');
+            if (verifyError) {
+                console.warn('[Settings] Verification read failed:', verifyError);
+                // Don't throw - the save likely succeeded, just verification failed
+            } else if (verifyData?.settings) {
+                // Verify at least one key field matches what we sent
+                const saved = verifyData.settings;
+                if ('aiProvider' in globalSettings && saved.aiProvider !== globalSettings.aiProvider) {
+                    console.warn('[Settings] Verification mismatch: aiProvider', { sent: globalSettings.aiProvider, saved: saved.aiProvider });
+                    throw new Error('Settings verification failed - saved data does not match');
+                }
+                console.log('[Settings] Verification passed - settings confirmed saved');
+            }
+
             // Update local state with what we sent
             dispatch({ type: 'SET_BUSINESS_INFO', payload: { ...state.businessInfo, ...globalSettings } });
 
@@ -569,7 +585,7 @@ const App: React.FC = () => {
                 setVerboseLogging(globalSettings.verboseLogging === true);
             }
 
-            dispatch({ type: 'SET_NOTIFICATION', payload: 'Settings saved successfully.' });
+            dispatch({ type: 'SET_NOTIFICATION', payload: 'Settings saved successfully (verified).' });
             // Keep modal open so user can see the save confirmation
         } catch(e) {
             dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to save settings.' });

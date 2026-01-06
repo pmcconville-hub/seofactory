@@ -13,7 +13,7 @@ import {
 } from './wizards';
 import ProjectDashboardContainer from './ProjectDashboardContainer';
 import { getSupabaseClient } from '../services/supabaseClient';
-import { verifiedBulkInsert, verifiedDelete, verifiedBulkDelete } from '../services/verifiedDatabaseService';
+import { verifiedBulkInsert, verifiedDelete, verifiedBulkDelete, verifiedUpdate } from '../services/verifiedDatabaseService';
 import * as aiService from '../services/aiService';
 import * as foundationPagesService from '../services/ai/foundationPages';
 import { v4 as uuidv4 } from 'uuid';
@@ -150,9 +150,7 @@ const ProjectWorkspace: React.FC = () => {
             console.log('currentMap.eavs:', currentMap.eavs);
             console.log('currentMap.competitors:', currentMap.competitors);
 
-            // 1. Save Wizard Data
-            // Note: Skip getSession() verification - it can hang indefinitely.
-            // RLS policies will reject if not authenticated anyway.
+            // 1. Save Wizard Data using verifiedUpdate for timeout + read-back verification
             console.log('Step 1: Saving wizard data to DB...');
 
             // Log data sizes for debugging
@@ -160,29 +158,25 @@ const ProjectWorkspace: React.FC = () => {
             const competitorCount = currentMap.competitors?.length || 0;
             console.log(`Step 1a: Data sizes - EAVs: ${eavCount}, Competitors: ${competitorCount}`);
 
-            // Add timeout to prevent hanging indefinitely
-            const updatePromise = supabase
-                .from('topical_maps')
-                .update({
+            // Use verifiedUpdate for timeout protection and read-back verification
+            const wizardDataResult = await verifiedUpdate(
+                supabase,
+                { table: 'topical_maps', operationDescription: 'save wizard data (business info, pillars, EAVs, competitors)' },
+                activeMapId,
+                {
                     business_info: currentMap.business_info as any,
                     pillars: currentMap.pillars as any,
                     eavs: currentMap.eavs as any,
                     competitors: currentMap.competitors,
-                })
-                .eq('id', activeMapId);
-
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Database update timed out after 30 seconds')), 30000)
+                },
+                'id'
             );
 
-            console.log('Step 1b: Executing update...');
-            const { error: updateError } = await Promise.race([updatePromise, timeoutPromise]) as any;
-
-            if (updateError) {
-                console.error('DB update error:', updateError);
-                throw updateError;
+            if (!wizardDataResult.success) {
+                console.error('Wizard data save failed:', wizardDataResult.error);
+                throw new Error(wizardDataResult.error || 'Failed to save wizard data');
             }
-            console.log('Step 1 complete: Wizard data saved');
+            console.log('Step 1 complete: Wizard data saved (verified)');
 
             // 2. Generate Initial Topics with AI
             // Use effective business info (global keys + map strategy)
