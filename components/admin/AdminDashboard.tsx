@@ -244,14 +244,45 @@ const ConfigurationPanel: React.FC = () => {
         setIsSaving(true);
         try {
             const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+
+            // Filter out problematic fields - only send settings-related fields
+            // Exclude large nested objects and non-setting fields that could cause issues
+            const settingsToSave: Record<string, unknown> = {};
+            const excludeFields = ['supabaseUrl', 'supabaseAnonKey', 'brandKit', 'authorProfile', 'entityIdentity'];
+
+            for (const [key, value] of Object.entries(localSettings)) {
+                // Skip excluded fields and undefined values
+                if (excludeFields.includes(key) || value === undefined) continue;
+                // Skip complex objects (but allow simple objects like nested configs)
+                if (typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length > 10) {
+                    console.log(`[ConfigurationPanel] Skipping large object field: ${key}`);
+                    continue;
+                }
+                settingsToSave[key] = value;
+            }
+
+            console.log('[ConfigurationPanel] Saving settings:', Object.keys(settingsToSave));
+
             const { data, error } = await supabase.functions.invoke('update-settings', {
-                body: localSettings
+                body: settingsToSave
             });
-            if (error) throw error;
-            
+
+            // Check for HTTP-level error
+            if (error) {
+                console.error('[ConfigurationPanel] Function invoke error:', error);
+                throw error;
+            }
+
+            // Check for application-level error in response body
+            if (data && !data.ok) {
+                console.error('[ConfigurationPanel] Function returned error:', data.error);
+                throw new Error(data.error || 'Unknown error from settings function');
+            }
+
             dispatch({ type: 'SET_BUSINESS_INFO', payload: { ...state.businessInfo, ...localSettings } });
             dispatch({ type: 'SET_NOTIFICATION', payload: 'Configuration saved successfully.' });
         } catch (e) {
+            console.error('[ConfigurationPanel] Save failed:', e);
             dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to save configuration.' });
         } finally {
             setIsSaving(false);
