@@ -2103,8 +2103,8 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 const updateResult = await verifiedUpdate(
                     supabase,
                     { table: 'topics', operationDescription: `update topic ${topicId}` },
-                    dbUpdates,
                     { column: 'id', value: topicId },
+                    dbUpdates,
                     '*'
                 );
 
