@@ -507,6 +507,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                         map={topicalMap}
                         briefs={Object.values(briefs)}
                         dispatch={dispatch}
+                        businessInfo={effectiveBusinessInfo}
                         onSaveEavs={onUpdateEavs}
                         onSaveTopics={handleBulkUpdateTopics}
                         onAddTopic={handleAutoFixAddTopic}

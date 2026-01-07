@@ -39,6 +39,7 @@ interface ConfidenceDashboardProps {
   className?: string;
   // Props needed for Auto-Fix functionality
   dispatch?: React.Dispatch<AppAction>;
+  businessInfo?: BusinessInfo; // Full businessInfo with supabaseUrl for AI calls
   onSaveEavs?: (eavs: SemanticTriple[]) => Promise<void>;
   onSaveTopics?: (topics: EnrichedTopic[]) => Promise<void>;
   onAddTopic?: (topic: { title: string; type: 'core' | 'outer'; search_intent?: string; parentId?: string }) => Promise<void>;
@@ -50,6 +51,7 @@ export const ConfidenceDashboard: React.FC<ConfidenceDashboardProps> = ({
   compact = false,
   className = '',
   dispatch,
+  businessInfo: propBusinessInfo,
   onSaveEavs,
   onSaveTopics,
   onAddTopic
@@ -129,9 +131,12 @@ export const ConfidenceDashboard: React.FC<ConfidenceDashboardProps> = ({
     setAutoFixPreview(null);
 
     try {
+      // Use passed businessInfo (with supabaseUrl) or fallback to map.business_info
+      const effectiveBusinessInfo = propBusinessInfo || (map.business_info as BusinessInfo) || {} as BusinessInfo;
+
       const context: AutoFixContext = {
         map,
-        businessInfo: (map.business_info || {}) as BusinessInfo,
+        businessInfo: effectiveBusinessInfo,
         pillars: (map.pillars || {}) as SEOPillars,
         dispatch
       };
@@ -152,7 +157,7 @@ export const ConfidenceDashboard: React.FC<ConfidenceDashboardProps> = ({
     } finally {
       setIsLoadingFix(false);
     }
-  }, [map, dispatch]);
+  }, [map, dispatch, propBusinessInfo]);
 
   // Handle applying the fix
   const handleApplyFix = useCallback(async (selectedItems: unknown[]) => {
@@ -161,9 +166,12 @@ export const ConfidenceDashboard: React.FC<ConfidenceDashboardProps> = ({
     setIsApplyingFix(true);
 
     try {
+      // Use passed businessInfo (with supabaseUrl) or fallback to map.business_info
+      const effectiveBusinessInfo = propBusinessInfo || (map.business_info as BusinessInfo) || {} as BusinessInfo;
+
       const context: AutoFixContext = {
         map,
-        businessInfo: (map.business_info || {}) as BusinessInfo,
+        businessInfo: effectiveBusinessInfo,
         pillars: (map.pillars || {}) as SEOPillars,
         dispatch
       };
@@ -239,7 +247,7 @@ export const ConfidenceDashboard: React.FC<ConfidenceDashboardProps> = ({
     } finally {
       setIsApplyingFix(false);
     }
-  }, [autoFixPreview, currentFixType, map, dispatch, onSaveEavs, onSaveTopics]);
+  }, [autoFixPreview, currentFixType, map, dispatch, propBusinessInfo, onSaveEavs, onSaveTopics, onAddTopic]);
 
   if (!map) {
     return (
