@@ -2917,12 +2917,12 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 onBackToProjects={onBackToProjects}
                 onAddTopic={onAddTopic}
                 onBulkAddTopics={onBulkAddTopics}
-                onAddTopicFromRecommendation={async (rec: TopicRecommendation) => { onAddTopic({ title: rec.title, description: rec.description, type: 'outer', parent_topic_id: null, freshness: 'STANDARD' as any }, 'ai') }}
+                onAddTopicFromRecommendation={async (rec: TopicRecommendation) => { await onAddTopic({ title: rec.title, description: rec.description, type: 'outer', parent_topic_id: null, freshness: 'STANDARD' as any }, 'ai') }}
                 onAnalyzeGsc={handleAnalyzeGsc}
-                onAddTopicFromGsc={(title, desc) => onAddTopic({ title, description: desc, type: 'outer', parent_topic_id: null, freshness: 'STANDARD' as any }, 'ai')}
+                onAddTopicFromGsc={async (title, desc) => { await onAddTopic({ title, description: desc, type: 'outer', parent_topic_id: null, freshness: 'STANDARD' as any }, 'ai') }}
                 onImproveMap={onImproveMap}
                 onExecuteMerge={onExecuteMerge}
-                onAddTopicFromContextualGap={async (title, desc) => { onAddTopic({ title, description: desc || '', type: 'outer', parent_topic_id: null, freshness: 'STANDARD' as any }, 'ai') }}
+                onAddTopicFromContextualGap={async (title, desc) => { await onAddTopic({ title, description: desc || '', type: 'outer', parent_topic_id: null, freshness: 'STANDARD' as any }, 'ai') }}
                 onGenerateBrief={onGenerateBrief}
                 onGenerateDraft={onGenerateDraft}
                 onAuditDraft={onAuditDraft}
