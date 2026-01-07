@@ -232,9 +232,13 @@ export function calculateEntityClarity(map: TopicalMap): SubScore {
   }
 
   // E-A-V category distribution (0-20 points)
-  const hasUniqueEavs = eavs.some(e => e.category === 'UNIQUE');
-  const hasRootEavs = eavs.some(e => e.category === 'ROOT');
-  const hasCommonEavs = eavs.some(e => e.category === 'COMMON');
+  // Support both nested (predicate.category) and flat (category) EAV structures
+  const getEavCategory = (e: SemanticTriple): string | undefined =>
+    e.predicate?.category || e.category;
+
+  const hasUniqueEavs = eavs.some(e => getEavCategory(e) === 'UNIQUE');
+  const hasRootEavs = eavs.some(e => getEavCategory(e) === 'ROOT');
+  const hasCommonEavs = eavs.some(e => getEavCategory(e) === 'COMMON');
 
   if (hasUniqueEavs) {
     score += 8;
