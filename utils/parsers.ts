@@ -274,6 +274,9 @@ export const sanitizeTopicFromDb = (dbTopic: any): EnrichedTopic => {
         // Blueprint extraction
         blueprint: parseBlueprint(metadata.blueprint),
 
+        // Search intent - stored in metadata, exposed at top level for convenience
+        search_intent: metadata.search_intent || dbTopic.search_intent,
+
         // Generic metadata container
         metadata: metadata,
     } as EnrichedTopic;

@@ -2047,10 +2047,11 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             console.log('[handleUpdateTopic] Updating topic via RLS...');
 
             // List of fields that live in the `metadata` JSONB column, NOT as root columns
+            // IMPORTANT: search_intent is stored in metadata, not as a direct column
             const metaFields = [
                 'topic_class', 'cluster_role', 'attribute_focus', 'canonical_query', 'decay_score',
                 'query_network', 'topical_border_note', 'planned_publication_date', 'url_slug_hint',
-                'blueprint', 'query_type'
+                'blueprint', 'query_type', 'search_intent'
             ];
 
             // Separate root-level DB columns from metadata fields
