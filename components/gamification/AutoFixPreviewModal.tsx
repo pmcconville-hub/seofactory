@@ -182,34 +182,43 @@ function renderEavItems(
   toggleItem: (i: number) => void,
   formId: string
 ) {
-  return items.map((eav, index) => (
-    <li key={index} className="flex items-start gap-3 p-3 bg-gray-800/50 border border-gray-700 rounded-lg hover:border-gray-600 transition-colors">
-      <input
-        type="checkbox"
-        id={`${formId}-item-${index}`}
-        checked={selectedItems.has(index)}
-        onChange={() => toggleItem(index)}
-        className="mt-1 w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
-      />
-      <label htmlFor={`${formId}-item-${index}`} className="flex-1 cursor-pointer">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-blue-400 font-medium">{eav.entity}</span>
-          <span className="text-gray-500">|</span>
-          <span className="text-purple-400">{eav.attribute}</span>
-          <span className="text-gray-500">|</span>
-          <span className="text-green-400">{eav.value}</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs">
-          <span className={`px-2 py-0.5 rounded ${getCategoryColor(eav.category)}`}>
-            {eav.category}
-          </span>
-          {eav.classification && (
-            <span className="text-gray-500">{eav.classification}</span>
-          )}
-        </div>
-      </label>
-    </li>
-  ));
+  return items.map((eav, index) => {
+    // Support both nested structure (subject.label) and flat aliases (entity)
+    const entity = eav.subject?.label || eav.entity || 'Unknown';
+    const attribute = eav.predicate?.relation || eav.attribute || 'has';
+    const value = eav.object?.value || eav.value || '';
+    const category = eav.predicate?.category || eav.category || 'COMMON';
+    const classification = eav.predicate?.classification || eav.classification;
+
+    return (
+      <li key={index} className="flex items-start gap-3 p-3 bg-gray-800/50 border border-gray-700 rounded-lg hover:border-gray-600 transition-colors">
+        <input
+          type="checkbox"
+          id={`${formId}-item-${index}`}
+          checked={selectedItems.has(index)}
+          onChange={() => toggleItem(index)}
+          className="mt-1 w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+        />
+        <label htmlFor={`${formId}-item-${index}`} className="flex-1 cursor-pointer">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-blue-400 font-medium">{entity}</span>
+            <span className="text-gray-500">|</span>
+            <span className="text-purple-400">{attribute}</span>
+            <span className="text-gray-500">|</span>
+            <span className="text-green-400">{String(value)}</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <span className={`px-2 py-0.5 rounded ${getCategoryColor(category)}`}>
+              {category}
+            </span>
+            {classification && (
+              <span className="text-gray-500">{classification}</span>
+            )}
+          </div>
+        </label>
+      </li>
+    );
+  });
 }
 
 function renderIntentItems(

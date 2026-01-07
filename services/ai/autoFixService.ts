@@ -68,7 +68,7 @@ const INTENT_ANALYSIS_SCHEMA = {
 };
 
 // ============================================================================
-// EAV GENERATION SCHEMA
+// EAV GENERATION SCHEMA - Uses nested SemanticTriple structure
 // ============================================================================
 
 const EAV_GENERATION_SCHEMA = {
@@ -79,21 +79,42 @@ const EAV_GENERATION_SCHEMA = {
       items: {
         type: Type.OBJECT,
         properties: {
-          entity: { type: Type.STRING, description: "The subject/noun being described" },
-          attribute: { type: Type.STRING, description: "The property or characteristic" },
-          value: { type: Type.STRING, description: "The specific value or detail" },
-          category: {
-            type: Type.STRING,
-            enum: ['UNIQUE', 'ROOT', 'RARE', 'COMMON'],
-            description: "Category of the EAV"
+          subject: {
+            type: Type.OBJECT,
+            properties: {
+              label: { type: Type.STRING, description: "The entity/subject being described" },
+              type: { type: Type.STRING, description: "Type of entity (e.g., 'Organization', 'Product', 'Service')" }
+            },
+            required: ['label', 'type']
           },
-          classification: {
-            type: Type.STRING,
-            enum: ['TYPE', 'COMPONENT', 'BENEFIT', 'RISK', 'PROCESS', 'SPECIFICATION'],
-            description: "Classification type"
+          predicate: {
+            type: Type.OBJECT,
+            properties: {
+              relation: { type: Type.STRING, description: "The attribute/relationship" },
+              type: { type: Type.STRING, description: "Type of predicate (e.g., 'hasProperty', 'provides')" },
+              category: {
+                type: Type.STRING,
+                enum: ['UNIQUE', 'ROOT', 'RARE', 'COMMON'],
+                description: "Category of the attribute"
+              },
+              classification: {
+                type: Type.STRING,
+                enum: ['TYPE', 'COMPONENT', 'BENEFIT', 'RISK', 'PROCESS', 'SPECIFICATION'],
+                description: "Classification type"
+              }
+            },
+            required: ['relation', 'type', 'category', 'classification']
+          },
+          object: {
+            type: Type.OBJECT,
+            properties: {
+              value: { type: Type.STRING, description: "The value/object of the triple" },
+              type: { type: Type.STRING, description: "Type of object (e.g., 'Literal', 'Concept')" }
+            },
+            required: ['value', 'type']
           }
         },
-        required: ['entity', 'attribute', 'value', 'category', 'classification']
+        required: ['subject', 'predicate', 'object']
       }
     }
   },
@@ -129,6 +150,14 @@ export async function generateUniqueEavsFix(
   });
 
   try {
+    // Format existing EAVs for the prompt (using nested structure)
+    const existingEavStrings = existingUnique.slice(0, 10).map(e => {
+      const entity = e.subject?.label || e.entity || 'Unknown';
+      const attr = e.predicate?.relation || e.attribute || 'has';
+      const val = e.object?.value || e.value || 'value';
+      return `- ${entity} | ${attr} | ${val}`;
+    }).join('\n') || 'None yet';
+
     const prompt = `
 You are an SEO expert generating E-A-V (Entity-Attribute-Value) semantic triples for "${businessInfo.projectName || 'this business'}".
 
@@ -150,15 +179,37 @@ Business Context:
 - Source Context: ${pillars.sourceContext || 'Expert'}
 
 Existing UNIQUE E-A-Vs (DO NOT duplicate these):
-${existingUnique.slice(0, 10).map(e => `- ${e.entity} | ${e.attribute} | ${e.value}`).join('\n') || 'None yet'}
+${existingEavStrings}
 
 Generate ${needed} NEW, CREATIVE, and SPECIFIC E-A-V triples that differentiate this brand.
-Each triple should have: entity, attribute, value, category (always "UNIQUE"), and classification.
+
+IMPORTANT: Use the NESTED structure format:
+{
+  "eavs": [
+    {
+      "subject": { "label": "EntityName", "type": "Organization" },
+      "predicate": { "relation": "offers", "type": "hasProperty", "category": "UNIQUE", "classification": "BENEFIT" },
+      "object": { "value": "the specific value", "type": "Literal" }
+    }
+  ]
+}
+
+Subject types: Organization, Product, Service, Person, Concept
+Predicate types: hasProperty, provides, specializes_in, guarantees, uses
+Object types: Literal, Concept, Quantity
+Categories: UNIQUE (always for this task)
+Classifications: TYPE, COMPONENT, BENEFIT, RISK, PROCESS, SPECIFICATION
 
 Return as JSON: { "eavs": [...] }
 `;
 
-    type EavResult = { eavs: SemanticTriple[] };
+    // Interface for the AI response with nested structure
+    interface NestedEav {
+      subject: { label: string; type: string };
+      predicate: { relation: string; type: string; category?: string; classification?: string };
+      object: { value: string | number; type: string };
+    }
+    type EavResult = { eavs: NestedEav[] };
     const fallback: EavResult = { eavs: [] };
     const provider = businessInfo.aiProvider || 'gemini';
 
@@ -171,13 +222,33 @@ Return as JSON: { "eavs": [...] }
       result = await geminiService.generateJson<EavResult>(prompt, businessInfo, dispatch, fallback, EAV_GENERATION_SCHEMA);
     }
 
-    // Ensure all EAVs have UNIQUE category and valid structure
-    const uniqueEavs = (result?.eavs || [])
-      .filter(eav => eav.entity && eav.attribute && eav.value)
+    // Ensure all EAVs have proper nested structure and UNIQUE category
+    const uniqueEavs: SemanticTriple[] = (result?.eavs || [])
+      .filter(eav => eav.subject?.label && eav.predicate?.relation && eav.object?.value)
       .map(eav => ({
-        ...eav,
+        // Nested structure (primary)
+        subject: {
+          label: eav.subject.label,
+          type: eav.subject.type || 'Entity'
+        },
+        predicate: {
+          relation: eav.predicate.relation,
+          type: eav.predicate.type || 'hasProperty',
+          category: 'UNIQUE' as const,
+          classification: (eav.predicate.classification || 'BENEFIT') as 'TYPE' | 'COMPONENT' | 'BENEFIT' | 'RISK' | 'PROCESS' | 'SPECIFICATION'
+        },
+        object: {
+          value: eav.object.value,
+          type: eav.object.type || 'Literal'
+        },
+        // Also set flat aliases for backwards compatibility
+        entity: eav.subject.label,
+        attribute: eav.predicate.relation,
+        value: eav.object.value,
         category: 'UNIQUE' as const,
-        classification: eav.classification || 'BENEFIT'
+        classification: (eav.predicate.classification || 'BENEFIT') as 'TYPE' | 'COMPONENT' | 'BENEFIT' | 'RISK' | 'PROCESS' | 'SPECIFICATION',
+        source: 'auto_fix',
+        confidence: 0.85
       }));
 
     dispatch({
