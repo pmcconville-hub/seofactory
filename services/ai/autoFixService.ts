@@ -3,7 +3,6 @@
 
 import { BusinessInfo, SEOPillars, SemanticTriple, EnrichedTopic, TopicalMap } from '../../types';
 import { AutoFixType } from '../../utils/gamification/scoreCalculations';
-import { expandSemanticTriples } from './mapGeneration';
 import * as geminiService from '../geminiService';
 import * as openAiService from '../openAiService';
 import * as anthropicService from '../anthropicService';
@@ -69,6 +68,39 @@ const INTENT_ANALYSIS_SCHEMA = {
 };
 
 // ============================================================================
+// EAV GENERATION SCHEMA
+// ============================================================================
+
+const EAV_GENERATION_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    eavs: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          entity: { type: Type.STRING, description: "The subject/noun being described" },
+          attribute: { type: Type.STRING, description: "The property or characteristic" },
+          value: { type: Type.STRING, description: "The specific value or detail" },
+          category: {
+            type: Type.STRING,
+            enum: ['UNIQUE', 'ROOT', 'RARE', 'COMMON'],
+            description: "Category of the EAV"
+          },
+          classification: {
+            type: Type.STRING,
+            enum: ['TYPE', 'COMPONENT', 'BENEFIT', 'RISK', 'PROCESS', 'SPECIFICATION'],
+            description: "Classification type"
+          }
+        },
+        required: ['entity', 'attribute', 'value', 'category', 'classification']
+      }
+    }
+  },
+  required: ['eavs']
+};
+
+// ============================================================================
 // UNIQUE EAV FIX
 // ============================================================================
 
@@ -97,50 +129,56 @@ export async function generateUniqueEavsFix(
   });
 
   try {
-    // Use existing expandSemanticTriples but request UNIQUE category
-    // We'll modify the prompt to focus on unique differentiators
-    const uniqueEavPrompt = `
-You are generating E-A-V (Entity-Attribute-Value) semantic triples for ${businessInfo.projectName || 'this business'}.
+    const prompt = `
+You are an SEO expert generating E-A-V (Entity-Attribute-Value) semantic triples for "${businessInfo.projectName || 'this business'}".
 
-IMPORTANT: Generate ONLY UNIQUE category triples. These should highlight:
+Generate ${needed} UNIQUE category E-A-V triples. UNIQUE triples highlight what makes this business different:
 - Proprietary methodologies or frameworks
 - Unique selling propositions (USPs)
 - Distinctive approaches or processes
 - Awards, certifications, or achievements
 - Specific guarantees or commitments
 - Data assets or proprietary insights
-- What makes this brand DIFFERENT from competitors
 
 Business Context:
+- Business Name: ${businessInfo.projectName || 'Not specified'}
 - Industry: ${businessInfo.industry || 'Not specified'}
 - Domain: ${businessInfo.domain || 'Not specified'}
-- Audience: ${businessInfo.audience || 'Not specified'}
+- Target Audience: ${businessInfo.audience || 'Not specified'}
 - Unique Data Assets: ${businessInfo.uniqueDataAssets || 'Not specified'}
+- Central Entity: ${pillars.centralEntity || businessInfo.projectName}
+- Source Context: ${pillars.sourceContext || 'Expert'}
 
-Central Entity: ${pillars.centralEntity || businessInfo.projectName}
-Source Context: ${pillars.sourceContext || 'Expert'}
+Existing UNIQUE E-A-Vs (DO NOT duplicate these):
+${existingUnique.slice(0, 10).map(e => `- ${e.entity} | ${e.attribute} | ${e.value}`).join('\n') || 'None yet'}
 
-Existing UNIQUE E-A-Vs to avoid duplicating:
-${existingUnique.map(e => `- ${e.entity} | ${e.attribute} | ${e.value}`).join('\n') || 'None yet'}
+Generate ${needed} NEW, CREATIVE, and SPECIFIC E-A-V triples that differentiate this brand.
+Each triple should have: entity, attribute, value, category (always "UNIQUE"), and classification.
 
-Generate ${needed} NEW unique differentiating facts as E-A-V triples.
-Each should be in format: { entity, attribute, value, category: "UNIQUE", classification }
+Return as JSON: { "eavs": [...] }
 `;
 
-    // Dispatch to provider for EAV generation
-    const newEavs = await expandSemanticTriples(
-      businessInfo,
-      pillars,
-      existingEavs,
-      dispatch,
-      needed
-    );
+    type EavResult = { eavs: SemanticTriple[] };
+    const fallback: EavResult = { eavs: [] };
+    const provider = businessInfo.aiProvider || 'gemini';
 
-    // Filter to ensure we only got UNIQUE category (or force it)
-    const uniqueEavs = newEavs.map(eav => ({
-      ...eav,
-      category: 'UNIQUE' as const
-    }));
+    let result: EavResult;
+    if (provider === 'openai') {
+      result = await openAiService.generateJson<EavResult>(prompt, businessInfo, dispatch, fallback);
+    } else if (provider === 'anthropic') {
+      result = await anthropicService.generateJson<EavResult>(prompt, businessInfo, dispatch, fallback);
+    } else {
+      result = await geminiService.generateJson<EavResult>(prompt, businessInfo, dispatch, fallback, EAV_GENERATION_SCHEMA);
+    }
+
+    // Ensure all EAVs have UNIQUE category and valid structure
+    const uniqueEavs = (result?.eavs || [])
+      .filter(eav => eav.entity && eav.attribute && eav.value)
+      .map(eav => ({
+        ...eav,
+        category: 'UNIQUE' as const,
+        classification: eav.classification || 'BENEFIT'
+      }));
 
     dispatch({
       type: 'LOG_EVENT',
