@@ -19,6 +19,7 @@ import { InfoTooltip } from './ui/InfoTooltip';
 import { BriefHealthStatsBar } from './ui/BriefHealthBadge';
 import { calculateBriefHealthStats } from '../utils/briefQualityScore';
 import MapUsageReport from './admin/MapUsageReport';
+import { useTopicPublications } from '../hooks/useTopicPublications';
 // Template panel moved to AddTopicModal
 // import { QueryTemplatePanel } from './templates/QueryTemplatePanel';
 // import { LocationManagerModal } from './templates/LocationManagerModal';
@@ -65,7 +66,35 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
   onOpenNavigation
 }) => {
   const { state, dispatch } = useAppState();
-  const { activeMapId, businessInfo, isLoading, briefGenerationStatus } = state;
+  const { activeMapId, businessInfo, isLoading, briefGenerationStatus, user } = state;
+
+  // Supabase client for publication status
+  const supabase = useMemo(() => {
+    if (!businessInfo.supabaseUrl || !businessInfo.supabaseAnonKey) return null;
+    return getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+  }, [businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
+
+  // Get all topic IDs for publication status lookup
+  const allTopicIds = useMemo(() => {
+    return [...coreTopics, ...outerTopics, ...childTopics].map(t => t.id);
+  }, [coreTopics, outerTopics, childTopics]);
+
+  // Fetch publication status for all topics
+  const { publications: topicPublications } = useTopicPublications(
+    supabase,
+    user?.id || null,
+    allTopicIds
+  );
+
+  // Helper to get publication info for a topic
+  const getPublicationInfo = useCallback((topicId: string) => {
+    const pubInfo = topicPublications.get(topicId);
+    if (!pubInfo) return { publicationStatus: null, wpPostUrl: null };
+    return {
+      publicationStatus: pubInfo.publication.status,
+      wpPostUrl: pubInfo.publication.wp_post_url || null
+    };
+  }, [topicPublications]);
 
   // Parse the generating topic title from status string like 'Generating 1/5: "Topic Title"'
   const generatingTopicTitle = useMemo(() => {
@@ -801,6 +830,8 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
                                                 isDetailPanelOpen={openDetailPanelTopicId === topic.id}
                                                 onOpenDetailPanel={setOpenDetailPanelTopicId}
                                                 businessInfo={businessInfo}
+                                                publicationStatus={getPublicationInfo(topic.id).publicationStatus}
+                                                wpPostUrl={getPublicationInfo(topic.id).wpPostUrl}
                                             />
                                         </div>
                                     </div>
@@ -846,6 +877,8 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
                                                         isRepairingBrief={repairingTopicId === child.id}
                                                         isDetailPanelOpen={openDetailPanelTopicId === child.id}
                                                         onOpenDetailPanel={setOpenDetailPanelTopicId}
+                                                        publicationStatus={getPublicationInfo(child.id).publicationStatus}
+                                                        wpPostUrl={getPublicationInfo(child.id).wpPostUrl}
                                                     />
                                                 </div>
                                             ))}
@@ -899,6 +932,8 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
                                                 isDetailPanelOpen={openDetailPanelTopicId === topic.id}
                                                 onOpenDetailPanel={setOpenDetailPanelTopicId}
                                                 businessInfo={businessInfo}
+                                                publicationStatus={getPublicationInfo(topic.id).publicationStatus}
+                                                wpPostUrl={getPublicationInfo(topic.id).wpPostUrl}
                                             />
                                         ))}
                                     </div>
@@ -970,6 +1005,8 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
                                         isDetailPanelOpen={openDetailPanelTopicId === core.id}
                                         onOpenDetailPanel={setOpenDetailPanelTopicId}
                                         businessInfo={businessInfo}
+                                        publicationStatus={getPublicationInfo(core.id).publicationStatus}
+                                        wpPostUrl={getPublicationInfo(core.id).wpPostUrl}
                                     />
                                 </div>
                             </div>
@@ -1006,6 +1043,8 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
                                                 isDetailPanelOpen={openDetailPanelTopicId === outer.id}
                                                 onOpenDetailPanel={setOpenDetailPanelTopicId}
                                                 businessInfo={businessInfo}
+                                                publicationStatus={getPublicationInfo(outer.id).publicationStatus}
+                                                wpPostUrl={getPublicationInfo(outer.id).wpPostUrl}
                                             />
                                             {/* Level 3: Child topics under outer topics */}
                                             {hasChildren && (
@@ -1038,6 +1077,8 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
                                                             isDetailPanelOpen={openDetailPanelTopicId === child.id}
                                                             onOpenDetailPanel={setOpenDetailPanelTopicId}
                                                             businessInfo={businessInfo}
+                                                            publicationStatus={getPublicationInfo(child.id).publicationStatus}
+                                                            wpPostUrl={getPublicationInfo(child.id).wpPostUrl}
                                                         />
                                                     ))}
                                                 </div>
@@ -1093,6 +1134,8 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
                                             isDetailPanelOpen={openDetailPanelTopicId === outer.id}
                                             onOpenDetailPanel={setOpenDetailPanelTopicId}
                                             businessInfo={businessInfo}
+                                            publicationStatus={getPublicationInfo(outer.id).publicationStatus}
+                                            wpPostUrl={getPublicationInfo(outer.id).wpPostUrl}
                                         />
                                         {/* Show child topics under this orphaned outer topic */}
                                         {children.length > 0 && (
@@ -1125,6 +1168,8 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
                                                         isDetailPanelOpen={openDetailPanelTopicId === child.id}
                                                         onOpenDetailPanel={setOpenDetailPanelTopicId}
                                                         businessInfo={businessInfo}
+                                                        publicationStatus={getPublicationInfo(child.id).publicationStatus}
+                                                        wpPostUrl={getPublicationInfo(child.id).wpPostUrl}
                                                     />
                                                 ))}
                                             </div>
@@ -1175,6 +1220,8 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
                                     isDetailPanelOpen={openDetailPanelTopicId === child.id}
                                     onOpenDetailPanel={setOpenDetailPanelTopicId}
                                     businessInfo={businessInfo}
+                                    publicationStatus={getPublicationInfo(child.id).publicationStatus}
+                                    wpPostUrl={getPublicationInfo(child.id).wpPostUrl}
                                 />
                             ))}
                         </div>
