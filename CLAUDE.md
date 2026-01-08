@@ -11,6 +11,13 @@ npm run build      # Production build
 npm run preview    # Preview production build
 ```
 
+### Supabase Deployment
+
+```bash
+# Deploy edge functions (ALWAYS use these flags to avoid auth/network issues)
+supabase functions deploy <function-name> --no-verify-jwt --use-api
+```
+
 ## Project Overview
 
 **Holistic SEO Topical Map Generator** - A strategic tool implementing the Holistic SEO framework. The AI assists users in creating topical maps, content briefs, and article drafts constrained by user-defined business context, SEO pillars, and SERP data.

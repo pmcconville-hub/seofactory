@@ -21,8 +21,8 @@ import {
 } from '../../types/wordpress';
 import { EnrichedTopic, ContentBrief } from '../../types';
 import { verifiedInsert, verifiedUpdate } from '../verifiedDatabaseService';
-import { getAuthenticatedClient } from './connectionService';
-import { generateContentHash, WordPressApiClient } from './apiClient';
+import { generateContentHash } from './apiClient';
+import { createWordPressProxyClient } from './proxyClient';
 
 // ============================================================================
 // Types
@@ -126,13 +126,8 @@ export async function publishTopic(
   options: PublishOptions
 ): Promise<PublishResult> {
   try {
-    // Get authenticated client
-    const clientResult = await getAuthenticatedClient(supabase, userId, connectionId);
-    if ('error' in clientResult) {
-      return { success: false, error: clientResult.error };
-    }
-
-    const { client, connection } = clientResult;
+    // Use proxy client to avoid CORS issues
+    const client = createWordPressProxyClient(supabase, connectionId);
 
     // Check if already published to this connection
     const { data: existingPub } = await supabase
@@ -291,13 +286,8 @@ export async function updatePublication(
       return { success: false, error: 'Access denied' };
     }
 
-    // Get authenticated client
-    const clientResult = await getAuthenticatedClient(supabase, userId, publication.connection_id);
-    if ('error' in clientResult) {
-      return { success: false, error: clientResult.error };
-    }
-
-    const { client } = clientResult;
+    // Use proxy client to avoid CORS issues
+    const client = createWordPressProxyClient(supabase, publication.connection_id);
 
     // Build update data
     const updateData: Record<string, unknown> = {};
@@ -411,13 +401,8 @@ export async function syncPublicationStatus(
       return { success: false, error: 'Access denied' };
     }
 
-    // Get authenticated client
-    const clientResult = await getAuthenticatedClient(supabase, userId, publication.connection_id);
-    if ('error' in clientResult) {
-      return { success: false, error: clientResult.error };
-    }
-
-    const { client } = clientResult;
+    // Use proxy client to avoid CORS issues
+    const client = createWordPressProxyClient(supabase, publication.connection_id);
 
     // Get post from WordPress
     const postResult = await client.getPost(publication.wp_post_id);
@@ -548,13 +533,8 @@ export async function detectConflict(
       return null;
     }
 
-    // Get authenticated client
-    const clientResult = await getAuthenticatedClient(supabase, userId, publication.connection_id);
-    if ('error' in clientResult) {
-      return null;
-    }
-
-    const { client } = clientResult;
+    // Use proxy client to avoid CORS issues
+    const client = createWordPressProxyClient(supabase, publication.connection_id);
 
     // Get current WP content
     const postResult = await client.getPost(publication.wp_post_id);
@@ -630,12 +610,8 @@ export async function resolveConflict(
       return { success: false, error: 'Access denied' };
     }
 
-    const clientResult = await getAuthenticatedClient(supabase, userId, publication.connection_id);
-    if ('error' in clientResult) {
-      return { success: false, error: clientResult.error };
-    }
-
-    const { client } = clientResult;
+    // Use proxy client to avoid CORS issues
+    const client = createWordPressProxyClient(supabase, publication.connection_id);
 
     if (resolution === 'keep_app') {
       // Push app content to WordPress

@@ -15,7 +15,7 @@ import {
   WordPressPublication
 } from '../../types/wordpress';
 import { verifiedInsert, verifiedUpdate } from '../verifiedDatabaseService';
-import { getAuthenticatedClient } from './connectionService';
+import { createWordPressProxyClient } from './proxyClient';
 
 // ============================================================================
 // Types
@@ -56,13 +56,8 @@ export async function pullPublicationAnalytics(
   dateRange?: DateRange
 ): Promise<PullAnalyticsResult> {
   try {
-    // Get authenticated client
-    const clientResult = await getAuthenticatedClient(supabase, userId, publication.connection_id);
-    if ('error' in clientResult) {
-      return { success: false, recordsCreated: 0, error: clientResult.error };
-    }
-
-    const { client } = clientResult;
+    // Use proxy client to avoid CORS issues
+    const client = createWordPressProxyClient(supabase, publication.connection_id);
 
     // Set default date range (last 30 days)
     const range = dateRange || {

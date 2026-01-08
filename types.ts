@@ -35,6 +35,7 @@ export * from './types/migration';
 export * from './types/siteAnalysis';
 export * from './types/contentGeneration';
 export * from './types/competitiveIntelligence';
+export * from './types/wordpress';
 
 export enum AppStep {
   AUTH,

@@ -16,11 +16,10 @@ import {
 import { EnrichedTopic, ContentBrief } from '../../types';
 import {
   getConnectionsForUser,
-  publishTopic,
-  getPublicationForTopic
+  getPublicationForTopic,
+  publishTopic
 } from '../../services/wordpress';
-import { WordPressApiClient } from '../../services/wordpress/apiClient';
-import { getAuthenticatedClient } from '../../services/wordpress/connectionService';
+import { createWordPressProxyClient } from '../../services/wordpress/proxyClient';
 
 // ============================================================================
 // Types
@@ -130,20 +129,19 @@ export const PublishToWordPressModal: React.FC<PublishToWordPressModalProps> = (
 
   // Load categories when connection changes
   useEffect(() => {
-    if (!form.connectionId || !supabase || !user) return;
+    if (!form.connectionId || !supabase) return;
 
     const loadCategories = async () => {
       setIsLoadingCategories(true);
       try {
-        const clientResult = await getAuthenticatedClient(supabase, user.id, form.connectionId);
-        if ('error' in clientResult) {
-          console.error('[Publish Modal] Failed to get client:', clientResult.error);
-          return;
-        }
+        // Use proxy client to avoid CORS issues
+        const client = createWordPressProxyClient(supabase, form.connectionId);
+        const result = await client.getCategories();
 
-        const result = await clientResult.client.getCategories({ per_page: 100 });
         if (result.success && result.data) {
           setCategories(result.data);
+        } else {
+          console.error('[Publish Modal] Failed to load categories:', result.error);
         }
       } catch (err) {
         console.error('[Publish Modal] Failed to load categories:', err);
@@ -153,7 +151,7 @@ export const PublishToWordPressModal: React.FC<PublishToWordPressModalProps> = (
     };
 
     loadCategories();
-  }, [form.connectionId, supabase, user]);
+  }, [form.connectionId, supabase]);
 
   // Handle form changes
   const updateForm = (updates: Partial<FormState>) => {
