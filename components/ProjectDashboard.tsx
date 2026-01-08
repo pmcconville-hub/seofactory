@@ -51,6 +51,7 @@ import { MentionScannerDashboard } from './MentionScannerDashboard';
 import { CorpusAuditReport } from './CorpusAuditReport';
 import { EnhancedMetricsDashboard } from './dashboard/EnhancedMetricsDashboard';
 import { ComprehensiveAuditDashboard } from './dashboard/ComprehensiveAuditDashboard';
+import { ContentCalendar } from './wordpress';
 import { InsightsHub } from './insights';
 
 // Gamification Components
@@ -461,6 +462,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         onOpenPlanning: () => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'planningDashboard', visible: true } }),
         onGeneratePlan: onGeneratePublicationPlan,
         onImportPerformance: () => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'performanceImport', visible: true } }),
+        onContentCalendar: () => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'contentCalendar', visible: true } }),
         isGeneratingPlan: state.publicationPlanning?.isGeneratingPlan,
         hasPlan: !!state.publicationPlanning?.planResult,
         // KP Strategy and Entity Authority
@@ -910,6 +912,38 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                                     eavs={topicalMap.eavs as SemanticTriple[] || []}
                                     issues={unifiedAudit?.result?.categories?.flatMap(c => c.issues) || []}
                                     onClose={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'mapAuditDashboard', visible: false } })}
+                                />
+                            </FeatureErrorBoundary>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Content Calendar - WordPress Publication Schedule */}
+            {modals.contentCalendar && (
+                <div className="fixed inset-0 z-50 bg-gray-900/95 overflow-auto">
+                    <div className="min-h-full p-6">
+                        <div className="max-w-7xl mx-auto">
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-2xl font-bold text-white">Content Calendar</h2>
+                                <button
+                                    onClick={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'contentCalendar', visible: false } })}
+                                    className="text-gray-400 hover:text-white text-2xl"
+                                >
+                                    &times;
+                                </button>
+                            </div>
+                            <FeatureErrorBoundary featureName="Content Calendar">
+                                <ContentCalendar
+                                    projectId={state.activeProjectId || ''}
+                                    topics={allTopics}
+                                    onTopicClick={(topicId) => {
+                                        const topic = allTopics.find(t => t.id === topicId);
+                                        if (topic) {
+                                            dispatch({ type: 'SET_ACTIVE_BRIEF_TOPIC', payload: topic });
+                                            dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'contentCalendar', visible: false } });
+                                        }
+                                    }}
                                 />
                             </FeatureErrorBoundary>
                         </div>

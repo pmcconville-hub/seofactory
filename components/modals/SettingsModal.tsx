@@ -9,6 +9,7 @@ import { Select } from '../ui/Select';
 import { Loader } from '../ui/Loader';
 import { Modal } from '../ui/Modal';
 import * as modelDiscovery from '../../services/modelDiscoveryService';
+import { WordPressConnectionManager } from '../wordpress';
 
 // --- Sub-components for better organization ---
 
@@ -240,7 +241,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
     const { state } = useAppState();
     const [settings, setSettings] = useState<Partial<BusinessInfo>>(initialSettings);
     const [isSaving, setIsSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState<'ai' | 'services' | 'health'>('ai');
+    const [activeTab, setActiveTab] = useState<'ai' | 'services' | 'wordpress' | 'health'>('ai');
 
     useEffect(() => {
         if (isOpen) {
@@ -266,7 +267,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
         }
     };
 
-    const TabButton: React.FC<{ tab: 'ai' | 'services' | 'health', label: string, id: string }> = ({ tab, label, id }) => (
+    const TabButton: React.FC<{ tab: 'ai' | 'services' | 'wordpress' | 'health', label: string, id: string }> = ({ tab, label, id }) => (
       <button
         type="button"
         role="tab"
@@ -306,6 +307,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
                     <div className="space-y-2" role="tablist" aria-label="Settings tabs">
                        <TabButton tab="ai" label="AI Providers" id="tab-ai" />
                        <TabButton tab="services" label="SERP & Services" id="tab-services" />
+                       <TabButton tab="wordpress" label="WordPress" id="tab-wordpress" />
                     </div>
                 </nav>
                 <main
@@ -316,6 +318,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
                 >
                      {activeTab === 'ai' && <AIProviderSettings settings={settings} setSettings={setSettings} />}
                      {activeTab === 'services' && <ServiceSettings settings={settings} handleChange={handleGeneralChange} />}
+                     {activeTab === 'wordpress' && (
+                       <div className="space-y-4">
+                         <h3 className="text-lg font-semibold text-blue-400">WordPress Connections</h3>
+                         <p className="text-sm text-gray-400 -mt-2">Connect your WordPress sites to publish content directly from the app.</p>
+                         <WordPressConnectionManager projectId={state.activeProjectId || undefined} />
+                       </div>
+                     )}
                 </main>
             </form>
         </Modal>

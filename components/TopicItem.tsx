@@ -8,6 +8,7 @@ import { safeString } from '../utils/parsers';
 import TopicDetailPanel from './ui/TopicDetailPanel';
 import { BriefHealthIndicator } from './ui/BriefHealthBadge';
 import { calculateBriefQualityScore } from '../utils/briefQualityScore';
+import { PublicationStatus } from '../types/wordpress';
 
 interface TopicItemProps {
   topic: EnrichedTopic;
@@ -39,6 +40,10 @@ interface TopicItemProps {
   onOpenDetailPanel?: (topicId: string | null) => void;
   /** Business info for competitive intelligence analysis */
   businessInfo?: BusinessInfo;
+  /** Publication status from WordPress if published */
+  publicationStatus?: PublicationStatus | null;
+  /** URL of the published post in WordPress */
+  wpPostUrl?: string | null;
 }
 
 const ActionButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { icon: React.ReactNode }> = ({ icon, ...props }) => (
@@ -83,6 +88,8 @@ const TopicItem: React.FC<TopicItemProps> = ({
     isDetailPanelOpen: controlledIsOpen,
     onOpenDetailPanel,
     businessInfo,
+    publicationStatus,
+    wpPostUrl,
 }) => {
     const [isEditing, setIsEditing] = useState(false);
 
@@ -224,6 +231,39 @@ const TopicItem: React.FC<TopicItemProps> = ({
         />
     );
 
+    // Publication status badge
+    const renderPublicationBadge = () => {
+        if (!publicationStatus) return null;
+
+        const statusConfig: Record<PublicationStatus, { color: string; label: string; icon: string }> = {
+            published: { color: 'bg-green-500/20 text-green-400 border-green-500/30', label: 'Published', icon: '✓' },
+            draft: { color: 'bg-gray-500/20 text-gray-400 border-gray-500/30', label: 'WP Draft', icon: '○' },
+            scheduled: { color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', label: 'Scheduled', icon: '⏰' },
+            pending_review: { color: 'bg-orange-500/20 text-orange-400 border-orange-500/30', label: 'Pending', icon: '⏳' },
+            unpublished: { color: 'bg-red-500/20 text-red-400 border-red-500/30', label: 'Unpublished', icon: '✗' },
+            trashed: { color: 'bg-red-800/20 text-red-600 border-red-800/30', label: 'Trashed', icon: '🗑' },
+        };
+
+        const config = statusConfig[publicationStatus] || statusConfig.draft;
+
+        return (
+            <a
+                href={wpPostUrl || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => {
+                    e.stopPropagation();
+                    if (!wpPostUrl) e.preventDefault();
+                }}
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs border ${config.color} ${wpPostUrl ? 'hover:opacity-80 cursor-pointer' : 'cursor-default'}`}
+                title={wpPostUrl ? `View on WordPress: ${wpPostUrl}` : `WordPress: ${config.label}`}
+            >
+                <span>{config.icon}</span>
+                <span className="hidden sm:inline">WP</span>
+            </a>
+        );
+    };
+
 
     return (
         <>
@@ -263,6 +303,7 @@ const TopicItem: React.FC<TopicItemProps> = ({
                             ) : (
                                 <h4 className="font-semibold text-white flex items-center gap-2">
                                     {title}
+                                    {renderPublicationBadge()}
                                     <BriefHealthIndicator
                                         quality={briefQuality}
                                         hasBrief={hasBrief}

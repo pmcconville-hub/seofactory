@@ -254,6 +254,7 @@ export interface DashboardNavConfig {
   onOpenPlanning?: () => void;
   onGeneratePlan?: () => void;
   onImportPerformance?: () => void;
+  onContentCalendar?: () => void;
   isGeneratingPlan?: boolean;
   hasPlan?: boolean;
   // Knowledge Panel (KP) Strategy
@@ -370,6 +371,13 @@ export function createDashboardTabs(config: DashboardNavConfig): NavTab[] {
           label: 'Import Performance Data',
           onClick: config.onImportPerformance,
           helpText: 'Import GSC CSV export to track content performance',
+        }] : []),
+        ...(config.onContentCalendar ? [{
+          id: 'content-calendar',
+          label: 'Content Calendar',
+          onClick: config.onContentCalendar,
+          helpText: 'View publication schedule and WordPress sync status',
+          variant: 'primary' as const,
         }] : []),
       ],
     },

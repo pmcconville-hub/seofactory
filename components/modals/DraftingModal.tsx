@@ -24,6 +24,7 @@ import { ReportExportButton, ReportModal } from '../reports';
 import { useArticleDraftReport } from '../../hooks/useReportGeneration';
 import { ContentGenerationJob } from '../../types';
 import JSZip from 'jszip';
+import { PublishToWordPressModal } from '../wordpress';
 
 interface DraftingModalProps {
   isOpen: boolean;
@@ -100,6 +101,9 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
   const [showPassesModal, setShowPassesModal] = useState(false);
   const [selectedPasses, setSelectedPasses] = useState<number[]>([]);
   const [isRerunning, setIsRerunning] = useState(false);
+
+  // WordPress Publish State
+  const [showPublishModal, setShowPublishModal] = useState(false);
 
   // Create a minimal job object for report generation
   const minimalJob: ContentGenerationJob | null = useMemo(() => {
@@ -2865,6 +2869,15 @@ ${schemaScript}`;
                             Re-run Passes
                         </Button>
                     )}
+                    <Button
+                        onClick={() => setShowPublishModal(true)}
+                        disabled={isLoading || !draftContent || isPolishing}
+                        variant="secondary"
+                        className="text-xs py-1 px-2 bg-blue-700 hover:bg-blue-600"
+                        title="Publish to WordPress"
+                    >
+                        Publish to WP
+                    </Button>
                     {reportHook.canGenerate && (
                         <ReportExportButton
                             reportType="article-draft"
@@ -3128,6 +3141,21 @@ ${schemaScript}`;
             </div>
           </div>
         </div>
+      )}
+
+      {/* Publish to WordPress Modal */}
+      {brief && activeBriefTopic && (
+        <PublishToWordPressModal
+          isOpen={showPublishModal}
+          onClose={() => setShowPublishModal(false)}
+          topic={activeBriefTopic}
+          brief={brief}
+          articleDraft={draftContent}
+          onPublishSuccess={() => {
+            setShowPublishModal(false);
+            // Could refresh publication status here if needed
+          }}
+        />
       )}
     </div>
   );
