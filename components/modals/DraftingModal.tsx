@@ -25,6 +25,9 @@ import { useArticleDraftReport } from '../../hooks/useReportGeneration';
 import { ContentGenerationJob } from '../../types';
 import JSZip from 'jszip';
 import { PublishToWordPressModal } from '../wordpress';
+import { AuditIssuesPanel } from '../drafting/AuditIssuesPanel';
+import { AuditIssue } from '../../types';
+import { runAlgorithmicAudit, convertToAuditIssues } from '../../services/ai/contentGeneration/passes/auditChecks';
 
 interface DraftingModalProps {
   isOpen: boolean;
@@ -104,6 +107,11 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
 
   // WordPress Publish State
   const [showPublishModal, setShowPublishModal] = useState(false);
+
+  // Audit Panel State
+  const [showAuditPanel, setShowAuditPanel] = useState(false);
+  const [auditIssues, setAuditIssues] = useState<AuditIssue[]>([]);
+  const [isRunningAudit, setIsRunningAudit] = useState(false);
 
   // Create a minimal job object for report generation
   const minimalJob: ContentGenerationJob | null = useMemo(() => {
@@ -2318,6 +2326,40 @@ ${schemaScript}`;
     }
   };
 
+  // Handle running the algorithmic audit and showing issues
+  const handleRunAudit = useCallback(() => {
+    if (!brief || !draftContent) return;
+    setIsRunningAudit(true);
+    try {
+      const auditResults = runAlgorithmicAudit(draftContent, brief, businessInfo);
+      const issues = convertToAuditIssues(auditResults);
+      setAuditIssues(issues);
+      setShowAuditPanel(true);
+    } catch (error) {
+      console.error('[DraftingModal] Audit failed:', error);
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to run audit' });
+    } finally {
+      setIsRunningAudit(false);
+    }
+  }, [brief, draftContent, businessInfo, dispatch]);
+
+  // Handle applying an auto-fix
+  const handleApplyAuditFix = useCallback((updatedDraft: string, issueId: string) => {
+    setDraftContent(updatedDraft);
+    setHasUnsavedChanges(true);
+    setAuditIssues(prev =>
+      prev.map(issue =>
+        issue.id === issueId ? { ...issue, fixApplied: true } : issue
+      )
+    );
+    dispatch({ type: 'SET_NOTIFICATION', payload: 'Fix applied successfully' });
+  }, [dispatch]);
+
+  // Handle dismissing an audit issue
+  const handleDismissAuditIssue = useCallback((issueId: string) => {
+    setAuditIssues(prev => prev.filter(issue => issue.id !== issueId));
+  }, []);
+
   // Validated Logic: 'brief' availability is checked before return or inside handlers.
   if (!isOpen || !brief) return null;
 
@@ -2768,6 +2810,35 @@ ${schemaScript}`;
 
         </div>
 
+        {/* Audit Issues Panel - Collapsible */}
+        {showAuditPanel && auditIssues.length > 0 && brief && (
+            <div className="border-t border-gray-700 bg-gray-850 max-h-[300px] overflow-y-auto">
+                <div className="flex items-center justify-between p-2 bg-gray-800">
+                    <span className="text-sm font-medium text-gray-200">
+                        Audit Issues ({auditIssues.filter(i => !i.fixApplied).length} pending)
+                    </span>
+                    <button
+                        onClick={() => setShowAuditPanel(false)}
+                        className="text-gray-400 hover:text-white p-1"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                <div className="p-4">
+                    <AuditIssuesPanel
+                        issues={auditIssues}
+                        draft={draftContent}
+                        brief={brief}
+                        businessInfo={businessInfo}
+                        onApplyFix={handleApplyAuditFix}
+                        onDismiss={handleDismissAuditIssue}
+                    />
+                </div>
+            </div>
+        )}
+
         <footer className="p-2 bg-gray-800 border-t border-gray-700 flex-shrink-0">
             <div className="flex justify-between items-center">
                 {/* Left: Stats and Resources */}
@@ -2832,13 +2903,18 @@ ${schemaScript}`;
                         ✓ Flow
                     </Button>
                     <Button
-                        onClick={() => onAudit(brief, draftContent)}
+                        onClick={handleRunAudit}
                         variant="secondary"
-                        disabled={isLoading || !draftContent || activeTab === 'preview' || isPolishing}
-                        className="text-xs py-1 px-2 bg-emerald-700 hover:bg-emerald-600"
-                        title="Recommended: Detailed rule-by-rule content audit checking subjectivity, pronoun density, link positioning, first sentences, list logic, linguistic density, EAV coverage, and heading quality."
+                        disabled={isLoading || !draftContent || activeTab === 'preview' || isPolishing || isRunningAudit}
+                        className={`text-xs py-1 px-2 ${showAuditPanel ? 'bg-emerald-600' : 'bg-emerald-700 hover:bg-emerald-600'}`}
+                        title="Run algorithmic audit and show issues with auto-fix suggestions"
                     >
-                        ✓ Audit
+                        {isRunningAudit ? <Loader className="w-3 h-3" /> : showAuditPanel ? '◉ Audit' : '✓ Audit'}
+                        {auditIssues.filter(i => !i.fixApplied).length > 0 && (
+                            <span className="ml-1 px-1 py-0.5 text-[10px] bg-red-600 rounded-full">
+                                {auditIssues.filter(i => !i.fixApplied).length}
+                            </span>
+                        )}
                     </Button>
                     <Button
                         onClick={() => onGenerateSchema(brief)}

@@ -8,7 +8,8 @@ import {
   HolisticSummaryContext,
   ContentGenerationSection,
   SectionProgressCallback,
-  ContentFormatBudget
+  ContentFormatBudget,
+  PASSES_EXCLUDE_INTRO_CONCLUSION
 } from '../../../../types';
 import { ContentGenerationOrchestrator } from '../orchestrator';
 import { buildHolisticSummary, buildAdjacentContext } from '../holisticAnalyzer';
@@ -21,6 +22,52 @@ const createPassLogger = (passNumber: number) => createLogger(`Pass${passNumber}
 
 // Checkpoint interval - save progress after every N sections
 const CHECKPOINT_INTERVAL = 3;
+
+/**
+ * Check if a section should be processed based on pass number.
+ * Intro/conclusion sections are excluded from certain passes to prevent
+ * wasted work (they get rewritten in Pass 3: Introduction Synthesis).
+ */
+function shouldProcessSection(section: ContentGenerationSection, passNumber: number): boolean {
+  if (!PASSES_EXCLUDE_INTRO_CONCLUSION.includes(passNumber)) {
+    return true; // This pass processes all sections
+  }
+
+  // Check if section is intro or conclusion
+  const key = section.section_key?.toLowerCase() || '';
+  const heading = section.section_heading?.toLowerCase() || '';
+
+  const isIntro = key.includes('intro') || heading.includes('introduction') || heading.includes('inleiding');
+  const isConclusion = key.includes('conclusion') || heading.includes('conclusion') || heading.includes('conclusie');
+
+  if (isIntro || isConclusion) {
+    return false; // Skip intro/conclusion for these passes
+  }
+
+  return true;
+}
+
+/**
+ * Save per-pass content version for rollback capability.
+ */
+async function savePassVersion(
+  orchestrator: ContentGenerationOrchestrator,
+  section: ContentGenerationSection,
+  passNumber: number
+): Promise<void> {
+  try {
+    const passContents = section.pass_contents || {};
+    passContents[`pass_${passNumber}`] = section.current_content || '';
+
+    await orchestrator.upsertSection({
+      ...section,
+      pass_contents: passContents
+    });
+  } catch (error) {
+    console.warn(`[Pass ${passNumber}] Failed to save pass version for section ${section.section_key}:`, error);
+    // Don't fail the pass if versioning fails
+  }
+}
 
 /**
  * Execute a content optimization pass with selective + batch processing.
@@ -76,21 +123,30 @@ export async function executeSectionPass(
   // Phase B: Determine which sections to process (selective)
   let sectionsToProcess: ContentGenerationSection[];
 
+  // First, apply intro/conclusion filtering based on pass number
+  // Passes 2, 4, 5, 6 exclude intro/conclusion (they're handled in Pass 3)
+  const passFilteredSections = sortedSections.filter(s => shouldProcessSection(s, config.passNumber));
+
+  if (passFilteredSections.length < sortedSections.length) {
+    log.log(`Pass ${config.passNumber}: Excluded ${sortedSections.length - passFilteredSections.length} intro/conclusion section(s)`);
+  }
+
   if (config.introOnly) {
-    // For Pass 7 - only process introduction
+    // For Pass 3 (Introduction Synthesis) - only process introduction
     sectionsToProcess = sortedSections.filter(s =>
       s.section_key === 'intro' ||
-      s.section_heading?.toLowerCase().includes('introduction')
+      s.section_heading?.toLowerCase().includes('introduction') ||
+      s.section_heading?.toLowerCase().includes('inleiding')
     );
   } else if (config.filterSections) {
-    // NEW: Use format budget filtering for selective processing
-    sectionsToProcess = config.filterSections(sortedSections, formatBudget);
-    log.log(`Selective processing: ${sectionsToProcess.length}/${sortedSections.length} sections need optimization`);
+    // Use format budget filtering for selective processing
+    sectionsToProcess = config.filterSections(passFilteredSections, formatBudget);
+    log.log(`Selective processing: ${sectionsToProcess.length}/${passFilteredSections.length} sections need optimization`);
   } else if (config.sectionFilter) {
     // Legacy holistic-based filtering
-    sectionsToProcess = sortedSections.filter(s => config.sectionFilter!(s, holisticContext));
+    sectionsToProcess = passFilteredSections.filter(s => config.sectionFilter!(s, holisticContext));
   } else {
-    sectionsToProcess = sortedSections;
+    sectionsToProcess = passFilteredSections;
   }
 
   const totalSections = sectionsToProcess.length;
@@ -208,12 +264,17 @@ async function processSectionsBatched(
           const originalContent = section.current_content || '';
           const cleanedContent = cleanOptimizedContent(optimizedContent, originalContent);
 
-          await orchestrator.upsertSection({
+          const updatedSection: ContentGenerationSection = {
             ...section,
             current_content: cleanedContent,
             current_pass: config.passNumber,
             updated_at: new Date().toISOString()
-          });
+          };
+
+          await orchestrator.upsertSection(updatedSection);
+
+          // Save per-pass version for rollback capability
+          await savePassVersion(orchestrator, updatedSection, config.passNumber);
 
           log.log(`Section ${section.section_key}: ${originalContent.length} → ${cleanedContent.length} chars`);
         }
@@ -304,12 +365,18 @@ async function processSectionsIndividually(
 
       const cleanedContent = cleanOptimizedContent(optimizedContent, sectionContent);
 
-      await orchestrator.upsertSection({
+      // Update section with optimized content
+      const updatedSection: ContentGenerationSection = {
         ...section,
         current_content: cleanedContent,
         current_pass: config.passNumber,
         updated_at: new Date().toISOString()
-      });
+      };
+
+      await orchestrator.upsertSection(updatedSection);
+
+      // Save per-pass version for rollback capability
+      await savePassVersion(orchestrator, updatedSection, config.passNumber);
 
       processedCount++;
       log.log(`Section ${section.section_key} optimized: ${sectionContent.length} → ${cleanedContent.length} chars`);

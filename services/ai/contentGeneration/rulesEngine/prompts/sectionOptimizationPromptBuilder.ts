@@ -178,13 +178,71 @@ Preserve prose where structured content is not needed.
 }
 
 // ============================================
-// Pass 4: Visual Semantics
+// Pass 4: Visual Semantics (in new 10-pass order: now Pass 7)
 // ============================================
+
+/**
+ * Get visual semantics suggestions relevant to a specific section.
+ * Matches based on section heading, key, or description overlap.
+ */
+function getRelevantVisualSemantics(
+  section: ContentGenerationSection,
+  visualSemantics: Array<{ description: string; alt_text?: string; section_hint?: string; type?: string }> | undefined
+): Array<{ description: string; alt_text?: string; type?: string }> {
+  if (!visualSemantics || visualSemantics.length === 0) return [];
+
+  const sectionKey = section.section_key?.toLowerCase() || '';
+  const sectionHeading = section.section_heading?.toLowerCase() || '';
+  const sectionContent = (section.current_content || '').toLowerCase().substring(0, 500);
+
+  return visualSemantics.filter(vs => {
+    const desc = vs.description?.toLowerCase() || '';
+    const hint = vs.section_hint?.toLowerCase() || '';
+
+    // Match if section_hint references this section
+    if (hint && (sectionKey.includes(hint) || sectionHeading.includes(hint) || hint.includes(sectionKey))) {
+      return true;
+    }
+
+    // Match if description has significant overlap with section heading/content
+    const descWords = desc.split(/\s+/).filter(w => w.length > 4);
+    const matchingWords = descWords.filter(w =>
+      sectionHeading.includes(w) || sectionContent.includes(w)
+    );
+
+    return matchingWords.length >= 2;
+  });
+}
 
 export function buildPass4Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, brief, businessInfo } = ctx;
   const regionalLang = getRegionalLanguageVariant(businessInfo.language, businessInfo.region);
   const isFirstSection = section.section_order === 0 || section.section_key === 'intro';
+
+  // Get visual semantics from brief - this is the PRIMARY guide
+  const briefVisualSemantics = brief?.visual_semantics || [];
+  const relevantSemantics = getRelevantVisualSemantics(section, briefVisualSemantics);
+
+  // Format visual semantics for the prompt
+  const visualSemanticsSection = relevantSemantics.length > 0
+    ? `
+## VISUAL SEMANTICS FROM CONTENT BRIEF (PRIMARY GUIDE)
+These images were planned during content briefing. Use them as your guide:
+${relevantSemantics.map((vs, i) => `
+${i + 1}. **Description:** ${vs.description}
+   **Alt Text:** ${vs.alt_text || 'Generate vocabulary-extending alt text'}
+   **Type:** ${vs.type || 'SECTION'}
+`).join('')}
+
+IMPORTANT: Use these pre-planned image descriptions when inserting placeholders.
+`
+    : briefVisualSemantics.length > 0
+      ? `
+## VISUAL SEMANTICS AVAILABLE (may not match this section)
+The brief contains ${briefVisualSemantics.length} planned images. If none apply to this section,
+generate appropriate images based on the content.
+`
+      : '';
 
   return `You are a Holistic SEO editor specializing in visual semantics.
 
@@ -192,6 +250,7 @@ ${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
 
 ## Your Task
 Insert image placeholders in ONE section. Return ONLY the optimized section.
+${relevantSemantics.length > 0 ? `Use the pre-planned visual semantics from the content brief.` : ''}
 
 ## Current Section to Optimize
 **Heading:** ${section.section_heading}
@@ -207,7 +266,7 @@ ${isFirstSection ? `
 This is the first section - include a HERO image after the first paragraph.
 Hero images appear at LCP position and should include title overlay.
 ` : ''}
-
+${visualSemanticsSection}
 ## Visual Semantics Rules:
 1. **Alt Tag Vocabulary Extension**: Alt tags use NEW vocabulary not in headings (synonyms, related terms)
 2. **Context Bridging**: Alt text bridges image to surrounding content
@@ -229,9 +288,10 @@ ${holistic.vocabularyMetrics.overusedTerms.slice(0, 5).map(t => t.term).join(', 
 
 ## Instructions:
 1. Insert 0-2 image placeholders where appropriate
-2. Place images AFTER paragraphs, never right after headings
-3. Use vocabulary-extending alt text
-4. Write descriptions and alt text in ${regionalLang}
+2. ${relevantSemantics.length > 0 ? 'Use the pre-planned visual semantics from the brief when available' : 'Generate appropriate image descriptions based on content'}
+3. Place images AFTER paragraphs, never right after headings
+4. Use vocabulary-extending alt text
+5. Write descriptions and alt text in ${regionalLang}
 
 **OUTPUT ONLY the optimized section content with image placeholders. No explanations.**`;
 }
@@ -288,8 +348,16 @@ Links at END of sentences, not start:
 ### 6. Vocabulary Diversity
 Avoid overused terms. Use synonyms for: ${holistic.vocabularyMetrics.overusedTerms.slice(0, 3).map(t => t.term).join(', ')}
 
+## CRITICAL: IMAGE PLACEHOLDER PRESERVATION
+If the content contains [IMAGE: description | alt text] placeholders:
+- You MUST preserve ALL image placeholders EXACTLY as they appear
+- Do NOT modify, move, reword, or remove any text matching the pattern [IMAGE: ... | ...]
+- Copy them character-for-character to your output
+- These placeholders are essential for later image generation
+
 ## Instructions:
 Apply ALL rules. Maintain content meaning. Keep language in ${regionalLang}.
+PRESERVE all [IMAGE: ...] placeholders exactly as they appear.
 
 **OUTPUT ONLY the optimized section content. No explanations.**`;
 }
