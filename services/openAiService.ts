@@ -19,6 +19,46 @@ import { logAiUsage, estimateTokens, AIUsageContext } from './telemetryService';
 import { getSupabaseClient } from './supabaseClient';
 import { openAiLogger } from './apiCallLogger';
 
+// Retry configuration for network failures
+const NETWORK_RETRY_ATTEMPTS = 3;
+const NETWORK_RETRY_BASE_DELAY_MS = 2000; // 2 seconds initial delay
+
+/**
+ * Helper to retry fetch on network errors with exponential backoff
+ * Only retries on network-level failures (Failed to fetch), not API errors
+ */
+const fetchWithRetry = async (
+    url: string,
+    options: RequestInit,
+    maxRetries: number = NETWORK_RETRY_ATTEMPTS
+): Promise<Response> => {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const response = await fetch(url, options);
+            return response; // Success - return even if status is error (handled by caller)
+        } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+            const isNetworkError = lastError.message === 'Failed to fetch' ||
+                                   lastError.message.includes('NetworkError') ||
+                                   lastError.message.includes('network') ||
+                                   lastError.name === 'TypeError'; // fetch throws TypeError on network failure
+
+            if (!isNetworkError || attempt >= maxRetries) {
+                throw lastError;
+            }
+
+            // Exponential backoff: 2s, 4s, 8s
+            const delayMs = NETWORK_RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+            console.warn(`[OpenAI] Network error on attempt ${attempt}/${maxRetries}, retrying in ${delayMs}ms...`, lastError.message);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+    }
+
+    throw lastError || new Error('Max retries exceeded');
+};
+
 // Current operation context for logging (set by callers)
 let currentUsageContext: AIUsageContext = {};
 let currentOperation: string = 'unknown';
@@ -138,8 +178,8 @@ const callApi = async <T>(
             requestBody.response_format = { type: "json_object" };
         }
 
-        // Call the proxy instead of OpenAI directly
-        const response = await fetch(proxyUrl, {
+        // Call the proxy instead of OpenAI directly, with retry on network failures
+        const response = await fetchWithRetry(proxyUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
