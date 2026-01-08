@@ -47,14 +47,70 @@ export interface SyncResult {
 // ============================================================================
 
 /**
+ * Convert markdown table to HTML table
+ */
+function convertMarkdownTableToHtml(tableText: string): string {
+  const lines = tableText.trim().split('\n');
+  if (lines.length < 2) return tableText;
+
+  // Parse header row
+  const headerCells = lines[0].split('|').map(cell => cell.trim()).filter(cell => cell);
+
+  // Check if second line is separator (---|---|---)
+  const separatorLine = lines[1];
+  if (!separatorLine.match(/^[\s|:-]+$/)) {
+    return tableText; // Not a valid markdown table
+  }
+
+  // Parse alignment from separator
+  const alignments = separatorLine.split('|').map(cell => {
+    const trimmed = cell.trim();
+    if (trimmed.startsWith(':') && trimmed.endsWith(':')) return 'center';
+    if (trimmed.endsWith(':')) return 'right';
+    return 'left';
+  }).filter((_, i) => i > 0 && i <= headerCells.length);
+
+  // Build HTML table
+  let html = '<table class="wp-block-table"><thead><tr>';
+
+  headerCells.forEach((cell, i) => {
+    const align = alignments[i] || 'left';
+    html += `<th style="text-align:${align}">${cell}</th>`;
+  });
+
+  html += '</tr></thead><tbody>';
+
+  // Parse body rows
+  for (let i = 2; i < lines.length; i++) {
+    const cells = lines[i].split('|').map(cell => cell.trim()).filter(cell => cell);
+    if (cells.length === 0) continue;
+
+    html += '<tr>';
+    cells.forEach((cell, j) => {
+      const align = alignments[j] || 'left';
+      html += `<td style="text-align:${align}">${cell}</td>`;
+    });
+    html += '</tr>';
+  }
+
+  html += '</tbody></table>';
+  return html;
+}
+
+/**
  * Convert article draft to WordPress-ready HTML
- * Handles image placeholders, formatting, etc.
+ * Handles image placeholders, formatting, tables, etc.
  */
 function formatContentForWordPress(
   articleDraft: string,
   brief?: ContentBrief
 ): string {
   let content = articleDraft;
+
+  // Convert markdown tables to HTML tables (must be done before other conversions)
+  // Match markdown tables: lines starting with |, including header separator
+  const tableRegex = /(\|[^\n]+\|\n\|[-:\s|]+\|\n(?:\|[^\n]+\|\n?)+)/g;
+  content = content.replace(tableRegex, (match) => convertMarkdownTableToHtml(match));
 
   // Convert markdown-style headers to HTML if needed
   content = content
@@ -67,9 +123,23 @@ function formatContentForWordPress(
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>');
 
+  // Convert markdown links [text](url)
+  content = content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
   // Convert markdown lists
   content = content.replace(/^- (.+)$/gm, '<li>$1</li>');
   content = content.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+
+  // Convert numbered lists
+  content = content.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+
+  // Wrap paragraphs (lines that aren't already HTML)
+  content = content.split('\n\n').map(para => {
+    const trimmed = para.trim();
+    // Skip if already HTML tag or empty
+    if (!trimmed || trimmed.startsWith('<')) return trimmed;
+    return `<p>${trimmed}</p>`;
+  }).join('\n\n');
 
   // Keep image placeholders for now - they'll be replaced when images are uploaded
   // Format: [IMAGE:hero|alt:Description|caption:Caption text]
@@ -182,13 +252,16 @@ export async function publishTopic(
       };
     }
 
+    // Determine post type (default to page for topical map items)
+    const postType = options.post_type || 'page';
+
     // Create post in WordPress
-    const createResult = await client.createPost(postData);
+    const createResult = await client.createPost(postData, postType);
 
     if (!createResult.success || !createResult.data) {
       return {
         success: false,
-        error: createResult.error || 'Failed to create WordPress post'
+        error: createResult.error || `Failed to create WordPress ${postType}`
       };
     }
 
@@ -208,6 +281,7 @@ export async function publishTopic(
       wp_post_id: wpPost.id,
       wp_post_url: wpPost.link,
       wp_post_slug: wpPost.slug,
+      wp_post_type: postType,
       status: pubStatus,
       scheduled_at: options.status === 'future' ? options.scheduled_at : null,
       published_at: wpPost.status === 'publish' ? new Date().toISOString() : null,
@@ -318,13 +392,14 @@ export async function updatePublication(
       updateData.featured_media = options.featured_image_id;
     }
 
-    // Update in WordPress
-    const updateResult = await client.updatePost(publication.wp_post_id, updateData);
+    // Update in WordPress (use stored post type)
+    const postType = publication.wp_post_type || 'page';
+    const updateResult = await client.updatePost(publication.wp_post_id, updateData, postType);
 
     if (!updateResult.success || !updateResult.data) {
       return {
         success: false,
-        error: updateResult.error || 'Failed to update WordPress post'
+        error: updateResult.error || `Failed to update WordPress ${postType}`
       };
     }
 
@@ -403,9 +478,10 @@ export async function syncPublicationStatus(
 
     // Use proxy client to avoid CORS issues
     const client = createWordPressProxyClient(supabase, publication.connection_id);
+    const postType = publication.wp_post_type || 'page';
 
     // Get post from WordPress
-    const postResult = await client.getPost(publication.wp_post_id);
+    const postResult = await client.getPost(publication.wp_post_id, postType);
 
     if (!postResult.success || !postResult.data) {
       // Post might have been deleted
@@ -535,9 +611,10 @@ export async function detectConflict(
 
     // Use proxy client to avoid CORS issues
     const client = createWordPressProxyClient(supabase, publication.connection_id);
+    const postType = publication.wp_post_type || 'page';
 
     // Get current WP content
-    const postResult = await client.getPost(publication.wp_post_id);
+    const postResult = await client.getPost(publication.wp_post_id, postType);
     if (!postResult.success || !postResult.data) {
       return null;
     }

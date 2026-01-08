@@ -22,6 +22,19 @@ import {
 import { createWordPressProxyClient } from '../../services/wordpress/proxyClient';
 
 // ============================================================================
+// Utilities
+// ============================================================================
+
+// Simple hash function for comparing content
+async function generateSimpleHash(content: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(content);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -36,6 +49,7 @@ interface PublishToWordPressModalProps {
 
 interface FormState {
   connectionId: string;
+  postType: 'post' | 'page';
   status: 'draft' | 'publish' | 'pending' | 'future';
   scheduledDate: string;
   scheduledTime: string;
@@ -80,6 +94,7 @@ export const PublishToWordPressModal: React.FC<PublishToWordPressModalProps> = (
 
   const [form, setForm] = useState<FormState>({
     connectionId: '',
+    postType: 'page',  // Default to page for topical map items
     status: 'draft',
     scheduledDate: '',
     scheduledTime: '10:00',
@@ -90,6 +105,9 @@ export const PublishToWordPressModal: React.FC<PublishToWordPressModalProps> = (
     metaDescription: brief?.metaDescription || '',
     useHeroImage: true
   });
+
+  // Track if content has changed since last publish
+  const [hasContentChanges, setHasContentChanges] = useState(false);
 
   // Load connections on mount
   useEffect(() => {
@@ -115,17 +133,32 @@ export const PublishToWordPressModal: React.FC<PublishToWordPressModalProps> = (
     loadConnections();
   }, [isOpen, supabase, user]);
 
-  // Check for existing publication
+  // Check for existing publication and detect content changes
   useEffect(() => {
     if (!isOpen || !supabase || !form.connectionId) return;
 
     const checkExisting = async () => {
       const pub = await getPublicationForTopic(supabase, topic.id, form.connectionId);
       setExistingPublication(pub);
+
+      if (pub) {
+        // Check if content has changed since last publish
+        // Generate hash of current content and compare
+        const currentHash = await generateSimpleHash(articleDraft);
+        const hasChanges = pub.app_version_hash !== currentHash;
+        setHasContentChanges(hasChanges);
+
+        // Set post type from existing publication
+        if (pub.wp_post_type) {
+          setForm(prev => ({ ...prev, postType: pub.wp_post_type as 'post' | 'page' }));
+        }
+      } else {
+        setHasContentChanges(false);
+      }
     };
 
     checkExisting();
-  }, [isOpen, supabase, topic.id, form.connectionId]);
+  }, [isOpen, supabase, topic.id, form.connectionId, articleDraft]);
 
   // Load categories when connection changes
   useEffect(() => {
@@ -190,7 +223,8 @@ export const PublishToWordPressModal: React.FC<PublishToWordPressModalProps> = (
       // Build options
       const options: PublishOptions = {
         status: form.status,
-        categories: form.categoryId ? [form.categoryId] : undefined
+        post_type: form.postType,
+        categories: form.postType === 'post' && form.categoryId ? [form.categoryId] : undefined
         // TODO: Implement tag name to ID lookup before passing tags
         // tags: form.tags would need to be converted to IDs first
       };
@@ -290,18 +324,44 @@ export const PublishToWordPressModal: React.FC<PublishToWordPressModalProps> = (
         {/* Form */}
         {!isLoadingConnections && connections.length > 0 && (
           <>
-            {/* Existing publication warning */}
+            {/* Existing publication info */}
             {existingPublication && (
-              <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+              <div className={`p-3 rounded-lg border ${
+                hasContentChanges
+                  ? 'bg-blue-500/10 border-blue-500/30'
+                  : 'bg-green-500/10 border-green-500/30'
+              }`}>
                 <div className="flex items-start gap-2">
-                  <AlertIcon className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                  {hasContentChanges ? (
+                    <UpdateIcon className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <CheckIcon className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+                  )}
                   <div>
-                    <p className="text-sm text-yellow-300 font-medium">
-                      Already published to this site
+                    <p className={`text-sm font-medium ${
+                      hasContentChanges ? 'text-blue-300' : 'text-green-300'
+                    }`}>
+                      {hasContentChanges
+                        ? 'Content has changed - update available'
+                        : 'Already published and up to date'
+                      }
                     </p>
-                    <p className="text-xs text-yellow-400/70 mt-1">
-                      This will update the existing post at {existingPublication.wp_post_url}
+                    <p className="text-xs text-gray-400 mt-1">
+                      {existingPublication.wp_post_type === 'page' ? 'Page' : 'Post'} at{' '}
+                      <a
+                        href={existingPublication.wp_post_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-400 hover:underline"
+                      >
+                        {existingPublication.wp_post_url}
+                      </a>
                     </p>
+                    {existingPublication.last_pushed_at && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Last updated: {new Date(existingPublication.last_pushed_at).toLocaleDateString()}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -323,6 +383,56 @@ export const PublishToWordPressModal: React.FC<PublishToWordPressModalProps> = (
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Content Type selector (Post vs Page) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Content Type
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => updateForm({ postType: 'page' })}
+                  disabled={!!existingPublication}
+                  className={`p-3 rounded-lg border text-left transition-colors ${
+                    form.postType === 'page'
+                      ? 'border-blue-500 bg-blue-500/10'
+                      : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
+                  } ${existingPublication ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  <div className={`flex items-center gap-2 mb-1 ${form.postType === 'page' ? 'text-blue-400' : 'text-gray-400'}`}>
+                    <PageIcon className="w-5 h-5" />
+                    <span className={`font-medium ${form.postType === 'page' ? 'text-white' : 'text-gray-300'}`}>
+                      Page
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500">Static content, no categories</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateForm({ postType: 'post' })}
+                  disabled={!!existingPublication}
+                  className={`p-3 rounded-lg border text-left transition-colors ${
+                    form.postType === 'post'
+                      ? 'border-blue-500 bg-blue-500/10'
+                      : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
+                  } ${existingPublication ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  <div className={`flex items-center gap-2 mb-1 ${form.postType === 'post' ? 'text-blue-400' : 'text-gray-400'}`}>
+                    <PostIcon className="w-5 h-5" />
+                    <span className={`font-medium ${form.postType === 'post' ? 'text-white' : 'text-gray-300'}`}>
+                      Post
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500">Blog post with categories</p>
+                </button>
+              </div>
+              {existingPublication && (
+                <p className="text-xs text-gray-500 mt-2">
+                  Content type cannot be changed after publishing
+                </p>
+              )}
             </div>
 
             {/* Status selector */}
@@ -395,25 +505,30 @@ export const PublishToWordPressModal: React.FC<PublishToWordPressModalProps> = (
               </div>
             )}
 
-            {/* Category */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Category
-              </label>
-              <select
-                value={form.categoryId || ''}
-                onChange={e => updateForm({ categoryId: e.target.value ? Number(e.target.value) : null })}
-                disabled={isLoadingCategories}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 disabled:opacity-50"
-              >
-                <option value="">Select a category...</option>
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.parent ? '— ' : ''}{cat.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Category - only for posts */}
+            {form.postType === 'post' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Category
+                </label>
+                <select
+                  value={form.categoryId || ''}
+                  onChange={e => updateForm({ categoryId: e.target.value ? Number(e.target.value) : null })}
+                  disabled={isLoadingCategories}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:border-blue-500 disabled:opacity-50"
+                >
+                  <option value="">Select a category...</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.parent ? '— ' : ''}{cat.name}
+                    </option>
+                  ))}
+                </select>
+                {isLoadingCategories && (
+                  <p className="text-xs text-gray-500 mt-1">Loading categories...</p>
+                )}
+              </div>
+            )}
 
             {/* Tags */}
             <div>
@@ -638,6 +753,24 @@ const ReviewIcon: React.FC<{ className?: string }> = ({ className }) => (
 const SeoIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+  </svg>
+);
+
+const UpdateIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+  </svg>
+);
+
+const PageIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  </svg>
+);
+
+const PostIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
   </svg>
 );
 

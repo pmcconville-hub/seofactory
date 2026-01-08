@@ -1,14 +1,16 @@
 // components/imageGeneration/ImageGenerationModal.tsx
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { ImagePlaceholder, BrandKit, BusinessInfo, ImageGenerationProgress, HeroImageMetadata } from '../../types';
 import { DEFAULT_HERO_TEMPLATES, DEFAULT_MARKUPGO_TEMPLATE_ID } from '../../config/imageTemplates';
-import { generateImage, ImageGenerationOptions } from '../../services/ai/imageGeneration/orchestrator';
+import { generateImage, ImageGenerationOptions, initImageGeneration } from '../../services/ai/imageGeneration/orchestrator';
 import { Button } from '../ui/Button';
 import { Label } from '../ui/Label';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Textarea } from '../ui/Textarea';
 import { HeroImageEditor } from './HeroImageEditor';
+import { useAppState } from '../../state/appState';
+import { getSupabaseClient } from '../../services/supabaseClient';
 
 // Re-export for backwards compatibility
 export type { ImageGenerationOptions } from '../../services/ai/imageGeneration/orchestrator';
@@ -34,6 +36,18 @@ export const ImageGenerationModal: React.FC<ImageGenerationModalProps> = ({
   onInsert,
   openInVisualEditor = false,
 }) => {
+  const { state } = useAppState();
+
+  // Initialize image generation with Supabase client for CORS-free proxy
+  const supabase = useMemo(() => {
+    if (!state.businessInfo.supabaseUrl || !state.businessInfo.supabaseAnonKey) return null;
+    return getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+  }, [state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
+
+  useEffect(() => {
+    initImageGeneration(supabase);
+  }, [supabase]);
+
   // Form state
   const [textOverlay, setTextOverlay] = useState(placeholder.specs.textOverlay?.text || '');
   const [selectedTemplate, setSelectedTemplate] = useState('bold-center');

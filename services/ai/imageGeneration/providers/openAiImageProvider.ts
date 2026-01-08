@@ -1,15 +1,25 @@
 // services/ai/imageGeneration/providers/openAiImageProvider.ts
-import OpenAI from 'openai';
 import { ImagePlaceholder, BusinessInfo } from '../../../../types';
 import { ImageProvider, ImageGenerationOptions, GenerationResult, ProviderConfig } from './types';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 const DEFAULT_TIMEOUT_MS = 60000; // 60 seconds for image generation
+
+// Supabase client reference - must be set before using the provider
+let supabaseClient: SupabaseClient | null = null;
+
+/**
+ * Set the Supabase client for proxy requests
+ */
+export function setSupabaseClientForImageGen(client: SupabaseClient | null) {
+  supabaseClient = client;
+}
 
 /**
  * OpenAI DALL-E 3 Provider
  *
  * Uses OpenAI's DALL-E 3 model for high-quality image generation.
- * Returns base64 image data that needs to be converted to blob/URL.
+ * Routes through Supabase edge function proxy to avoid CORS issues.
  */
 export const openAiImageProvider: ImageProvider = {
   name: 'dall-e-3',
@@ -36,73 +46,22 @@ export const openAiImageProvider: ImageProvider = {
       };
     }
 
-    const openai = new OpenAI({
-      apiKey: businessInfo.openAiApiKey,
-      dangerouslyAllowBrowser: true,
-    });
-
     // Build the image generation prompt
     const prompt = buildImagePrompt(placeholder, options, businessInfo);
 
     // Determine size from placeholder specs
     const size = getSize(placeholder.specs.width, placeholder.specs.height);
 
-    // Create AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
     try {
-      const response = await openai.images.generate({
-        model: 'dall-e-3',
-        prompt,
-        n: 1,
-        size,
-        quality: 'standard', // 'standard' or 'hd'
-        response_format: 'b64_json', // Get base64 instead of URL
-        style: 'natural', // 'natural' or 'vivid'
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.data || response.data.length === 0) {
-        return {
-          success: false,
-          error: 'DALL-E returned no images. The prompt may have been blocked by content policy.',
-          provider: this.name,
-          durationMs: Date.now() - startTime,
-        };
+      // Use proxy if Supabase client is available (avoids CORS in browser)
+      if (supabaseClient) {
+        return await generateViaProxy(supabaseClient, prompt, size, timeoutMs, startTime);
       }
 
-      const imageData = response.data[0];
-      const b64Json = imageData.b64_json;
-
-      if (!b64Json) {
-        return {
-          success: false,
-          error: 'DALL-E returned empty image data.',
-          provider: this.name,
-          durationMs: Date.now() - startTime,
-        };
-      }
-
-      // Convert base64 to Blob
-      const binaryString = atob(b64Json);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      const blob = new Blob([bytes], { type: 'image/png' });
-
-      return {
-        success: true,
-        blob,
-        provider: this.name,
-        durationMs: Date.now() - startTime,
-      };
+      // Fallback to direct API call (will fail in browser due to CORS)
+      return await generateDirectly(businessInfo.openAiApiKey, prompt, size, timeoutMs, startTime);
 
     } catch (error) {
-      clearTimeout(timeoutId);
-
       let errorMessage = 'Unknown DALL-E error';
 
       if (error instanceof Error) {
@@ -116,6 +75,8 @@ export const openAiImageProvider: ImageProvider = {
           errorMessage = 'OpenAI API key is invalid or expired. Check your API key in Settings.';
         } else if (error.message.includes('billing') || error.message.includes('quota')) {
           errorMessage = 'OpenAI billing/quota issue. Check your OpenAI account billing status.';
+        } else if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
+          errorMessage = 'CORS error: Image generation proxy not available. Please check your configuration.';
         } else {
           errorMessage = `DALL-E error: ${error.message}`;
         }
@@ -124,12 +85,178 @@ export const openAiImageProvider: ImageProvider = {
       return {
         success: false,
         error: errorMessage,
-        provider: this.name,
+        provider: 'dall-e-3',
         durationMs: Date.now() - startTime,
       };
     }
   },
 };
+
+/**
+ * Generate image via Supabase proxy to avoid CORS
+ */
+async function generateViaProxy(
+  supabase: SupabaseClient,
+  prompt: string,
+  size: string,
+  timeoutMs: number,
+  startTime: number
+): Promise<GenerationResult> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const { data, error } = await supabase.functions.invoke('openai-image-proxy', {
+      body: {
+        prompt,
+        model: 'dall-e-3',
+        size,
+        quality: 'standard',
+        style: 'natural',
+        response_format: 'b64_json',
+        n: 1
+      }
+    });
+
+    clearTimeout(timeoutId);
+
+    if (error) {
+      return {
+        success: false,
+        error: error.message || 'Image generation proxy failed',
+        provider: 'dall-e-3',
+        durationMs: Date.now() - startTime,
+      };
+    }
+
+    if (!data?.success || !data?.data || data.data.length === 0) {
+      return {
+        success: false,
+        error: data?.error || 'DALL-E returned no images',
+        provider: 'dall-e-3',
+        durationMs: Date.now() - startTime,
+      };
+    }
+
+    const imageData = data.data[0];
+    const b64Json = imageData.b64_json;
+
+    if (!b64Json) {
+      // If we got a URL instead of base64, fetch and convert
+      if (imageData.url) {
+        const response = await fetch(imageData.url);
+        const blob = await response.blob();
+        return {
+          success: true,
+          blob,
+          provider: 'dall-e-3',
+          durationMs: Date.now() - startTime,
+        };
+      }
+
+      return {
+        success: false,
+        error: 'DALL-E returned empty image data',
+        provider: 'dall-e-3',
+        durationMs: Date.now() - startTime,
+      };
+    }
+
+    // Convert base64 to Blob
+    const binaryString = atob(b64Json);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: 'image/png' });
+
+    return {
+      success: true,
+      blob,
+      provider: 'dall-e-3',
+      durationMs: Date.now() - startTime,
+    };
+
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
+/**
+ * Direct API call (for server-side or testing)
+ */
+async function generateDirectly(
+  apiKey: string,
+  prompt: string,
+  size: string,
+  timeoutMs: number,
+  startTime: number
+): Promise<GenerationResult> {
+  // Dynamic import to avoid bundling issues
+  const OpenAI = (await import('openai')).default;
+
+  const openai = new OpenAI({
+    apiKey,
+    dangerouslyAllowBrowser: true,
+  });
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await openai.images.generate({
+      model: 'dall-e-3',
+      prompt,
+      n: 1,
+      size: size as '1024x1024' | '1024x1792' | '1792x1024',
+      quality: 'standard',
+      response_format: 'b64_json',
+      style: 'natural',
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.data || response.data.length === 0) {
+      return {
+        success: false,
+        error: 'DALL-E returned no images',
+        provider: 'dall-e-3',
+        durationMs: Date.now() - startTime,
+      };
+    }
+
+    const imageData = response.data[0];
+    const b64Json = imageData.b64_json;
+
+    if (!b64Json) {
+      return {
+        success: false,
+        error: 'DALL-E returned empty image data',
+        provider: 'dall-e-3',
+        durationMs: Date.now() - startTime,
+      };
+    }
+
+    const binaryString = atob(b64Json);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: 'image/png' });
+
+    return {
+      success: true,
+      blob,
+      provider: 'dall-e-3',
+      durationMs: Date.now() - startTime,
+    };
+
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
 
 /**
  * Get style description for prompt

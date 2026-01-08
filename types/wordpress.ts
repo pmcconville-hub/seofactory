@@ -62,6 +62,7 @@ export interface WordPressPublication {
   wp_post_id: number;
   wp_post_url?: string;
   wp_post_slug?: string;
+  wp_post_type: 'post' | 'page';  // Whether this is a WP post or page
 
   // Publication status
   status: PublicationStatus;
@@ -86,6 +87,7 @@ export interface WordPressPublication {
 
 export interface PublishOptions {
   status: 'draft' | 'publish' | 'pending' | 'future';
+  post_type?: 'post' | 'page';  // WordPress post type (default: page for topical map items)
   scheduled_at?: string;
   categories?: number[];
   tags?: number[];  // WordPress tag IDs

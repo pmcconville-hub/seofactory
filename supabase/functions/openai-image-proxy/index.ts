@@ -1,0 +1,154 @@
+/**
+ * OpenAI Image Generation Proxy Edge Function
+ *
+ * Proxies requests to OpenAI's image generation API to avoid CORS issues.
+ * This function handles authentication and forwards requests to OpenAI.
+ */
+
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+interface ImageGenerationRequest {
+  prompt: string;
+  model?: string;  // dall-e-2 or dall-e-3
+  size?: string;   // 256x256, 512x512, 1024x1024, 1792x1024, 1024x1792
+  quality?: string; // standard or hd (dall-e-3 only)
+  style?: string;   // vivid or natural (dall-e-3 only)
+  n?: number;       // Number of images (1-10 for dall-e-2, 1 for dall-e-3)
+  response_format?: 'url' | 'b64_json';
+}
+
+serve(async (req: Request) => {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    // Get authorization header
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Create Supabase client with user's auth
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    // Verify user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Invalid authentication" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get user's OpenAI API key from settings
+    const { data: settings, error: settingsError } = await supabase
+      .from('user_settings')
+      .select('openai_api_key_encrypted')
+      .eq('user_id', user.id)
+      .single();
+
+    if (settingsError || !settings?.openai_api_key_encrypted) {
+      return new Response(
+        JSON.stringify({ error: "OpenAI API key not configured. Please add it in Settings." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Decrypt the API key (simple base64 for now, same as frontend)
+    let openaiKey: string;
+    try {
+      openaiKey = atob(settings.openai_api_key_encrypted);
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Failed to decrypt OpenAI API key" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Parse request body
+    const requestBody: ImageGenerationRequest = await req.json();
+
+    if (!requestBody.prompt) {
+      return new Response(
+        JSON.stringify({ error: "Missing required field: prompt" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Build OpenAI request
+    const openaiRequest = {
+      model: requestBody.model || 'dall-e-3',
+      prompt: requestBody.prompt,
+      size: requestBody.size || '1024x1024',
+      quality: requestBody.quality || 'standard',
+      style: requestBody.style || 'vivid',
+      n: requestBody.n || 1,
+      response_format: requestBody.response_format || 'url'
+    };
+
+    console.log(`[OpenAI Image Proxy] Generating image for user ${user.id}`);
+    console.log(`[OpenAI Image Proxy] Model: ${openaiRequest.model}, Size: ${openaiRequest.size}`);
+
+    // Make request to OpenAI
+    const openaiResponse = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(openaiRequest)
+    });
+
+    // Get response
+    const responseData = await openaiResponse.json();
+
+    if (!openaiResponse.ok) {
+      console.error('[OpenAI Image Proxy] OpenAI error:', responseData);
+      return new Response(
+        JSON.stringify({
+          error: responseData.error?.message || 'Image generation failed',
+          code: responseData.error?.code,
+          type: responseData.error?.type
+        }),
+        { status: openaiResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Return successful response
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: responseData.data,
+        created: responseData.created
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
+  } catch (error) {
+    console.error('[OpenAI Image Proxy] Error:', error);
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Internal server error",
+        success: false
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});

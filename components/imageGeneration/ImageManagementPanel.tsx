@@ -1,9 +1,11 @@
 // components/imageGeneration/ImageManagementPanel.tsx
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ImagePlaceholder, BusinessInfo, ImageGenerationProgress, ImageStyle } from '../../types';
-import { generateImage, uploadImage } from '../../services/ai/imageGeneration/orchestrator';
+import { generateImage, uploadImage, initImageGeneration } from '../../services/ai/imageGeneration/orchestrator';
 import { ImageCard } from './ImageCard';
 import { Button } from '../ui/Button';
+import { useAppState } from '../../state/appState';
+import { getSupabaseClient } from '../../services/supabaseClient';
 
 const IMAGE_STYLES: { value: ImageStyle; label: string; description: string }[] = [
   { value: 'photorealistic', label: 'Photorealistic', description: 'Professional photography style' },
@@ -48,6 +50,17 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
   onUpdateDraft,
   onOpenVisualEditor,
 }) => {
+  const { state } = useAppState();
+
+  // Initialize image generation with Supabase client for CORS-free proxy
+  const supabase = useMemo(() => {
+    if (!state.businessInfo.supabaseUrl || !state.businessInfo.supabaseAnonKey) return null;
+    return getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+  }, [state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
+
+  useEffect(() => {
+    initImageGeneration(supabase);
+  }, [supabase]);
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 

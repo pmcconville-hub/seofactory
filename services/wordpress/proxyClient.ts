@@ -116,20 +116,24 @@ export class WordPressProxyClient {
   // Posts
   // ============================================================================
 
-  async getPost(postId: number): Promise<ApiResponse<WpPost>> {
-    return this.request<WpPost>('GET', `/wp-json/wp/v2/posts/${postId}`);
+  async getPost(postId: number, postType: 'post' | 'page' = 'post'): Promise<ApiResponse<WpPost>> {
+    const endpoint = postType === 'page' ? 'pages' : 'posts';
+    return this.request<WpPost>('GET', `/wp-json/wp/v2/${endpoint}/${postId}`);
   }
 
-  async createPost(data: CreatePostRequest): Promise<ApiResponse<WpPost>> {
-    return this.request<WpPost>('POST', '/wp-json/wp/v2/posts', data as unknown as Record<string, unknown>);
+  async createPost(data: CreatePostRequest, postType: 'post' | 'page' = 'post'): Promise<ApiResponse<WpPost>> {
+    const endpoint = postType === 'page' ? 'pages' : 'posts';
+    return this.request<WpPost>('POST', `/wp-json/wp/v2/${endpoint}`, data as unknown as Record<string, unknown>);
   }
 
-  async updatePost(postId: number, data: UpdatePostRequest): Promise<ApiResponse<WpPost>> {
-    return this.request<WpPost>('PUT', `/wp-json/wp/v2/posts/${postId}`, data as unknown as Record<string, unknown>);
+  async updatePost(postId: number, data: UpdatePostRequest, postType: 'post' | 'page' = 'post'): Promise<ApiResponse<WpPost>> {
+    const endpoint = postType === 'page' ? 'pages' : 'posts';
+    return this.request<WpPost>('PUT', `/wp-json/wp/v2/${endpoint}/${postId}`, data as unknown as Record<string, unknown>);
   }
 
-  async deletePost(postId: number, force: boolean = false): Promise<ApiResponse<WpPost>> {
-    const endpoint = `/wp-json/wp/v2/posts/${postId}${force ? '?force=true' : ''}`;
+  async deletePost(postId: number, force: boolean = false, postType: 'post' | 'page' = 'post'): Promise<ApiResponse<WpPost>> {
+    const endpointType = postType === 'page' ? 'pages' : 'posts';
+    const endpoint = `/wp-json/wp/v2/${endpointType}/${postId}${force ? '?force=true' : ''}`;
     return this.request<WpPost>('DELETE', endpoint);
   }
 

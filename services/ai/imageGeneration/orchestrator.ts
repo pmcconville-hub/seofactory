@@ -2,12 +2,21 @@
 import { ImagePlaceholder, BusinessInfo, BrandKit, ImageGenerationProgress } from '../../../types';
 import { markupGoProvider } from './providers/markupGoProvider';
 import { geminiImageProvider } from './providers/geminiImageProvider';
-import { openAiImageProvider } from './providers/openAiImageProvider';
+import { openAiImageProvider, setSupabaseClientForImageGen } from './providers/openAiImageProvider';
 import { ImageProvider, ImageGenerationOptions, GenerationResult, ProgressCallback } from './providers/types';
 import { uploadToCloudinary } from '../../cloudinaryService';
 import { DEFAULT_HERO_TEMPLATES } from '../../../config/imageTemplates';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 export type { ImageGenerationOptions } from './providers/types';
+
+/**
+ * Initialize image generation with Supabase client for proxy support
+ * Must be called before generating images to enable CORS-free generation
+ */
+export function initImageGeneration(supabase: SupabaseClient | null) {
+  setSupabaseClientForImageGen(supabase);
+}
 
 // Alias for backwards compatibility
 export type GenerationOptions = ImageGenerationOptions;
