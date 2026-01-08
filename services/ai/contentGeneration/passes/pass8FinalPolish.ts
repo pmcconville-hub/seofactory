@@ -163,13 +163,9 @@ export async function executePass8(
   const imageCountBefore = countImagePlaceholders(assembledDraft);
   console.log(`[Pass 8] Image placeholders before polish: ${imageCountBefore}`);
 
-  // Report progress
+  // Report progress (Pass 8 is a single-section pass)
   if (onSectionProgress) {
-    onSectionProgress({
-      sectionKey: 'final_polish',
-      status: 'processing',
-      passNumber: 8
-    });
+    onSectionProgress('final_polish', 0, 1);
   }
 
   // Check for abort
@@ -198,18 +194,14 @@ export async function executePass8(
     draft_content: polishedContent,
     passes_status: {
       ...job.passes_status,
-      pass_8: 'completed'
+      pass_8_polish: 'completed'
     },
     current_pass: 9 // Move to audit
   });
 
-  // Report completion
+  // Report completion (1/1 section complete)
   if (onSectionProgress) {
-    onSectionProgress({
-      sectionKey: 'final_polish',
-      status: 'completed',
-      passNumber: 8
-    });
+    onSectionProgress('final_polish', 1, 1);
   }
 
   console.log('[Pass 8] Final Polish complete');
