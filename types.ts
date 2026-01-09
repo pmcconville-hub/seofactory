@@ -2798,15 +2798,17 @@ export type SectionStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
 export type PassStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
 
 export interface PassesStatus {
+  // New 10-pass order
   pass_1_draft: PassStatus;
   pass_2_headers: PassStatus;
-  pass_3_lists: PassStatus;
-  pass_4_visuals: PassStatus;
-  pass_5_microsemantics: PassStatus;
-  pass_6_discourse: PassStatus;
-  pass_7_intro: PassStatus;
-  pass_8_audit: PassStatus;
-  pass_9_schema: PassStatus;
+  pass_3_intro: PassStatus;        // Moved from 7 (synthesize intro early)
+  pass_4_lists: PassStatus;        // Moved from 3
+  pass_5_discourse: PassStatus;    // Moved from 6
+  pass_6_microsemantics: PassStatus; // Moved from 5
+  pass_7_visuals: PassStatus;      // Moved from 4 (add images to polished content)
+  pass_8_polish: PassStatus;       // NEW: Final Polish (absorbs manual polish)
+  pass_9_audit: PassStatus;        // Moved from 8
+  pass_10_schema: PassStatus;      // Moved from 9
 }
 
 // Context passed to content generation passes
@@ -2837,6 +2839,36 @@ export interface ContentGenerationContext {
   knowledgeGraphTerms?: string[];
 }
 
+// Audit issue types for auto-fix capability
+export type AuditIssueType =
+  | 'missing_h1'
+  | 'duplicate_h2'
+  | 'missing_image'
+  | 'broken_link'
+  | 'section_too_short'
+  | 'section_too_long'
+  | 'missing_conclusion'
+  | 'weak_intro'
+  | 'missing_eav_coverage'
+  | 'no_lists'
+  | 'missing_transition'
+  | 'header_hierarchy_jump'
+  | 'poor_flow'
+  | 'weak_conclusion';
+
+export interface AuditIssue {
+  id: string;
+  type: AuditIssueType;
+  severity: 'critical' | 'warning' | 'suggestion';
+  sectionId?: string;
+  sectionTitle?: string;
+  description: string;
+  currentContent?: string;
+  suggestedFix?: string;
+  autoFixable: boolean;
+  fixApplied?: boolean;
+}
+
 export interface ContentGenerationJob {
   id: string;
   brief_id: string;
@@ -2859,7 +2891,7 @@ export interface ContentGenerationJob {
   started_at: string | null;
   completed_at: string | null;
 
-  // Schema generation fields (Pass 9)
+  // Schema generation fields (Pass 10)
   schema_data: EnhancedSchemaResult | null;
   schema_validation_results: SchemaValidationResult | null;
   schema_entities: ResolvedEntity[] | null;
@@ -2868,6 +2900,9 @@ export interface ContentGenerationJob {
 
   // Image generation fields
   image_placeholders?: ImagePlaceholder[];
+
+  // Audit auto-fix support
+  audit_issues?: AuditIssue[];
 }
 
 export interface AuditDetails {
@@ -2920,13 +2955,18 @@ export interface ContentGenerationSection {
   pass_6_content: string | null;
   pass_7_content: string | null;
   pass_8_content: string | null;
-  pass_9_content: string | null;  // Schema-related section content
+  pass_9_content: string | null;
+  pass_10_content: string | null;  // Schema-related section content
   current_content: string | null;
   current_pass: number;
   audit_scores: Record<string, number>;
   status: SectionStatus;
   created_at: string;
   updated_at: string;
+  // Per-pass versioning for rollback capability
+  pass_contents?: Record<string, string>;
+  // Section type for intro/conclusion filtering
+  section_type?: 'introduction' | 'conclusion' | 'body';
 }
 
 export interface SectionDefinition {
@@ -2941,14 +2981,21 @@ export interface SectionDefinition {
 export const PASS_NAMES: Record<number, string> = {
   1: 'Draft Generation',
   2: 'Header Optimization',
-  3: 'Lists & Tables',
-  4: 'Visual Semantics',
-  5: 'Micro Semantics',
-  6: 'Discourse Integration',
-  7: 'Introduction Synthesis',
-  8: 'Final Audit',
-  9: 'Schema Generation'
+  3: 'Introduction Synthesis',  // Moved early - after headers, before content polish
+  4: 'Lists & Tables',
+  5: 'Discourse Integration',
+  6: 'Micro Semantics',
+  7: 'Visual Semantics',        // Moved late - images added to polished content
+  8: 'Final Polish',            // NEW - absorbs manual polish
+  9: 'Final Audit',
+  10: 'Schema Generation'
 };
+
+// Total number of passes in the content generation pipeline
+export const TOTAL_PASSES = 10;
+
+// Passes that should exclude intro/conclusion sections (they're handled separately)
+export const PASSES_EXCLUDE_INTRO_CONCLUSION = [2, 4, 5, 6];
 
 // =============================================================================
 // SEMANTIC ANALYSIS TYPES (Macro/Micro Framework)

@@ -16,16 +16,20 @@ interface ContentGenerationProgressProps {
 }
 
 // Estimated average seconds per section per pass (based on historical data)
+// New 10-pass order:
+// 1: Draft, 2: Headers, 3: Intro Synthesis, 4: Lists/Tables, 5: Discourse,
+// 6: Micro Semantics, 7: Visual Semantics, 8: Final Polish, 9: Audit, 10: Schema
 const ESTIMATED_SECONDS_PER_SECTION: Record<number, number> = {
   1: 45,  // Draft generation - longest
   2: 15,  // Headers optimization
-  3: 15,  // Lists/tables
-  4: 15,  // Visual semantics
-  5: 15,  // Micro semantics
-  6: 15,  // Discourse integration
-  7: 10,  // Introduction (usually just 1 section)
-  8: 20,  // Audit
-  9: 15,  // Schema generation
+  3: 10,  // Introduction synthesis (only 1-2 sections)
+  4: 15,  // Lists/tables
+  5: 15,  // Discourse integration
+  6: 15,  // Micro semantics
+  7: 15,  // Visual semantics
+  8: 30,  // Final polish (full article)
+  9: 20,  // Audit
+  10: 15, // Schema generation
 };
 
 /**
@@ -47,14 +51,20 @@ function calculateEstimatedTimeRemaining(
     remainingSeconds += sectionsLeft * ESTIMATED_SECONDS_PER_SECTION[1];
   }
 
-  // Add time for remaining passes
-  for (let pass = Math.max(currentPass, 2); pass <= 9; pass++) {
-    const passKey = `pass_${pass}_${['', 'draft', 'headers', 'lists', 'visuals', 'microsemantics', 'discourse', 'intro', 'audit', 'schema'][pass]}` as keyof PassesStatus;
+  // Add time for remaining passes (10 total in new order)
+  // New order: 1-draft, 2-headers, 3-intro, 4-lists, 5-discourse, 6-microsemantics, 7-visuals, 8-polish, 9-audit, 10-schema
+  const passKeyMap: Record<number, string> = {
+    1: 'draft', 2: 'headers', 3: 'intro', 4: 'lists', 5: 'discourse',
+    6: 'microsemantics', 7: 'visuals', 8: 'polish', 9: 'audit', 10: 'schema'
+  };
+
+  for (let pass = Math.max(currentPass, 2); pass <= 10; pass++) {
+    const passKey = `pass_${pass}_${passKeyMap[pass]}` as keyof PassesStatus;
     const status = passesStatus[passKey];
 
     if (status !== 'completed') {
-      // Pass 7 (intro) typically only processes 1 section
-      const sectionsToProcess = pass === 7 ? 1 : Math.ceil(totalSections * 0.7); // ~70% of sections need optimization
+      // Pass 3 (intro) and Pass 8 (polish) process fewer sections
+      const sectionsToProcess = (pass === 3 || pass === 8) ? 1 : Math.ceil(totalSections * 0.7); // ~70% of sections need optimization
       remainingSeconds += sectionsToProcess * (ESTIMATED_SECONDS_PER_SECTION[pass] || 15);
     }
   }
@@ -97,9 +107,13 @@ const CircleIcon = () => (
 );
 
 const getPassStatus = (job: ContentGenerationJob, passNum: number): 'completed' | 'in_progress' | 'pending' | 'failed' => {
+  // New 10-pass order:
+  // 1: Draft, 2: Headers, 3: Intro Synthesis, 4: Lists/Tables, 5: Discourse,
+  // 6: Micro Semantics, 7: Visual Semantics, 8: Final Polish, 9: Audit, 10: Schema
   const passKeys: (keyof PassesStatus)[] = [
-    'pass_1_draft', 'pass_2_headers', 'pass_3_lists', 'pass_4_visuals',
-    'pass_5_microsemantics', 'pass_6_discourse', 'pass_7_intro', 'pass_8_audit'
+    'pass_1_draft', 'pass_2_headers', 'pass_3_intro', 'pass_4_lists',
+    'pass_5_discourse', 'pass_6_microsemantics', 'pass_7_visuals', 'pass_8_polish',
+    'pass_9_audit', 'pass_10_schema'
   ];
   const key = passKeys[passNum - 1];
   // Defensive null check - prevents crash when passes_status is null/undefined
@@ -172,7 +186,7 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
       {/* Overall Progress */}
       <div className="mb-4">
         <div className="flex justify-between text-sm mb-1 text-gray-300">
-          <span>Pass {job.current_pass} of 8: {currentPassName}</span>
+          <span>Pass {job.current_pass} of 10: {currentPassName}</span>
           <span>{progress}%</span>
         </div>
         <div className="w-full bg-gray-700 rounded-full h-2">
