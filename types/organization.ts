@@ -107,3 +107,84 @@ export interface FeatureFlag {
   created_at: string;
   updated_at: string;
 }
+
+// ============================================================================
+// Project Members (External Collaborators)
+// ============================================================================
+
+export type ProjectRole = 'admin' | 'editor' | 'viewer';
+export type ProjectMemberSource = 'org_member' | 'direct' | 'invitation';
+
+export interface ProjectMember {
+  id: string;
+  project_id: string;
+  user_id: string;
+  role: ProjectRole;
+  permission_overrides: Record<string, boolean>;
+  source: ProjectMemberSource;
+  invited_by: string | null;
+  invited_at: string;
+  accepted_at: string | null;
+  created_at: string;
+}
+
+export interface ProjectMemberWithUser extends ProjectMember {
+  user?: {
+    id: string;
+    email: string;
+    raw_user_meta_data?: {
+      full_name?: string;
+      name?: string;
+      avatar_url?: string;
+    };
+  };
+}
+
+// ============================================================================
+// Invitations
+// ============================================================================
+
+export type InvitationType = 'organization' | 'project';
+
+export interface Invitation {
+  id: string;
+  type: InvitationType;
+  organization_id: string | null;
+  project_id: string | null;
+  email: string;
+  role: string;
+  token: string;
+  invited_by: string;
+  message: string | null;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+  declined_at: string | null;
+}
+
+export interface InvitationWithInviter extends Invitation {
+  inviter?: {
+    id: string;
+    email: string;
+    raw_user_meta_data?: {
+      full_name?: string;
+      name?: string;
+    };
+  };
+}
+
+export interface CreateInvitationParams {
+  type: InvitationType;
+  organization_id?: string;
+  project_id?: string;
+  email: string;
+  role: string;
+  message?: string;
+}
+
+export interface AcceptInvitationResult {
+  success: boolean;
+  type: InvitationType;
+  organization_id?: string;
+  project_id?: string;
+}
