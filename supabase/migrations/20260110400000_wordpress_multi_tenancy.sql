@@ -8,14 +8,13 @@ ALTER TABLE wordpress_publications
 -- Create index for organization lookups
 CREATE INDEX IF NOT EXISTS idx_wp_publications_org ON wordpress_publications(organization_id);
 
--- Backfill organization_id from content_briefs → topics → topical_maps → projects
+-- Backfill organization_id from topics → topical_maps → projects
 UPDATE wordpress_publications wp
 SET organization_id = p.organization_id
-FROM content_briefs cb
-JOIN topics t ON t.id = cb.topic_id
+FROM topics t
 JOIN topical_maps tm ON tm.id = t.map_id
 JOIN projects p ON p.id = tm.project_id
-WHERE wp.content_brief_id = cb.id
+WHERE wp.topic_id = t.id
   AND wp.organization_id IS NULL
   AND p.organization_id IS NOT NULL;
 
@@ -33,11 +32,10 @@ CREATE POLICY "Users can view publications via org or project"
       WHERE user_id = auth.uid() AND accepted_at IS NOT NULL
     )
     OR EXISTS (
-      SELECT 1 FROM content_briefs cb
-      JOIN topics t ON t.id = cb.topic_id
+      SELECT 1 FROM topics t
       JOIN topical_maps tm ON tm.id = t.map_id
       JOIN projects p ON p.id = tm.project_id
-      WHERE cb.id = wordpress_publications.content_brief_id
+      WHERE t.id = wordpress_publications.topic_id
         AND has_project_access(p.id)
     )
   );
@@ -47,11 +45,10 @@ CREATE POLICY "Editors can manage publications"
   TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM content_briefs cb
-      JOIN topics t ON t.id = cb.topic_id
+      SELECT 1 FROM topics t
       JOIN topical_maps tm ON tm.id = t.map_id
       JOIN projects p ON p.id = tm.project_id
-      WHERE cb.id = wordpress_publications.content_brief_id
+      WHERE t.id = wordpress_publications.topic_id
         AND get_project_role(p.id) IN ('owner', 'admin', 'editor')
     )
   );

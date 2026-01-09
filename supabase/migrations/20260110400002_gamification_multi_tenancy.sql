@@ -104,7 +104,7 @@ BEGIN
     total_articles_generated = (
       SELECT COUNT(*)
       FROM content_generation_jobs cgj
-      JOIN content_briefs cb ON cb.id = cgj.content_brief_id
+      JOIN content_briefs cb ON cb.id = cgj.brief_id
       JOIN topics t ON t.id = cb.topic_id
       JOIN topical_maps tm ON tm.id = t.map_id
       JOIN projects p ON p.id = tm.project_id
@@ -114,29 +114,29 @@ BEGIN
     total_high_quality_articles = (
       SELECT COUNT(*)
       FROM content_generation_jobs cgj
-      JOIN content_briefs cb ON cb.id = cgj.content_brief_id
+      JOIN content_briefs cb ON cb.id = cgj.brief_id
       JOIN topics t ON t.id = cb.topic_id
       JOIN topical_maps tm ON tm.id = t.map_id
       JOIN projects p ON p.id = tm.project_id
       WHERE p.organization_id = os.organization_id
         AND cgj.status = 'completed'
-        AND cgj.audit_score >= 80
+        AND cgj.final_audit_score >= 80
     ),
     avg_audit_score = (
-      SELECT ROUND(AVG(cgj.audit_score)::numeric, 2)
+      SELECT ROUND(AVG(cgj.final_audit_score)::numeric, 2)
       FROM content_generation_jobs cgj
-      JOIN content_briefs cb ON cb.id = cgj.content_brief_id
+      JOIN content_briefs cb ON cb.id = cgj.brief_id
       JOIN topics t ON t.id = cb.topic_id
       JOIN topical_maps tm ON tm.id = t.map_id
       JOIN projects p ON p.id = tm.project_id
       WHERE p.organization_id = os.organization_id
-        AND cgj.audit_score IS NOT NULL
+        AND cgj.final_audit_score IS NOT NULL
     ),
     -- Calculate total score: articles * 10 + high quality bonus * 5
     total_score = (
-      SELECT COALESCE(COUNT(*) * 10 + COUNT(*) FILTER (WHERE cgj.audit_score >= 80) * 5, 0)
+      SELECT COALESCE(COUNT(*) * 10 + COUNT(*) FILTER (WHERE cgj.final_audit_score >= 80) * 5, 0)
       FROM content_generation_jobs cgj
-      JOIN content_briefs cb ON cb.id = cgj.content_brief_id
+      JOIN content_briefs cb ON cb.id = cgj.brief_id
       JOIN topics t ON t.id = cb.topic_id
       JOIN topical_maps tm ON tm.id = t.map_id
       JOIN projects p ON p.id = tm.project_id
@@ -171,7 +171,7 @@ BEGIN
   JOIN topics t ON t.id = cb.topic_id
   JOIN topical_maps tm ON tm.id = t.map_id
   JOIN projects p ON p.id = tm.project_id
-  WHERE cb.id = NEW.content_brief_id;
+  WHERE cb.id = NEW.brief_id;
 
   IF v_org_id IS NOT NULL THEN
     PERFORM recalculate_organization_scores(v_org_id);
@@ -184,7 +184,7 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS tr_update_org_scores_on_generation ON content_generation_jobs;
 
 CREATE TRIGGER tr_update_org_scores_on_generation
-  AFTER INSERT OR UPDATE OF status, audit_score ON content_generation_jobs
+  AFTER INSERT OR UPDATE OF status, final_audit_score ON content_generation_jobs
   FOR EACH ROW
   WHEN (NEW.status = 'completed')
   EXECUTE FUNCTION update_org_scores_on_generation();

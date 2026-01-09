@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS invitations (
   email TEXT NOT NULL,
   role TEXT NOT NULL,  -- Role to assign upon acceptance
 
-  -- Security
-  token TEXT UNIQUE NOT NULL DEFAULT encode(gen_random_bytes(32), 'hex'),
+  -- Security (use UUID without dashes as token - 32 hex chars)
+  token TEXT UNIQUE NOT NULL DEFAULT replace(gen_random_uuid()::text, '-', ''),
 
   -- Metadata
   invited_by UUID REFERENCES auth.users(id) NOT NULL,

@@ -7,16 +7,13 @@ ALTER TABLE quality_analytics_daily
 
 CREATE INDEX IF NOT EXISTS idx_quality_analytics_org ON quality_analytics_daily(organization_id);
 
--- Backfill organization_id
+-- Backfill organization_id from user's personal organization
 UPDATE quality_analytics_daily qad
-SET organization_id = p.organization_id
-FROM content_briefs cb
-JOIN topics t ON t.id = cb.topic_id
-JOIN topical_maps tm ON tm.id = t.map_id
-JOIN projects p ON p.id = tm.project_id
-WHERE qad.content_brief_id = cb.id
-  AND qad.organization_id IS NULL
-  AND p.organization_id IS NOT NULL;
+SET organization_id = o.id
+FROM organizations o
+WHERE o.owner_id = qad.user_id
+  AND o.type = 'personal'
+  AND qad.organization_id IS NULL;
 
 -- Update RLS policies
 DROP POLICY IF EXISTS "Users can view own analytics" ON quality_analytics_daily;
@@ -77,17 +74,15 @@ SELECT
   COUNT(DISTINCT cb.id) as total_briefs,
   COUNT(DISTINCT cgj.id) as total_generations,
   COUNT(DISTINCT cgj.id) FILTER (WHERE cgj.status = 'completed') as completed_generations,
-  ROUND(AVG(cgj.audit_score)::numeric, 2) as avg_audit_score,
-  ROUND(AVG(qad.overall_score)::numeric, 2) as avg_quality_score,
-  COUNT(*) FILTER (WHERE cgj.audit_score >= 80) as high_quality_count,
-  COUNT(*) FILTER (WHERE cgj.audit_score < 60) as low_quality_count
+  ROUND(AVG(cgj.final_audit_score)::numeric, 2) as avg_audit_score,
+  COUNT(*) FILTER (WHERE cgj.final_audit_score >= 80) as high_quality_count,
+  COUNT(*) FILTER (WHERE cgj.final_audit_score < 60) as low_quality_count
 FROM organizations o
 LEFT JOIN projects p ON p.organization_id = o.id
 LEFT JOIN topical_maps tm ON tm.project_id = p.id
 LEFT JOIN topics t ON t.map_id = tm.id
 LEFT JOIN content_briefs cb ON cb.topic_id = t.id
-LEFT JOIN content_generation_jobs cgj ON cgj.content_brief_id = cb.id
-LEFT JOIN quality_analytics_daily qad ON qad.content_brief_id = cb.id
+LEFT JOIN content_generation_jobs cgj ON cgj.brief_id = cb.id
 GROUP BY o.id, o.name;
 
 -- Grant access to the view
