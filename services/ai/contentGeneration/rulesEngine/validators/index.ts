@@ -12,6 +12,8 @@ import { StructureValidator } from './structureValidator';
 import { ContextualBridgeValidator } from './contextualBridgeValidator';
 import { RepetitionValidator } from './repetitionValidator';
 import { ContextualVectorValidator } from './contextualVectorValidator';
+import { LanguageOutputValidator } from './languageOutputValidator';
+import { WordCountValidator } from './wordCountValidator';
 
 export class RulesValidator {
   /**
@@ -19,6 +21,9 @@ export class RulesValidator {
    */
   static validate(content: string, context: SectionGenerationContext): RulesValidationResult {
     const violations: ValidationViolation[] = [];
+
+    // S1. Language Output Validation (content must be in expected language)
+    violations.push(...LanguageOutputValidator.validateWithViolations(content, context));
 
     // 1. Prohibited Language (with language-aware patterns)
     violations.push(...ProhibitedLanguageValidator.validate(content, context));
@@ -58,6 +63,9 @@ export class RulesValidator {
 
     // 11. Contextual Vector (heading flow logic)
     violations.push(...ContextualVectorValidator.validate(content, context));
+
+    // 12. Word Count (G2-G4 section word count rules)
+    violations.push(...WordCountValidator.validate(content, context));
 
     // Build fix instructions
     const fixInstructions = this.buildFixInstructions(violations);
@@ -99,3 +107,6 @@ export { HierarchyValidator } from './hierarchyValidator';
 export { RepetitionValidator } from './repetitionValidator';
 export { ContextualVectorValidator } from './contextualVectorValidator';
 export type { ContextualVectorResult, ContextualVectorIssue } from './contextualVectorValidator';
+export { LanguageOutputValidator } from './languageOutputValidator';
+export type { LanguageDetectionResult } from './languageOutputValidator';
+export { WordCountValidator } from './wordCountValidator';
