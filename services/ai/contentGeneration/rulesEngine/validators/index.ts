@@ -17,6 +17,7 @@ import { WordCountValidator } from './wordCountValidator';
 import { EavPlacementValidator } from './eavPlacementValidator';
 import { PillarAlignmentValidator } from './pillarAlignmentValidator';
 import { ListStructureValidator } from './listStructureValidator';
+import { TableStructureValidator } from './tableStructureValidator';
 
 export class RulesValidator {
   /**
@@ -79,6 +80,9 @@ export class RulesValidator {
     // 15. K4-K5 List Structure (item count 3-7, parallel structure)
     violations.push(...ListStructureValidator.validate(content, context));
 
+    // 16. L2-L5 Table Structure (dimensions, headers, no merged cells, consistent types)
+    violations.push(...TableStructureValidator.validate(content, context));
+
     // Build fix instructions
     const fixInstructions = this.buildFixInstructions(violations);
 
@@ -127,3 +131,5 @@ export type { EavPlacementResult } from './eavPlacementValidator';
 export { PillarAlignmentValidator } from './pillarAlignmentValidator';
 export type { PillarAlignmentResult } from './pillarAlignmentValidator';
 export { ListStructureValidator } from './listStructureValidator';
+export { TableStructureValidator } from './tableStructureValidator';
+export type { ExtractedTable } from './tableStructureValidator';
