@@ -14,6 +14,7 @@ import { RepetitionValidator } from './repetitionValidator';
 import { ContextualVectorValidator } from './contextualVectorValidator';
 import { LanguageOutputValidator } from './languageOutputValidator';
 import { WordCountValidator } from './wordCountValidator';
+import { EavPlacementValidator } from './eavPlacementValidator';
 
 export class RulesValidator {
   /**
@@ -67,6 +68,9 @@ export class RulesValidator {
     // 12. Word Count (G2-G4 section word count rules)
     violations.push(...WordCountValidator.validate(content, context));
 
+    // 13. EAV Placement (C2-C3: UNIQUE in first 300 words, ROOT in first 500 words)
+    violations.push(...EavPlacementValidator.validate(content, context));
+
     // Build fix instructions
     const fixInstructions = this.buildFixInstructions(violations);
 
@@ -110,3 +114,5 @@ export type { ContextualVectorResult, ContextualVectorIssue } from './contextual
 export { LanguageOutputValidator } from './languageOutputValidator';
 export type { LanguageDetectionResult } from './languageOutputValidator';
 export { WordCountValidator } from './wordCountValidator';
+export { EavPlacementValidator } from './eavPlacementValidator';
+export type { EavPlacementResult } from './eavPlacementValidator';
