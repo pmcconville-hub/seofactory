@@ -84,6 +84,9 @@ export class RulesValidator {
     // 16. L2-L5 Table Structure (dimensions, headers, no merged cells, consistent types)
     violations.push(...TableStructureValidator.validate(content, context));
 
+    // 17. H9 Cross-Section Repetition Detection
+    violations.push(...CrossSectionRepetitionValidator.validate(content));
+
     // Build fix instructions
     const fixInstructions = this.buildFixInstructions(violations);
 
