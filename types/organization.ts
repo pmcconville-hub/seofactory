@@ -188,3 +188,46 @@ export interface AcceptInvitationResult {
   organization_id?: string;
   project_id?: string;
 }
+
+// ============================================================================
+// Project API Keys
+// ============================================================================
+
+export type ApiKeySource = 'inherit' | 'platform' | 'byok';
+
+export interface ProjectApiKey {
+  id: string;
+  project_id: string;
+  provider: string;
+  encrypted_key: string | null;
+  key_source: ApiKeySource;
+  is_active: boolean;
+  usage_this_month: {
+    tokens: number;
+    requests: number;
+    cost_usd: number;
+  };
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  last_used_at: string | null;
+}
+
+export interface ApiKeyStatus {
+  provider: string;
+  hasKey: boolean;
+  keySource: ApiKeySource;
+  isActive: boolean;
+  usageThisMonth?: {
+    tokens: number;
+    requests: number;
+    cost_usd: number;
+  };
+}
+
+export interface ResolvedApiKey {
+  encrypted_key: string;
+  key_source: string;
+  billable_to: 'platform' | 'organization' | 'project';
+  billable_id: string;
+}
