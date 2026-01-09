@@ -16,3 +16,10 @@ export {
   ConflictDetector,
   type PassDelta,
 } from './conflictDetector';
+
+export {
+  PassTracker,
+  type PassExecutionResult,
+  type PassTrackerOptions,
+  type ViolationDetector,
+} from './passTracker';
