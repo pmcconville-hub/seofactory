@@ -1,6 +1,51 @@
 // services/ai/contentGeneration/rulesEngine/validators/contextualBridgeValidator.ts
 
 import { ValidationViolation, SectionGenerationContext } from '../../../../../types';
+import { getLanguageName } from '../../../../../utils/languageUtils';
+
+/**
+ * Multilingual bridge/transition patterns
+ * Supports: English, Dutch, German, French, Spanish
+ */
+const MULTILINGUAL_BRIDGE_PATTERNS: Record<string, RegExp[]> = {
+  'English': [
+    /^(to|for|in order to|when|while|if|beyond|related to|in addition)/i,
+    /^(building on|extending|furthermore|additionally|moreover)/i,
+    /(ensure|enjoy|benefit|understand|consider|explore)/i,
+  ],
+
+  'Dutch': [
+    /^(om|voor|om te|wanneer|terwijl|als|voorbij|gerelateerd aan|daarnaast)/i,
+    /^(voortbouwend op|uitbreidend|bovendien|verder|daarenboven)/i,
+    /(zorgen|genieten|profiteren|begrijpen|overwegen|verkennen)/i,
+  ],
+
+  'German': [
+    /^(um|für|um zu|wenn|während|falls|darüber hinaus|in Bezug auf|zusätzlich)/i,
+    /^(aufbauend auf|erweiternd|außerdem|weiterhin|darüber hinaus)/i,
+    /(sicherstellen|genießen|profitieren|verstehen|berücksichtigen|erkunden)/i,
+  ],
+
+  'French': [
+    /^(pour|afin de|quand|pendant que|si|au-delà|lié à|en plus)/i,
+    /^(en s'appuyant sur|en étendant|de plus|en outre|par ailleurs)/i,
+    /(assurer|profiter|bénéficier|comprendre|considérer|explorer)/i,
+  ],
+
+  'Spanish': [
+    /^(para|con el fin de|cuando|mientras|si|más allá|relacionado con|además)/i,
+    /^(basándose en|extendiendo|además|asimismo|por otra parte)/i,
+    /(asegurar|disfrutar|beneficiarse|comprender|considerar|explorar)/i,
+  ],
+};
+
+/**
+ * Get bridge patterns for a specific language
+ */
+function getBridgePatterns(language?: string): RegExp[] {
+  const langName = getLanguageName(language);
+  return MULTILINGUAL_BRIDGE_PATTERNS[langName] || MULTILINGUAL_BRIDGE_PATTERNS['English'];
+}
 
 export class ContextualBridgeValidator {
   /**
@@ -15,12 +60,9 @@ export class ContextualBridgeValidator {
       return violations;
     }
 
-    // Check for bridge/transition language at start
-    const bridgePatterns = [
-      /^(to|for|in order to|when|while|if|beyond|related to|in addition)/i,
-      /^(building on|extending|furthermore|additionally)/i,
-      /ensure|enjoy|benefit|understand|consider/i,
-    ];
+    // Get language-specific bridge patterns
+    const language = context.language;
+    const bridgePatterns = getBridgePatterns(language);
 
     const firstSentence = content.split(/[.!?]/)[0] || '';
     const hasBridge = bridgePatterns.some(p => p.test(firstSentence));
@@ -38,3 +80,6 @@ export class ContextualBridgeValidator {
     return violations;
   }
 }
+
+// Export for testing
+export { MULTILINGUAL_BRIDGE_PATTERNS, getBridgePatterns };

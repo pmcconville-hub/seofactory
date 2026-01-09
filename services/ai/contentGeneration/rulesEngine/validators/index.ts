@@ -11,6 +11,7 @@ import { FormatCodeValidator } from './formatCodeValidator';
 import { StructureValidator } from './structureValidator';
 import { ContextualBridgeValidator } from './contextualBridgeValidator';
 import { RepetitionValidator } from './repetitionValidator';
+import { ContextualVectorValidator } from './contextualVectorValidator';
 
 export class RulesValidator {
   /**
@@ -19,11 +20,11 @@ export class RulesValidator {
   static validate(content: string, context: SectionGenerationContext): RulesValidationResult {
     const violations: ValidationViolation[] = [];
 
-    // 1. Prohibited Language
-    violations.push(...ProhibitedLanguageValidator.validate(content));
+    // 1. Prohibited Language (with language-aware patterns)
+    violations.push(...ProhibitedLanguageValidator.validate(content, context));
 
-    // 2. EAV Density
-    violations.push(...EAVDensityValidator.validate(content));
+    // 2. EAV Density (with language-aware verb patterns)
+    violations.push(...EAVDensityValidator.validate(content, context));
 
     // 3. Modality
     violations.push(...ModalityValidator.validate(content, context));
@@ -54,6 +55,9 @@ export class RulesValidator {
 
     // 10. Central Entity Focus (lenient - info level)
     violations.push(...CentralEntityFocusValidator.validate(content, context));
+
+    // 11. Contextual Vector (heading flow logic)
+    violations.push(...ContextualVectorValidator.validate(content, context));
 
     // Build fix instructions
     const fixInstructions = this.buildFixInstructions(violations);
@@ -93,3 +97,5 @@ export { StructureValidator } from './structureValidator';
 export { ContextualBridgeValidator } from './contextualBridgeValidator';
 export { HierarchyValidator } from './hierarchyValidator';
 export { RepetitionValidator } from './repetitionValidator';
+export { ContextualVectorValidator } from './contextualVectorValidator';
+export type { ContextualVectorResult, ContextualVectorIssue } from './contextualVectorValidator';

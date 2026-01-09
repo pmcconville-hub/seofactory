@@ -7,6 +7,7 @@ import * as anthropicService from '../../../anthropicService';
 import * as perplexityService from '../../../perplexityService';
 import * as openRouterService from '../../../openRouterService';
 import { dispatchToProvider } from '../../providerDispatcher';
+import { getAuditPatterns } from './auditPatternsMultilingual';
 
 // No-op dispatch for standalone calls
 const noOpDispatch = () => {};
@@ -25,100 +26,39 @@ async function callProviderWithPrompt(
   });
 }
 
-// Extended LLM signature phrases list (from macro context research)
-const LLM_SIGNATURE_PHRASES = [
-  'overall',
-  'in conclusion',
-  "it's important to note",
-  'it is important to note',
-  'it is worth mentioning',
-  'it is worth noting',
-  'delve',
-  'delving',
-  'delved',
-  'i had the pleasure of',
-  'embark on a journey',
-  'explore the world of',
-  "in today's fast-paced world",
-  'when it comes to',
-  'at the end of the day',
-  'needless to say',
-  'it goes without saying',
-  'without further ado',
-  'dive into',
-  'diving into',
-  'unpack this',
-  'unpacking',
-  'game-changer',
-  'a testament to',
-  'the importance of',
-  'crucial to understand',
-  'pivotal',
-  'paramount'
-];
+// Legacy constants - kept for backward compatibility but patterns now come from auditPatternsMultilingual.ts
+// @deprecated Use getAuditPatterns(language) instead for multilingual support
+const LLM_SIGNATURE_PHRASES = getAuditPatterns('en').llmSignaturePhrases;
+const POSITIVE_PREDICATES = getAuditPatterns('en').positivePredicates;
+const NEGATIVE_PREDICATES = getAuditPatterns('en').negativePredicates;
+const INSTRUCTIONAL_PREDICATES = getAuditPatterns('en').instructionalPredicates;
+const GENERIC_HEADINGS = getAuditPatterns('en').genericHeadings;
+const PASSIVE_PATTERNS = getAuditPatterns('en').passivePatterns;
+const FUTURE_TENSE_PATTERNS = getAuditPatterns('en').futureTensePatterns;
+const STOP_WORDS_FULL = getAuditPatterns('en').stopWordsFull;
 
-// Predicate classification for consistency checking
-const POSITIVE_PREDICATES = [
-  'benefits', 'advantages', 'improvements', 'gains', 'pros',
-  'opportunities', 'strengths', 'positives', 'success', 'wins'
-];
-
-const NEGATIVE_PREDICATES = [
-  'risks', 'dangers', 'problems', 'issues', 'cons', 'drawbacks',
-  'challenges', 'threats', 'weaknesses', 'failures', 'losses',
-  'mistakes', 'errors', 'pitfalls', 'downsides'
-];
-
-const INSTRUCTIONAL_PREDICATES = [
-  'how to', 'guide', 'steps', 'tutorial', 'ways to', 'tips',
-  'process', 'method', 'approach', 'strategy', 'techniques'
-];
-
-// Generic headings that should be avoided (topic-specific is better)
-const GENERIC_HEADINGS = [
-  'introduction',
-  'conclusion',
-  'overview',
-  'summary',
-  'getting started',
-  'final thoughts',
-  'wrapping up',
-  'in closing'
-];
-
-// Passive voice indicator patterns
-const PASSIVE_PATTERNS = [
-  /\b(is|are|was|were|been|being)\s+(being\s+)?(done|made|created|used|considered|known|found|seen|given|taken|called|named|built|written|designed|developed|established|implemented|performed|executed|completed|achieved)\b/gi,
-  /\b(is|are|was|were|been|being)\s+\w+ed\s+by\b/gi  // "is loved by", "was created by"
-];
-
-// Future tense patterns that should be avoided for factual statements
-const FUTURE_TENSE_PATTERNS = [
-  /\b(will be|will have|will become|will make|will provide|will help|will allow|will enable)\b/gi,
-  /\b(is going to|are going to|is about to|are about to)\b/gi,
-  /\b(shall be|shall have|shall become)\b/gi
-];
-
-// Comprehensive stop words list for density checking
-const STOP_WORDS_FULL = [
-  'also', 'basically', 'very', 'maybe', 'actually', 'really', 'just', 'quite', 'simply',
-  'definitely', 'certainly', 'obviously', 'clearly', 'literally', 'absolutely',
-  'pretty much', 'kind of', 'sort of', 'in order to', 'due to the fact that',
-  'at this point in time', 'for the purpose of', 'in the event that'
-];
-
+/**
+ * Run algorithmic audit checks on the draft content
+ * @param draft - The content to audit
+ * @param brief - The content brief
+ * @param info - Business information
+ * @param language - ISO language code (e.g., 'nl', 'en', 'de', 'fr', 'es') for multilingual pattern matching
+ */
 export function runAlgorithmicAudit(
   draft: string,
   brief: ContentBrief,
-  info: BusinessInfo
+  info: BusinessInfo,
+  language?: string
 ): AuditRuleResult[] {
   const results: AuditRuleResult[] = [];
+  // Get language-specific patterns
+  const patterns = getAuditPatterns(language || 'en');
 
   // 1. Modality Check
-  results.push(checkModality(draft));
+  results.push(checkModality(draft, language));
 
   // 2. Stop Words Check
-  results.push(checkStopWords(draft));
+  results.push(checkStopWords(draft, language));
 
   // 3. Subject Positioning
   results.push(checkSubjectPositioning(draft, info.seedKeyword));
@@ -127,43 +67,43 @@ export function runAlgorithmicAudit(
   results.push(checkHeadingHierarchy(draft));
 
   // NEW: Generic Headings Check (avoid "Introduction", "Conclusion")
-  results.push(checkGenericHeadings(draft));
+  results.push(checkGenericHeadings(draft, language));
 
   // NEW: Passive Voice Check
-  results.push(checkPassiveVoice(draft));
+  results.push(checkPassiveVoice(draft, language));
 
   // NEW: Heading-Entity Alignment Check
-  results.push(checkHeadingEntityAlignment(draft, info.seedKeyword, brief.title));
+  results.push(checkHeadingEntityAlignment(draft, info.seedKeyword, brief.title, language));
 
   // NEW: Future Tense for Facts Check
-  results.push(checkFutureTenseForFacts(draft));
+  results.push(checkFutureTenseForFacts(draft, language));
 
   // NEW: Stop Word Density (full document)
-  results.push(checkStopWordDensity(draft));
+  results.push(checkStopWordDensity(draft, language));
 
   // 5. List Count Specificity
-  results.push(checkListCountSpecificity(draft));
+  results.push(checkListCountSpecificity(draft, language));
 
   // 6. Pronoun Density
-  results.push(checkPronounDensity(draft, brief.title));
+  results.push(checkPronounDensity(draft, brief.title, language));
 
   // 7. Link Positioning
   results.push(checkLinkPositioning(draft));
 
   // 8. First Sentence Precision
-  results.push(checkFirstSentencePrecision(draft));
+  results.push(checkFirstSentencePrecision(draft, language));
 
   // 9. Centerpiece Annotation
-  results.push(checkCenterpieceAnnotation(draft, info.seedKeyword));
+  results.push(checkCenterpieceAnnotation(draft, info.seedKeyword, language));
 
   // 10. Information Density
   results.push(checkInformationDensity(draft, info.seedKeyword));
 
   // 11. LLM Signature Phrases
-  results.push(checkLLMSignaturePhrases(draft));
+  results.push(checkLLMSignaturePhrases(draft, language));
 
   // 12. Predicate Consistency
-  results.push(checkPredicateConsistency(draft, brief.title));
+  results.push(checkPredicateConsistency(draft, brief.title, language));
 
   // 13. Content Coverage Weight
   results.push(checkCoverageWeight(draft));
@@ -176,20 +116,20 @@ export function runAlgorithmicAudit(
   results.push(checkMacroMicroBorder(draft));
 
   // 16. Extractive Summary Alignment
-  results.push(checkExtractiveSummaryAlignment(draft));
+  results.push(checkExtractiveSummaryAlignment(draft, language));
 
   // 17. Query-Format Alignment
-  results.push(checkQueryFormatAlignment(draft, brief));
+  results.push(checkQueryFormatAlignment(draft, brief, language));
 
   // Phase C: Link Optimization (18-20)
   // 18. Anchor Text Variety
   results.push(checkAnchorTextVariety(draft));
 
   // 19. Annotation Text Quality
-  results.push(checkAnnotationTextQuality(draft));
+  results.push(checkAnnotationTextQuality(draft, language));
 
   // 20. Supplementary Link Placement
-  results.push(checkSupplementaryLinkPlacement(draft));
+  results.push(checkSupplementaryLinkPlacement(draft, language));
 
   // Phase D: Content Format Balance (21-24) - Baker Principle
   // 21. Prose/Structured Balance
@@ -207,26 +147,33 @@ export function runAlgorithmicAudit(
   return results;
 }
 
-function checkModality(text: string): AuditRuleResult {
-  const uncertainPatterns = /\b(can be|might be|could be|may be|possibly|perhaps)\b/gi;
-  const matches = text.match(uncertainPatterns) || [];
+function checkModality(text: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const uncertainPatterns = patterns.uncertaintyPatterns;
 
-  if (matches.length > 3) {
+  let totalMatches: string[] = [];
+  uncertainPatterns.forEach(pattern => {
+    const matches = text.match(pattern) || [];
+    totalMatches.push(...matches);
+  });
+
+  if (totalMatches.length > 3) {
     return {
       ruleName: 'Modality Certainty',
       isPassing: false,
-      details: `Found ${matches.length} uncertain phrases. Use definitive "is/are" for facts.`,
-      affectedTextSnippet: matches.slice(0, 3).join(', '),
+      details: `Found ${totalMatches.length} uncertain phrases. Use definitive "is/are" for facts.`,
+      affectedTextSnippet: totalMatches.slice(0, 3).join(', '),
       remediation: 'Replace "can be/might be" with "is/are" where factually appropriate.'
     };
   }
   return { ruleName: 'Modality Certainty', isPassing: true, details: 'Good use of definitive language.' };
 }
 
-function checkStopWords(text: string): AuditRuleResult {
-  const fluffWords = /\b(also|basically|very|maybe|actually|really|just|quite|simply)\b/gi;
+function checkStopWords(text: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const fluffWordsPattern = patterns.fluffWordsPattern;
   const first500 = text.substring(0, 500);
-  const matchesInIntro = first500.match(fluffWords) || [];
+  const matchesInIntro = first500.match(fluffWordsPattern) || [];
 
   if (matchesInIntro.length > 2) {
     return {
@@ -234,7 +181,7 @@ function checkStopWords(text: string): AuditRuleResult {
       isPassing: false,
       details: `Found ${matchesInIntro.length} fluff words in first 500 chars.`,
       affectedTextSnippet: matchesInIntro.join(', '),
-      remediation: 'Remove "also", "basically", "very", etc. especially from introduction.'
+      remediation: 'Remove filler words like "also", "basically", "very" especially from introduction.'
     };
   }
   return { ruleName: 'Stop Word Removal', isPassing: true, details: 'Minimal fluff words in introduction.' };
@@ -298,13 +245,15 @@ function checkHeadingHierarchy(text: string): AuditRuleResult {
  * Check for generic headings like "Introduction", "Conclusion", "Overview"
  * These should be replaced with topic-specific headings
  */
-function checkGenericHeadings(text: string): AuditRuleResult {
+function checkGenericHeadings(text: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const genericHeadings = patterns.genericHeadings;
   const headings = text.match(/^#{2,4}\s+.+$/gm) || [];
   const genericFound: string[] = [];
 
   headings.forEach(h => {
     const headingText = h.replace(/^#+\s*/, '').trim().toLowerCase();
-    if (GENERIC_HEADINGS.some(generic => headingText === generic || headingText.startsWith(generic + ':'))) {
+    if (genericHeadings.some(generic => headingText === generic || headingText.startsWith(generic + ':'))) {
       genericFound.push(h.replace(/^#+\s*/, '').trim());
     }
   });
@@ -315,7 +264,7 @@ function checkGenericHeadings(text: string): AuditRuleResult {
       isPassing: false,
       details: `Found ${genericFound.length} generic heading(s): ${genericFound.join(', ')}`,
       affectedTextSnippet: genericFound[0],
-      remediation: 'Replace generic headings with topic-specific ones. Instead of "Introduction" use "Wat is [Topic]" or "[Topic]: Een Overzicht".'
+      remediation: 'Replace generic headings with topic-specific ones. Use the central entity in the heading.'
     };
   }
   return { ruleName: 'Generic Headings', isPassing: true, details: 'All headings are topic-specific.' };
@@ -325,11 +274,13 @@ function checkGenericHeadings(text: string): AuditRuleResult {
  * Check for excessive passive voice usage
  * Passive voice reduces clarity and authoritativeness
  */
-function checkPassiveVoice(text: string): AuditRuleResult {
+function checkPassiveVoice(text: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const passivePatterns = patterns.passivePatterns;
   let passiveCount = 0;
   const passiveExamples: string[] = [];
 
-  PASSIVE_PATTERNS.forEach(pattern => {
+  passivePatterns.forEach(pattern => {
     const matches = text.match(pattern) || [];
     passiveCount += matches.length;
     if (passiveExamples.length < 3) {
@@ -357,7 +308,9 @@ function checkPassiveVoice(text: string): AuditRuleResult {
  * Check that headings contain or relate to the central entity
  * H2s should include terms that link back to the main topic
  */
-function checkHeadingEntityAlignment(text: string, centralEntity: string, topicTitle: string): AuditRuleResult {
+function checkHeadingEntityAlignment(text: string, centralEntity: string, topicTitle: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const genericHeadings = patterns.genericHeadings;
   const headings = text.match(/^## .+$/gm) || [];
 
   if (headings.length < 2) {
@@ -365,8 +318,9 @@ function checkHeadingEntityAlignment(text: string, centralEntity: string, topicT
   }
 
   // Extract key terms from central entity and topic title
+  // Use language-specific stop words
   const keyTerms = new Set<string>();
-  const stopWords = ['the', 'a', 'an', 'of', 'and', 'or', 'for', 'to', 'in', 'on', 'with', 'is', 'are', 'wat', 'een', 'de', 'het', 'van', 'voor', 'en', 'naar'];
+  const stopWords = patterns.stopWords;
 
   [centralEntity, topicTitle].forEach(term => {
     if (term) {
@@ -390,7 +344,7 @@ function checkHeadingEntityAlignment(text: string, centralEntity: string, topicT
     const hasKeyTerm = Array.from(keyTerms).some(term => headingLower.includes(term));
 
     // Skip introduction/conclusion headings for this check (they're caught by generic heading check)
-    const isBoilerplate = GENERIC_HEADINGS.some(g => headingLower.includes(g));
+    const isBoilerplate = genericHeadings.some(g => headingLower.includes(g));
 
     if (!hasKeyTerm && !isBoilerplate) {
       misalignedHeadings.push(h.replace(/^## /, ''));
@@ -414,11 +368,13 @@ function checkHeadingEntityAlignment(text: string, centralEntity: string, topicT
  * Check for inappropriate future tense usage for factual statements
  * Facts should use present tense ("X is") not future ("X will be")
  */
-function checkFutureTenseForFacts(text: string): AuditRuleResult {
+function checkFutureTenseForFacts(text: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const futureTensePatterns = patterns.futureTensePatterns;
   let futureTenseCount = 0;
   const futureTenseExamples: string[] = [];
 
-  FUTURE_TENSE_PATTERNS.forEach(pattern => {
+  futureTensePatterns.forEach(pattern => {
     const matches = text.match(pattern) || [];
     futureTenseCount += matches.length;
     if (futureTenseExamples.length < 3) {
@@ -436,7 +392,7 @@ function checkFutureTenseForFacts(text: string): AuditRuleResult {
       isPassing: false,
       details: `Found ${futureTenseCount} future tense phrases (${futureTenseRatio.toFixed(1)} per 100 words).`,
       affectedTextSnippet: futureTenseExamples.slice(0, 2).join(', '),
-      remediation: 'Use present tense for factual statements. Instead of "X will provide" use "X provides". Reserve future tense for actual predictions.'
+      remediation: 'Use present tense for factual statements. Reserve future tense for actual predictions.'
     };
   }
   return { ruleName: 'Future Tense for Facts', isPassing: true, details: 'Good use of present tense for facts.' };
@@ -446,12 +402,14 @@ function checkFutureTenseForFacts(text: string): AuditRuleResult {
  * Check stop word density across the full document
  * High density of filler words reduces content quality
  */
-function checkStopWordDensity(text: string): AuditRuleResult {
+function checkStopWordDensity(text: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const stopWordsFull = patterns.stopWordsFull;
   const textLower = text.toLowerCase();
   let stopWordCount = 0;
   const foundStopWords: string[] = [];
 
-  STOP_WORDS_FULL.forEach(stopWord => {
+  stopWordsFull.forEach(stopWord => {
     const regex = new RegExp(`\\b${stopWord.replace(/\s+/g, '\\s+')}\\b`, 'gi');
     const matches = textLower.match(regex) || [];
     stopWordCount += matches.length;
@@ -470,7 +428,7 @@ function checkStopWordDensity(text: string): AuditRuleResult {
       isPassing: false,
       details: `Stop word density: ${densityPercentage.toFixed(1)}% (${stopWordCount} occurrences). Maximum: 3%`,
       affectedTextSnippet: foundStopWords.slice(0, 4).join(', '),
-      remediation: 'Remove filler words like "very", "basically", "actually", "really", "just". These add no semantic value.'
+      remediation: 'Remove filler words. These add no semantic value.'
     };
   }
   return {
@@ -480,23 +438,31 @@ function checkStopWordDensity(text: string): AuditRuleResult {
   };
 }
 
-function checkListCountSpecificity(text: string): AuditRuleResult {
+function checkListCountSpecificity(text: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const numberWords = patterns.numberWords;
   const listStarts = text.match(/(?:^|\n)[-*]\s/g) || [];
-  const countPreambles = text.match(/\b(\d+|three|four|five|six|seven|eight|nine|ten)\s+(main|key|primary|essential|important|types?|ways?|steps?|reasons?|benefits?|factors?)/gi) || [];
+
+  // Build language-specific count preamble pattern
+  const numberWordsPattern = numberWords.join('|');
+  const countPreambleRegex = new RegExp(`\\b(\\d+|${numberWordsPattern})\\s+(main|key|primary|essential|important|types?|ways?|steps?|reasons?|benefits?|factors?|belangrijkste|soorten|manieren|stappen|redenen|voordelen|Haupt|Schlüssel|wichtigsten|Arten|Wege|Schritte|Gründe|Vorteile|principaux|clés|essentiels|importants|types|façons|étapes|raisons|avantages|principales|claves|esenciales|importantes|tipos|maneras|pasos|razones|beneficios)`, 'gi');
+  const countPreambles = text.match(countPreambleRegex) || [];
 
   if (listStarts.length > 5 && countPreambles.length === 0) {
     return {
       ruleName: 'List Count Specificity',
       isPassing: false,
       details: 'Lists found without count preambles.',
-      remediation: 'Add preamble sentences with exact counts before lists (e.g., "The 5 main types include:").'
+      remediation: 'Add preamble sentences with exact counts before lists.'
     };
   }
   return { ruleName: 'List Count Specificity', isPassing: true, details: 'Lists have proper count preambles.' };
 }
 
-function checkPronounDensity(text: string, topicTitle: string): AuditRuleResult {
-  const pronouns = (text.match(/\b(it|they|he|she|this|that)\b/gi) || []).length;
+function checkPronounDensity(text: string, topicTitle: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const pronounsPattern = patterns.pronounsPattern;
+  const pronouns = (text.match(pronounsPattern) || []).length;
   const wordCount = text.split(/\s+/).length;
   const ratio = wordCount > 0 ? pronouns / wordCount : 0;
 
@@ -535,7 +501,9 @@ function checkLinkPositioning(text: string): AuditRuleResult {
   return { ruleName: 'Link Positioning', isPassing: true, details: 'Link positioning is correct.' };
 }
 
-function checkFirstSentencePrecision(text: string): AuditRuleResult {
+function checkFirstSentencePrecision(text: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const definitiveVerbsPattern = patterns.definitiveVerbsPattern;
   const sections = text.split(/\n##/);
   let badSentences = 0;
 
@@ -545,7 +513,7 @@ function checkFirstSentencePrecision(text: string): AuditRuleResult {
       const firstLine = lines[0];
       if (!firstLine.startsWith('-') && !firstLine.startsWith('*') && !firstLine.startsWith('|')) {
         const firstSentence = firstLine.split('.')[0];
-        const hasDefinitiveVerb = /\b(is|are|means|refers to|consists of|defines)\b/i.test(firstSentence);
+        const hasDefinitiveVerb = definitiveVerbsPattern.test(firstSentence);
         if (!hasDefinitiveVerb) {
           badSentences++;
         }
@@ -558,16 +526,18 @@ function checkFirstSentencePrecision(text: string): AuditRuleResult {
       ruleName: 'First Sentence Precision',
       isPassing: false,
       details: `${badSentences} sections lack definitive first sentences.`,
-      remediation: 'Start each section with a direct definition using "is/are/means".'
+      remediation: 'Start each section with a direct definition using definitive verbs.'
     };
   }
   return { ruleName: 'First Sentence Precision', isPassing: true, details: 'Sections start with precise definitions.' };
 }
 
-function checkCenterpieceAnnotation(text: string, centralEntity: string): AuditRuleResult {
+function checkCenterpieceAnnotation(text: string, centralEntity: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const definitiveVerbsPattern = patterns.definitiveVerbsPattern;
   const first400 = text.substring(0, 400);
   const entityRegex = new RegExp(centralEntity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-  const hasDefinitiveVerb = /\b(is|are|means|refers to)\b/i.test(first400);
+  const hasDefinitiveVerb = definitiveVerbsPattern.test(first400);
 
   if (!entityRegex.test(first400) || !hasDefinitiveVerb) {
     return {
@@ -610,9 +580,11 @@ function checkInformationDensity(text: string, centralEntity: string): AuditRule
   return { ruleName: 'Information Density', isPassing: true, details: 'Good information density.' };
 }
 
-function checkLLMSignaturePhrases(text: string): AuditRuleResult {
+function checkLLMSignaturePhrases(text: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const llmSignaturePhrases = patterns.llmSignaturePhrases;
   const textLower = text.toLowerCase();
-  const found = LLM_SIGNATURE_PHRASES.filter(phrase =>
+  const found = llmSignaturePhrases.filter(phrase =>
     textLower.includes(phrase.toLowerCase())
   );
 
@@ -737,27 +709,28 @@ function checkCoverageWeight(text: string): AuditRuleResult {
   };
 }
 
-function classifyPredicate(text: string): 'positive' | 'negative' | 'instructional' | 'neutral' {
+function classifyPredicate(text: string, language?: string): 'positive' | 'negative' | 'instructional' | 'neutral' {
+  const patterns = getAuditPatterns(language || 'en');
   const lower = text.toLowerCase();
 
-  if (INSTRUCTIONAL_PREDICATES.some(p => lower.includes(p))) {
+  if (patterns.instructionalPredicates.some(p => lower.includes(p))) {
     return 'instructional';
   }
-  if (NEGATIVE_PREDICATES.some(p => lower.includes(p))) {
+  if (patterns.negativePredicates.some(p => lower.includes(p))) {
     return 'negative';
   }
-  if (POSITIVE_PREDICATES.some(p => lower.includes(p))) {
+  if (patterns.positivePredicates.some(p => lower.includes(p))) {
     return 'positive';
   }
   return 'neutral';
 }
 
-function checkPredicateConsistency(text: string, title: string): AuditRuleResult {
+function checkPredicateConsistency(text: string, title: string, language?: string): AuditRuleResult {
   // Extract all H2 headings
   const h2Headings = text.match(/^## .+$/gm) || [];
 
   // Classify title/H1 predicate
-  const titleClass = classifyPredicate(title);
+  const titleClass = classifyPredicate(title, language);
 
   // If title is neutral, any predicate mix is acceptable
   if (titleClass === 'neutral') {
@@ -772,7 +745,7 @@ function checkPredicateConsistency(text: string, title: string): AuditRuleResult
   const violations: string[] = [];
 
   h2Headings.forEach(h2 => {
-    const h2Class = classifyPredicate(h2);
+    const h2Class = classifyPredicate(h2, language);
 
     // Instructional titles allow instructional or neutral H2s
     if (titleClass === 'instructional') {
@@ -881,9 +854,10 @@ function checkMacroMicroBorder(draft: string): AuditRuleResult {
   };
 }
 
-function extractKeyTermsFromHeading(heading: string): string[] {
-  // Remove common words and extract meaningful terms
-  const stopWords = ['the', 'a', 'an', 'of', 'and', 'or', 'for', 'to', 'in', 'on', 'with', 'how', 'what', 'why', 'when', 'is', 'are'];
+function extractKeyTermsFromHeading(heading: string, language?: string): string[] {
+  // Remove common words and extract meaningful terms using language-specific stop words
+  const patterns = getAuditPatterns(language || 'en');
+  const stopWords = patterns.stopWords;
   const words = heading
     .toLowerCase()
     .replace(/^#+\s*/, '')
@@ -892,9 +866,17 @@ function extractKeyTermsFromHeading(heading: string): string[] {
   return words;
 }
 
-function checkExtractiveSummaryAlignment(draft: string): AuditRuleResult {
-  // Extract introduction
-  const introMatch = draft.match(/## Introduction\n\n([\s\S]*?)(?=\n## )/);
+function checkExtractiveSummaryAlignment(draft: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const genericHeadings = patterns.genericHeadings;
+
+  // Extract introduction - look for generic or language-specific intro headings
+  const introPatterns = genericHeadings.filter(h =>
+    h.includes('intro') || h.includes('inleid') || h.includes('einleit') || h.includes('introd')
+  );
+  const introPattern = new RegExp(`## (?:${introPatterns.join('|')})\\n\\n([\\s\\S]*?)(?=\\n## )`, 'i');
+  const introMatch = draft.match(introPattern);
+
   if (!introMatch) {
     return {
       ruleName: 'Extractive Summary Alignment',
@@ -905,9 +887,9 @@ function checkExtractiveSummaryAlignment(draft: string): AuditRuleResult {
 
   const intro = introMatch[1].toLowerCase();
 
-  // Extract H2 headings (excluding Introduction)
+  // Extract H2 headings (excluding Introduction and supplementary headings)
   const h2Headings = (draft.match(/^## .+$/gm) || [])
-    .filter(h => !h.toLowerCase().includes('introduction'))
+    .filter(h => !genericHeadings.some(g => h.toLowerCase().includes(g)))
     .filter(h => !SUPPLEMENTARY_HEADING_PATTERNS.some(p => p.test(h)));
 
   if (h2Headings.length < 2) {
@@ -922,7 +904,7 @@ function checkExtractiveSummaryAlignment(draft: string): AuditRuleResult {
   const missingTopics: string[] = [];
 
   h2Headings.forEach(h2 => {
-    const keyTerms = extractKeyTermsFromHeading(h2);
+    const keyTerms = extractKeyTermsFromHeading(h2, language);
     const hasAnyTerm = keyTerms.some(term => intro.includes(term));
     if (!hasAnyTerm && keyTerms.length > 0) {
       missingTopics.push(h2.replace(/^## /, ''));
@@ -949,37 +931,38 @@ function checkExtractiveSummaryAlignment(draft: string): AuditRuleResult {
 
 type QueryIntentType = 'list' | 'instructional' | 'comparison' | 'definitional' | 'neutral';
 
-function classifyQueryIntent(title: string): QueryIntentType {
+function classifyQueryIntent(title: string, language?: string): QueryIntentType {
+  const patterns = getAuditPatterns(language || 'en');
+  const queryPatterns = patterns.queryPatterns;
   const lower = title.toLowerCase();
 
-  // Plural/list queries
-  if (/\b(types of|kinds of|categories of|list of|examples of)\b/.test(lower)) {
-    return 'list';
-  }
-  if (/\b(best|top \d+|ways to)\b/.test(lower)) {
+  // List patterns (multilingual)
+  if (queryPatterns.list.some(p => p.test(lower))) {
     return 'list';
   }
 
-  // Instructional queries
-  if (/^how to\b/.test(lower) || /\b(steps to|guide to|tutorial)\b/.test(lower)) {
+  // Instructional patterns (multilingual)
+  if (queryPatterns.instructional.some(p => p.test(lower))) {
     return 'instructional';
   }
 
-  // Comparison queries
-  if (/\bvs\.?\b|\bversus\b|\bcompare|\bdifference between\b/.test(lower)) {
+  // Comparison patterns (multilingual)
+  if (queryPatterns.comparison.some(p => p.test(lower))) {
     return 'comparison';
   }
 
-  // Definitional queries
-  if (/^what is\b|^what are\b|^definition of\b/.test(lower)) {
+  // Definitional patterns (multilingual)
+  if (queryPatterns.definitional.some(p => p.test(lower))) {
     return 'definitional';
   }
 
   return 'neutral';
 }
 
-function checkQueryFormatAlignment(draft: string, brief: ContentBrief): AuditRuleResult {
-  const intent = classifyQueryIntent(brief.title);
+function checkQueryFormatAlignment(draft: string, brief: ContentBrief, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const definitiveVerbsPattern = patterns.definitiveVerbsPattern;
+  const intent = classifyQueryIntent(brief.title, language);
 
   if (intent === 'neutral') {
     return {
@@ -1011,7 +994,7 @@ function checkQueryFormatAlignment(draft: string, brief: ContentBrief): AuditRul
     case 'instructional':
       if (!hasOrderedList) {
         isPassing = false;
-        details = `"How to" query should use numbered steps but no ordered list found.`;
+        details = `Instructional query should use numbered steps but no ordered list found.`;
         remediation = 'Convert steps to a numbered list (1. First step, 2. Second step, etc.).';
       } else {
         details = 'Instructional query has numbered steps.';
@@ -1029,13 +1012,13 @@ function checkQueryFormatAlignment(draft: string, brief: ContentBrief): AuditRul
       break;
 
     case 'definitional':
-      // Check first 400 chars for definition pattern
+      // Check first 400 chars for definition pattern using language-specific patterns
       const first400 = draft.substring(0, 400);
-      const hasDefinition = /\b(is|are|refers to|means|defines)\b/i.test(first400);
+      const hasDefinition = definitiveVerbsPattern.test(first400);
       if (!hasDefinition) {
         isPassing = false;
         details = `Definitional query should start with a clear definition.`;
-        remediation = 'Begin with "[Entity] is..." or "[Entity] refers to..." in the first paragraph.';
+        remediation = 'Begin with "[Entity] is..." or equivalent definition in the first paragraph.';
       } else {
         details = 'Definitional query starts with proper definition.';
       }
@@ -1086,19 +1069,12 @@ function checkAnchorTextVariety(draft: string): AuditRuleResult {
   };
 }
 
-const GENERIC_ANCHORS = [
-  'click here',
-  'read more',
-  'learn more',
-  'here',
-  'link',
-  'this',
-  'more',
-  'view',
-  'see'
-];
+// Legacy GENERIC_ANCHORS - use getAuditPatterns(language).genericAnchors instead
+const GENERIC_ANCHORS = getAuditPatterns('en').genericAnchors;
 
-function checkAnnotationTextQuality(draft: string): AuditRuleResult {
+function checkAnnotationTextQuality(draft: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const genericAnchors = patterns.genericAnchors;
   const linkPattern = /\[([^\]]+)\]\(([^)]+)\)/g;
   const issues: string[] = [];
 
@@ -1107,8 +1083,8 @@ function checkAnnotationTextQuality(draft: string): AuditRuleResult {
     const anchor = match[1].toLowerCase().trim();
     const fullMatch = match[0];
 
-    // Check for generic anchors
-    if (GENERIC_ANCHORS.some(g => anchor === g || anchor.startsWith(g + ' '))) {
+    // Check for generic anchors (multilingual)
+    if (genericAnchors.some(g => anchor === g || anchor.startsWith(g + ' '))) {
       issues.push(`Generic anchor: "${match[1]}"`);
       continue;
     }
@@ -1134,7 +1110,7 @@ function checkAnnotationTextQuality(draft: string): AuditRuleResult {
       isPassing: false,
       details: `${issues.length} link(s) lack proper annotation text.`,
       affectedTextSnippet: issues[0],
-      remediation: 'Surround links with descriptive text that explains WHY the linked page is relevant. Avoid generic anchors like "click here".'
+      remediation: 'Surround links with descriptive text that explains WHY the linked page is relevant. Avoid generic anchors.'
     };
   }
 
@@ -1145,9 +1121,17 @@ function checkAnnotationTextQuality(draft: string): AuditRuleResult {
   };
 }
 
-function checkSupplementaryLinkPlacement(draft: string): AuditRuleResult {
-  // Find introduction section
-  const introMatch = draft.match(/## Introduction\n\n([\s\S]*?)(?=\n## )/);
+function checkSupplementaryLinkPlacement(draft: string, language?: string): AuditRuleResult {
+  const patterns = getAuditPatterns(language || 'en');
+  const genericHeadings = patterns.genericHeadings;
+
+  // Find introduction section using language-specific intro headings
+  const introPatterns = genericHeadings.filter(h =>
+    h.includes('intro') || h.includes('inleid') || h.includes('einleit') || h.includes('introd')
+  );
+  const introPattern = new RegExp(`## (?:${introPatterns.join('|')})\\n\\n([\\s\\S]*?)(?=\\n## )`, 'i');
+  const introMatch = draft.match(introPattern);
+
   if (!introMatch) {
     return {
       ruleName: 'Supplementary Link Placement',
@@ -1172,7 +1156,7 @@ function checkSupplementaryLinkPlacement(draft: string): AuditRuleResult {
       isPassing: false,
       details: `Introduction contains ${linksInIntro.length} links. Links should be delayed until after main context is established.`,
       affectedTextSnippet: linksInIntro.join(', '),
-      remediation: 'Move related links to a "Related Topics" section at the end. Keep introduction focused on defining the main topic.'
+      remediation: 'Move related links to a related topics section. Keep introduction focused on defining the main topic.'
     };
   }
 

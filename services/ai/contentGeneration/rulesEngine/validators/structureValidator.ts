@@ -1,6 +1,27 @@
 // services/ai/contentGeneration/rulesEngine/validators/structureValidator.ts
 
 import { ValidationViolation, SectionGenerationContext } from '../../../../../types';
+import { getLanguageName } from '../../../../../utils/languageUtils';
+
+/**
+ * Multilingual article prefixes (definite/indefinite articles)
+ * Used for checking entity as subject position
+ */
+const MULTILINGUAL_ARTICLE_PREFIXES: Record<string, string[]> = {
+  'English': ['the ', 'a ', 'an '],
+  'Dutch': ['de ', 'het ', 'een '],
+  'German': ['der ', 'die ', 'das ', 'ein ', 'eine ', 'einer ', 'eines '],
+  'French': ['le ', 'la ', 'les ', 'un ', 'une ', 'l\''],
+  'Spanish': ['el ', 'la ', 'los ', 'las ', 'un ', 'una '],
+};
+
+/**
+ * Get article prefixes for a specific language
+ */
+function getArticlePrefixes(language?: string): string[] {
+  const langName = getLanguageName(language);
+  return MULTILINGUAL_ARTICLE_PREFIXES[langName] || MULTILINGUAL_ARTICLE_PREFIXES['English'];
+}
 
 export class StructureValidator {
   /**
@@ -13,6 +34,10 @@ export class StructureValidator {
 
     if (!centralEntity) return violations;
 
+    // Get language-specific article prefixes
+    const language = context.language;
+    const articlePrefixes = getArticlePrefixes(language);
+
     const sentences = content.split(/[.!?]+\s*/).filter(s => s.trim().length > 0);
     let entityAsSubjectCount = 0;
 
@@ -24,7 +49,8 @@ export class StructureValidator {
       const entityParts = centralEntity.split(/\s+/);
       const startsWithEntity = entityParts.some(part =>
         lowerSentence.startsWith(part) ||
-        lowerSentence.startsWith('the ' + part)
+        // Check with language-specific article prefixes
+        articlePrefixes.some(prefix => lowerSentence.startsWith(prefix + part))
       );
 
       if (startsWithEntity || lowerSentence.includes(centralEntity)) {
@@ -48,3 +74,6 @@ export class StructureValidator {
     return violations;
   }
 }
+
+// Export for testing
+export { MULTILINGUAL_ARTICLE_PREFIXES, getArticlePrefixes };

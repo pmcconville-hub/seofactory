@@ -1,6 +1,7 @@
 // services/ai/contentGeneration/rulesEngine/validators/eavDensity.ts
 
-import { ValidationViolation, SemanticTriple, BriefSection } from '../../../../../types';
+import { ValidationViolation, SemanticTriple, SectionGenerationContext } from '../../../../../types';
+import { getLanguageName } from '../../../../../utils/languageUtils';
 
 /**
  * Result of EAV density validation
@@ -25,6 +26,114 @@ export interface EavDensityWarning {
   severity: 'info' | 'warning' | 'error';
 }
 
+/**
+ * Multilingual EAV verb patterns
+ * Format: Entity + verb + value patterns per language
+ */
+interface LanguageEavPatterns {
+  verbs: string[];
+  attributeOf: RegExp;  // "The X of Y is Z" pattern
+  weakPatterns: RegExp[];
+}
+
+const MULTILINGUAL_EAV_PATTERNS: Record<string, LanguageEavPatterns> = {
+  'English': {
+    verbs: [
+      'is', 'are', 'was', 'were', 'has', 'have', 'had',
+      'requires', 'needs', 'provides', 'offers', 'contains',
+      'includes', 'weighs', 'measures', 'costs', 'lasts',
+      'equals', 'represents', 'consists', 'means', 'defines',
+    ],
+    attributeOf: /\bThe\s+\w+\s+of\s+\w+\s+(?:is|are|measures?|equals?)/i,
+    weakPatterns: [
+      /^It\s+(?:is|was)\s+\w+\.$/i,
+      /^Things?\s+(?:is|are|happen)/i,
+      /^This\s+(?:is|was)\s+\w+\.$/i,
+    ],
+  },
+
+  'Dutch': {
+    verbs: [
+      'is', 'zijn', 'was', 'waren', 'heeft', 'hebben', 'had',
+      'vereist', 'nodig heeft', 'biedt', 'bieden', 'bevat',
+      'omvat', 'weegt', 'meet', 'kost', 'duurt',
+      'komt overeen met', 'vertegenwoordigt', 'bestaat uit', 'betekent', 'definieert',
+    ],
+    attributeOf: /\bDe\s+\w+\s+van\s+\w+\s+(?:is|zijn|meet|komt overeen)/i,
+    weakPatterns: [
+      /^Het\s+(?:is|was)\s+\w+\.$/i,
+      /^Dingen?\s+(?:is|zijn|gebeuren)/i,
+      /^Dit\s+(?:is|was)\s+\w+\.$/i,
+    ],
+  },
+
+  'German': {
+    verbs: [
+      'ist', 'sind', 'war', 'waren', 'hat', 'haben', 'hatte',
+      'erfordert', 'braucht', 'bietet', 'enthält',
+      'umfasst', 'wiegt', 'misst', 'kostet', 'dauert',
+      'entspricht', 'repräsentiert', 'besteht aus', 'bedeutet', 'definiert',
+    ],
+    attributeOf: /\bDie\s+\w+\s+von\s+\w+\s+(?:ist|sind|misst|entspricht)/i,
+    weakPatterns: [
+      /^Es\s+(?:ist|war)\s+\w+\.$/i,
+      /^Dinge?\s+(?:ist|sind|passieren)/i,
+      /^Dies\s+(?:ist|war)\s+\w+\.$/i,
+    ],
+  },
+
+  'French': {
+    verbs: [
+      'est', 'sont', 'était', 'étaient', 'a', 'ont', 'avait',
+      'nécessite', 'besoin de', 'fournit', 'offre', 'contient',
+      'comprend', 'pèse', 'mesure', 'coûte', 'dure',
+      'équivaut à', 'représente', 'consiste en', 'signifie', 'définit',
+    ],
+    attributeOf: /\bLa?\s+\w+\s+de\s+\w+\s+(?:est|sont|mesure|équivaut)/i,
+    weakPatterns: [
+      /^Il\s+(?:est|était)\s+\w+\.$/i,
+      /^Les?\s+choses?\s+(?:est|sont|arrivent)/i,
+      /^Ceci\s+(?:est|était)\s+\w+\.$/i,
+    ],
+  },
+
+  'Spanish': {
+    verbs: [
+      'es', 'son', 'era', 'eran', 'tiene', 'tienen', 'tenía',
+      'requiere', 'necesita', 'proporciona', 'ofrece', 'contiene',
+      'incluye', 'pesa', 'mide', 'cuesta', 'dura',
+      'equivale a', 'representa', 'consiste en', 'significa', 'define',
+    ],
+    attributeOf: /\bEl\s+\w+\s+de\s+\w+\s+(?:es|son|mide|equivale)/i,
+    weakPatterns: [
+      /^Eso?\s+(?:es|era)\s+\w+\.$/i,
+      /^Las?\s+cosas?\s+(?:es|son|pasan)/i,
+      /^Esto\s+(?:es|era)\s+\w+\.$/i,
+    ],
+  },
+};
+
+/**
+ * Get EAV patterns for a specific language
+ */
+function getEavPatterns(language?: string): LanguageEavPatterns {
+  const langName = getLanguageName(language);
+  return MULTILINGUAL_EAV_PATTERNS[langName] || MULTILINGUAL_EAV_PATTERNS['English'];
+}
+
+/**
+ * Build dynamic EAV regex patterns from verb list
+ */
+function buildEavRegexPatterns(verbs: string[]): RegExp[] {
+  const verbPattern = verbs.join('|');
+  return [
+    // Entity + verb + value: "X is/are Y"
+    new RegExp(`\\b[A-Z][a-z]+(?:\\s+[A-Z]?[a-z]+)*\\s+(?:${verbPattern})\\s+`, 'i'),
+    // Numeric values (universal - strong EAV indicator)
+    /\d+(?:\.\d+)?(?:\s*(?:percent|%|kg|lb|cm|mm|m|ft|hours?|minutes?|days?|weeks?|months?|years?|uur|minuten?|dagen?|weken?|maanden?|jaren?|Stunden?|Minuten?|Tagen?|Wochen?|Monaten?|Jahren?|heures?|minutes?|jours?|semaines?|mois|années?|horas?|minutos?|días?|semanas?|meses|años?))?/i,
+  ];
+}
+
 export class EAVDensityValidator {
   // Minimum word count for a sentence to require full EAV
   private static readonly MIN_WORDS_FOR_EAV = 4;
@@ -32,30 +141,14 @@ export class EAVDensityValidator {
   // Minimum word count for a section to require EAV terms
   private static readonly MIN_SECTION_WORDS = 50;
 
-  // Patterns indicating presence of Entity-Attribute-Value
-  private static readonly EAV_PATTERNS = [
-    // Entity + verb + value: "X is/are Y"
-    /\b[A-Z][a-z]+(?:\s+[A-Z]?[a-z]+)*\s+(?:is|are|was|were|has|have|had|requires?|needs?|provides?|offers?|contains?|includes?|weighs?|measures?|costs?|lasts?)\s+/i,
-    // Entity + attribute + value: "The X of Y is Z"
-    /\bThe\s+\w+\s+of\s+\w+\s+(?:is|are|measures?|equals?)/i,
-    // Numeric values (strong EAV indicator)
-    /\d+(?:\.\d+)?(?:\s*(?:percent|%|kg|lb|cm|mm|m|ft|hours?|minutes?|days?|weeks?|months?|years?))?/i,
-  ];
-
-  // Patterns indicating weak/empty sentences
-  private static readonly WEAK_PATTERNS = [
-    /^It\s+(?:is|was)\s+\w+\.$/i,
-    /^Things?\s+(?:is|are|happen)/i,
-    /^This\s+(?:is|was)\s+\w+\.$/i,
-  ];
-
   /**
    * LENIENT section-level EAV density validation
    * Only warns if entire sections have no EAV terms - not sentence-level
    */
   static validateSections(
     sections: { heading: string; content: string }[],
-    eavs: SemanticTriple[]
+    eavs: SemanticTriple[],
+    language?: string
   ): EavDensityResult {
     // Extract all EAV terms (subjects and object values)
     const eavTerms = this.extractEavTerms(eavs);
@@ -83,14 +176,25 @@ export class EAVDensityValidator {
         wordCount
       });
 
-      // LENIENT: Only warn if section is substantial but has NO EAV terms
-      if (!hasEavTerms && wordCount >= this.MIN_SECTION_WORDS) {
-        warnings.push({
-          sectionHeading: section.heading,
-          issue: 'no_facts',
-          suggestion: `Section "${section.heading}" (${wordCount} words) contains no recognizable EAV terms. Consider adding specific facts about your entity.`,
-          severity: 'info'  // Info level, not warning - lenient!
-        });
+      // Tiered EAV density enforcement based on section length
+      if (wordCount >= this.MIN_SECTION_WORDS) {
+        if (!hasEavTerms) {
+          // No EAV terms at all - warning for moderate sections, error for long sections
+          warnings.push({
+            sectionHeading: section.heading,
+            issue: 'no_facts',
+            suggestion: `Section "${section.heading}" (${wordCount} words) contains no recognizable EAV terms. Add specific facts about your entity.`,
+            severity: wordCount >= 150 ? 'error' : 'warning'  // Block long sections without any EAV
+          });
+        } else if (matchedTerms.length < 2 && wordCount >= 100) {
+          // Very low density - only 1 EAV term in substantial section
+          warnings.push({
+            sectionHeading: section.heading,
+            issue: 'sparse',
+            suggestion: `Section "${section.heading}" has only ${matchedTerms.length} EAV term(s) in ${wordCount} words. Add more specific facts.`,
+            severity: 'warning'
+          });
+        }
       }
     });
 
@@ -100,8 +204,17 @@ export class EAVDensityValidator {
       ? Math.round((sectionsWithEav / totalSections) * 100)
       : 0;
 
-    // Only add overall warning if score is very low (lenient threshold)
-    if (score < 30 && totalSections >= 3) {
+    // Tiered overall density warnings/errors
+    if (score < 20 && totalSections >= 3) {
+      // CRITICAL: Extremely low density - content fails quality standards
+      warnings.unshift({
+        sectionHeading: '[Overall]',
+        issue: 'low_density',
+        suggestion: `Only ${score}% of sections contain EAV terms. Content lacks factual substance and will fail quality audit.`,
+        severity: 'error'  // Block content with extremely low EAV density
+      });
+    } else if (score < 40 && totalSections >= 3) {
+      // Warning: Low density but recoverable
       warnings.unshift({
         sectionHeading: '[Overall]',
         issue: 'low_density',
@@ -155,21 +268,28 @@ export class EAVDensityValidator {
   }
 
   /**
-   * Original sentence-level validation (kept for backwards compatibility)
-   * Use validateSections() for lenient section-level validation
+   * Sentence-level validation with multilingual support
+   * @param content - The content to validate
+   * @param context - Optional context containing language setting
    */
-  static validate(content: string): ValidationViolation[] {
+  static validate(content: string, context?: SectionGenerationContext): ValidationViolation[] {
     const violations: ValidationViolation[] = [];
     const sentences = this.splitSentences(content);
+    const language = context?.language;
+    const patterns = getEavPatterns(language);
+    const eavPatterns = buildEavRegexPatterns(patterns.verbs);
 
-    sentences.forEach((sentence, index) => {
+    // Add the attributeOf pattern
+    eavPatterns.push(patterns.attributeOf);
+
+    sentences.forEach((sentence) => {
       const words = sentence.trim().split(/\s+/);
 
       // Skip very short sentences
       if (words.length < this.MIN_WORDS_FOR_EAV) return;
 
-      // Check for weak patterns
-      for (const pattern of this.WEAK_PATTERNS) {
+      // Check for weak patterns (language-specific)
+      for (const pattern of patterns.weakPatterns) {
         if (pattern.test(sentence)) {
           violations.push({
             rule: 'EAV_DENSITY',
@@ -182,8 +302,8 @@ export class EAVDensityValidator {
         }
       }
 
-      // Check if sentence has EAV structure
-      const hasEAV = this.EAV_PATTERNS.some(pattern => pattern.test(sentence));
+      // Check if sentence has EAV structure (language-specific)
+      const hasEAV = eavPatterns.some(pattern => pattern.test(sentence));
 
       if (!hasEAV && words.length >= 6) {
         violations.push({
@@ -202,13 +322,17 @@ export class EAVDensityValidator {
   /**
    * Calculate EAV density percentage based on EAV patterns
    */
-  static calculateDensity(content: string): number {
+  static calculateDensity(content: string, language?: string): number {
     const sentences = this.splitSentences(content);
     if (sentences.length === 0) return 0;
 
+    const patterns = getEavPatterns(language);
+    const eavPatterns = buildEavRegexPatterns(patterns.verbs);
+    eavPatterns.push(patterns.attributeOf);
+
     let eavCount = 0;
     sentences.forEach(sentence => {
-      const hasEAV = this.EAV_PATTERNS.some(pattern => pattern.test(sentence));
+      const hasEAV = eavPatterns.some(pattern => pattern.test(sentence));
       if (hasEAV) eavCount++;
     });
 
@@ -239,3 +363,6 @@ export class EAVDensityValidator {
       .filter(s => s.length > 0);
   }
 }
+
+// Export for testing and direct use
+export { MULTILINGUAL_EAV_PATTERNS, getEavPatterns, buildEavRegexPatterns };

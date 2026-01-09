@@ -169,7 +169,7 @@ const LANGUAGE_MAP: Record<string, string> = {
 
 /**
  * Convert a language code or name to a full language name for AI prompts
- * @param language - ISO code (en, nl) or language name (English, Dutch) or UI format (Dutch (Nederlands))
+ * @param language - ISO code (en, nl), locale code (en-US, nl-NL), or language name (English, Dutch) or UI format (Dutch (Nederlands))
  * @returns Full language name in English (e.g., "English", "Dutch")
  */
 export function getLanguageName(language: string | undefined | null): string {
@@ -181,6 +181,23 @@ export function getLanguageName(language: string | undefined | null): string {
   // Direct lookup
   if (LANGUAGE_MAP[normalized]) {
     return LANGUAGE_MAP[normalized];
+  }
+
+  // Handle locale codes like "en-US", "nl-NL", "de-DE"
+  // Extract the base language code before the hyphen
+  if (normalized.includes('-')) {
+    const baseCode = normalized.split('-')[0];
+    if (LANGUAGE_MAP[baseCode]) {
+      return LANGUAGE_MAP[baseCode];
+    }
+  }
+
+  // Handle underscore format like "en_US", "nl_NL"
+  if (normalized.includes('_')) {
+    const baseCode = normalized.split('_')[0];
+    if (LANGUAGE_MAP[baseCode]) {
+      return LANGUAGE_MAP[baseCode];
+    }
   }
 
   // Handle UI dropdown format like "Dutch (Nederlands)" or "English (US)"

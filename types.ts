@@ -518,6 +518,10 @@ export interface SectionGenerationContext {
   allSections: BriefSection[];
   isYMYL: boolean;
   ymylCategory?: 'HEALTH' | 'FINANCE' | 'LEGAL' | 'SAFETY';
+  /** ISO language code (e.g., 'nl', 'en', 'de', 'fr', 'es') for multilingual validation */
+  language?: string;
+  /** Total number of sections in the article (used by contextual vector validation) */
+  totalSections?: number;
 }
 
 export interface VisualSemantics {
