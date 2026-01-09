@@ -8,3 +8,6 @@
 
 export { QualityRulePanel, default as QualityRulePanelDefault } from './QualityRulePanel';
 export type { QualityRulePanelProps } from './QualityRulePanel';
+
+export { LiveGenerationMonitor, default as LiveGenerationMonitorDefault } from './LiveGenerationMonitor';
+export type { LiveGenerationMonitorProps } from './LiveGenerationMonitor';
