@@ -471,8 +471,101 @@ function countImagePlaceholders(content: string): number {
 }
 
 /**
+ * Count heading levels in content.
+ */
+function countHeadings(content: string): { h2: number; h3: number; total: number } {
+  const h2Matches = content.match(/^##\s+[^\n]+/gm);
+  const h3Matches = content.match(/^###\s+[^\n]+/gm);
+  return {
+    h2: h2Matches ? h2Matches.length : 0,
+    h3: h3Matches ? h3Matches.length : 0,
+    total: (h2Matches?.length || 0) + (h3Matches?.length || 0)
+  };
+}
+
+/**
+ * Post-pass validation result.
+ */
+interface PreservationValidationResult {
+  passed: boolean;
+  violations: string[];
+  imagesBefore: number;
+  imagesAfter: number;
+  headingsBefore: number;
+  headingsAfter: number;
+}
+
+/**
+ * Comprehensive post-pass validation to prevent cascade destruction.
+ * Validates:
+ * - Image placeholder preservation (after Pass 7)
+ * - Heading structure preservation (after Pass 2)
+ * - Content not significantly shortened
+ */
+function validatePreservation(
+  before: string,
+  after: string,
+  sectionKey: string,
+  passNumber: number
+): PreservationValidationResult {
+  const violations: string[] = [];
+  const log = createPassLogger(passNumber);
+
+  // Image preservation check (critical after Pass 7 when images are added)
+  const imagesBefore = countImagePlaceholders(before);
+  const imagesAfter = countImagePlaceholders(after);
+
+  if (imagesBefore > 0 && imagesAfter < imagesBefore) {
+    const msg = `Image count DECREASED: ${imagesBefore} → ${imagesAfter}`;
+    violations.push(msg);
+    log.warn(`[${sectionKey}] ${msg}`);
+  }
+
+  // Heading preservation check (critical after Pass 2 when headers are optimized)
+  const headingsBefore = countHeadings(before);
+  const headingsAfter = countHeadings(after);
+
+  if (passNumber > 2 && headingsBefore.total > 0) {
+    if (headingsAfter.total < headingsBefore.total) {
+      const msg = `Heading count DECREASED: ${headingsBefore.total} → ${headingsAfter.total}`;
+      violations.push(msg);
+      log.warn(`[${sectionKey}] ${msg}`);
+    }
+    if (headingsAfter.h2 !== headingsBefore.h2) {
+      const msg = `H2 count CHANGED: ${headingsBefore.h2} → ${headingsAfter.h2}`;
+      violations.push(msg);
+      log.warn(`[${sectionKey}] ${msg}`);
+    }
+  }
+
+  // Content length check - warn if significantly shortened (>30% reduction)
+  const lengthRatio = after.length / Math.max(before.length, 1);
+  if (lengthRatio < 0.7 && before.length > 200) {
+    const msg = `Content significantly SHORTENED: ${before.length} → ${after.length} chars (${Math.round(lengthRatio * 100)}% of original)`;
+    violations.push(msg);
+    log.warn(`[${sectionKey}] ${msg}`);
+  }
+
+  const passed = violations.length === 0;
+
+  if (!passed) {
+    log.error(`[${sectionKey}] Post-pass validation FAILED with ${violations.length} violation(s)`);
+  }
+
+  return {
+    passed,
+    violations,
+    imagesBefore,
+    imagesAfter,
+    headingsBefore: headingsBefore.total,
+    headingsAfter: headingsAfter.total
+  };
+}
+
+/**
  * Validate that image placeholders are preserved after optimization.
  * Logs a warning if images were lost but doesn't block the process.
+ * @deprecated Use validatePreservation() for comprehensive validation
  */
 function validateImagePreservation(
   before: string,
@@ -525,9 +618,13 @@ function cleanOptimizedContent(optimized: string, original: string, sectionKey?:
     .replace(/[ \t]+$/gm, '')
     .trim();
 
-  // Validate image preservation
+  // Comprehensive post-pass validation
   if (sectionKey && passNumber) {
-    validateImagePreservation(original, content, sectionKey, passNumber);
+    const validation = validatePreservation(original, content, sectionKey, passNumber);
+    if (!validation.passed) {
+      // Log violations but don't block - the AI may have legitimately shortened content
+      // Critical violations (like image loss) are already logged with warnings
+    }
   }
 
   return content;

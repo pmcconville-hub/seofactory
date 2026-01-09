@@ -23,7 +23,7 @@ describe('WordCountValidator', () => {
 
   describe('countWords', () => {
     it('should count words correctly in plain text', () => {
-      const content = 'This is a simple test sentence with nine words total.';
+      const content = 'This is a simple test sentence with ten words total.';
       expect(WordCountValidator.countWords(content)).toBe(10);
     });
 

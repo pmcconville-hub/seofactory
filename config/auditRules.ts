@@ -2,6 +2,208 @@
 // Unified Audit System Configuration - Phase 6
 
 import { AuditCategory, AuditRule, AuditSeverity } from '../types';
+import { getLanguageName } from '../utils/languageUtils';
+
+// =============================================================================
+// MULTILINGUAL STOP WORDS AND LLM PHRASES
+// =============================================================================
+
+/**
+ * Language-specific stop word patterns
+ * Keys are normalized language names (English, Dutch, German, etc.)
+ */
+export const STOP_WORD_PATTERNS: Record<string, { patterns: RegExp[]; replacements: string[] }> = {
+  'English': {
+    patterns: [
+      /\b(Also|Also,)\s+/gi,
+      /\b(Basically|Basically,)\s+/gi,
+      /\b(Actually|Actually,)\s+/gi,
+      /\bvery\s+/gi,
+      /\breally\s+/gi,
+      /\bjust\s+/gi,
+      /\bquite\s+/gi,
+      /\bsimply\s+/gi,
+      /\bof course,?\s*/gi,
+      /\bneedless to say,?\s*/gi,
+    ],
+    replacements: ['', '', '', '', '', '', '', '', '', ''],
+  },
+  'Dutch': {
+    patterns: [
+      /\b(Ook|Ook,)\s+/gi,
+      /\b(Eigenlijk|Eigenlijk,)\s+/gi,
+      /\b(Feitelijk|Feitelijk,)\s+/gi,
+      /\bzeer\s+/gi,
+      /\becht\s+/gi,
+      /\bgewoon\s+/gi,
+      /\bvrij\s+/gi,
+      /\bsimpelweg\s+/gi,
+      /\bnatuurlijk,?\s*/gi,
+      /\buiteraard,?\s*/gi,
+      /\bsowieso,?\s*/gi,
+      /\bbest wel\s+/gi,
+      /\bbehoorlijk\s+/gi,
+    ],
+    replacements: ['', '', '', '', '', '', '', '', '', '', '', '', ''],
+  },
+  'German': {
+    patterns: [
+      /\b(Auch|Auch,)\s+/gi,
+      /\b(Eigentlich|Eigentlich,)\s+/gi,
+      /\b(Tatsächlich|Tatsächlich,)\s+/gi,
+      /\bsehr\s+/gi,
+      /\bwirklich\s+/gi,
+      /\beinfach\s+/gi,
+      /\bziemlich\s+/gi,
+      /\bnatürlich,?\s*/gi,
+      /\bselbstverständlich,?\s*/gi,
+    ],
+    replacements: ['', '', '', '', '', '', '', '', ''],
+  },
+  'French': {
+    patterns: [
+      /\b(Aussi|Aussi,)\s+/gi,
+      /\b(En fait|En fait,)\s+/gi,
+      /\b(Vraiment|Vraiment,)\s+/gi,
+      /\btrès\s+/gi,
+      /\bvraiment\s+/gi,
+      /\bsimplement\s+/gi,
+      /\bassez\s+/gi,
+      /\bbien sûr,?\s*/gi,
+      /\bévidemment,?\s*/gi,
+    ],
+    replacements: ['', '', '', '', '', '', '', '', ''],
+  },
+  'Spanish': {
+    patterns: [
+      /\b(También|También,)\s+/gi,
+      /\b(Básicamente|Básicamente,)\s+/gi,
+      /\b(En realidad|En realidad,)\s+/gi,
+      /\bmuy\s+/gi,
+      /\brealmente\s+/gi,
+      /\bsimplemente\s+/gi,
+      /\bbastante\s+/gi,
+      /\bpor supuesto,?\s*/gi,
+      /\bevidentemente,?\s*/gi,
+    ],
+    replacements: ['', '', '', '', '', '', '', '', ''],
+  },
+};
+
+/**
+ * Language-specific LLM signature phrase patterns
+ * These are common AI-generated phrases that should be removed or replaced
+ */
+export const LLM_PHRASE_PATTERNS: Record<string, { patterns: RegExp[]; replacements: string[] }> = {
+  'English': {
+    patterns: [
+      /\bdelve into\b/gi,
+      /\bdelve deeper\b/gi,
+      /\bgame-?changer\b/gi,
+      /\bin today'?s (fast-paced|digital|modern) (world|age|era)\b/gi,
+      /\bit'?s (important|worth|crucial) to (note|mention|understand) that\b/gi,
+      /\bembark on (a|this) journey\b/gi,
+      /\bunlock the (power|potential|secrets)\b/gi,
+      /\btake (it|things|your|this) to the next level\b/gi,
+      /\b(harness|leverage) the power of\b/gi,
+      /\bin conclusion,?\s*/gi,
+      /\bto summarize,?\s*/gi,
+      /\bin summary,?\s*/gi,
+      /\blet'?s dive in\b/gi,
+      /\bwithout further ado\b/gi,
+      /\bwrap your head around\b/gi,
+      /\bat the end of the day\b/gi,
+    ],
+    replacements: [
+      'explore', 'examine further', 'significant development',
+      'currently', '', 'start this process', 'use the capabilities',
+      'improve', 'use', '', '', '', '', '', '', ''
+    ],
+  },
+  'Dutch': {
+    patterns: [
+      /\blaten we erin duiken\b/gi,
+      /\baan de slag gaan met\b/gi,
+      /\bgame-?changer\b/gi,
+      /\bin de huidige (snelle|digitale|moderne) (wereld|tijd)\b/gi,
+      /\bhet is (belangrijk|de moeite waard|cruciaal) om (op te merken|te vermelden) dat\b/gi,
+      /\baan deze reis beginnen\b/gi,
+      /\bde kracht (ontgrendelen|ontsluiten) van\b/gi,
+      /\bnaar een hoger niveau tillen\b/gi,
+      /\bde kracht van .* benutten\b/gi,
+      /\btot slot,?\s*/gi,
+      /\bsamengevat,?\s*/gi,
+      /\bter afsluiting,?\s*/gi,
+      /\bzonder verder oponthoud\b/gi,
+      /\buiteindelijk\b/gi,
+    ],
+    replacements: [
+      '', 'beginnen met', 'belangrijke ontwikkeling',
+      'momenteel', '', 'dit proces starten', 'de mogelijkheden gebruiken',
+      'verbeteren', 'gebruiken', '', '', '', '', ''
+    ],
+  },
+  'German': {
+    patterns: [
+      /\btauchen wir ein\b/gi,
+      /\bgame-?changer\b/gi,
+      /\bin der heutigen (schnelllebigen|digitalen|modernen) (Welt|Zeit)\b/gi,
+      /\bes ist (wichtig|erwähnenswert|entscheidend),? (zu beachten|zu erwähnen),? dass\b/gi,
+      /\bauf (diese|eine) Reise gehen\b/gi,
+      /\bdas Potenzial (entfalten|freisetzen)\b/gi,
+      /\bauf das nächste Level bringen\b/gi,
+      /\bdie Kraft von .* nutzen\b/gi,
+      /\bzusammenfassend,?\s*/gi,
+      /\babschließend,?\s*/gi,
+      /\bam Ende des Tages\b/gi,
+    ],
+    replacements: [
+      '', 'bedeutende Entwicklung',
+      'derzeit', '', 'diesen Prozess starten', 'die Möglichkeiten nutzen',
+      'verbessern', 'nutzen', '', '', ''
+    ],
+  },
+  'French': {
+    patterns: [
+      /\bplongeons(-nous)?\b/gi,
+      /\bgame-?changer\b/gi,
+      /\bdans le monde (rapide|numérique|moderne) d'aujourd'hui\b/gi,
+      /\bil est (important|utile|crucial) de (noter|mentionner) que\b/gi,
+      /\bse lancer dans (ce|un) voyage\b/gi,
+      /\blibérer le (potentiel|pouvoir)\b/gi,
+      /\bpasser au niveau supérieur\b/gi,
+      /\bexploiter la puissance de\b/gi,
+      /\ben conclusion,?\s*/gi,
+      /\bpour résumer,?\s*/gi,
+      /\ben fin de compte\b/gi,
+    ],
+    replacements: [
+      '', 'développement significatif',
+      'actuellement', '', 'commencer ce processus', 'utiliser les capacités',
+      'améliorer', 'utiliser', '', '', ''
+    ],
+  },
+  'Spanish': {
+    patterns: [
+      /\bsumerjámonos\b/gi,
+      /\bgame-?changer\b/gi,
+      /\ben el (rápido|digital|moderno) mundo de hoy\b/gi,
+      /\bes (importante|útil|crucial) (notar|mencionar) que\b/gi,
+      /\bemprender (este|un) viaje\b/gi,
+      /\bdesbloquear el (potencial|poder)\b/gi,
+      /\bllevar(lo)? al siguiente nivel\b/gi,
+      /\baprovechar el poder de\b/gi,
+      /\ben conclusión,?\s*/gi,
+      /\bpara resumir,?\s*/gi,
+      /\bal final del día\b/gi,
+    ],
+    replacements: [
+      '', 'desarrollo significativo',
+      'actualmente', '', 'iniciar este proceso', 'utilizar las capacidades',
+      'mejorar', 'utilizar', '', '', ''
+    ],
+  },
+};
 
 /**
  * Audit Rule Definitions
@@ -354,14 +556,200 @@ export const FIX_THRESHOLDS = {
 export const AUTO_FIXABLE_RULES: Record<string, {
   fixType: 'auto' | 'ai-assisted' | 'manual';
   description: string;
+  isLanguageAware?: boolean; // If true, use getLanguagePatterns() instead of static patterns
+  patterns?: RegExp[];
+  replacements?: string[];
 }> = {
-  // Currently no auto-fixable rules are implemented
-  // All issues require manual intervention or using other tools
+  // =========================================================================
+  // AUTOMATIC FIXES (Simple pattern replacements) - LANGUAGE-AWARE
+  // =========================================================================
+  'Stop Word Removal': {
+    fixType: 'auto',
+    description: 'Remove filler words (language-aware)',
+    isLanguageAware: true, // Uses STOP_WORD_PATTERNS based on content language
+  },
+
+  'LLM Phrase Detection': {
+    fixType: 'auto',
+    description: 'Remove common AI-generated phrases (language-aware)',
+    isLanguageAware: true, // Uses LLM_PHRASE_PATTERNS based on content language
+  },
+
+  // =========================================================================
+  // AI-ASSISTED FIXES (Require AI rewrite for context-aware changes)
+  // =========================================================================
+  'Generic Headings': {
+    fixType: 'ai-assisted',
+    description: 'Replace generic headings like "Introduction" with topic-specific ones',
+  },
+
+  'Passive Voice': {
+    fixType: 'ai-assisted',
+    description: 'Rewrite passive voice sentences to active voice',
+  },
+
+  'Modality Certainty': {
+    fixType: 'ai-assisted',
+    description: 'Replace uncertain language ("can be", "might be") with definitive statements',
+  },
+
+  'Subject Positioning': {
+    fixType: 'ai-assisted',
+    description: 'Rewrite sentences to position the central entity as the grammatical subject',
+  },
+
+  'Heading-Entity Alignment': {
+    fixType: 'ai-assisted',
+    description: 'Update headings to include terms from the central entity',
+  },
+
+  'First Sentence Precision': {
+    fixType: 'ai-assisted',
+    description: 'Rewrite first sentence to include a definitive verb (is, are, means)',
+  },
+
+  'Centerpiece Annotation': {
+    fixType: 'ai-assisted',
+    description: 'Ensure core definition appears in first 400 characters',
+  },
+};
+
+/**
+ * Get patterns for a specific rule in a specific language
+ * Falls back to English if the language is not supported
+ */
+export const getLanguagePatterns = (
+  ruleName: string,
+  language: string | undefined | null
+): { patterns: RegExp[]; replacements: string[] } | null => {
+  const langName = getLanguageName(language);
+
+  if (ruleName === 'Stop Word Removal') {
+    return STOP_WORD_PATTERNS[langName] || STOP_WORD_PATTERNS['English'];
+  }
+
+  if (ruleName === 'LLM Phrase Detection') {
+    return LLM_PHRASE_PATTERNS[langName] || LLM_PHRASE_PATTERNS['English'];
+  }
+
+  return null;
+};
+
+/**
+ * Get supported languages for auto-fix patterns
+ */
+export const getSupportedLanguages = (): string[] => {
+  return Object.keys(STOP_WORD_PATTERNS);
 };
 
 // =============================================================================
 // UTILITY FUNCTIONS
 // =============================================================================
+
+/**
+ * Apply automatic pattern-based fix to content
+ * Only works for rules with fixType: 'auto'
+ *
+ * @param ruleName - Name of the rule to apply
+ * @param content - Content to fix
+ * @param language - Language code or name (e.g., 'nl', 'Dutch', 'en', 'English')
+ */
+export const applyAutomaticFix = (
+  ruleName: string,
+  content: string,
+  language?: string | null
+): { fixed: string; changesCount: number; changes: string[]; languageUsed: string } => {
+  const rule = AUTO_FIXABLE_RULES[ruleName];
+
+  if (!rule || rule.fixType !== 'auto') {
+    return { fixed: content, changesCount: 0, changes: [], languageUsed: 'N/A' };
+  }
+
+  let patterns: RegExp[];
+  let replacements: string[];
+  let languageUsed: string;
+
+  // Get language-specific patterns for language-aware rules
+  if (rule.isLanguageAware) {
+    const langPatterns = getLanguagePatterns(ruleName, language);
+    if (!langPatterns) {
+      return { fixed: content, changesCount: 0, changes: [], languageUsed: 'N/A' };
+    }
+    patterns = langPatterns.patterns;
+    replacements = langPatterns.replacements;
+    languageUsed = getLanguageName(language);
+  } else if (rule.patterns) {
+    // Use static patterns for non-language-aware rules
+    patterns = rule.patterns;
+    replacements = rule.replacements || [];
+    languageUsed = 'N/A (language-independent)';
+  } else {
+    return { fixed: content, changesCount: 0, changes: [], languageUsed: 'N/A' };
+  }
+
+  let fixed = content;
+  let changesCount = 0;
+  const changes: string[] = [];
+
+  patterns.forEach((pattern, index) => {
+    const replacement = replacements[index] ?? '';
+    const matches = fixed.match(pattern);
+
+    if (matches && matches.length > 0) {
+      changesCount += matches.length;
+      changes.push(`Replaced ${matches.length}x: "${matches[0]}" → "${replacement || '(removed)'}"`);
+      fixed = fixed.replace(pattern, replacement);
+    }
+  });
+
+  return { fixed, changesCount, changes, languageUsed };
+};
+
+/**
+ * Apply all automatic fixes to content
+ * Applies fixes for all rules with fixType: 'auto'
+ *
+ * @param content - Content to fix
+ * @param language - Language code or name (e.g., 'nl', 'Dutch', 'en', 'English')
+ */
+export const applyAllAutomaticFixes = (
+  content: string,
+  language?: string | null
+): { fixed: string; totalChanges: number; changesByRule: Record<string, string[]>; languageUsed: string } => {
+  let fixed = content;
+  let totalChanges = 0;
+  const changesByRule: Record<string, string[]> = {};
+  const languageUsed = getLanguageName(language);
+
+  Object.entries(AUTO_FIXABLE_RULES)
+    .filter(([_, rule]) => rule.fixType === 'auto')
+    .forEach(([ruleName]) => {
+      const result = applyAutomaticFix(ruleName, fixed, language);
+      if (result.changesCount > 0) {
+        fixed = result.fixed;
+        totalChanges += result.changesCount;
+        changesByRule[ruleName] = result.changes;
+      }
+    });
+
+  return { fixed, totalChanges, changesByRule, languageUsed };
+};
+
+/**
+ * Check if a rule can be automatically fixed (without AI)
+ */
+export const canAutoFix = (ruleName: string): boolean => {
+  const rule = AUTO_FIXABLE_RULES[ruleName];
+  return rule?.fixType === 'auto' && (rule.isLanguageAware || Boolean(rule.patterns));
+};
+
+/**
+ * Check if a rule requires AI-assisted fix
+ */
+export const requiresAIFix = (ruleName: string): boolean => {
+  const rule = AUTO_FIXABLE_RULES[ruleName];
+  return rule?.fixType === 'ai-assisted';
+};
 
 /**
  * Get all rules as a flat array
@@ -434,6 +822,9 @@ export default {
   SEVERITY_COLORS,
   FIX_THRESHOLDS,
   AUTO_FIXABLE_RULES,
+  // Multilingual pattern maps
+  STOP_WORD_PATTERNS,
+  LLM_PHRASE_PATTERNS,
   getAllRules,
   getRuleById,
   getCategoryById,
@@ -441,4 +832,11 @@ export default {
   getFixInfo,
   calculateCategoryScore,
   calculateOverallScore,
+  // Auto-fix utilities (language-aware)
+  applyAutomaticFix,
+  applyAllAutomaticFixes,
+  canAutoFix,
+  requiresAIFix,
+  getLanguagePatterns,
+  getSupportedLanguages,
 };

@@ -19,6 +19,48 @@ import { getLanguageName, getLanguageAndRegionInstruction, getRegionalLanguageVa
  * - Pass-specific rules
  */
 
+/**
+ * Self-verification checklist to improve AI compliance with quality rules.
+ * Included at the end of each optimization prompt.
+ */
+function buildSelfVerificationChecklist(
+  centralEntity: string,
+  hasImages: boolean,
+  passNumber: number
+): string {
+  const checks: string[] = [];
+
+  // Core checks for all passes
+  checks.push(`☐ Central Entity "${centralEntity}" appears in first sentence or paragraph`);
+  checks.push(`☐ Each sentence contains ONE complete fact (Entity + Attribute + Value)`);
+  checks.push(`☐ No sentences start with "Also", "Additionally", "Furthermore", "Moreover"`);
+  checks.push(`☐ No filler words: "very", "really", "basically", "actually", "just"`);
+  checks.push(`☐ Passive voice used sparingly (≤2 times per 100 words)`);
+
+  // Preservation checks for later passes
+  if (passNumber > 2) {
+    checks.push(`☐ Heading hierarchy intact (no H2/H3 levels changed)`);
+  }
+
+  // Image preservation check
+  if (hasImages || passNumber >= 7) {
+    checks.push(`☐ All [IMAGE: ...] placeholders preserved EXACTLY (count unchanged)`);
+  }
+
+  // Structure preservation
+  if (passNumber > 3) {
+    checks.push(`☐ Lists and tables preserved (if any existed)`);
+  }
+
+  return `
+## SELF-VERIFICATION CHECKLIST (Complete before returning)
+Before returning your response, silently verify ALL of the following:
+
+${checks.join('\n')}
+
+If ANY check fails, revise your output before returning. Do not mention this checklist in your output.`;
+}
+
 // ============================================
 // Pass 2: Header Optimization
 // ============================================
@@ -67,6 +109,7 @@ ${adjacentContext.nextSection ? `
 2. Ensure first paragraph directly answers/defines what the heading promises
 3. Maintain all content - do not summarize
 4. Keep language in ${regionalLang}
+${buildSelfVerificationChecklist(holistic.centralEntity, section.current_content?.includes('[IMAGE:') || false, 2)}
 
 **OUTPUT ONLY the optimized section content (heading + paragraphs). No explanations.**`;
 }
@@ -108,6 +151,7 @@ ${holistic.featuredSnippetTarget ? `Featured Snippet Target: ${holistic.featured
 2. Ensure every list has a proper count preamble
 3. Verify ordered vs unordered is semantically correct
 4. Keep prose where it's more appropriate than lists
+${buildSelfVerificationChecklist(holistic.centralEntity, section.current_content?.includes('[IMAGE:') || false, 3)}
 
 **OUTPUT ONLY the optimized section content. No explanations.**`;
 }
@@ -358,6 +402,7 @@ If the content contains [IMAGE: description | alt text] placeholders:
 ## Instructions:
 Apply ALL rules. Maintain content meaning. Keep language in ${regionalLang}.
 PRESERVE all [IMAGE: ...] placeholders exactly as they appear.
+${buildSelfVerificationChecklist(holistic.centralEntity, section.current_content?.includes('[IMAGE:') || false, 5)}
 
 **OUTPUT ONLY the optimized section content. No explanations.**`;
 }
@@ -442,6 +487,7 @@ If the content contains [IMAGE: description | alt text] placeholders:
 ${hasLinksToBridge ? '4. Insert internal links with proper contextual bridges (see INTERNAL LINKS section)' : ''}
 5. Keep all content in ${regionalLang}
 6. PRESERVE all [IMAGE: ...] placeholders exactly as they appear
+${buildSelfVerificationChecklist(holistic.centralEntity, section.current_content?.includes('[IMAGE:') || false, 6)}
 
 **OUTPUT ONLY the optimized section content. No explanations.**`;
 }

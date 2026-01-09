@@ -143,6 +143,9 @@ export class WordCountValidator {
     const heading = context.section?.heading?.toLowerCase() || '';
 
     // Check for introduction patterns
+    // Note: Level 1 headings are treated as introduction because in this content generation
+    // system, level 1 is exclusively used for the article's main title/intro section.
+    // The structured outline schema enforces that core content sections start at level 2+.
     if (heading.includes('introduction') || heading.includes('intro') || context.section?.level === 1) {
       return 'introduction';
     }

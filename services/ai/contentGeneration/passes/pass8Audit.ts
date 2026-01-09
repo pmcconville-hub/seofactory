@@ -88,6 +88,43 @@ export async function executePass8(
   // Combined final score: 60% algorithmic + 40% compliance
   const finalScore = Math.round(algorithmicScore * 0.6 + complianceResult.overall * 0.4);
 
+  // Quality enforcement thresholds
+  const CRITICAL_THRESHOLD = 50;  // Below this, content is blocked
+  const WARNING_THRESHOLD = 70;   // Below this, content needs improvement
+
+  // Identify critical failing rules
+  const failingRules = algorithmicResults.filter(r => !r.isPassing);
+  const criticalFailures = failingRules.filter(r =>
+    r.rule.includes('CENTERPIECE') ||
+    r.rule.includes('HEADING_HIERARCHY') ||
+    r.rule.includes('LLM_SIGNATURE') ||
+    r.rule.includes('IMAGE_PLACEMENT')
+  );
+
+  // Quality gate enforcement
+  if (finalScore < CRITICAL_THRESHOLD) {
+    log.error(` Quality audit FAILED: Score ${finalScore}% below ${CRITICAL_THRESHOLD}% threshold`);
+    log.error(` Failing rules: ${failingRules.map(r => r.rule).join(', ')}`);
+
+    // Update job with failure status before throwing
+    await orchestrator.updateJob(job.id, {
+      last_error: `Quality audit failed: Score ${finalScore}% below ${CRITICAL_THRESHOLD}% threshold. Critical issues: ${criticalFailures.map(r => r.rule).join(', ')}`,
+      passes_status: { ...job.passes_status, pass_9_audit: 'failed' }
+    });
+
+    throw new Error(
+      `Quality audit failed: Score ${finalScore}% is below the ${CRITICAL_THRESHOLD}% minimum threshold. ` +
+      `${failingRules.length} rules failed: ${failingRules.slice(0, 5).map(r => r.rule).join(', ')}${failingRules.length > 5 ? '...' : ''}. ` +
+      `Regenerate content with stricter adherence to quality guidelines.`
+    );
+  }
+
+  if (finalScore < WARNING_THRESHOLD) {
+    log.warn(` Quality audit WARNING: Score ${finalScore}% below ${WARNING_THRESHOLD}% threshold`);
+    log.warn(` Failing rules (${failingRules.length}): ${failingRules.map(r => r.rule).join(', ')}`);
+    // Content continues but with warning logged
+  }
+
   const auditDetails: AuditDetails = {
     algorithmicResults,
     passingRules,
