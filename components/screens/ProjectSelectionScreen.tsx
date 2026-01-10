@@ -8,6 +8,7 @@ import { Loader } from '../ui/Loader';
 import { Project, AppStep } from '../../types';
 import { OrganizationSwitcher, PendingInvitationsBanner } from '../organization';
 import { getSupabaseClient, resetSupabaseClient, clearSupabaseAuthStorage } from '../../services/supabaseClient';
+import { useSuperAdmin } from '../../hooks/useSuperAdmin';
 
 interface ProjectSelectionScreenProps {
   onCreateProject: (projectName: string, domain: string) => void;
@@ -20,6 +21,7 @@ const ProjectSelectionScreen: React.FC<ProjectSelectionScreenProps> = ({ onCreat
   const { projects, isLoading, user, businessInfo } = state;
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDomain, setNewProjectDomain] = useState('');
+  const { isSuperAdmin } = useSuperAdmin();
 
   const handleLogout = async () => {
     const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
@@ -54,12 +56,12 @@ const ProjectSelectionScreen: React.FC<ProjectSelectionScreenProps> = ({ onCreat
             {user && (
               <span className="text-sm text-gray-400">{user.email}</span>
             )}
-            {user?.user_metadata?.role === 'admin' && (
+            {isSuperAdmin && (
               <Button
                   onClick={() => dispatch({ type: 'SET_STEP', payload: AppStep.ADMIN })}
                   className="bg-gray-800 hover:bg-gray-700 border border-gray-600 flex items-center gap-2 shadow-lg"
               >
-                  <span className="text-lg">🛡️</span> Admin Dashboard
+                  <span className="text-lg">🛡️</span> Admin Console
               </Button>
             )}
             <Button
