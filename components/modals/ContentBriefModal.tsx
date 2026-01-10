@@ -1,6 +1,6 @@
 
 // components/ContentBriefModal.tsx
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useAppState } from '../../state/appState';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -26,6 +26,13 @@ import { VisualSemanticsPanel } from '../brief/VisualSemanticsPanel';
 import { getSupabaseClient } from '../../services/supabaseClient';
 import CompetitiveIntelligenceWrapper from '../analysis/CompetitiveIntelligenceWrapper';
 import { useFeatureGate } from '../../hooks/usePermissions';
+import {
+  ContentGenerationModeSelector,
+  DEFAULT_GENERATION_SETTINGS,
+  type ContentGenerationSettings as QualityModeSettings
+} from '../settings/ContentGenerationModeSelector';
+import { LiveGenerationMonitor } from '../quality/LiveGenerationMonitor';
+import type { PassDelta } from '../../services/ai/contentGeneration/tracking';
 
 interface ContentBriefModalProps {
   allTopics: EnrichedTopic[];
@@ -92,6 +99,8 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
     });
+    const [qualityModeSettings, setQualityModeSettings] = useState<QualityModeSettings>(DEFAULT_GENERATION_SETTINGS);
+    const [showQualityView, setShowQualityView] = useState(false);
 
     // Report generation hook
     const reportHook = useContentBriefReport(brief, activeBriefTopic || undefined);
@@ -490,6 +499,36 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
     // Show progress UI when actively generating, paused, or failed (to show pass status and allow retry)
     const showProgressUI = isGenerating || isPaused || isFailed || (job && !isComplete);
 
+    // Generate pass deltas from job status for LiveGenerationMonitor
+    // This is an approximation - full tracking would require orchestrator integration
+    const passDeltas = useMemo((): PassDelta[] => {
+        if (!job?.passes_status) return [];
+
+        const deltas: PassDelta[] = [];
+        const passKeys = [
+            'pass_1_draft', 'pass_2_headers', 'pass_3_intro', 'pass_4_lists',
+            'pass_5_discourse', 'pass_6_microsemantics', 'pass_7_visuals',
+            'pass_8_polish', 'pass_9_audit', 'pass_10_schema'
+        ] as const;
+
+        for (let i = 0; i < passKeys.length; i++) {
+            const status = job.passes_status[passKeys[i]];
+            if (status === 'completed') {
+                // Create a simple delta for completed passes
+                // In a full implementation, this would track actual rule changes
+                deltas.push({
+                    passNumber: i + 1,
+                    rulesFixed: [],
+                    rulesRegressed: [],
+                    rulesUnchanged: [],
+                    netChange: 0,
+                    recommendation: 'accept'
+                });
+            }
+        }
+        return deltas;
+    }, [job?.passes_status]);
+
     // Allow settings when: multi-pass enabled and NOT actively generating
     // Settings should be accessible even when there's an existing draft (for regeneration)
     const canShowSettings = useMultiPass && !isGenerating;
@@ -642,18 +681,55 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
             {/* Collapsible Settings Panel - visible when settings toggled on */}
             {canShowSettings && showSettings && (
                 <div id="content-brief-settings" className="border-b border-gray-700 bg-gray-850 p-4 flex-shrink-0">
-                        <div className="grid md:grid-cols-2 gap-4 max-h-[300px] overflow-y-auto">
-                            <ContentGenerationSettingsPanel
-                                settings={contentSettings}
-                                onChange={setContentSettings}
-                                presets={PRIORITY_PRESETS}
-                            />
-                            <PassControlPanel
-                                passes={contentSettings.passes}
-                                onChange={(passes) => setContentSettings(prev => ({ ...prev, passes }))}
-                                disabled={isGenerating}
-                            />
+                        {/* Settings Tabs */}
+                        <div className="flex gap-2 mb-4 border-b border-gray-700/50 pb-2">
+                            <button
+                                onClick={() => setContentSettings(prev => ({ ...prev, _activeTab: 'passes' }))}
+                                className={`text-xs px-3 py-1.5 rounded-t border-b-2 transition-colors ${
+                                    (contentSettings as any)._activeTab !== 'quality'
+                                        ? 'border-blue-500 text-blue-300'
+                                        : 'border-transparent text-gray-400 hover:text-gray-300'
+                                }`}
+                            >
+                                Pass Settings
+                            </button>
+                            <button
+                                onClick={() => setContentSettings(prev => ({ ...prev, _activeTab: 'quality' }))}
+                                className={`text-xs px-3 py-1.5 rounded-t border-b-2 transition-colors ${
+                                    (contentSettings as any)._activeTab === 'quality'
+                                        ? 'border-purple-500 text-purple-300'
+                                        : 'border-transparent text-gray-400 hover:text-gray-300'
+                                }`}
+                            >
+                                Quality Mode
+                            </button>
                         </div>
+
+                        {/* Pass Settings Tab */}
+                        {(contentSettings as any)._activeTab !== 'quality' && (
+                            <div className="grid md:grid-cols-2 gap-4 max-h-[300px] overflow-y-auto">
+                                <ContentGenerationSettingsPanel
+                                    settings={contentSettings}
+                                    onChange={setContentSettings}
+                                    presets={PRIORITY_PRESETS}
+                                />
+                                <PassControlPanel
+                                    passes={contentSettings.passes}
+                                    onChange={(passes) => setContentSettings(prev => ({ ...prev, passes }))}
+                                    disabled={isGenerating}
+                                />
+                            </div>
+                        )}
+
+                        {/* Quality Mode Tab */}
+                        {(contentSettings as any)._activeTab === 'quality' && (
+                            <div className="max-h-[400px] overflow-y-auto">
+                                <ContentGenerationModeSelector
+                                    settings={qualityModeSettings}
+                                    onChange={setQualityModeSettings}
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -661,17 +737,84 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                     {/* Multi-Pass Progress UI */}
                     {showProgressUI && job && (
                         <div className="mb-6">
-                            <ContentGenerationProgress
-                                job={job}
-                                sections={sections}
-                                progress={progress}
-                                currentPassName={currentPassName}
-                                onPause={pauseGeneration}
-                                onResume={resumeGeneration}
-                                onCancel={cancelGeneration}
-                                onRetry={retryGeneration}
-                                error={error}
-                            />
+                            {/* View Toggle */}
+                            <div className="flex gap-2 mb-3">
+                                <button
+                                    onClick={() => setShowQualityView(false)}
+                                    className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                                        !showQualityView
+                                            ? 'bg-blue-900/50 border-blue-600 text-blue-200'
+                                            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                                    }`}
+                                >
+                                    Standard View
+                                </button>
+                                <button
+                                    onClick={() => setShowQualityView(true)}
+                                    className={`text-xs px-3 py-1.5 rounded border transition-colors ${
+                                        showQualityView
+                                            ? 'bg-purple-900/50 border-purple-600 text-purple-200'
+                                            : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                                    }`}
+                                >
+                                    Quality Timeline
+                                </button>
+                            </div>
+
+                            {/* Standard Progress View */}
+                            {!showQualityView && (
+                                <ContentGenerationProgress
+                                    job={job}
+                                    sections={sections}
+                                    progress={progress}
+                                    currentPassName={currentPassName}
+                                    onPause={pauseGeneration}
+                                    onResume={resumeGeneration}
+                                    onCancel={cancelGeneration}
+                                    onRetry={retryGeneration}
+                                    error={error}
+                                />
+                            )}
+
+                            {/* Quality Timeline View */}
+                            {showQualityView && (
+                                <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                                    <LiveGenerationMonitor
+                                        jobId={job.id}
+                                        currentPass={job.current_pass}
+                                        totalPasses={10}
+                                        passDeltas={passDeltas}
+                                        isGenerating={isGenerating}
+                                        onPauseGeneration={pauseGeneration}
+                                        onResumeGeneration={resumeGeneration}
+                                    />
+                                    {/* Show error in quality view too */}
+                                    {(job.last_error || error) && (
+                                        <div className="mt-4 p-3 bg-red-900/30 border border-red-700 rounded">
+                                            <p className="text-sm text-red-300">{job.last_error || error}</p>
+                                        </div>
+                                    )}
+                                    {/* Action buttons */}
+                                    <div className="flex gap-2 mt-4">
+                                        {isFailed && retryGeneration && (
+                                            <button
+                                                onClick={retryGeneration}
+                                                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm"
+                                            >
+                                                Retry
+                                            </button>
+                                        )}
+                                        {(isGenerating || isPaused || isFailed) && (
+                                            <button
+                                                onClick={cancelGeneration}
+                                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm"
+                                            >
+                                                Cancel
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 

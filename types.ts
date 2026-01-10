@@ -2913,6 +2913,9 @@ export interface ContentGenerationJob {
 
   // Audit auto-fix support
   audit_issues?: AuditIssue[];
+
+  // Quality enforcement report (comprehensive quality data)
+  quality_report?: QualityReport | null;
 }
 
 export interface AuditDetails {
@@ -2948,6 +2951,43 @@ export interface AuditDetails {
     }>;
     recommendations: string[];
   };
+}
+
+/**
+ * Comprehensive quality report stored with content generation jobs.
+ * This captures the full quality enforcement state including rule compliance,
+ * violations, pass tracking, and systemic checks.
+ */
+export interface QualityReport {
+  /** Overall quality score (0-100) */
+  overallScore: number;
+  /** Scores by rule category (A-S) */
+  categoryScores: Record<string, number>;
+  /** Rule violations found during generation */
+  violations: Array<{
+    rule: string;
+    text: string;
+    severity: 'error' | 'warning' | 'info';
+    suggestion: string;
+  }>;
+  /** Pass-by-pass quality deltas */
+  passDeltas: Array<{
+    passNumber: number;
+    rulesFixed: string[];
+    rulesRegressed: string[];
+    netChange: number;
+  }>;
+  /** Systemic/structural checks (word count, image balance, etc.) */
+  systemicChecks: Array<{
+    checkId: string;
+    name: string;
+    status: 'pass' | 'warning' | 'fail';
+    value: string;
+  }>;
+  /** When this report was generated */
+  generatedAt: string;
+  /** The generation mode used (autonomous or supervised) */
+  generationMode: 'autonomous' | 'supervised';
 }
 
 export interface ContentGenerationSection {

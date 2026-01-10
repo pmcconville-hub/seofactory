@@ -9,7 +9,8 @@ import {
   SEOPillars,
   EnrichedTopic,
   EnhancedSchemaResult,
-  PASS_NAMES
+  PASS_NAMES,
+  QualityReport
 } from '../types';
 import {
   ContentGenerationOrchestrator,
@@ -30,6 +31,99 @@ import {
   collectFromPass8
 } from '../services/ai/contentGeneration/progressiveSchemaCollector';
 import { extractPlaceholdersFromDraft } from '../services/ai/imageGeneration/placeholderParser';
+import type { AuditDetails } from '../types';
+
+// Helper functions for building quality report
+function buildCategoryScores(auditDetails: AuditDetails | null): Record<string, number> {
+  if (!auditDetails?.algorithmicResults) return {};
+
+  const categoryMap: Record<string, { passed: number; total: number }> = {};
+
+  for (const result of auditDetails.algorithmicResults) {
+    // Extract category from rule ID (e.g., "A1" -> "A", "B3" -> "B")
+    const category = result.ruleId?.match(/^([A-Z])/)?.[1] || 'Other';
+
+    if (!categoryMap[category]) {
+      categoryMap[category] = { passed: 0, total: 0 };
+    }
+    categoryMap[category].total++;
+    if (result.passed) {
+      categoryMap[category].passed++;
+    }
+  }
+
+  // Convert to percentage scores
+  const scores: Record<string, number> = {};
+  for (const [category, data] of Object.entries(categoryMap)) {
+    scores[category] = data.total > 0 ? Math.round((data.passed / data.total) * 100) : 100;
+  }
+
+  return scores;
+}
+
+function buildViolations(auditDetails: AuditDetails | null): QualityReport['violations'] {
+  if (!auditDetails?.algorithmicResults) return [];
+
+  return auditDetails.algorithmicResults
+    .filter(r => !r.passed)
+    .map(r => ({
+      rule: r.ruleId || 'Unknown',
+      text: r.description || '',
+      severity: (r.severity as 'error' | 'warning' | 'info') || 'warning',
+      suggestion: r.suggestion || ''
+    }));
+}
+
+function buildSystemicChecks(job: ContentGenerationJob): QualityReport['systemicChecks'] {
+  const checks: QualityReport['systemicChecks'] = [];
+
+  // Word count check
+  const wordCount = job.draft_content?.split(/\s+/).length || 0;
+  checks.push({
+    checkId: 'word_count',
+    name: 'Word Count',
+    status: wordCount >= 1500 ? 'pass' : wordCount >= 800 ? 'warning' : 'fail',
+    value: `${wordCount} words`
+  });
+
+  // Image count check
+  const imageCount = (job.draft_content?.match(/!\[/g) || []).length +
+    (job.draft_content?.match(/\[IMAGE_PLACEHOLDER/g) || []).length;
+  checks.push({
+    checkId: 'image_count',
+    name: 'Image Balance',
+    status: imageCount >= 3 ? 'pass' : imageCount >= 1 ? 'warning' : 'fail',
+    value: `${imageCount} images/placeholders`
+  });
+
+  // Section count
+  const sectionCount = (job.draft_content?.match(/^##\s/gm) || []).length;
+  checks.push({
+    checkId: 'section_count',
+    name: 'Section Structure',
+    status: sectionCount >= 4 ? 'pass' : sectionCount >= 2 ? 'warning' : 'fail',
+    value: `${sectionCount} sections`
+  });
+
+  // Audit score check
+  const auditScore = job.final_audit_score || 0;
+  checks.push({
+    checkId: 'audit_score',
+    name: 'Audit Score',
+    status: auditScore >= 70 ? 'pass' : auditScore >= 50 ? 'warning' : 'fail',
+    value: `${auditScore}%`
+  });
+
+  // Schema check
+  checks.push({
+    checkId: 'schema_generated',
+    name: 'Schema Generated',
+    status: job.schema_data ? 'pass' : 'warning',
+    value: job.schema_data ? (job.schema_data as any).pageType || 'Generated' : 'Pending'
+  });
+
+  return checks;
+}
 
 interface UseContentGenerationProps {
   briefId: string;
@@ -510,10 +604,22 @@ export function useContentGeneration({
           }
         }
 
-        // Mark job as completed
+        // Build quality report from audit details and job state
+        const qualityReport: QualityReport = {
+          overallScore: updatedJob.final_audit_score || 0,
+          categoryScores: buildCategoryScores(updatedJob.audit_details),
+          violations: buildViolations(updatedJob.audit_details),
+          passDeltas: [], // Would require full tracking integration
+          systemicChecks: buildSystemicChecks(updatedJob),
+          generatedAt: new Date().toISOString(),
+          generationMode: 'autonomous' // TODO: Get from settings
+        };
+
+        // Mark job as completed and save quality report
         await orchestrator.updateJob(updatedJob.id, {
           status: 'completed',
-          completed_at: new Date().toISOString()
+          completed_at: new Date().toISOString(),
+          quality_report: qualityReport
         });
       }
 
