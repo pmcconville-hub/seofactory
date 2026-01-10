@@ -18,6 +18,7 @@ import { useOrganizationContext } from './OrganizationProvider';
 import { useAppState } from '../../state/appState';
 import { useApiKeys, AI_PROVIDERS, AIProvider } from '../../hooks/useApiKeys';
 import { ApiKeyStatus } from '../../types';
+import { getSupabaseClient } from '../../services/supabaseClient';
 
 // ============================================================================
 // Types
@@ -373,34 +374,72 @@ export function OrganizationApiKeysModal({ isOpen, onClose }: OrganizationApiKey
 
     setIsSaving(true);
     try {
-      // TODO: Call edge function to remove key from Vault
-      // For now, just update the database metadata
-      console.log('[ApiKeys] Would remove key for:', provider);
+      // Call edge function to remove key from Vault
+      const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+      const { data: sessionData } = await supabase.auth.getSession();
+
+      const response = await fetch(
+        `${state.businessInfo.supabaseUrl}/functions/v1/manage-org-api-keys`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sessionData.session?.access_token}`,
+          },
+          body: JSON.stringify({
+            action: 'delete',
+            organization_id: organization.id,
+            provider,
+          }),
+        }
+      );
+
+      const result = await response.json();
+      if (!result.ok) {
+        throw new Error(result.error || 'Failed to remove API key');
+      }
 
       // Refresh statuses
       const statuses = await getOrganizationKeyStatus(organization.id);
       setKeyStatuses(statuses);
     } catch (err) {
       console.error('Failed to remove key:', err);
-      alert('Failed to remove API key. Please try again.');
+      alert(`Failed to remove API key: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setIsSaving(false);
     }
-  }, [organization, getOrganizationKeyStatus]);
+  }, [organization, getOrganizationKeyStatus, state.businessInfo]);
 
   const handleSaveKey = useCallback(async (provider: AIProvider, key: string) => {
     if (!organization) return;
 
     setIsSaving(true);
     try {
-      // TODO: Call edge function to store key in Vault
-      // For now, show a message that this feature is coming
-      console.log('[ApiKeys] Would save key for:', provider, 'Key length:', key.length);
+      // Call edge function to store key in Vault
+      const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+      const { data: sessionData } = await supabase.auth.getSession();
 
-      alert(
-        'API key storage is being configured. ' +
-        'For now, please configure API keys in the Settings modal under "AI Providers".'
+      const response = await fetch(
+        `${state.businessInfo.supabaseUrl}/functions/v1/manage-org-api-keys`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sessionData.session?.access_token}`,
+          },
+          body: JSON.stringify({
+            action: 'store',
+            organization_id: organization.id,
+            provider,
+            api_key: key,
+          }),
+        }
       );
+
+      const result = await response.json();
+      if (!result.ok) {
+        throw new Error(result.error || 'Failed to save API key');
+      }
 
       setConfiguringProvider(null);
 
@@ -409,11 +448,11 @@ export function OrganizationApiKeysModal({ isOpen, onClose }: OrganizationApiKey
       setKeyStatuses(statuses);
     } catch (err) {
       console.error('Failed to save key:', err);
-      alert('Failed to save API key. Please try again.');
+      alert(`Failed to save API key: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setIsSaving(false);
     }
-  }, [organization, getOrganizationKeyStatus]);
+  }, [organization, getOrganizationKeyStatus, state.businessInfo]);
 
   const getStatusForProvider = useCallback(
     (provider: AIProvider) => keyStatuses.find((s) => s.provider === provider),
