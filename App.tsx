@@ -307,11 +307,14 @@ const App: React.FC = () => {
                 try {
                     const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
                     
-                    // Fetch Projects
+                    // Fetch Projects - RLS policies handle access control via organization membership
+                    // This returns all projects the user has access to:
+                    // - Projects in organizations they're a member of (has_project_access)
+                    // - Legacy projects they own directly (user_id = auth.uid())
                     const { data: projectsData, error: projectsError } = await supabase
                         .from('projects')
                         .select('*')
-                        .eq('user_id', state.user.id);
+                        .order('created_at', { ascending: false });
                     if (projectsError) throw projectsError;
                     dispatch({ type: 'SET_PROJECTS', payload: projectsData || [] });
 
