@@ -10,6 +10,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useOrganizationContext } from './OrganizationProvider';
+import { CreateOrganizationModal } from './CreateOrganizationModal';
 import { Loader } from '../ui/Loader';
 
 interface OrganizationSwitcherProps {
@@ -27,6 +28,7 @@ export function OrganizationSwitcher({ className = '' }: OrganizationSwitcherPro
   } = useOrganizationContext();
 
   const [isOpen, setIsOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on outside click
@@ -135,8 +137,25 @@ export function OrganizationSwitcher({ className = '' }: OrganizationSwitcherPro
               )}
             </button>
           ))}
+          <div className="border-t border-gray-700 mt-1 pt-1">
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                setIsCreateModalOpen(true);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-2 text-left text-gray-400 hover:bg-gray-700/50 hover:text-gray-200 transition-colors"
+            >
+              <span className="text-base">+</span>
+              <span className="text-sm">Create Organization</span>
+            </button>
+          </div>
         </div>
       )}
+
+      <CreateOrganizationModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+      />
     </div>
   );
 }
