@@ -10,7 +10,7 @@ import { Loader } from '../ui/Loader';
 import { Modal } from '../ui/Modal';
 import * as modelDiscovery from '../../services/modelDiscoveryService';
 import { WordPressConnectionManager } from '../wordpress';
-import { OrganizationSettingsTab, MemberManagementModal } from '../organization';
+import { OrganizationSettingsTab, MemberManagementModal, CostDashboardModal } from '../organization';
 
 // --- Sub-components for better organization ---
 
@@ -244,6 +244,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
     const [isSaving, setIsSaving] = useState(false);
     const [activeTab, setActiveTab] = useState<'ai' | 'services' | 'wordpress' | 'organization' | 'health'>('ai');
     const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
+    const [isCostModalOpen, setIsCostModalOpen] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
@@ -332,6 +333,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
                      {activeTab === 'organization' && (
                        <OrganizationSettingsTab
                          onOpenMemberManagement={() => setIsMemberModalOpen(true)}
+                         onOpenCosts={() => setIsCostModalOpen(true)}
                        />
                      )}
                 </main>
@@ -340,6 +342,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
         <MemberManagementModal
           isOpen={isMemberModalOpen}
           onClose={() => setIsMemberModalOpen(false)}
+        />
+        <CostDashboardModal
+          isOpen={isCostModalOpen}
+          onClose={() => setIsCostModalOpen(false)}
         />
     </>
     );
