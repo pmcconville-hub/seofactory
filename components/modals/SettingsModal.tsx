@@ -10,7 +10,7 @@ import { Loader } from '../ui/Loader';
 import { Modal } from '../ui/Modal';
 import * as modelDiscovery from '../../services/modelDiscoveryService';
 import { WordPressConnectionManager } from '../wordpress';
-import { OrganizationSettingsTab } from '../organization';
+import { OrganizationSettingsTab, MemberManagementModal } from '../organization';
 
 // --- Sub-components for better organization ---
 
@@ -243,6 +243,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
     const [settings, setSettings] = useState<Partial<BusinessInfo>>(initialSettings);
     const [isSaving, setIsSaving] = useState(false);
     const [activeTab, setActiveTab] = useState<'ai' | 'services' | 'wordpress' | 'organization' | 'health'>('ai');
+    const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
@@ -293,6 +294,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
     );
 
     return (
+    <>
         <Modal
             isOpen={isOpen}
             onClose={onClose}
@@ -327,10 +329,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
                          <WordPressConnectionManager projectId={state.activeProjectId || undefined} />
                        </div>
                      )}
-                     {activeTab === 'organization' && <OrganizationSettingsTab />}
+                     {activeTab === 'organization' && (
+                       <OrganizationSettingsTab
+                         onOpenMemberManagement={() => setIsMemberModalOpen(true)}
+                       />
+                     )}
                 </main>
             </form>
         </Modal>
+        <MemberManagementModal
+          isOpen={isMemberModalOpen}
+          onClose={() => setIsMemberModalOpen(false)}
+        />
+    </>
     );
 };
 
