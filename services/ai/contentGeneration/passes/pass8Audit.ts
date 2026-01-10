@@ -95,33 +95,33 @@ export async function executePass8(
   // Identify critical failing rules
   const failingRules = algorithmicResults.filter(r => !r.isPassing);
   const criticalFailures = failingRules.filter(r =>
-    r.rule.includes('CENTERPIECE') ||
-    r.rule.includes('HEADING_HIERARCHY') ||
-    r.rule.includes('LLM_SIGNATURE') ||
-    r.rule.includes('IMAGE_PLACEMENT')
+    (r.ruleName || '').includes('CENTERPIECE') ||
+    (r.ruleName || '').includes('HEADING_HIERARCHY') ||
+    (r.ruleName || '').includes('LLM_SIGNATURE') ||
+    (r.ruleName || '').includes('IMAGE_PLACEMENT')
   );
 
   // Quality gate enforcement
   if (finalScore < CRITICAL_THRESHOLD) {
     log.error(` Quality audit FAILED: Score ${finalScore}% below ${CRITICAL_THRESHOLD}% threshold`);
-    log.error(` Failing rules: ${failingRules.map(r => r.rule).join(', ')}`);
+    log.error(` Failing rules: ${failingRules.map(r => r.ruleName || 'unknown').join(', ')}`);
 
     // Update job with failure status before throwing
     await orchestrator.updateJob(job.id, {
-      last_error: `Quality audit failed: Score ${finalScore}% below ${CRITICAL_THRESHOLD}% threshold. Critical issues: ${criticalFailures.map(r => r.rule).join(', ')}`,
+      last_error: `Quality audit failed: Score ${finalScore}% below ${CRITICAL_THRESHOLD}% threshold. Critical issues: ${criticalFailures.map(r => r.ruleName || 'unknown').join(', ')}`,
       passes_status: { ...job.passes_status, pass_9_audit: 'failed' }
     });
 
     throw new Error(
       `Quality audit failed: Score ${finalScore}% is below the ${CRITICAL_THRESHOLD}% minimum threshold. ` +
-      `${failingRules.length} rules failed: ${failingRules.slice(0, 5).map(r => r.rule).join(', ')}${failingRules.length > 5 ? '...' : ''}. ` +
+      `${failingRules.length} rules failed: ${failingRules.slice(0, 5).map(r => r.ruleName || 'unknown').join(', ')}${failingRules.length > 5 ? '...' : ''}. ` +
       `Regenerate content with stricter adherence to quality guidelines.`
     );
   }
 
   if (finalScore < WARNING_THRESHOLD) {
     log.warn(` Quality audit WARNING: Score ${finalScore}% below ${WARNING_THRESHOLD}% threshold`);
-    log.warn(` Failing rules (${failingRules.length}): ${failingRules.map(r => r.rule).join(', ')}`);
+    log.warn(` Failing rules (${failingRules.length}): ${failingRules.map(r => r.ruleName || 'unknown').join(', ')}`);
     // Content continues but with warning logged
   }
 
