@@ -10,20 +10,21 @@ import {
   EnrichedTopic,
   EnhancedSchemaResult,
   PASS_NAMES,
-  QualityReport
+  QualityReport,
+  SectionGenerationContext
 } from '../types';
 import {
   ContentGenerationOrchestrator,
   executePass1,
   executePass2,
-  executePass3,   // Introduction Synthesis (was Pass 7)
-  executePass4,   // Lists & Tables (was Pass 3)
-  executePass5,   // Discourse Integration (was Pass 6)
-  executePass6,   // Micro Semantics (was Pass 5)
-  executePass7,   // Visual Semantics (was Pass 4)
-  executePass8,   // Final Polish (NEW)
-  executePass9,   // Final Audit (was Pass 8)
-  executePass10   // Schema Generation (was Pass 9)
+  executePass3,   // Lists & Tables
+  executePass4,   // Discourse Integration
+  executePass5,   // Micro Semantics
+  executePass6,   // Visual Semantics
+  executePass7,   // Introduction Synthesis (AFTER body polish)
+  executePass8,   // Final Polish
+  executePass9,   // Final Audit
+  executePass10   // Schema Generation
 } from '../services/ai/contentGeneration';
 import {
   createEmptyProgressiveData,
@@ -31,7 +32,9 @@ import {
   collectFromPass8
 } from '../services/ai/contentGeneration/progressiveSchemaCollector';
 import { extractPlaceholdersFromDraft } from '../services/ai/imageGeneration/placeholderParser';
-import type { AuditDetails } from '../types';
+import type { PassDelta } from '../services/ai/contentGeneration/tracking';
+import { runAlgorithmicAudit } from '../services/ai/contentGeneration/passes/auditChecks';
+import type { AuditDetails, ValidationViolation } from '../types';
 
 // Helper functions for building quality report
 function buildCategoryScores(auditDetails: AuditDetails | null): Record<string, number> {
@@ -123,6 +126,85 @@ function buildSystemicChecks(job: ContentGenerationJob): QualityReport['systemic
   });
 
   return checks;
+}
+
+/**
+ * Get violations from draft content using algorithmic audit
+ * Converts AuditRuleResult[] to ValidationViolation[] for PassTracker
+ */
+function getViolationsFromContent(
+  draft: string,
+  brief: ContentBrief,
+  businessInfo: BusinessInfo
+): ValidationViolation[] {
+  if (!draft || draft.length < 100) return []; // Skip for minimal content
+
+  try {
+    const auditResults = runAlgorithmicAudit(draft, brief, businessInfo);
+    return auditResults
+      .filter(r => !r.isPassing)
+      .map(r => ({
+        rule: r.rule || 'UNKNOWN',
+        text: r.details || '',
+        position: 0,
+        severity: (r.severity as 'error' | 'warning' | 'info') || 'warning',
+        suggestion: r.remediation || ''
+      }));
+  } catch (err) {
+    console.warn('[PassTracker] Failed to get violations:', err);
+    return [];
+  }
+}
+
+/**
+ * Calculate PassDelta by comparing violations before and after a pass
+ */
+function calculatePassDelta(
+  passNumber: number,
+  violationsBefore: ValidationViolation[],
+  violationsAfter: ValidationViolation[]
+): PassDelta {
+  const rulesBefore = new Set(violationsBefore.map(v => v.rule));
+  const rulesAfter = new Set(violationsAfter.map(v => v.rule));
+
+  const rulesFixed: string[] = [];
+  const rulesRegressed: string[] = [];
+  const rulesUnchanged: string[] = [];
+
+  // Find rules that were fixed (in before but not in after)
+  for (const rule of rulesBefore) {
+    if (!rulesAfter.has(rule)) {
+      rulesFixed.push(rule);
+    } else {
+      rulesUnchanged.push(rule);
+    }
+  }
+
+  // Find rules that regressed (in after but not in before)
+  for (const rule of rulesAfter) {
+    if (!rulesBefore.has(rule)) {
+      rulesRegressed.push(rule);
+    }
+  }
+
+  const netChange = rulesFixed.length - rulesRegressed.length;
+
+  // Determine recommendation based on net change
+  let recommendation: 'accept' | 'reject' | 'review' = 'accept';
+  if (netChange < -2) {
+    recommendation = 'reject';
+  } else if (netChange < 0) {
+    recommendation = 'review';
+  }
+
+  return {
+    passNumber,
+    rulesFixed,
+    rulesRegressed,
+    rulesUnchanged,
+    netChange,
+    recommendation
+  };
 }
 
 import type { ContentGenerationSettings, ContentGenerationPriorities } from '../types/contentGeneration';
@@ -387,6 +469,39 @@ export function useContentGeneration({
       generationPriorities: generationSettings?.priorities,
     };
 
+    // Real quality tracking: collect PassDeltas during pass execution
+    const collectedDeltas: PassDelta[] = [];
+    let violationsBeforePass: ValidationViolation[] = [];
+
+    // Helper to capture violations for delta tracking
+    const captureViolations = () => {
+      return getViolationsFromContent(
+        updatedJob.draft_content || '',
+        brief,
+        safeBusinessInfo
+      );
+    };
+
+    // Helper to track pass completion and calculate delta
+    const trackPassCompletion = (passNumber: number) => {
+      try {
+        const violationsAfterPass = captureViolations();
+        const delta = calculatePassDelta(passNumber, violationsBeforePass, violationsAfterPass);
+        collectedDeltas.push(delta);
+
+        // Log meaningful changes
+        if (delta.rulesFixed.length > 0 || delta.rulesRegressed.length > 0) {
+          const msg = `Pass ${passNumber}: ${delta.rulesFixed.length} rules fixed, ${delta.rulesRegressed.length} regressed (net: ${delta.netChange > 0 ? '+' : ''}${delta.netChange})`;
+          onLog(msg, delta.netChange >= 0 ? 'success' : 'warning');
+        }
+
+        // Update violationsBeforePass for next pass
+        violationsBeforePass = violationsAfterPass;
+      } catch (err) {
+        console.warn(`[PassTracker] Failed to track pass ${passNumber}:`, err);
+      }
+    };
+
     // Log generation settings being used
     if (generationSettings?.priorities) {
       const p = generationSettings.priorities;
@@ -430,6 +545,8 @@ export function useContentGeneration({
         updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
         // Collect progressive schema data from Pass 1
         await collectProgressiveData(1, updatedJob.draft_content || '');
+        // Initialize violation tracking after draft generation
+        violationsBeforePass = captureViolations();
       }
 
       // Helper for section progress callbacks
@@ -441,6 +558,10 @@ export function useContentGeneration({
       // Pass 2: Headers (section-by-section with holistic context)
       // Excludes intro/conclusion - they're handled in Pass 7
       if (updatedJob.current_pass === 2) {
+        // Capture violations before pass for delta tracking
+        if (violationsBeforePass.length === 0) {
+          violationsBeforePass = captureViolations();
+        }
         onLog('Pass 2: Optimizing headers section-by-section...', 'info');
         await executePass2(
           orchestrator, updatedJob, brief, safeBusinessInfo,
@@ -449,6 +570,8 @@ export function useContentGeneration({
         );
         if (shouldAbort()) return;
         updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
+        // Track pass completion
+        trackPassCompletion(2);
       }
 
       // Pass 3: Lists & Tables (section-by-section with holistic context)
@@ -464,6 +587,8 @@ export function useContentGeneration({
         updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
         // Collect progressive schema data from Pass 3 (lists/tables)
         await collectProgressiveData(3, updatedJob.draft_content || '');
+        // Track pass completion
+        trackPassCompletion(3);
       }
 
       // Pass 4: Discourse Integration (section-by-section with holistic context)
@@ -477,6 +602,8 @@ export function useContentGeneration({
         );
         if (shouldAbort()) return;
         updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
+        // Track pass completion
+        trackPassCompletion(4);
       }
 
       // Pass 5: Micro Semantics (section-by-section with holistic context)
@@ -492,6 +619,8 @@ export function useContentGeneration({
         updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
         // Collect progressive schema data from Pass 5 (keywords, entities)
         await collectProgressiveData(5, updatedJob.draft_content || '');
+        // Track pass completion
+        trackPassCompletion(5);
       }
 
       // Pass 6: Visual Semantics (section-by-section with holistic context)
@@ -519,6 +648,8 @@ export function useContentGeneration({
         } catch (err) {
           console.warn('[Pass 6] Failed to extract image placeholders:', err);
         }
+        // Track pass completion
+        trackPassCompletion(6);
       }
 
       // Pass 7: Introduction Synthesis (AFTER body is fully polished)
@@ -534,6 +665,8 @@ export function useContentGeneration({
         updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
         // Collect progressive schema data from Pass 7 (abstract from intro)
         await collectProgressiveData(7, updatedJob.draft_content || '');
+        // Track pass completion
+        trackPassCompletion(7);
       }
 
       // Pass 8: Final Polish
@@ -549,6 +682,8 @@ export function useContentGeneration({
         updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
         // Collect progressive schema data from Pass 8
         await collectProgressiveData(8, updatedJob.draft_content || '');
+        // Track pass completion
+        trackPassCompletion(8);
       }
 
       // Pass 9: Final Audit (includes auto-fix capability)
@@ -618,11 +753,12 @@ export function useContentGeneration({
         }
 
         // Build quality report from audit details and job state
+        // Include real PassDeltas from tracking (collected during pass execution)
         const qualityReport: QualityReport = {
           overallScore: updatedJob.final_audit_score || 0,
           categoryScores: buildCategoryScores(updatedJob.audit_details),
           violations: buildViolations(updatedJob.audit_details),
-          passDeltas: [], // Would require full tracking integration
+          passDeltas: collectedDeltas, // Real tracking data from pass execution
           systemicChecks: buildSystemicChecks(updatedJob),
           generatedAt: new Date().toISOString(),
           generationMode: 'autonomous' // TODO: Get from settings
