@@ -74,7 +74,9 @@ export const HelpSearch: React.FC<HelpSearchProps> = ({
     inputRef.current?.focus();
   };
 
-  const showDropdown = isFocused && (results.length > 0 || (localQuery.trim() && !isSearching));
+  // Ensure results is always an array
+  const safeResults = results || [];
+  const showDropdown = isFocused && (safeResults.length > 0 || (localQuery.trim() && !isSearching));
 
   return (
     <div ref={containerRef} className="relative">
@@ -124,9 +126,9 @@ export const HelpSearch: React.FC<HelpSearchProps> = ({
       {/* Dropdown Results */}
       {showDropdown && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden z-50 max-h-80 overflow-y-auto">
-          {results.length > 0 ? (
+          {safeResults.length > 0 ? (
             <ul>
-              {results.map(result => (
+              {safeResults.map(result => (
                 <li key={result.id}>
                   <button
                     onClick={() => {
