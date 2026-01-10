@@ -47,14 +47,19 @@ export interface PassConfig {
 /**
  * Full pass configuration object matching database schema
  */
+/**
+ * CORRECT 10-PASS KEY ORDER (matches pass implementations):
+ * Pass 4 is Discourse, Pass 6 is Visuals, Pass 8 is Polish, Pass 9 is Audit
+ */
 export interface PassConfigMap {
   pass_2_headers: PassConfig;
   pass_3_lists: PassConfig;
-  pass_4_visuals: PassConfig;
-  pass_5_micro: PassConfig;
-  pass_6_discourse: PassConfig;
+  pass_4_discourse: PassConfig;
+  pass_5_microsemantics: PassConfig;
+  pass_6_visuals: PassConfig;
   pass_7_intro: PassConfig;
-  pass_8_audit: PassConfig;
+  pass_8_polish: PassConfig;
+  pass_9_audit: PassConfig;
 }
 
 /**
@@ -163,11 +168,12 @@ export type PromptKey =
   | 'pass_1_section'
   | 'pass_2_headers'
   | 'pass_3_lists'
-  | 'pass_4_visuals'
-  | 'pass_5_micro'
-  | 'pass_6_discourse'
+  | 'pass_4_discourse'
+  | 'pass_5_microsemantics'
+  | 'pass_6_visuals'
   | 'pass_7_intro'
-  | 'pass_8_audit';
+  | 'pass_8_polish'
+  | 'pass_9_audit';
 
 // ============================================================================
 // CONTENT VERSION TYPES
@@ -440,11 +446,12 @@ export const DEFAULT_CONTENT_GENERATION_SETTINGS: Omit<ContentGenerationSettings
   passes: {
     pass_2_headers: { enabled: true, storeVersion: true },
     pass_3_lists: { enabled: true, storeVersion: true },
-    pass_4_visuals: { enabled: true, storeVersion: true },
-    pass_5_micro: { enabled: true, storeVersion: true },
-    pass_6_discourse: { enabled: true, storeVersion: true },
+    pass_4_discourse: { enabled: true, storeVersion: true },
+    pass_5_microsemantics: { enabled: true, storeVersion: true },
+    pass_6_visuals: { enabled: true, storeVersion: true },
     pass_7_intro: { enabled: true, storeVersion: true },
-    pass_8_audit: { enabled: true, storeVersion: false }
+    pass_8_polish: { enabled: true, storeVersion: true },
+    pass_9_audit: { enabled: true, storeVersion: false }
   }
 };
 
@@ -480,25 +487,29 @@ export function settingsRowToInterface(row: ContentGenerationSettingsRow): Conte
         enabled: row.pass_config.passes.pass_3_lists?.enabled ?? true,
         storeVersion: row.pass_config.passes.pass_3_lists?.store_version ?? true
       },
-      pass_4_visuals: {
-        enabled: row.pass_config.passes.pass_4_visuals?.enabled ?? true,
-        storeVersion: row.pass_config.passes.pass_4_visuals?.store_version ?? true
+      pass_4_discourse: {
+        enabled: row.pass_config.passes.pass_4_discourse?.enabled ?? true,
+        storeVersion: row.pass_config.passes.pass_4_discourse?.store_version ?? true
       },
-      pass_5_micro: {
-        enabled: row.pass_config.passes.pass_5_micro?.enabled ?? true,
-        storeVersion: row.pass_config.passes.pass_5_micro?.store_version ?? true
+      pass_5_microsemantics: {
+        enabled: row.pass_config.passes.pass_5_microsemantics?.enabled ?? true,
+        storeVersion: row.pass_config.passes.pass_5_microsemantics?.store_version ?? true
       },
-      pass_6_discourse: {
-        enabled: row.pass_config.passes.pass_6_discourse?.enabled ?? true,
-        storeVersion: row.pass_config.passes.pass_6_discourse?.store_version ?? true
+      pass_6_visuals: {
+        enabled: row.pass_config.passes.pass_6_visuals?.enabled ?? true,
+        storeVersion: row.pass_config.passes.pass_6_visuals?.store_version ?? true
       },
       pass_7_intro: {
         enabled: row.pass_config.passes.pass_7_intro?.enabled ?? true,
         storeVersion: row.pass_config.passes.pass_7_intro?.store_version ?? true
       },
-      pass_8_audit: {
-        enabled: row.pass_config.passes.pass_8_audit?.enabled ?? true,
-        storeVersion: row.pass_config.passes.pass_8_audit?.store_version ?? false
+      pass_8_polish: {
+        enabled: row.pass_config.passes.pass_8_polish?.enabled ?? true,
+        storeVersion: row.pass_config.passes.pass_8_polish?.store_version ?? true
+      },
+      pass_9_audit: {
+        enabled: row.pass_config.passes.pass_9_audit?.enabled ?? true,
+        storeVersion: row.pass_config.passes.pass_9_audit?.store_version ?? false
       }
     },
     createdAt: row.created_at,
@@ -528,11 +539,12 @@ export function settingsToDbInsert(
       passes: {
         pass_2_headers: { enabled: settings.passes.pass_2_headers.enabled, store_version: settings.passes.pass_2_headers.storeVersion },
         pass_3_lists: { enabled: settings.passes.pass_3_lists.enabled, store_version: settings.passes.pass_3_lists.storeVersion },
-        pass_4_visuals: { enabled: settings.passes.pass_4_visuals.enabled, store_version: settings.passes.pass_4_visuals.storeVersion },
-        pass_5_micro: { enabled: settings.passes.pass_5_micro.enabled, store_version: settings.passes.pass_5_micro.storeVersion },
-        pass_6_discourse: { enabled: settings.passes.pass_6_discourse.enabled, store_version: settings.passes.pass_6_discourse.storeVersion },
+        pass_4_discourse: { enabled: settings.passes.pass_4_discourse.enabled, store_version: settings.passes.pass_4_discourse.storeVersion },
+        pass_5_microsemantics: { enabled: settings.passes.pass_5_microsemantics.enabled, store_version: settings.passes.pass_5_microsemantics.storeVersion },
+        pass_6_visuals: { enabled: settings.passes.pass_6_visuals.enabled, store_version: settings.passes.pass_6_visuals.storeVersion },
         pass_7_intro: { enabled: settings.passes.pass_7_intro.enabled, store_version: settings.passes.pass_7_intro.storeVersion },
-        pass_8_audit: { enabled: settings.passes.pass_8_audit.enabled, store_version: settings.passes.pass_8_audit.storeVersion }
+        pass_8_polish: { enabled: settings.passes.pass_8_polish.enabled, store_version: settings.passes.pass_8_polish.storeVersion },
+        pass_9_audit: { enabled: settings.passes.pass_9_audit.enabled, store_version: settings.passes.pass_9_audit.storeVersion }
       }
     }
   };

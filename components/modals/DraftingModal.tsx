@@ -473,8 +473,10 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
 
         // Count completed passes from passes_status object
         const passesStatus = jobData.passes_status as Record<string, string> || {};
-        const passKeys = ['pass_1_draft', 'pass_2_headers', 'pass_3_lists', 'pass_4_visuals',
-                         'pass_5_microsemantics', 'pass_6_discourse', 'pass_7_intro', 'pass_8_audit', 'pass_9_schema'];
+        // CORRECT 10-PASS KEY ORDER (matches pass implementations):
+        // Pass 4 is Discourse, Pass 6 is Visuals, Pass 8 is Polish, Pass 9 is Audit
+        const passKeys = ['pass_1_draft', 'pass_2_headers', 'pass_3_lists', 'pass_4_discourse',
+                         'pass_5_microsemantics', 'pass_6_visuals', 'pass_7_intro', 'pass_8_polish', 'pass_9_audit', 'pass_10_schema'];
         const completedPasses = passKeys.filter(key => passesStatus[key] === 'completed').length;
 
         // Debug: log the actual passes_status
@@ -2559,12 +2561,13 @@ ${schemaScript}`;
                                     { key: 'pass_1_draft', label: 'D' },
                                     { key: 'pass_2_headers', label: 'H' },
                                     { key: 'pass_3_lists', label: 'L' },
-                                    { key: 'pass_4_visuals', label: 'V' },
+                                    { key: 'pass_4_discourse', label: 'C' },  // Discourse/Context
                                     { key: 'pass_5_microsemantics', label: 'M' },
-                                    { key: 'pass_6_discourse', label: 'C' },
+                                    { key: 'pass_6_visuals', label: 'V' },    // Visuals
                                     { key: 'pass_7_intro', label: 'I' },
-                                    { key: 'pass_8_audit', label: 'A' },
-                                    { key: 'pass_9_schema', label: 'S' },
+                                    { key: 'pass_8_polish', label: 'P' },     // Polish
+                                    { key: 'pass_9_audit', label: 'A' },      // Audit
+                                    { key: 'pass_10_schema', label: 'S' },    // Schema
                                 ].map(({ key, label }) => {
                                     const status = databaseJobInfo.passesStatus?.[key];
                                     const isComplete = status === 'completed';
@@ -2652,12 +2655,13 @@ ${schemaScript}`;
                                                 { key: 'pass_1_draft', label: 'Draft' },
                                                 { key: 'pass_2_headers', label: 'Headers' },
                                                 { key: 'pass_3_lists', label: 'Lists' },
-                                                { key: 'pass_4_visuals', label: 'Visuals' },
+                                                { key: 'pass_4_discourse', label: 'Discourse' },
                                                 { key: 'pass_5_microsemantics', label: 'Micro' },
-                                                { key: 'pass_6_discourse', label: 'Discourse' },
+                                                { key: 'pass_6_visuals', label: 'Visuals' },
                                                 { key: 'pass_7_intro', label: 'Intro' },
-                                                { key: 'pass_8_audit', label: 'Audit' },
-                                                { key: 'pass_9_schema', label: 'Schema' },
+                                                { key: 'pass_8_polish', label: 'Polish' },
+                                                { key: 'pass_9_audit', label: 'Audit' },
+                                                { key: 'pass_10_schema', label: 'Schema' },
                                             ].map(({ key, label }) => {
                                                 const status = databaseJobInfo.passesStatus[key];
                                                 const isComplete = status === 'completed';
@@ -3090,12 +3094,13 @@ ${schemaScript}`;
               {[
                 { num: 2, key: 'pass_2_headers', label: 'Pass 2: Header Optimization', desc: 'Optimize heading hierarchy and contextual overlap' },
                 { num: 3, key: 'pass_3_lists', label: 'Pass 3: Lists & Tables', desc: 'Convert content to structured data for Featured Snippets' },
-                { num: 4, key: 'pass_4_visuals', label: 'Pass 4: Visual Semantics', desc: 'Add image placeholders with vocabulary-extending alt text' },
+                { num: 4, key: 'pass_4_discourse', label: 'Pass 4: Discourse Integration', desc: 'Improve transitions and contextual bridges' },
                 { num: 5, key: 'pass_5_microsemantics', label: 'Pass 5: Micro Semantics', desc: 'Linguistic optimization (modality, stop words, positioning)' },
-                { num: 6, key: 'pass_6_discourse', label: 'Pass 6: Discourse Integration', desc: 'Improve transitions and contextual bridges' },
+                { num: 6, key: 'pass_6_visuals', label: 'Pass 6: Visual Semantics', desc: 'Add image placeholders with vocabulary-extending alt text' },
                 { num: 7, key: 'pass_7_intro', label: 'Pass 7: Introduction Synthesis', desc: 'Rewrite introduction based on complete content' },
-                { num: 8, key: 'pass_8_audit', label: 'Pass 8: Final Audit', desc: 'Algorithmic content audit with scoring' },
-                { num: 9, key: 'pass_9_schema', label: 'Pass 9: Schema Generation', desc: 'JSON-LD structured data with entity resolution' },
+                { num: 8, key: 'pass_8_polish', label: 'Pass 8: Final Polish', desc: 'Publication-ready content refinement' },
+                { num: 9, key: 'pass_9_audit', label: 'Pass 9: Final Audit', desc: 'Algorithmic content audit with scoring' },
+                { num: 10, key: 'pass_10_schema', label: 'Pass 10: Schema Generation', desc: 'JSON-LD structured data with entity resolution' },
               ].map(({ num, key, label, desc }) => {
                 const status = databaseJobInfo.passesStatus?.[key] || 'pending';
                 const isSelected = selectedPasses.includes(num);

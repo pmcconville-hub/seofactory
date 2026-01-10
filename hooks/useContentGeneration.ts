@@ -43,14 +43,17 @@ function buildCategoryScores(auditDetails: AuditDetails | null): Record<string, 
   const categoryMap: Record<string, { passed: number; total: number }> = {};
 
   for (const result of auditDetails.algorithmicResults) {
-    // Extract category from rule ID (e.g., "A1" -> "A", "B3" -> "B")
-    const category = result.ruleId?.match(/^([A-Z])/)?.[1] || 'Other';
+    // Extract category from ruleName (e.g., "CENTERPIECE_CHECK" -> "Centerpiece", "LLM_SIGNATURE_DETECTION" -> "LLM")
+    // AuditRuleResult has: ruleName, isPassing, details, remediation
+    const categoryMatch = result.ruleName?.match(/^([A-Z]+)_/);
+    const category = categoryMatch ? categoryMatch[1] : 'Other';
 
     if (!categoryMap[category]) {
       categoryMap[category] = { passed: 0, total: 0 };
     }
     categoryMap[category].total++;
-    if (result.passed) {
+    // CRITICAL FIX: Use isPassing (correct property) not passed (wrong property)
+    if (result.isPassing) {
       categoryMap[category].passed++;
     }
   }
@@ -68,12 +71,13 @@ function buildViolations(auditDetails: AuditDetails | null): QualityReport['viol
   if (!auditDetails?.algorithmicResults) return [];
 
   return auditDetails.algorithmicResults
-    .filter(r => !r.passed)
+    // CRITICAL FIX: Use isPassing (correct property) not passed (wrong property)
+    .filter(r => !r.isPassing)
     .map(r => ({
-      rule: r.ruleId || 'Unknown',
-      text: r.description || '',
-      severity: (r.severity as 'error' | 'warning' | 'info') || 'warning',
-      suggestion: r.suggestion || ''
+      rule: r.ruleName || 'Unknown',
+      text: r.details || '',
+      severity: 'warning' as const,  // AuditRuleResult doesn't have severity, default to warning
+      suggestion: r.remediation || ''
     }));
 }
 
@@ -144,10 +148,11 @@ function getViolationsFromContent(
     return auditResults
       .filter(r => !r.isPassing)
       .map(r => ({
-        rule: r.rule || 'UNKNOWN',
+        // AuditRuleResult has ruleName not rule
+        rule: r.ruleName || 'UNKNOWN',
         text: r.details || '',
         position: 0,
-        severity: (r.severity as 'error' | 'warning' | 'info') || 'warning',
+        severity: 'warning' as const,  // AuditRuleResult doesn't have severity
         suggestion: r.remediation || ''
       }));
   } catch (err) {

@@ -11,11 +11,12 @@ interface Props {
 const PASS_INFO: Record<keyof PassConfigMap, { name: string; description: string }> = {
   pass_2_headers: { name: 'Header Optimization', description: 'Refine heading hierarchy and contextual overlap' },
   pass_3_lists: { name: 'Lists & Tables', description: 'Add structured data for featured snippets' },
-  pass_4_visuals: { name: 'Visual Semantics', description: 'Insert image placeholders with alt text' },
-  pass_5_micro: { name: 'Micro Semantics', description: 'Linguistic optimization and stop words' },
-  pass_6_discourse: { name: 'Discourse Integration', description: 'Add transitions and bridges' },
+  pass_4_discourse: { name: 'Discourse Integration', description: 'Add transitions and bridges' },
+  pass_5_microsemantics: { name: 'Micro Semantics', description: 'Linguistic optimization and stop words' },
+  pass_6_visuals: { name: 'Visual Semantics', description: 'Insert image placeholders with alt text' },
   pass_7_intro: { name: 'Introduction Synthesis', description: 'Rewrite introduction post-hoc' },
-  pass_8_audit: { name: 'Final Audit', description: 'Run algorithmic quality checks' }
+  pass_8_polish: { name: 'Final Polish', description: 'Publication-ready content refinement' },
+  pass_9_audit: { name: 'Final Audit', description: 'Run algorithmic quality checks' }
 };
 
 export const PassControlPanel: React.FC<Props> = ({ passes, onChange, disabled = false }) => {
