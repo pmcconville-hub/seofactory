@@ -149,13 +149,10 @@ export function runAlgorithmicAudit(
 
 function checkModality(text: string, language?: string): AuditRuleResult {
   const patterns = getAuditPatterns(language || 'en');
-  const uncertainPatterns = patterns.uncertaintyPatterns;
+  const uncertainPattern = patterns.uncertaintyPatterns;
 
-  let totalMatches: string[] = [];
-  uncertainPatterns.forEach(pattern => {
-    const matches = text.match(pattern) || [];
-    totalMatches.push(...matches);
-  });
+  // uncertaintyPatterns is a single RegExp, not an array
+  const totalMatches = text.match(uncertainPattern) || [];
 
   if (totalMatches.length > 3) {
     return {

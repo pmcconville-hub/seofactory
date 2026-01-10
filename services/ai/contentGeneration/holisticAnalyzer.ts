@@ -137,8 +137,11 @@ export function buildHolisticSummary(
   brief: ContentBrief,
   businessInfo: BusinessInfo
 ): HolisticSummaryContext {
+  // Defensive guard: ensure sections is always an array
+  const safeSections = Array.isArray(sections) ? sections : [];
+
   // Sort sections by order for consistent processing
-  const sortedSections = [...sections].sort((a, b) => a.section_order - b.section_order);
+  const sortedSections = [...safeSections].sort((a, b) => a.section_order - b.section_order);
 
   // Assemble full text for metrics calculation
   const fullText = sortedSections
@@ -377,7 +380,7 @@ function extractDiscourseAnchors(
   }
 
   // Add from structured outline headings
-  if (brief.structured_outline) {
+  if (Array.isArray(brief.structured_outline)) {
     brief.structured_outline.forEach(section => {
       if (section.heading) {
         const words = extractWords(section.heading);
