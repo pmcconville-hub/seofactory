@@ -352,7 +352,7 @@ export function CostDashboardModal({ isOpen, onClose }: CostDashboardModalProps)
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <SummaryCard
               title="Total Cost"
-              value={formatCost(report.summary.totalCost)}
+              value={formatCost(report.summary?.totalCost ?? 0)}
               icon={
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
@@ -366,7 +366,7 @@ export function CostDashboardModal({ isOpen, onClose }: CostDashboardModalProps)
             />
             <SummaryCard
               title="Total Tokens"
-              value={formatTokenCount(report.summary.totalTokens)}
+              value={formatTokenCount(report.summary?.totalTokens ?? 0)}
               icon={
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
@@ -380,7 +380,7 @@ export function CostDashboardModal({ isOpen, onClose }: CostDashboardModalProps)
             />
             <SummaryCard
               title="Total Requests"
-              value={report.summary.totalRequests.toLocaleString()}
+              value={(report.summary?.totalRequests ?? 0).toLocaleString()}
               icon={
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path

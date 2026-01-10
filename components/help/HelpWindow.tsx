@@ -528,7 +528,7 @@ export const HelpWindow: React.FC<HelpWindowProps> = ({
                 <p className="text-gray-400 mb-8">{currentCategory.description}</p>
               )}
               <div className="grid gap-4">
-                {currentCategory.articles.map(article => (
+                {(currentCategory.articles || []).map(article => (
                   <button
                     key={article.id}
                     onClick={() => onNavigate(currentCategory.slug, article.slug)}
