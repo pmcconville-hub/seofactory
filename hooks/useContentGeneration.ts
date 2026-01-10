@@ -461,6 +461,10 @@ export function useContentGeneration({
   }, [briefId, refreshTrigger, externalRefreshTrigger]); // Added refreshTrigger and externalRefreshTrigger for re-check requests
 
   const runPasses = async (orchestrator: ContentGenerationOrchestrator, currentJob: ContentGenerationJob) => {
+    // Debug: Log what pass we're starting from
+    console.log(`[runPasses] Starting execution from current_pass: ${currentJob.current_pass}, status: ${currentJob.status}`);
+    console.log(`[runPasses] passes_status:`, JSON.stringify(currentJob.passes_status, null, 2));
+
     let updatedJob = currentJob;
     const shouldAbort = () => abortRef.current;
 

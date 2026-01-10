@@ -2252,8 +2252,11 @@ ${schemaScript}`;
         ? job.passes_status as Record<string, string>
         : {};
       const newPassesStatus: Record<string, string> = { ...existingStatus };
-      for (let i = lowestPass; i <= 9; i++) {
-        const passKey = `pass_${i}_${['draft', 'headers', 'lists', 'visuals', 'microsemantics', 'discourse', 'intro', 'audit', 'schema'][i - 1]}`;
+      // CORRECT 10-PASS KEY ORDER:
+      // Pass 4 = discourse, Pass 6 = visuals, Pass 8 = polish, Pass 9 = audit, Pass 10 = schema
+      const passKeyNames = ['draft', 'headers', 'lists', 'discourse', 'microsemantics', 'visuals', 'intro', 'polish', 'audit', 'schema'];
+      for (let i = lowestPass; i <= 10; i++) {
+        const passKey = `pass_${i}_${passKeyNames[i - 1]}`;
         if (selectedPasses.includes(i) || i > lowestPass) {
           newPassesStatus[passKey] = 'pending';
         }

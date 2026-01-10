@@ -91,6 +91,9 @@ export async function executeSectionPass(
   onSectionProgress?: SectionProgressCallback,
   shouldAbort?: () => boolean
 ): Promise<string> {
+  // Always log pass start (visible in console regardless of verbose mode)
+  console.log(`[Pass ${config.passNumber}] STARTING - passKey: ${config.passKey}, nextPass: ${config.nextPassNumber}`);
+
   // Mark pass as in_progress
   await orchestrator.updateJob(job.id, {
     passes_status: { ...job.passes_status, [config.passKey]: 'in_progress' }
@@ -152,6 +155,7 @@ export async function executeSectionPass(
   const totalSections = sectionsToProcess.length;
 
   if (totalSections === 0) {
+    console.log(`[Pass ${config.passNumber}] SKIPPED - No sections need optimization for ${config.passKey}`);
     log.log(`No sections need optimization, skipping pass`);
     await orchestrator.updateJob(job.id, {
       passes_status: { ...job.passes_status, [config.passKey]: 'completed' },
@@ -200,6 +204,7 @@ export async function executeSectionPass(
   log.log(`Pass complete. Assembled draft: ${assembledDraft.length} chars`);
 
   // Update job with assembled draft and mark pass complete
+  console.log(`[Pass ${config.passNumber}] COMPLETED - ${config.passKey} → advancing to pass ${config.nextPassNumber}`);
   await orchestrator.updateJob(job.id, {
     draft_content: assembledDraft,
     passes_status: { ...job.passes_status, [config.passKey]: 'completed' },
