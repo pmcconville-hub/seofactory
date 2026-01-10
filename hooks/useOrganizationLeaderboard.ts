@@ -7,9 +7,10 @@
  * Created: 2026-01-09 - Multi-tenancy Phase 5
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useMemo } from 'react';
 import { getSupabaseClient } from '../services/supabaseClient';
-import { useOrganization } from './useOrganization';
+import { useOrganizationContext } from '../components/organization/OrganizationProvider';
+import { useAppState } from '../state/appState';
 import {
   OrganizationScore,
   OrganizationScoreWithDetails,
@@ -23,8 +24,15 @@ import {
 // ============================================================================
 
 export function useOrganizationLeaderboard() {
-  const supabase = getSupabaseClient();
-  const { current: organization } = useOrganization();
+  const { state } = useAppState();
+  const supabase = useMemo(() => {
+    if (!state.businessInfo.supabaseUrl || !state.businessInfo.supabaseAnonKey) {
+      return null;
+    }
+    return getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+  }, [state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
+
+  const { current: organization } = useOrganizationContext();
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +41,7 @@ export function useOrganizationLeaderboard() {
    * Get the current organization's score
    */
   const getOwnScore = useCallback(async (): Promise<OrganizationScore | null> => {
-    if (!organization) return null;
+    if (!supabase || !organization) return null;
 
     setIsLoading(true);
     setError(null);
@@ -64,6 +72,8 @@ export function useOrganizationLeaderboard() {
     period: LeaderboardPeriod = { type: 'all' },
     limit = 10
   ): Promise<LeaderboardEntry[]> => {
+    if (!supabase) return [];
+
     setIsLoading(true);
     setError(null);
 
@@ -122,6 +132,8 @@ export function useOrganizationLeaderboard() {
   const getAchievements = useCallback(async (
     orgId?: string
   ): Promise<OrganizationAchievement[]> => {
+    if (!supabase) return [];
+
     const targetOrgId = orgId || organization?.id;
     if (!targetOrgId) return [];
 
@@ -154,7 +166,7 @@ export function useOrganizationLeaderboard() {
     periodType: 'week' | 'month' = 'month',
     limit = 12
   ): Promise<{ period: string; rank: number; score: number }[]> => {
-    if (!organization) return [];
+    if (!supabase || !organization) return [];
 
     setIsLoading(true);
     setError(null);
@@ -188,7 +200,7 @@ export function useOrganizationLeaderboard() {
    * Refresh organization scores (triggers recalculation)
    */
   const refreshScores = useCallback(async (): Promise<boolean> => {
-    if (!organization) return false;
+    if (!supabase || !organization) return false;
 
     setIsLoading(true);
     setError(null);
@@ -217,7 +229,7 @@ export function useOrganizationLeaderboard() {
   const getNearbyRanks = useCallback(async (
     range = 2
   ): Promise<LeaderboardEntry[]> => {
-    if (!organization) return [];
+    if (!supabase || !organization) return [];
 
     // First get own rank
     const ownScore = await getOwnScore();

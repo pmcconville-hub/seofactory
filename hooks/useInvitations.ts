@@ -7,8 +7,9 @@
  * Created: 2026-01-09 - Multi-tenancy Phase 2
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useMemo } from 'react';
 import { getSupabaseClient } from '../services/supabaseClient';
+import { useAppState } from '../state/appState';
 import {
   Invitation,
   InvitationWithInviter,
@@ -22,7 +23,13 @@ import {
 // ============================================================================
 
 export function useInvitations() {
-  const supabase = getSupabaseClient();
+  const { state } = useAppState();
+  const supabase = useMemo(() => {
+    if (!state.businessInfo.supabaseUrl || !state.businessInfo.supabaseAnonKey) {
+      return null;
+    }
+    return getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+  }, [state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +40,8 @@ export function useInvitations() {
   const createInvitation = useCallback(async (
     params: CreateInvitationParams
   ): Promise<Invitation | null> => {
+    if (!supabase) return null;
+
     setIsLoading(true);
     setError(null);
 
@@ -86,6 +95,8 @@ export function useInvitations() {
   const getOrganizationInvitations = useCallback(async (
     organizationId: string
   ): Promise<InvitationWithInviter[]> => {
+    if (!supabase) return [];
+
     setIsLoading(true);
     setError(null);
 
@@ -125,6 +136,8 @@ export function useInvitations() {
   const getProjectInvitations = useCallback(async (
     projectId: string
   ): Promise<InvitationWithInviter[]> => {
+    if (!supabase) return [];
+
     setIsLoading(true);
     setError(null);
 
@@ -162,6 +175,8 @@ export function useInvitations() {
    * Get invitations sent by the current user
    */
   const getSentInvitations = useCallback(async (): Promise<InvitationWithInviter[]> => {
+    if (!supabase) return [];
+
     setIsLoading(true);
     setError(null);
 
@@ -192,6 +207,8 @@ export function useInvitations() {
    * Get pending invitations for the current user's email
    */
   const getPendingInvitationsForUser = useCallback(async (): Promise<Invitation[]> => {
+    if (!supabase) return [];
+
     setIsLoading(true);
     setError(null);
 
@@ -226,6 +243,8 @@ export function useInvitations() {
   const acceptInvitation = useCallback(async (
     token: string
   ): Promise<AcceptInvitationResult | null> => {
+    if (!supabase) return null;
+
     setIsLoading(true);
     setError(null);
 
@@ -251,6 +270,8 @@ export function useInvitations() {
   const declineInvitation = useCallback(async (
     token: string
   ): Promise<boolean> => {
+    if (!supabase) return false;
+
     setIsLoading(true);
     setError(null);
 
@@ -276,6 +297,8 @@ export function useInvitations() {
   const revokeInvitation = useCallback(async (
     invitationId: string
   ): Promise<boolean> => {
+    if (!supabase) return false;
+
     setIsLoading(true);
     setError(null);
 
@@ -303,6 +326,8 @@ export function useInvitations() {
   const resendInvitation = useCallback(async (
     invitationId: string
   ): Promise<boolean> => {
+    if (!supabase) return false;
+
     setIsLoading(true);
     setError(null);
 

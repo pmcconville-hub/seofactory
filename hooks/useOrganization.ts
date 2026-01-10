@@ -15,6 +15,7 @@ import {
   OrganizationWithMembership,
   OrganizationPermissions,
   OrganizationRole,
+  BusinessInfo,
 } from '../types';
 
 // ============================================================================
@@ -109,8 +110,14 @@ function computePermissions(membership: OrganizationMember | null): Organization
 // Hook
 // ============================================================================
 
-export function useOrganization() {
-  const supabase = getSupabaseClient();
+export function useOrganization(businessInfo: BusinessInfo) {
+  // Get Supabase client - requires valid credentials
+  const supabase = useMemo(() => {
+    if (!businessInfo.supabaseUrl || !businessInfo.supabaseAnonKey) {
+      return null;
+    }
+    return getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+  }, [businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
 
   // Local state (will be moved to global state in future integration)
   const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null);
@@ -123,6 +130,8 @@ export function useOrganization() {
 
   // Get current user on mount
   useEffect(() => {
+    if (!supabase) return;
+
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUserId(user?.id ?? null);
@@ -141,7 +150,7 @@ export function useOrganization() {
 
   // Load organizations for the current user
   const loadOrganizations = useCallback(async () => {
-    if (!userId) return;
+    if (!userId || !supabase) return;
 
     setIsLoading(true);
     setError(null);
@@ -215,6 +224,8 @@ export function useOrganization() {
 
   // Switch to a different organization
   const switchOrganization = useCallback(async (orgId: string) => {
+    if (!supabase) return;
+
     setIsSwitching(true);
     setError(null);
 
@@ -247,7 +258,7 @@ export function useOrganization() {
     name: string,
     type: 'team' | 'enterprise' = 'team'
   ): Promise<OrganizationWithMembership | null> => {
-    if (!userId) {
+    if (!userId || !supabase) {
       throw new Error('Not authenticated');
     }
 
@@ -324,10 +335,10 @@ export function useOrganization() {
 
   // Load organizations when user changes
   useEffect(() => {
-    if (userId && organizations.length === 0 && !isLoading) {
+    if (supabase && userId && organizations.length === 0 && !isLoading) {
       loadOrganizations();
     }
-  }, [userId, organizations.length, isLoading, loadOrganizations]);
+  }, [supabase, userId, organizations.length, isLoading, loadOrganizations]);
 
   return {
     // Current context

@@ -10,6 +10,7 @@
 
 import React, { createContext, useContext, ReactNode } from 'react';
 import { useOrganization } from '../../hooks/useOrganization';
+import { useAppState } from '../../state/appState';
 
 type OrganizationContextType = ReturnType<typeof useOrganization>;
 
@@ -28,7 +29,8 @@ interface OrganizationProviderProps {
 }
 
 export function OrganizationProvider({ children }: OrganizationProviderProps) {
-  const organizationState = useOrganization();
+  const { state } = useAppState();
+  const organizationState = useOrganization(state.businessInfo);
 
   return (
     <OrganizationContext.Provider value={organizationState}>

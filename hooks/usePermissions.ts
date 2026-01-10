@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import { useOrganization } from './useOrganization';
+import { useOrganizationContext } from '../components/organization/OrganizationProvider';
 import { OrganizationPermissions, OrganizationRole } from '../types';
 
 // ============================================================================
@@ -28,7 +28,7 @@ export type PermissionCheck =
 // ============================================================================
 
 export function usePermissions() {
-  const { permissions, membership, current: organization } = useOrganization();
+  const { permissions, membership, current: organization } = useOrganizationContext();
 
   /**
    * Check if user has a specific permission

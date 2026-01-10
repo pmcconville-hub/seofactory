@@ -7,10 +7,11 @@
  * Created: 2026-01-09 - Multi-tenancy Phase 5
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useMemo } from 'react';
 import { getSupabaseClient } from '../services/supabaseClient';
-import { useOrganization } from './useOrganization';
+import { useOrganizationContext } from '../components/organization/OrganizationProvider';
 import { usePermissions } from './usePermissions';
+import { useAppState } from '../state/appState';
 
 // ============================================================================
 // Types
@@ -75,8 +76,15 @@ export interface CostReport {
 // ============================================================================
 
 export function useCosts() {
-  const supabase = getSupabaseClient();
-  const { current: organization } = useOrganization();
+  const { state } = useAppState();
+  const supabase = useMemo(() => {
+    if (!state.businessInfo.supabaseUrl || !state.businessInfo.supabaseAnonKey) {
+      return null;
+    }
+    return getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+  }, [state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
+
+  const { current: organization } = useOrganizationContext();
   const { can } = usePermissions();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -90,7 +98,7 @@ export function useCosts() {
     endDate: Date,
     projectId?: string
   ): Promise<CostReport | null> => {
-    if (!organization || !can('canViewCosts')) {
+    if (!supabase || !organization || !can('canViewCosts')) {
       setError('No permission to view costs');
       return null;
     }

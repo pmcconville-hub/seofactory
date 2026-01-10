@@ -10,13 +10,14 @@
  * Created: 2026-01-09 - Multi-tenancy Phase 3
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useMemo } from 'react';
 import { getSupabaseClient } from '../services/supabaseClient';
 import {
   OrganizationApiKey,
   ProjectApiKey,
   ApiKeyStatus,
   ResolvedApiKey,
+  BusinessInfo,
 } from '../types';
 
 // Supported AI providers
@@ -34,8 +35,13 @@ export type AIProvider = typeof AI_PROVIDERS[number];
 // Hook
 // ============================================================================
 
-export function useApiKeys() {
-  const supabase = getSupabaseClient();
+export function useApiKeys(businessInfo: BusinessInfo) {
+  const supabase = useMemo(() => {
+    if (!businessInfo.supabaseUrl || !businessInfo.supabaseAnonKey) {
+      return null;
+    }
+    return getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+  }, [businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +52,8 @@ export function useApiKeys() {
   const getOrganizationKeyStatus = useCallback(async (
     organizationId: string
   ): Promise<ApiKeyStatus[]> => {
+    if (!supabase) return [];
+
     setIsLoading(true);
     setError(null);
 
@@ -83,6 +91,8 @@ export function useApiKeys() {
   const getProjectKeyStatus = useCallback(async (
     projectId: string
   ): Promise<ApiKeyStatus[]> => {
+    if (!supabase) return [];
+
     setIsLoading(true);
     setError(null);
 
@@ -120,6 +130,8 @@ export function useApiKeys() {
     projectId: string,
     provider: string
   ): Promise<boolean> => {
+    if (!supabase) return false;
+
     try {
       const { data, error: rpcError } = await supabase
         .rpc('has_api_key', {
@@ -142,6 +154,8 @@ export function useApiKeys() {
     projectId: string,
     provider: string
   ): Promise<{ keySource: string; billableTo: string; billableId: string } | null> => {
+    if (!supabase) return null;
+
     try {
       const { data, error: rpcError } = await supabase
         .rpc('get_billable_info', {
@@ -172,6 +186,8 @@ export function useApiKeys() {
     provider: string,
     mode: 'inherit' | 'byok'
   ): Promise<boolean> => {
+    if (!supabase) return false;
+
     setIsLoading(true);
     setError(null);
 
@@ -219,6 +235,8 @@ export function useApiKeys() {
     organizationId: string,
     provider: string
   ): Promise<boolean> => {
+    if (!supabase) return false;
+
     setIsLoading(true);
     setError(null);
 
@@ -262,6 +280,8 @@ export function useApiKeys() {
     byProvider: Record<string, { cost: number; tokens: number; requests: number }>;
     byProject: Record<string, { cost: number; tokens: number; requests: number }>;
   } | null> => {
+    if (!supabase) return null;
+
     setIsLoading(true);
     setError(null);
 
