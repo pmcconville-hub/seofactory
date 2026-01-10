@@ -521,12 +521,13 @@ export interface AdjacentContext {
   previousSection?: {
     key: string;
     heading: string;
-    lastSentence: string;
-    lastObject?: string;
+    lastParagraph: string;  // For discourse continuity
+    keyTerms: string[];     // For vocabulary variety
   };
   nextSection?: {
     key: string;
     heading: string;
+    firstParagraph: string; // For transition preparation
   };
 }
 
@@ -548,28 +549,40 @@ export function buildAdjacentContext(
     const prev = sortedSections[currentIndex - 1];
     const content = prev.current_content || '';
 
-    // Extract last sentence
-    const sentences = content.split(/[.!?]+/).filter(sent => sent.trim());
-    const lastSentence = sentences[sentences.length - 1]?.trim() || '';
+    // Extract last paragraph (last block of text after double newline, or last 2-3 sentences)
+    const paragraphs = content.split(/\n\n+/).filter(p => p.trim());
+    const lastParagraph = paragraphs[paragraphs.length - 1]?.trim() || '';
 
-    // Extract potential object from last sentence (simplified)
-    const words = lastSentence.split(/\s+/);
-    const lastObject = words.slice(-3).join(' '); // Last 3 words as potential object
+    // Extract key terms (words that appear to be significant - longer words, capitalized)
+    const words = content.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+    const wordFreq: Record<string, number> = {};
+    words.forEach(w => { wordFreq[w] = (wordFreq[w] || 0) + 1; });
+    const keyTerms = Object.entries(wordFreq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([term]) => term);
 
     result.previousSection = {
       key: prev.section_key,
       heading: prev.section_heading || prev.section_key,
-      lastSentence: lastSentence.substring(0, 200),
-      lastObject: lastObject.substring(0, 50)
+      lastParagraph: lastParagraph || '', // Required by interface
+      keyTerms: keyTerms // Required by interface
     };
   }
 
   // Get next section context
   if (currentIndex < sortedSections.length - 1) {
     const next = sortedSections[currentIndex + 1];
+    const nextContent = next.current_content || '';
+
+    // Extract first paragraph
+    const paragraphs = nextContent.split(/\n\n+/).filter(p => p.trim());
+    const firstParagraph = paragraphs[0]?.trim() || '';
+
     result.nextSection = {
       key: next.section_key,
-      heading: next.section_heading || next.section_key
+      heading: next.section_heading || next.section_key,
+      firstParagraph: firstParagraph || '' // Required by interface
     };
   }
 

@@ -89,13 +89,13 @@ ${serializeHolisticContext(holistic)}
 ${adjacentContext.previousSection ? `
 ## Previous Section (for flow reference)
 **${adjacentContext.previousSection.heading}** ends with:
-"${adjacentContext.previousSection.lastParagraph.substring(0, 150)}..."
+"${(adjacentContext.previousSection.lastParagraph || '').substring(0, 150)}..."
 ` : ''}
 
 ${adjacentContext.nextSection ? `
 ## Next Section (for flow reference)
 **${adjacentContext.nextSection.heading}** begins with:
-"${adjacentContext.nextSection.firstParagraph.substring(0, 150)}..."
+"${(adjacentContext.nextSection.firstParagraph || '').substring(0, 150)}..."
 ` : ''}
 
 ## Header Optimization Rules:
@@ -442,14 +442,14 @@ ${section.current_content}
 ${adjacentContext.previousSection ? `
 ## PREVIOUS Section (ensure smooth transition FROM this)
 **${adjacentContext.previousSection.heading}**
-Last paragraph: "${adjacentContext.previousSection.lastParagraph.substring(0, 200)}..."
-Key terms: ${adjacentContext.previousSection.keyTerms.join(', ')}
+Last paragraph: "${(adjacentContext.previousSection.lastParagraph || '').substring(0, 200)}..."
+Key terms: ${(adjacentContext.previousSection.keyTerms || []).join(', ')}
 ` : '## This is the FIRST section - no transition needed at start'}
 
 ${adjacentContext.nextSection ? `
 ## NEXT Section (prepare transition TO this)
 **${adjacentContext.nextSection.heading}**
-First paragraph: "${adjacentContext.nextSection.firstParagraph.substring(0, 200)}..."
+First paragraph: "${(adjacentContext.nextSection.firstParagraph || '').substring(0, 200)}..."
 ` : '## This is the LAST section - ensure strong conclusion'}
 
 ## Discourse Anchors (use at transitions)
