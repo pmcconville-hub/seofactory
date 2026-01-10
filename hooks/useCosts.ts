@@ -93,6 +93,16 @@ export interface CostReport {
   logs: UsageLogEntry[];           // Always an array
 }
 
+export interface AggregatedCostSummary {
+  totalCost: number;
+  totalRequests: number;
+  totalTokens: number;
+  byProvider: Array<{ provider: string; cost: number; requests: number }>;
+  byUser: Array<{ user_id: string; cost: number; requests: number }>;
+  byProject: Array<{ project_id: string; cost: number; requests: number }>;
+  dailyTrend: Array<{ date: string; cost: number; requests: number }>;
+}
+
 // ============================================================================
 // Hook
 // ============================================================================
@@ -561,6 +571,71 @@ export function useCosts() {
     return report?.summary || null;
   }, [getCostReport]);
 
+  /**
+   * Get aggregated costs using the materialized view (faster for dashboard)
+   * Uses the get_org_cost_summary RPC function which queries cost_reports materialized view
+   */
+  const getAggregatedCosts = useCallback(async (
+    startDate: Date,
+    endDate: Date
+  ): Promise<AggregatedCostSummary | null> => {
+    if (!supabase || !organization || !can('canViewCosts')) {
+      setError('No permission to view costs');
+      return null;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Format dates as DATE strings (YYYY-MM-DD) for the RPC function
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+
+      const { data, error: rpcError } = await supabase.rpc('get_org_cost_summary', {
+        p_org_id: organization.id,
+        p_start_date: startDateStr,
+        p_end_date: endDateStr,
+      });
+
+      if (rpcError) {
+        console.warn('get_org_cost_summary RPC failed, falling back to direct query:', rpcError);
+        // Fall back to getCostReport if the RPC doesn't exist yet
+        const report = await getCostReport(startDate, endDate);
+        if (!report) return null;
+
+        return {
+          totalCost: report.summary.totalCost,
+          totalRequests: report.summary.totalRequests,
+          totalTokens: report.summary.totalTokens,
+          byProvider: report.byProvider.map(p => ({ provider: p.provider, cost: p.cost, requests: p.requests })),
+          byUser: [],
+          byProject: report.byProject.map(p => ({ project_id: p.projectId, cost: p.cost, requests: p.requests })),
+          dailyTrend: [],
+        };
+      }
+
+      // The RPC returns a single row with aggregated data
+      const result = Array.isArray(data) ? data[0] : data;
+
+      return {
+        totalCost: Number(result?.total_cost_usd) || 0,
+        totalRequests: Number(result?.total_requests) || 0,
+        totalTokens: Number(result?.total_tokens) || 0,
+        byProvider: result?.by_provider || [],
+        byUser: result?.by_user || [],
+        byProject: result?.by_project || [],
+        dailyTrend: result?.daily_trend || [],
+      };
+    } catch (err) {
+      console.error('Failed to get aggregated costs:', err);
+      setError(err instanceof Error ? err.message : 'Failed to get aggregated costs');
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [organization, can, supabase, getCostReport]);
+
   return {
     // State
     isLoading,
@@ -568,6 +643,7 @@ export function useCosts() {
 
     // Actions
     getCostReport,
+    getAggregatedCosts,  // Uses materialized view for faster dashboard queries
     exportToCsv,
     downloadCsv,
     exportToExcel,

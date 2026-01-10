@@ -5,11 +5,14 @@
  * Provides permission checking and feature gating utilities.
  *
  * Created: 2026-01-09 - Multi-tenancy Phase 5
+ * Updated: 2026-01-11 - Added actual feature gate RPC calls
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import { useOrganizationContext } from '../components/organization/OrganizationProvider';
 import { OrganizationPermissions, OrganizationRole } from '../types';
+import { useAppState } from '../state/appState';
+import { getSupabaseClient } from '../services/supabaseClient';
 
 // ============================================================================
 // Permission Types
@@ -167,14 +170,128 @@ export function usePermissions() {
 // Feature Gate Hook
 // ============================================================================
 
+/**
+ * Feature gate hook that checks if a feature is enabled for the current organization.
+ * Uses the can_use_feature() RPC to check module subscriptions and role access.
+ *
+ * @param feature - The feature flag to check (e.g., 'content_generation', 'audit_system')
+ * @returns Object with enabled status, loading state, and reason for disabled features
+ */
 export function useFeatureGate(feature: string): {
   enabled: boolean;
   loading: boolean;
+  reason?: string;
 } {
-  // For now, return enabled for all features
-  // In production, this would check feature flags
-  return {
-    enabled: true,
-    loading: false,
-  };
+  const { state } = useAppState();
+  const { current: organization } = useOrganizationContext();
+  const [enabled, setEnabled] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [reason, setReason] = useState<string | undefined>();
+
+  const supabase = useMemo(() => {
+    if (!state.businessInfo.supabaseUrl || !state.businessInfo.supabaseAnonKey) {
+      return null;
+    }
+    return getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+  }, [state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
+
+  useEffect(() => {
+    async function checkFeature() {
+      // If no organization or supabase, default to enabled (legacy behavior)
+      if (!organization || !supabase) {
+        setEnabled(true);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        const { data, error } = await supabase.rpc('can_use_feature', {
+          p_org_id: organization.id,
+          p_feature: feature,
+        });
+
+        if (error) {
+          // If the RPC fails (function doesn't exist yet), default to enabled
+          console.warn('[useFeatureGate] RPC error, defaulting to enabled:', error);
+          setEnabled(true);
+          setReason(undefined);
+        } else {
+          setEnabled(data === true);
+          if (data !== true) {
+            setReason('This feature requires an upgrade to your subscription plan.');
+          } else {
+            setReason(undefined);
+          }
+        }
+      } catch (err) {
+        console.error('[useFeatureGate] Error checking feature:', err);
+        // Default to enabled on error
+        setEnabled(true);
+        setReason(undefined);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    checkFeature();
+  }, [organization, supabase, feature]);
+
+  return { enabled, loading, reason };
+}
+
+/**
+ * Get all available features for the current organization.
+ * Uses get_available_features() RPC.
+ */
+export function useAvailableFeatures(): {
+  features: string[];
+  loading: boolean;
+} {
+  const { state } = useAppState();
+  const { current: organization } = useOrganizationContext();
+  const [features, setFeatures] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const supabase = useMemo(() => {
+    if (!state.businessInfo.supabaseUrl || !state.businessInfo.supabaseAnonKey) {
+      return null;
+    }
+    return getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+  }, [state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
+
+  useEffect(() => {
+    async function fetchFeatures() {
+      if (!organization || !supabase) {
+        setFeatures([]);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        const { data, error } = await supabase.rpc('get_available_features', {
+          p_org_id: organization.id,
+        });
+
+        if (error) {
+          console.warn('[useAvailableFeatures] RPC error:', error);
+          setFeatures([]);
+        } else {
+          setFeatures(data || []);
+        }
+      } catch (err) {
+        console.error('[useAvailableFeatures] Error:', err);
+        setFeatures([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchFeatures();
+  }, [organization, supabase]);
+
+  return { features, loading };
 }
