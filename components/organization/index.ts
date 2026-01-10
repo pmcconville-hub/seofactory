@@ -8,6 +8,7 @@ export { PendingInvitationsBanner } from './PendingInvitationsBanner';
 export { CostSummaryWidget } from './CostSummaryWidget';
 export { CostDashboardModal } from './CostDashboardModal';
 export { CreateOrganizationModal } from './CreateOrganizationModal';
+export { OrganizationApiKeysModal } from './OrganizationApiKeysModal';
 export {
   FeatureGate,
   PermissionGate,
