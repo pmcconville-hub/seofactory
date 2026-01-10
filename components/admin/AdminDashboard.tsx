@@ -14,6 +14,7 @@ import HelpEditor from './HelpEditor';
 import AIUsageReport from './AIUsageReport';
 import ProjectManagement from './ProjectManagement';
 import OrganizationManagement from './OrganizationManagement';
+import { QualityDemoPage } from '../pages/QualityDemoPage';
 
 interface UserData {
     id: string;
@@ -399,7 +400,7 @@ const AdminDashboard: React.FC = () => {
     const [logs, setLogs] = useState<TelemetryLog[]>([]);
     const [isCheckingDB, setIsCheckingDB] = useState(false);
     const [dbStatus, setDbStatus] = useState<'ok' | 'error' | null>(null);
-    const [activeTab, setActiveTab] = useState<'overview' | 'usage' | 'config' | 'users' | 'orgs' | 'help' | 'projects'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'usage' | 'config' | 'users' | 'orgs' | 'help' | 'projects' | 'quality'>('overview');
 
     useEffect(() => {
         setLogs(getTelemetryLogs());
@@ -486,6 +487,12 @@ const AdminDashboard: React.FC = () => {
                             className={`w-full text-left px-4 py-2 rounded transition-colors ${activeTab === 'projects' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
                         >
                             📁 Project Management
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('quality')}
+                            className={`w-full text-left px-4 py-2 rounded transition-colors ${activeTab === 'quality' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+                        >
+                            ✓ Quality Demo (Dev)
                         </button>
                     </nav>
                     <div className="p-4 border-t border-gray-700">
@@ -600,6 +607,12 @@ const AdminDashboard: React.FC = () => {
 
                     {activeTab === 'projects' && (
                         <ProjectManagement />
+                    )}
+
+                    {activeTab === 'quality' && (
+                        <div className="bg-gray-800 rounded-lg">
+                            <QualityDemoPage />
+                        </div>
                     )}
                 </main>
             </div>

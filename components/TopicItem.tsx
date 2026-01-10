@@ -313,6 +313,26 @@ const TopicItem: React.FC<TopicItemProps> = ({
                                         onRepairMissing={onRepairMissing}
                                         topicTitle={title}
                                     />
+                                    {/* Draft quality badge - shows audit score if draft exists */}
+                                    {brief?.articleDraft && brief?.contentAudit?.algorithmicResults && (
+                                        <span
+                                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs border ${
+                                                (brief.contentAudit.overallScore || 0) >= 80
+                                                    ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                                    : (brief.contentAudit.overallScore || 0) >= 60
+                                                    ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                                                    : 'bg-red-500/20 text-red-400 border-red-500/30'
+                                            }`}
+                                            title={`Draft Quality: ${brief.contentAudit.overallScore || 0}% - ${
+                                                brief.contentAudit.algorithmicResults.filter((r: any) => r.isPassing).length
+                                            }/${brief.contentAudit.algorithmicResults.length} checks passed`}
+                                        >
+                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            {brief.contentAudit.overallScore || 0}%
+                                        </span>
+                                    )}
                                 </h4>
                             )}
                             

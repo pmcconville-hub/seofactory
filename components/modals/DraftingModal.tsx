@@ -29,6 +29,7 @@ import { AuditIssuesPanel } from '../drafting/AuditIssuesPanel';
 import { AuditIssue } from '../../types';
 import { runAlgorithmicAudit, convertToAuditIssues } from '../../services/ai/contentGeneration/passes/auditChecks';
 import { useFeatureGate } from '../../hooks/usePermissions';
+import { QualityRulePanel, ArticleQualityReport } from '../quality';
 
 interface DraftingModalProps {
   isOpen: boolean;
@@ -53,7 +54,7 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
   const briefFromState = activeBriefTopic ? activeMap?.briefs?.[activeBriefTopic.id] : null;
   const brief = briefFromState || briefProp;
 
-  const [activeTab, setActiveTab] = useState<'edit' | 'preview' | 'images'>('edit');
+  const [activeTab, setActiveTab] = useState<'edit' | 'preview' | 'images' | 'quality'>('edit');
   const [draftContent, setDraftContent] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isPolishing, setIsPolishing] = useState(false);
@@ -2440,6 +2441,23 @@ ${schemaScript}`;
                       </span>
                     )}
                  </button>
+                 <button
+                    onClick={() => setActiveTab('quality')}
+                    className={`px-3 py-1 text-sm rounded flex items-center gap-1 ${
+                      activeTab === 'quality'
+                        ? 'bg-green-600 text-white font-medium'
+                        : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                 >
+                    Quality
+                    {databaseJobInfo?.auditScore && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                        activeTab === 'quality' ? 'bg-green-700' : 'bg-gray-600'
+                      }`}>
+                        {databaseJobInfo.auditScore}%
+                      </span>
+                    )}
+                 </button>
              </div>
 
              {isPolishing && (
@@ -2804,6 +2822,71 @@ ${schemaScript}`;
                         setShowImageModal(true);
                       }}
                     />
+                ) : activeTab === 'quality' ? (
+                    <div className="h-full overflow-y-auto p-4 space-y-6">
+                        {/* Quality Report Header */}
+                        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-white">Content Quality Report</h3>
+                                {databaseJobInfo?.auditScore && (
+                                    <div className={`text-2xl font-bold ${
+                                        databaseJobInfo.auditScore >= 80 ? 'text-green-400' :
+                                        databaseJobInfo.auditScore >= 60 ? 'text-yellow-400' :
+                                        'text-red-400'
+                                    }`}>
+                                        {databaseJobInfo.auditScore}%
+                                    </div>
+                                )}
+                            </div>
+                            {minimalJob ? (
+                                <ArticleQualityReport
+                                    jobId={minimalJob.id}
+                                    violations={brief?.contentAudit?.frameworkRules?.filter((r: any) => !r.isPassing).map((r: any) => ({
+                                        rule: r.ruleName,
+                                        text: r.details,
+                                        position: 0,
+                                        suggestion: r.remediation || 'Review and address this issue',
+                                        severity: 'warning' as const,
+                                    })) || []}
+                                    passDeltas={[]}
+                                    overallScore={databaseJobInfo?.auditScore || 0}
+                                    onApprove={() => {
+                                        dispatch({ type: 'SET_NOTIFICATION', payload: 'Article approved!' });
+                                    }}
+                                    onRequestFix={(ruleIds) => {
+                                        console.log('Request fix for rules:', ruleIds);
+                                        dispatch({ type: 'SET_NOTIFICATION', payload: `Requested fix for ${ruleIds.length} rule(s)` });
+                                    }}
+                                    onEdit={() => setActiveTab('edit')}
+                                    onRegenerate={() => {
+                                        dispatch({ type: 'SET_NOTIFICATION', payload: 'Regeneration not yet implemented in this view' });
+                                    }}
+                                />
+                            ) : (
+                                <div className="text-center py-8 text-gray-400">
+                                    <p>No quality data available yet.</p>
+                                    <p className="text-sm mt-2">Generate or polish content to see quality metrics.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Quality Rules Panel */}
+                        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                            <h3 className="text-lg font-semibold text-white mb-4">Quality Rules Checklist</h3>
+                            <QualityRulePanel
+                                violations={brief?.contentAudit?.frameworkRules?.filter((r: any) => !r.isPassing).map((r: any) => ({
+                                    rule: r.ruleName,
+                                    text: r.details,
+                                    position: 0,
+                                    suggestion: r.remediation || 'Review and address this issue',
+                                    severity: 'warning' as const,
+                                })) || []}
+                                onRuleClick={(ruleId) => {
+                                    console.log('Rule clicked:', ruleId);
+                                }}
+                            />
+                        </div>
+                    </div>
                 ) : null}
             </div>
 

@@ -57,6 +57,9 @@ import { InsightsHub } from './insights';
 // Gamification Components
 import { ConfidenceDashboard, PriorityTieringSystem } from './gamification';
 
+// Quality Analytics
+import { PortfolioAnalytics } from './quality';
+
 import { Button } from './ui/Button';
 import { FeatureErrorBoundary } from './ui/FeatureErrorBoundary';
 import TabNavigation, { createDashboardTabs, NavIcons } from './dashboard/TabNavigation';
@@ -468,6 +471,8 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         // KP Strategy and Entity Authority
         onKPStrategy: () => setShowKPStrategy(true),
         onEntityAuthority: () => setShowEntityAuthority(true),
+        // Quality Analytics
+        onQualityAnalytics: () => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'qualityAnalytics', visible: true } }),
     });
 
     return (
@@ -978,6 +983,35 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                     setShowKPStrategy(true);
                 }}
             />
+
+            {/* Quality Analytics Modal */}
+            {modals.qualityAnalytics && (
+                <div className="fixed inset-0 z-50 bg-gray-900/95 overflow-auto">
+                    <div className="min-h-full p-6">
+                        <div className="max-w-7xl mx-auto">
+                            <div className="flex justify-between items-center mb-6">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-white">Quality Analytics</h2>
+                                    <p className="text-sm text-gray-400">Content quality metrics and compliance trends</p>
+                                </div>
+                                <button
+                                    onClick={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'qualityAnalytics', visible: false } })}
+                                    className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+                                >
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <FeatureErrorBoundary featureName="Quality Analytics">
+                                <PortfolioAnalytics
+                                    organizationId={state.activeProjectId || undefined}
+                                />
+                            </FeatureErrorBoundary>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -260,6 +260,8 @@ export interface DashboardNavConfig {
   // Knowledge Panel (KP) Strategy
   onKPStrategy?: () => void;
   onEntityAuthority?: () => void;
+  // Quality Analytics
+  onQualityAnalytics?: () => void;
 }
 
 export function createDashboardTabs(config: DashboardNavConfig): NavTab[] {
@@ -452,6 +454,13 @@ export function createDashboardTabs(config: DashboardNavConfig): NavTab[] {
           label: 'Entity Authority',
           onClick: config.onEntityAuthority,
           helpText: 'Knowledge Panel readiness, EAV consensus tracking, and priority actions',
+          variant: 'primary' as const,
+        }] : []),
+        ...(config.onQualityAnalytics ? [{
+          id: 'quality-analytics',
+          label: 'Quality Analytics',
+          onClick: config.onQualityAnalytics,
+          helpText: 'Content quality metrics, rule compliance, and historical trends',
           variant: 'primary' as const,
         }] : []),
       ],
