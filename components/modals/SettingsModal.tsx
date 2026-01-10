@@ -10,6 +10,7 @@ import { Loader } from '../ui/Loader';
 import { Modal } from '../ui/Modal';
 import * as modelDiscovery from '../../services/modelDiscoveryService';
 import { WordPressConnectionManager } from '../wordpress';
+import { OrganizationSettingsTab } from '../organization';
 
 // --- Sub-components for better organization ---
 
@@ -241,7 +242,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
     const { state } = useAppState();
     const [settings, setSettings] = useState<Partial<BusinessInfo>>(initialSettings);
     const [isSaving, setIsSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState<'ai' | 'services' | 'wordpress' | 'health'>('ai');
+    const [activeTab, setActiveTab] = useState<'ai' | 'services' | 'wordpress' | 'organization' | 'health'>('ai');
 
     useEffect(() => {
         if (isOpen) {
@@ -267,7 +268,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
         }
     };
 
-    const TabButton: React.FC<{ tab: 'ai' | 'services' | 'wordpress' | 'health', label: string, id: string }> = ({ tab, label, id }) => (
+    const TabButton: React.FC<{ tab: 'ai' | 'services' | 'wordpress' | 'organization' | 'health', label: string, id: string }> = ({ tab, label, id }) => (
       <button
         type="button"
         role="tab"
@@ -308,6 +309,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
                        <TabButton tab="ai" label="AI Providers" id="tab-ai" />
                        <TabButton tab="services" label="SERP & Services" id="tab-services" />
                        <TabButton tab="wordpress" label="WordPress" id="tab-wordpress" />
+                       <TabButton tab="organization" label="Organization" id="tab-organization" />
                     </div>
                 </nav>
                 <main
@@ -325,6 +327,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
                          <WordPressConnectionManager projectId={state.activeProjectId || undefined} />
                        </div>
                      )}
+                     {activeTab === 'organization' && <OrganizationSettingsTab />}
                 </main>
             </form>
         </Modal>
