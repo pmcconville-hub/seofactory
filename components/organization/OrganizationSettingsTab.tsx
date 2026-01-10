@@ -9,13 +9,14 @@
  * Created: 2026-01-10 - Multi-tenancy Phase 1, Task 4
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useOrganizationContext } from './OrganizationProvider';
 import { usePermissions } from '../../hooks/usePermissions';
 import { Button } from '../ui/Button';
 import { Label } from '../ui/Label';
 import { Loader } from '../ui/Loader';
-import { useSupabase } from '../../services/supabaseClient';
+import { getSupabaseClient } from '../../services/supabaseClient';
+import { useAppState } from '../../state/appState';
 
 // ============================================================================
 // Types
@@ -107,9 +108,16 @@ export function OrganizationSettingsTab({
   onOpenCosts,
   onOpenApiKeys,
 }: OrganizationSettingsTabProps) {
+  const { state } = useAppState();
   const { current: organization, membership, isLoading } = useOrganizationContext();
   const { isAdmin, can } = usePermissions();
-  const supabase = useSupabase();
+
+  const supabase = useMemo(() => {
+    if (!state.businessInfo.supabaseUrl || !state.businessInfo.supabaseAnonKey) {
+      return null;
+    }
+    return getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+  }, [state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
 
   const [memberCount, setMemberCount] = useState<number | null>(null);
   const [projectCount, setProjectCount] = useState<number | null>(null);
@@ -118,7 +126,7 @@ export function OrganizationSettingsTab({
   // Load member and project counts
   useEffect(() => {
     async function loadCounts() {
-      if (!organization) {
+      if (!supabase || !organization) {
         setStatsLoading(false);
         return;
       }
@@ -160,11 +168,24 @@ export function OrganizationSettingsTab({
     loadCounts();
   }, [organization, supabase]);
 
-  // Loading state
-  if (isLoading || !organization) {
+  // Loading state - only show spinner if actively loading
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
         <Loader className="w-8 h-8" />
+      </div>
+    );
+  }
+
+  // No organization available
+  if (!organization) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 text-center">
+        <svg className="w-12 h-12 text-gray-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        </svg>
+        <p className="text-gray-400 mb-2">No organization selected</p>
+        <p className="text-gray-500 text-sm">Organization data is loading or unavailable.</p>
       </div>
     );
   }

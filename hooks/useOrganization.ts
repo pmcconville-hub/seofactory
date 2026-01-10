@@ -209,9 +209,23 @@ export function useOrganization(businessInfo: BusinessInfo) {
 
       // Auto-select personal org if none selected
       if (!currentOrganization && orgs.length > 0) {
-        const personalOrg = orgs.find((o) => o.type === 'personal');
+        const personalOrg = orgs.find((o) => o.type === 'personal') || orgs[0];
         if (personalOrg) {
-          await switchOrganization(personalOrg.id);
+          // Set directly instead of calling switchOrganization to avoid race condition
+          setCurrentOrganization(personalOrg);
+          setCurrentMembership(personalOrg.membership);
+
+          // Update user metadata
+          try {
+            await supabase.auth.updateUser({
+              data: {
+                current_organization_id: personalOrg.id,
+                current_organization_role: personalOrg.membership.role,
+              },
+            });
+          } catch (metaError) {
+            console.warn('Failed to update user metadata:', metaError);
+          }
         }
       }
     } catch (err) {
