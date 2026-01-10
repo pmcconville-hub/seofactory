@@ -6,7 +6,7 @@ import { Input } from '../ui/Input';
 import { Label } from '../ui/Label';
 import { Loader } from '../ui/Loader';
 import { Project, AppStep } from '../../types';
-import { OrganizationSwitcher } from '../organization';
+import { OrganizationSwitcher, PendingInvitationsBanner } from '../organization';
 import { getSupabaseClient, resetSupabaseClient, clearSupabaseAuthStorage } from '../../services/supabaseClient';
 
 interface ProjectSelectionScreenProps {
@@ -71,6 +71,13 @@ const ProjectSelectionScreen: React.FC<ProjectSelectionScreenProps> = ({ onCreat
             </Button>
         </div>
       </header>
+
+      <PendingInvitationsBanner
+        onAccept={() => {
+          // Refresh organizations after accepting
+          window.location.reload();
+        }}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Create New Project */}
