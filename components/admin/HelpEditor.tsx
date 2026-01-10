@@ -49,6 +49,8 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
   onSelectCategory,
   selectedCategoryId
 }) => {
+  // Ensure categories is always an array
+  const safeCategories = categories || [];
   const { state, dispatch } = useAppState();
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -66,7 +68,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
         slug: formData.slug,
         description: formData.description || undefined,
         icon: formData.icon || undefined,
-        sort_order: categories.length
+        sort_order: safeCategories.length
       });
       setFormData({ name: '', slug: '', description: '', icon: '' });
       setIsCreating(false);
@@ -140,7 +142,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold text-white">Categories</h3>
         <div className="flex gap-2">
-          {categories.length === 0 && (
+          {safeCategories.length === 0 && (
             <Button
               variant="secondary"
               className="text-xs"
@@ -227,7 +229,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
 
       {/* Category List */}
       <div className="space-y-1">
-        {categories.map(cat => (
+        {safeCategories.map(cat => (
           <div
             key={cat.id}
             className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors ${
@@ -263,7 +265,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
             </div>
           </div>
         ))}
-        {categories.length === 0 && (
+        {safeCategories.length === 0 && (
           <p className="text-gray-500 text-sm text-center py-4">
             No categories yet. Seed the defaults or create a new one.
           </p>
@@ -284,6 +286,8 @@ interface ArticleEditorProps {
 }
 
 const ArticleEditor: React.FC<ArticleEditorProps> = ({ category, articles, onRefresh }) => {
+  // Ensure articles is always an array
+  const safeArticles = articles || [];
   const { state, dispatch } = useAppState();
   const [selectedArticle, setSelectedArticle] = useState<HelpArticle | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -340,7 +344,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ category, articles, onRef
         status: formData.status,
         feature_keys: formData.feature_keys.split(',').map(s => s.trim()).filter(Boolean),
         search_keywords: formData.search_keywords.split(',').map(s => s.trim()).filter(Boolean),
-        sort_order: articles.length
+        sort_order: safeArticles.length
       });
       resetForm();
       setIsCreating(false);
@@ -426,7 +430,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ category, articles, onRef
           </Button>
         </div>
         <div className="space-y-1 max-h-[500px] overflow-y-auto">
-          {articles.map(article => (
+          {safeArticles.map(article => (
             <button
               key={article.id}
               onClick={() => loadArticle(article)}
@@ -448,7 +452,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ category, articles, onRef
               </div>
             </button>
           ))}
-          {articles.length === 0 && (
+          {safeArticles.length === 0 && (
             <p className="text-gray-500 text-xs text-center py-4">No articles yet.</p>
           )}
         </div>

@@ -128,8 +128,10 @@ interface ScreenshotsSectionProps {
 }
 
 const ScreenshotsSection: React.FC<ScreenshotsSectionProps> = ({ screenshots, supabase }) => {
+  // Ensure screenshots is always an array
+  const safeScreenshots = screenshots || [];
   // Only show screenshots that have captions (indicating they should be displayed separately)
-  const captionedScreenshots = screenshots.filter(s => s.caption);
+  const captionedScreenshots = safeScreenshots.filter(s => s.caption);
 
   if (captionedScreenshots.length === 0) return null;
 
