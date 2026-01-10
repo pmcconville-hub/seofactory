@@ -217,13 +217,23 @@ export function useFeatureGate(feature: string): {
           console.warn('[useFeatureGate] RPC error, defaulting to enabled:', error);
           setEnabled(true);
           setReason(undefined);
+        } else if (data === true) {
+          // Feature is explicitly enabled via subscription
+          setEnabled(true);
+          setReason(undefined);
         } else {
-          setEnabled(data === true);
-          if (data !== true) {
-            setReason('This feature requires an upgrade to your subscription plan.');
-          } else {
-            setReason(undefined);
-          }
+          // TODO: Remove this grace period once billing module is fully deployed
+          // For now, default to enabled if the organization hasn't been set up with
+          // module subscriptions yet. This prevents blocking existing users during
+          // the transition to the multi-tenancy billing system.
+          //
+          // Once org_subscriptions are required:
+          // setEnabled(false);
+          // setReason('This feature requires an upgrade to your subscription plan.');
+          console.info(`[useFeatureGate] Feature "${feature}" not explicitly enabled for org ${organization.id}. ` +
+            'Defaulting to enabled during billing transition period.');
+          setEnabled(true);
+          setReason(undefined);
         }
       } catch (err) {
         console.error('[useFeatureGate] Error checking feature:', err);

@@ -125,6 +125,8 @@ function buildSystemicChecks(job: ContentGenerationJob): QualityReport['systemic
   return checks;
 }
 
+import type { ContentGenerationSettings, ContentGenerationPriorities } from '../types/contentGeneration';
+
 interface UseContentGenerationProps {
   briefId: string;
   mapId: string;
@@ -133,6 +135,8 @@ interface UseContentGenerationProps {
   brief: ContentBrief;
   pillars?: SEOPillars;
   topic?: EnrichedTopic;
+  /** Generation settings including priorities and pass control */
+  generationSettings?: ContentGenerationSettings;
   onLog: (message: string, status: 'info' | 'success' | 'failure' | 'warning') => void;
   onComplete?: (draft: string, auditScore: number, schemaResult?: EnhancedSchemaResult) => void;
   externalRefreshTrigger?: number; // From global state - triggers re-check when incremented
@@ -164,6 +168,7 @@ export function useContentGeneration({
   brief,
   pillars,
   topic,
+  generationSettings,
   onLog,
   onComplete,
   externalRefreshTrigger
@@ -373,12 +378,20 @@ export function useContentGeneration({
     const shouldAbort = () => abortRef.current;
 
     // Ensure businessInfo has required fields with defaults
-    const safeBusinessInfo: BusinessInfo = {
+    // Include generation priorities for prompt customization
+    const safeBusinessInfo: BusinessInfo & { generationPriorities?: ContentGenerationPriorities } = {
       ...businessInfo,
       language: businessInfo?.language || 'English',
       targetMarket: businessInfo?.targetMarket || 'Global',
       aiProvider: businessInfo?.aiProvider || 'gemini',
+      generationPriorities: generationSettings?.priorities,
     };
+
+    // Log generation settings being used
+    if (generationSettings?.priorities) {
+      const p = generationSettings.priorities;
+      onLog(`Using priorities: Readability ${p.humanReadability}%, Business ${p.businessConversion}%, SEO ${p.machineOptimization}%`, 'info');
+    }
 
     // Helper to collect and save progressive schema data
     const collectProgressiveData = async (passNumber: number, draftContent: string) => {

@@ -504,6 +504,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
         brief: brief || {} as ContentBrief,
         pillars: activeMap?.pillars,
         topic: activeBriefTopic || undefined,
+        generationSettings: contentSettings, // Pass user's priority settings to control generation
         onLog: handleLog,
         onComplete: handleGenerationComplete,
         externalRefreshTrigger: state.jobRefreshTrigger // Listen for re-run triggers from DraftingModal

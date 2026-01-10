@@ -1,17 +1,88 @@
 // services/ai/contentGeneration/rulesEngine/prompts/sectionPromptBuilder.ts
 
-import { SectionGenerationContext, BriefSection, FormatCode } from '../../../../../types';
+import { SectionGenerationContext, BriefSection, FormatCode, BusinessInfo } from '../../../../../types';
+import type { ContentGenerationPriorities } from '../../../../../types/contentGeneration';
 import { BriefCodeParser } from '../briefCodeParser';
 import { PROHIBITED_PATTERNS } from '../validators/prohibitedLanguage';
 import { getLanguageAndRegionInstruction, getLanguageName } from '../../../../../utils/languageUtils';
 
+// Extended BusinessInfo type that may include generation priorities
+type ExtendedBusinessInfo = BusinessInfo & { generationPriorities?: ContentGenerationPriorities };
+
 export class SectionPromptBuilder {
+  /**
+   * Build priority guidance instructions based on user's content priorities
+   */
+  private static buildPriorityGuidance(businessInfo: ExtendedBusinessInfo): string {
+    const priorities = businessInfo.generationPriorities;
+    if (!priorities) return '';
+
+    // Determine primary focus based on highest priority
+    const sortedPriorities = [
+      { name: 'humanReadability', value: priorities.humanReadability, label: 'Reader-First' },
+      { name: 'businessConversion', value: priorities.businessConversion, label: 'Business-Focused' },
+      { name: 'machineOptimization', value: priorities.machineOptimization, label: 'SEO-Optimized' },
+      { name: 'factualDensity', value: priorities.factualDensity, label: 'Information-Dense' },
+    ].sort((a, b) => b.value - a.value);
+
+    const primary = sortedPriorities[0];
+    const secondary = sortedPriorities[1];
+
+    let guidance = `## Content Priority (User Settings)
+Primary focus: ${primary.label} (${primary.value}%)
+Secondary focus: ${secondary.label} (${secondary.value}%)
+
+`;
+
+    // Add specific guidance based on primary priority
+    if (primary.name === 'humanReadability' && primary.value >= 35) {
+      guidance += `**READER-FIRST WRITING:**
+- Use conversational transitions between ideas
+- Vary sentence length for rhythm (mix short punchy with longer explanatory)
+- Include relatable examples when appropriate
+- Prioritize clarity over keyword density
+- Use second-person "you" where natural
+
+`;
+    } else if (primary.name === 'businessConversion' && primary.value >= 35) {
+      guidance += `**BUSINESS-FOCUSED WRITING:**
+- Emphasize value propositions and benefits
+- Include clear calls-to-action where appropriate
+- Connect features to reader outcomes
+- Use persuasive but not pushy language
+- Highlight unique differentiators
+
+`;
+    } else if (primary.name === 'machineOptimization' && primary.value >= 35) {
+      guidance += `**SEO-OPTIMIZED WRITING:**
+- Position key entities early in paragraphs
+- Use clear subject-predicate-object structures
+- Include semantic variations of key terms
+- Maintain entity consistency throughout
+- Structure for featured snippet potential
+
+`;
+    } else if (primary.name === 'factualDensity' && primary.value >= 35) {
+      guidance += `**INFORMATION-DENSE WRITING:**
+- Pack multiple facts per paragraph
+- Use specific numbers and data points
+- Minimize filler words and transitions
+- Every sentence must add new information
+- Prioritize completeness over readability
+
+`;
+    }
+
+    return guidance;
+  }
+
   /**
    * Build a comprehensive prompt for section generation
    * Includes all semantic framework rules
    */
   static build(context: SectionGenerationContext, fixInstructions?: string): string {
     const { section, brief, businessInfo, discourseContext, isYMYL, ymylCategory } = context;
+    const extendedBusinessInfo = businessInfo as ExtendedBusinessInfo;
 
     // Parse format codes from methodology note
     const parsedCodes = BriefCodeParser.parseFormatCodes(section.methodology_note || '');
@@ -91,6 +162,12 @@ Place links AFTER defining the concept, never in the first sentence.
 5. **Complete Sentences**: Never end mid-thought
 
 `;
+
+    // Add user-configured priority guidance
+    const priorityGuidance = this.buildPriorityGuidance(extendedBusinessInfo);
+    if (priorityGuidance) {
+      prompt += priorityGuidance;
+    }
 
     // Add fix instructions if this is a retry
     if (fixInstructions) {
