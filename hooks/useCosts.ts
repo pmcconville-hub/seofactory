@@ -65,10 +65,10 @@ export interface UsageLogEntry {
 
 export interface CostReport {
   summary: CostSummary;
-  byProvider: CostByProvider[];
-  byProject: CostByProject[];
-  byModel: CostByModel[];
-  logs: UsageLogEntry[];
+  byProvider: CostByProvider[];  // Always an array
+  byProject: CostByProject[];    // Always an array
+  byModel: CostByModel[];        // Always an array
+  logs: UsageLogEntry[];         // Always an array
 }
 
 // ============================================================================

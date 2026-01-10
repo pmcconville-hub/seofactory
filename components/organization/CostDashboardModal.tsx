@@ -399,7 +399,7 @@ export function CostDashboardModal({ isOpen, onClose }: CostDashboardModalProps)
             <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">
               By Provider
             </h3>
-            {report.byProvider.length === 0 ? (
+            {(report.byProvider || []).length === 0 ? (
               <div className="bg-gray-800/30 rounded-lg p-4 text-center text-gray-500 text-sm">
                 No usage data for this period
               </div>
@@ -420,7 +420,7 @@ export function CostDashboardModal({ isOpen, onClose }: CostDashboardModalProps)
                     </tr>
                   </thead>
                   <tbody>
-                    {report.byProvider.map((provider) => (
+                    {(report.byProvider || []).map((provider) => (
                       <tr key={provider.provider} className="border-b border-gray-700/50 last:border-0">
                         <td className="p-3">
                           <div className="flex items-center gap-2">
@@ -465,7 +465,7 @@ export function CostDashboardModal({ isOpen, onClose }: CostDashboardModalProps)
             <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">
               Top Projects
             </h3>
-            {report.byProject.length === 0 ? (
+            {(report.byProject || []).length === 0 ? (
               <div className="bg-gray-800/30 rounded-lg p-4 text-center text-gray-500 text-sm">
                 No project data for this period
               </div>
@@ -485,7 +485,7 @@ export function CostDashboardModal({ isOpen, onClose }: CostDashboardModalProps)
                     </tr>
                   </thead>
                   <tbody>
-                    {report.byProject.slice(0, 10).map((project) => (
+                    {(report.byProject || []).slice(0, 10).map((project) => (
                       <tr key={project.projectId} className="border-b border-gray-700/50 last:border-0">
                         <td className="p-3">
                           <span className="text-sm text-gray-200 truncate block max-w-[200px]">
@@ -505,9 +505,9 @@ export function CostDashboardModal({ isOpen, onClose }: CostDashboardModalProps)
                     ))}
                   </tbody>
                 </table>
-                {report.byProject.length > 10 && (
+                {(report.byProject || []).length > 10 && (
                   <div className="p-3 text-center text-xs text-gray-500 border-t border-gray-700/50">
-                    Showing top 10 of {report.byProject.length} projects
+                    Showing top 10 of {(report.byProject || []).length} projects
                   </div>
                 )}
               </div>

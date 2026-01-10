@@ -30,26 +30,40 @@ export type PermissionCheck =
 export function usePermissions() {
   const { permissions, membership, current: organization } = useOrganizationContext();
 
+  // Ensure permissions is always a valid object with safe defaults
+  const safePermissions = permissions || {
+    canViewProjects: false,
+    canCreateProjects: false,
+    canDeleteProjects: false,
+    canManageMembers: false,
+    canManageBilling: false,
+    canViewCosts: false,
+    canConfigureApiKeys: false,
+    canUseContentGeneration: false,
+    canExportData: false,
+    canViewAuditLog: false,
+  };
+
   /**
    * Check if user has a specific permission
    */
   const can = useCallback((permission: Permission): boolean => {
-    return permissions[permission] === true;
-  }, [permissions]);
+    return safePermissions[permission] === true;
+  }, [safePermissions]);
 
   /**
    * Check if user has any of the specified permissions
    */
   const canAny = useCallback((permissionList: Permission[]): boolean => {
-    return permissionList.some((p) => permissions[p] === true);
-  }, [permissions]);
+    return (permissionList || []).some((p) => safePermissions[p] === true);
+  }, [safePermissions]);
 
   /**
    * Check if user has all of the specified permissions
    */
   const canAll = useCallback((permissionList: Permission[]): boolean => {
-    return permissionList.every((p) => permissions[p] === true);
-  }, [permissions]);
+    return (permissionList || []).every((p) => safePermissions[p] === true);
+  }, [safePermissions]);
 
   /**
    * Flexible permission check supporting multiple formats
@@ -139,8 +153,8 @@ export function usePermissions() {
     isAdmin,
     canEdit,
 
-    // Current state
-    permissions,
+    // Current state (use safe permissions)
+    permissions: safePermissions,
     role: membership?.role,
     organizationType: organization?.type,
 

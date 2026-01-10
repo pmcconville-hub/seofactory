@@ -120,7 +120,8 @@ export function useInvitations() {
 
       if (queryError) throw queryError;
 
-      return data || [];
+      // Always return an array (never undefined)
+      return Array.isArray(data) ? data : [];
     } catch (err) {
       console.error('Failed to get organization invitations:', err);
       setError(err instanceof Error ? err.message : 'Failed to get invitations');

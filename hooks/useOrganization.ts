@@ -360,8 +360,8 @@ export function useOrganization(businessInfo: BusinessInfo) {
     membership: currentMembership,
     permissions,
 
-    // All organizations
-    organizations,
+    // All organizations (always return an array)
+    organizations: organizations || [],
 
     // Loading states
     isLoading,
@@ -375,6 +375,6 @@ export function useOrganization(businessInfo: BusinessInfo) {
 
     // Helpers
     isPersonalOrg: currentOrganization?.type === 'personal',
-    hasMultipleOrgs: organizations.length > 1,
+    hasMultipleOrgs: (organizations || []).length > 1,
   };
 }
