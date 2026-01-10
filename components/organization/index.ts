@@ -2,3 +2,4 @@ export { OrganizationProvider, useOrganizationContext } from './OrganizationProv
 export { OrganizationSwitcher } from './OrganizationSwitcher';
 export { OrganizationSettingsTab } from './OrganizationSettingsTab';
 export { MemberList } from './MemberList';
+export { InviteMemberModal } from './InviteMemberModal';
