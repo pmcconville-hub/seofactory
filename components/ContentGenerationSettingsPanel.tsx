@@ -1,5 +1,5 @@
 // components/ContentGenerationSettingsPanel.tsx
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ContentGenerationSettings,
   ContentGenerationPriorities,
@@ -32,6 +32,27 @@ const formatPresetName = (key: string): string => {
     .join(' ');
 };
 
+/**
+ * Detect which preset matches the current priorities (if any)
+ * Returns null if priorities don't match any preset exactly
+ */
+const detectActivePreset = (
+  priorities: ContentGenerationPriorities,
+  presets: Record<string, ContentGenerationPriorities>
+): string | null => {
+  for (const [key, preset] of Object.entries(presets)) {
+    if (
+      priorities.humanReadability === preset.humanReadability &&
+      priorities.businessConversion === preset.businessConversion &&
+      priorities.machineOptimization === preset.machineOptimization &&
+      priorities.factualDensity === preset.factualDensity
+    ) {
+      return key;
+    }
+  }
+  return null;
+};
+
 export const ContentGenerationSettingsPanel: React.FC<Props> = ({
   settings,
   onChange,
@@ -40,14 +61,18 @@ export const ContentGenerationSettingsPanel: React.FC<Props> = ({
   onModeSettingsChange,
   showModeSelector = false,
 }) => {
-  const [activePreset, setActivePreset] = useState<string | null>('balanced');
+  // Derive active preset from actual settings - persists correctly across remounts
+  const activePreset = useMemo(
+    () => detectActivePreset(settings.priorities, presets),
+    [settings.priorities, presets]
+  );
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Use default mode settings if not provided
   const currentModeSettings = modeSettings || DEFAULT_GENERATION_SETTINGS;
 
   const handlePriorityChange = (key: keyof ContentGenerationPriorities, value: number) => {
-    setActivePreset(null);
+    // Active preset will be automatically recalculated via useMemo
     onChange({
       ...settings,
       priorities: { ...settings.priorities, [key]: value }
@@ -55,7 +80,7 @@ export const ContentGenerationSettingsPanel: React.FC<Props> = ({
   };
 
   const handlePresetSelect = (presetKey: string) => {
-    setActivePreset(presetKey);
+    // Active preset will be automatically detected from the new priorities
     onChange({
       ...settings,
       priorities: presets[presetKey]
