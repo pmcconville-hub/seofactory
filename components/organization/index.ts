@@ -7,3 +7,15 @@ export { MemberManagementModal } from './MemberManagementModal';
 export { PendingInvitationsBanner } from './PendingInvitationsBanner';
 export { CostSummaryWidget } from './CostSummaryWidget';
 export { CostDashboardModal } from './CostDashboardModal';
+export {
+  FeatureGate,
+  PermissionGate,
+  AdminOnly,
+  OwnerOnly,
+  EditAccess,
+  type FeatureGateProps,
+  type PermissionGateProps,
+  type AdminOnlyProps,
+  type OwnerOnlyProps,
+  type EditAccessProps,
+} from './FeatureGate';
