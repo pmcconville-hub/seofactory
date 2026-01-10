@@ -12,12 +12,13 @@ import { executeSectionPass } from './baseSectionPass';
 import { buildPass4Prompt } from '../rulesEngine/prompts/sectionOptimizationPromptBuilder';
 
 /**
- * Pass 4: Visual Semantics
+ * Pass 6: Visual Semantics (exported as executePass6 via index.ts)
  *
  * Uses format budget-aware selective processing:
  * - Only processes sections identified as needing images
  * - Ensures proper image placement (never between heading and first paragraph)
  * - Uses vocabulary-extending alt text
+ * - Excludes intro/conclusion (handled in Pass 7)
  *
  * Batches sections to reduce API calls.
  */
@@ -35,9 +36,9 @@ export async function executePass4(
     brief,
     businessInfo,
     {
-      passNumber: 7,  // Now Pass 7 in new 10-pass order (aliased via index.ts)
-      passKey: 'pass_7_visuals',
-      nextPassNumber: 8,  // Proceed to Pass 8 (Final Polish)
+      passNumber: 6,  // Pass 6: Visual Semantics
+      passKey: 'pass_6_visuals',
+      nextPassNumber: 7,  // Proceed to Pass 7 (Introduction Synthesis)
       promptBuilder: buildPass4Prompt,
 
       // Batch processing: 5 sections per API call

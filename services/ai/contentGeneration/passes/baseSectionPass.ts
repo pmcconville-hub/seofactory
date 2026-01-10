@@ -25,8 +25,8 @@ const CHECKPOINT_INTERVAL = 3;
 
 /**
  * Check if a section should be processed based on pass number.
- * Intro/conclusion sections are excluded from certain passes to prevent
- * wasted work (they get rewritten in Pass 3: Introduction Synthesis).
+ * Intro/conclusion sections are excluded from passes 2-6 (body polish)
+ * because they get rewritten in Pass 7: Introduction Synthesis.
  */
 function shouldProcessSection(section: ContentGenerationSection, passNumber: number): boolean {
   if (!PASSES_EXCLUDE_INTRO_CONCLUSION.includes(passNumber)) {

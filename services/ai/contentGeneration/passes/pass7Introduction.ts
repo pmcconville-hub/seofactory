@@ -11,7 +11,9 @@ const log = createLogger('Pass7');
 /**
  * Pass 7: Introduction & Conclusion Synthesis
  *
- * Rewrites both introduction AND conclusion AFTER the full article exists.
+ * Rewrites both introduction AND conclusion AFTER the body is fully polished.
+ * This ensures the intro/conclusion can accurately summarize the polished content.
+ *
  * Uses holistic context to:
  * - Synthesize intro with all H2/H3 topics in correct order with centerpiece annotation
  * - Synthesize conclusion with key takeaways and topic-specific heading
@@ -27,9 +29,8 @@ export async function executePass7(
   shouldAbort?: () => boolean
 ): Promise<string> {
   // Mark pass as in_progress
-  // NOTE: This is now Pass 3 in the new 10-pass order (aliased via index.ts)
   await orchestrator.updateJob(job.id, {
-    passes_status: { ...job.passes_status, pass_3_intro: 'in_progress' }
+    passes_status: { ...job.passes_status, pass_7_intro: 'in_progress' }
   });
 
   // Get all sections
@@ -39,8 +40,8 @@ export async function executePass7(
   if (sortedSections.length === 0) {
     log.warn(' No sections found for job', job.id);
     await orchestrator.updateJob(job.id, {
-      passes_status: { ...job.passes_status, pass_3_intro: 'completed' },
-      current_pass: 4  // Proceed to Pass 4 (Lists & Tables)
+      passes_status: { ...job.passes_status, pass_7_intro: 'completed' },
+      current_pass: 8  // Proceed to Pass 8 (Final Polish)
     });
     return '';
   }
@@ -118,8 +119,8 @@ export async function executePass7(
   // Update job with assembled draft and mark pass complete
   await orchestrator.updateJob(job.id, {
     draft_content: assembledDraft,
-    passes_status: { ...job.passes_status, pass_3_intro: 'completed' },
-    current_pass: 4  // Proceed to Pass 4 (Lists & Tables)
+    passes_status: { ...job.passes_status, pass_7_intro: 'completed' },
+    current_pass: 8  // Proceed to Pass 8 (Final Polish)
   });
 
   return assembledDraft;
@@ -144,7 +145,7 @@ async function processIntroOrConclusion(
     adjacentContext,
     brief,
     businessInfo,
-    passNumber: 3  // Now Pass 3 in new 10-pass order
+    passNumber: 7  // Pass 7: Introduction Synthesis (after body polish)
   };
 
   try {
@@ -184,7 +185,7 @@ async function processIntroOrConclusion(
     await orchestrator.upsertSection({
       ...section,
       current_content: content,
-      current_pass: 3,  // Now Pass 3 in new 10-pass order
+      current_pass: 7,  // Pass 7: Introduction Synthesis
       updated_at: new Date().toISOString()
     });
 

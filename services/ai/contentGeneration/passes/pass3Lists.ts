@@ -18,6 +18,7 @@ import { buildPass3Prompt, buildPass3BatchPrompt } from '../rulesEngine/prompts/
  * - Only processes sections identified as needing lists/tables
  * - Respects the 40% list / 15% table budget
  * - Batches sections to reduce API calls
+ * - Excludes intro/conclusion (handled in Pass 7)
  *
  * This prevents over-optimization with lists/tables (Baker Principle).
  */
@@ -35,9 +36,9 @@ export async function executePass3(
     brief,
     businessInfo,
     {
-      passNumber: 4,  // Now Pass 4 in new 10-pass order (aliased via index.ts)
-      passKey: 'pass_4_lists',
-      nextPassNumber: 5,  // Proceed to Pass 5 (Discourse Integration)
+      passNumber: 3,  // Pass 3: Lists & Tables
+      passKey: 'pass_3_lists',
+      nextPassNumber: 4,  // Proceed to Pass 4 (Discourse Integration)
       promptBuilder: buildPass3Prompt,
 
       // Batch processing: 3 sections per API call

@@ -12,8 +12,8 @@ import { buildPass5Prompt } from '../rulesEngine/prompts/sectionOptimizationProm
  * information density, and reference principle rules.
  * Uses holistic vocabulary metrics to guide synonym usage.
  *
- * Processes ALL sections (no selective filtering) as all content benefits from
- * linguistic polish. Uses format budget for article-wide vocabulary awareness.
+ * Processes ALL body sections (excludes intro/conclusion - handled in Pass 7).
+ * Uses format budget for article-wide vocabulary awareness.
  */
 export async function executePass5(
   orchestrator: ContentGenerationOrchestrator,
@@ -29,9 +29,9 @@ export async function executePass5(
     brief,
     businessInfo,
     {
-      passNumber: 6,  // Now Pass 6 in new 10-pass order (aliased via index.ts)
-      passKey: 'pass_6_microsemantics',
-      nextPassNumber: 7,  // Proceed to Pass 7 (Visual Semantics)
+      passNumber: 5,  // Pass 5: Micro Semantics
+      passKey: 'pass_5_microsemantics',
+      nextPassNumber: 6,  // Proceed to Pass 6 (Visual Semantics)
       promptBuilder: buildPass5Prompt,
       // All sections need micro-semantic optimization (no selective filtering)
       // Linguistic polish benefits every section

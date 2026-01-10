@@ -76,20 +76,21 @@ function generatePassDeltasFromJob(job: ContentGenerationJob): PassDelta[] {
   const deltas: PassDelta[] = [];
 
   const passKeys = [
-    'pass_1_draft', 'pass_2_headers', 'pass_3_intro', 'pass_4_lists',
-    'pass_5_discourse', 'pass_6_microsemantics', 'pass_7_visuals',
+    'pass_1_draft', 'pass_2_headers', 'pass_3_lists', 'pass_4_discourse',
+    'pass_5_microsemantics', 'pass_6_visuals', 'pass_7_intro',
     'pass_8_polish', 'pass_9_audit', 'pass_10_schema'
   ];
 
   // Indicative improvements per pass (based on typical pass function)
+  // Order: Draft → Headers → Lists → Discourse → Micro → Visuals → Intro → Polish → Audit → Schema
   const passImprovements: Record<number, string[]> = {
     1: ['CONTENT_CREATED'],
     2: ['HEADING_HIERARCHY', 'HEADING_OVERLAP'],
-    3: ['CENTERPIECE', 'INTRO_CONTEXT'],
-    4: ['LIST_STRUCTURE', 'TABLE_FORMAT'],
-    5: ['DISCOURSE_FLOW', 'TRANSITIONS'],
-    6: ['MODALITY', 'STOP_WORDS', 'SUBJECT_POSITION'],
-    7: ['IMAGE_PLACEMENT', 'ALT_TEXT'],
+    3: ['LIST_STRUCTURE', 'TABLE_FORMAT'],
+    4: ['DISCOURSE_FLOW', 'TRANSITIONS'],
+    5: ['MODALITY', 'STOP_WORDS', 'SUBJECT_POSITION'],
+    6: ['IMAGE_PLACEMENT', 'ALT_TEXT'],
+    7: ['CENTERPIECE', 'INTRO_CONTEXT'],
     8: ['POLISH_REFINEMENT', 'COHERENCE'],
     9: [],
     10: ['SCHEMA_GENERATED'],

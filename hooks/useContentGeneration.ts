@@ -439,7 +439,7 @@ export function useContentGeneration({
         };
 
       // Pass 2: Headers (section-by-section with holistic context)
-      // Excludes intro/conclusion - they're handled in Pass 3
+      // Excludes intro/conclusion - they're handled in Pass 7
       if (updatedJob.current_pass === 2) {
         onLog('Pass 2: Optimizing headers section-by-section...', 'info');
         await executePass2(
@@ -451,80 +451,65 @@ export function useContentGeneration({
         updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
       }
 
-      // Pass 3: Introduction Synthesis (only intro section with full article context)
-      // Moved early - after headers are fixed, before content polish
+      // Pass 3: Lists & Tables (section-by-section with holistic context)
+      // Excludes intro/conclusion - they're handled in Pass 7
       if (updatedJob.current_pass === 3) {
-        onLog('Pass 3: Synthesizing introduction with full article context...', 'info');
+        onLog('Pass 3: Optimizing lists section-by-section...', 'info');
         await executePass3(
           orchestrator, updatedJob, brief, safeBusinessInfo,
-          makeSectionProgressCallback(3, 'Introduction'),
+          makeSectionProgressCallback(3, 'Lists'),
           shouldAbort
         );
         if (shouldAbort()) return;
         updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
-        // Collect progressive schema data from Pass 3 (abstract)
+        // Collect progressive schema data from Pass 3 (lists/tables)
         await collectProgressiveData(3, updatedJob.draft_content || '');
       }
 
-      // Pass 4: Lists & Tables (section-by-section with holistic context)
-      // Excludes intro/conclusion - they're already synthesized
+      // Pass 4: Discourse Integration (section-by-section with holistic context)
+      // Excludes intro/conclusion - they're handled in Pass 7
       if (updatedJob.current_pass === 4) {
-        onLog('Pass 4: Optimizing lists section-by-section...', 'info');
+        onLog('Pass 4: Integrating discourse section-by-section...', 'info');
         await executePass4(
           orchestrator, updatedJob, brief, safeBusinessInfo,
-          makeSectionProgressCallback(4, 'Lists'),
+          makeSectionProgressCallback(4, 'Discourse'),
           shouldAbort
         );
         if (shouldAbort()) return;
         updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
-        // Collect progressive schema data from Pass 4
-        await collectProgressiveData(4, updatedJob.draft_content || '');
       }
 
-      // Pass 5: Discourse Integration (section-by-section with holistic context)
-      // Excludes intro/conclusion
+      // Pass 5: Micro Semantics (section-by-section with holistic context)
+      // Excludes intro/conclusion - they're handled in Pass 7
       if (updatedJob.current_pass === 5) {
-        onLog('Pass 5: Integrating discourse section-by-section...', 'info');
+        onLog('Pass 5: Applying micro semantics section-by-section...', 'info');
         await executePass5(
           orchestrator, updatedJob, brief, safeBusinessInfo,
-          makeSectionProgressCallback(5, 'Discourse'),
+          makeSectionProgressCallback(5, 'MicroSemantics'),
           shouldAbort
         );
         if (shouldAbort()) return;
         updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
+        // Collect progressive schema data from Pass 5 (keywords, entities)
+        await collectProgressiveData(5, updatedJob.draft_content || '');
       }
 
-      // Pass 6: Micro Semantics (section-by-section with holistic context)
-      // Excludes intro/conclusion, MUST preserve any existing image placeholders
+      // Pass 6: Visual Semantics (section-by-section with holistic context)
+      // Excludes intro/conclusion - they're handled in Pass 7
+      // Uses visual_semantics from content brief as primary guide
       if (updatedJob.current_pass === 6) {
-        onLog('Pass 6: Applying micro semantics section-by-section...', 'info');
+        onLog('Pass 6: Adding visual semantics section-by-section...', 'info');
         await executePass6(
           orchestrator, updatedJob, brief, safeBusinessInfo,
-          makeSectionProgressCallback(6, 'MicroSemantics'),
+          makeSectionProgressCallback(6, 'Visuals'),
           shouldAbort
         );
         if (shouldAbort()) return;
         updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
-        // Collect progressive schema data from Pass 6 (keywords, entities)
+        // Collect progressive schema data from Pass 6 (images)
         await collectProgressiveData(6, updatedJob.draft_content || '');
-      }
 
-      // Pass 7: Visual Semantics (section-by-section with holistic context)
-      // Moved late - images are added to already-polished content
-      // Uses visual_semantics from content brief as primary guide
-      if (updatedJob.current_pass === 7) {
-        onLog('Pass 7: Adding visual semantics section-by-section...', 'info');
-        await executePass7(
-          orchestrator, updatedJob, brief, safeBusinessInfo,
-          makeSectionProgressCallback(7, 'Visuals'),
-          shouldAbort
-        );
-        if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
-        // Collect progressive schema data from Pass 7 (images)
-        await collectProgressiveData(7, updatedJob.draft_content || '');
-
-        // Extract and save image placeholders from Pass 7 output
+        // Extract and save image placeholders from Pass 6 output
         try {
           const placeholders = extractPlaceholdersFromDraft(updatedJob.draft_content || '');
           if (placeholders.length > 0) {
@@ -532,11 +517,26 @@ export function useContentGeneration({
             onLog(`Found ${placeholders.length} image placeholder(s)`, 'info');
           }
         } catch (err) {
-          console.warn('[Pass 7] Failed to extract image placeholders:', err);
+          console.warn('[Pass 6] Failed to extract image placeholders:', err);
         }
       }
 
-      // Pass 8: Final Polish (NEW - absorbs manual polish functionality)
+      // Pass 7: Introduction Synthesis (AFTER body is fully polished)
+      // Only processes intro/conclusion with full polished article context
+      if (updatedJob.current_pass === 7) {
+        onLog('Pass 7: Synthesizing introduction with fully polished article context...', 'info');
+        await executePass7(
+          orchestrator, updatedJob, brief, safeBusinessInfo,
+          makeSectionProgressCallback(7, 'Introduction'),
+          shouldAbort
+        );
+        if (shouldAbort()) return;
+        updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
+        // Collect progressive schema data from Pass 7 (abstract from intro)
+        await collectProgressiveData(7, updatedJob.draft_content || '');
+      }
+
+      // Pass 8: Final Polish
       // Ensures publication-ready output while preserving all image placeholders
       if (updatedJob.current_pass === 8) {
         onLog('Pass 8: Applying final polish...', 'info');

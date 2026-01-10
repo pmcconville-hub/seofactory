@@ -2808,17 +2808,17 @@ export type SectionStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
 export type PassStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
 
 export interface PassesStatus {
-  // New 10-pass order
+  // Correct 10-pass order: Intro synthesis AFTER body polish
   pass_1_draft: PassStatus;
   pass_2_headers: PassStatus;
-  pass_3_intro: PassStatus;        // Moved from 7 (synthesize intro early)
-  pass_4_lists: PassStatus;        // Moved from 3
-  pass_5_discourse: PassStatus;    // Moved from 6
-  pass_6_microsemantics: PassStatus; // Moved from 5
-  pass_7_visuals: PassStatus;      // Moved from 4 (add images to polished content)
-  pass_8_polish: PassStatus;       // NEW: Final Polish (absorbs manual polish)
-  pass_9_audit: PassStatus;        // Moved from 8
-  pass_10_schema: PassStatus;      // Moved from 9
+  pass_3_lists: PassStatus;           // Lists & Tables (body only)
+  pass_4_discourse: PassStatus;       // Discourse Integration (body only)
+  pass_5_microsemantics: PassStatus;  // Micro Semantics (body only)
+  pass_6_visuals: PassStatus;         // Visual Semantics (body only)
+  pass_7_intro: PassStatus;           // Introduction Synthesis (AFTER body is polished)
+  pass_8_polish: PassStatus;          // Final Polish (entire article)
+  pass_9_audit: PassStatus;           // Final Audit
+  pass_10_schema: PassStatus;         // Schema Generation
 }
 
 // Context passed to content generation passes
@@ -3031,12 +3031,12 @@ export interface SectionDefinition {
 export const PASS_NAMES: Record<number, string> = {
   1: 'Draft Generation',
   2: 'Header Optimization',
-  3: 'Introduction Synthesis',  // Moved early - after headers, before content polish
-  4: 'Lists & Tables',
-  5: 'Discourse Integration',
-  6: 'Micro Semantics',
-  7: 'Visual Semantics',        // Moved late - images added to polished content
-  8: 'Final Polish',            // NEW - absorbs manual polish
+  3: 'Lists & Tables',           // Body content polish starts
+  4: 'Discourse Integration',
+  5: 'Micro Semantics',
+  6: 'Visual Semantics',         // Body content polish ends
+  7: 'Introduction Synthesis',   // AFTER body polish - intro sees polished content
+  8: 'Final Polish',             // Entire article polish
   9: 'Final Audit',
   10: 'Schema Generation'
 };
@@ -3044,9 +3044,9 @@ export const PASS_NAMES: Record<number, string> = {
 // Total number of passes in the content generation pipeline
 export const TOTAL_PASSES = 10;
 
-// Passes that should exclude intro/conclusion sections (they're handled separately)
-// Note: Pass 5 (Discourse) INCLUDES intro so transitions are added between intro and first content section
-export const PASSES_EXCLUDE_INTRO_CONCLUSION = [2, 4, 6];
+// Passes that should exclude intro/conclusion sections
+// Passes 2-6 process body content only; Pass 7 rewrites intro/conclusion with full polished body context
+export const PASSES_EXCLUDE_INTRO_CONCLUSION = [2, 3, 4, 5, 6];
 
 // =============================================================================
 // SEMANTIC ANALYSIS TYPES (Macro/Micro Framework)

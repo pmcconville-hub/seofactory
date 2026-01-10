@@ -554,20 +554,21 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
 
         const deltas: PassDelta[] = [];
         const passKeys = [
-            'pass_1_draft', 'pass_2_headers', 'pass_3_intro', 'pass_4_lists',
-            'pass_5_discourse', 'pass_6_microsemantics', 'pass_7_visuals',
+            'pass_1_draft', 'pass_2_headers', 'pass_3_lists', 'pass_4_discourse',
+            'pass_5_microsemantics', 'pass_6_visuals', 'pass_7_intro',
             'pass_8_polish', 'pass_9_audit', 'pass_10_schema'
         ] as const;
 
         // Indicative improvements per pass (based on typical pass function)
+        // Order: Draft → Headers → Lists → Discourse → Micro → Visuals → Intro → Polish → Audit → Schema
         const passImprovements: Record<number, { fixed: string[], description: string }> = {
             1: { fixed: ['CONTENT_CREATED'], description: 'Initial draft generated' },
             2: { fixed: ['HEADING_HIERARCHY', 'HEADING_OVERLAP'], description: 'Headers optimized' },
-            3: { fixed: ['CENTERPIECE', 'INTRO_CONTEXT'], description: 'Introduction synthesized' },
-            4: { fixed: ['LIST_STRUCTURE', 'TABLE_FORMAT'], description: 'Lists and tables added' },
-            5: { fixed: ['DISCOURSE_FLOW', 'TRANSITIONS'], description: 'Discourse integration' },
-            6: { fixed: ['MODALITY', 'STOP_WORDS', 'SUBJECT_POSITION'], description: 'Micro semantics applied' },
-            7: { fixed: ['IMAGE_PLACEMENT', 'ALT_TEXT'], description: 'Visual elements added' },
+            3: { fixed: ['LIST_STRUCTURE', 'TABLE_FORMAT'], description: 'Lists and tables added' },
+            4: { fixed: ['DISCOURSE_FLOW', 'TRANSITIONS'], description: 'Discourse integration' },
+            5: { fixed: ['MODALITY', 'STOP_WORDS', 'SUBJECT_POSITION'], description: 'Micro semantics applied' },
+            6: { fixed: ['IMAGE_PLACEMENT', 'ALT_TEXT'], description: 'Visual elements added' },
+            7: { fixed: ['CENTERPIECE', 'INTRO_CONTEXT'], description: 'Introduction synthesized (with polished body)' },
             8: { fixed: ['POLISH_REFINEMENT', 'COHERENCE'], description: 'Final polish applied' },
             9: { fixed: [], description: 'Quality audit completed' },
             10: { fixed: ['SCHEMA_GENERATED'], description: 'Schema markup added' },
