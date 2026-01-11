@@ -182,6 +182,42 @@ export class ContentGenerationOrchestrator {
     return data as unknown as ContentGenerationJob;
   }
 
+  /**
+   * Lightweight job fetch that excludes draft_content to avoid 502 errors on large jobs.
+   * Use this for status checks and pass tracking. Use assembleDraft() to get content.
+   */
+  async getJobStatus(jobId: string): Promise<ContentGenerationJob | null> {
+    const { data, error } = await this.supabase
+      .from('content_generation_jobs')
+      .select(`
+        id, brief_id, map_id, user_id, status, current_pass, passes_status,
+        total_sections, completed_sections, audit_results, audit_score,
+        progressive_schema_data, schema_data, structural_snapshots,
+        pass_quality_scores, quality_warning, image_placeholders,
+        created_at, updated_at
+      `)
+      .eq('id', jobId)
+      .single();
+
+    if (error) throw new Error(`Failed to get job status: ${error.message}`);
+    // Return with empty draft_content - caller should use assembleDraft() if needed
+    return { ...(data as unknown as ContentGenerationJob), draft_content: '' };
+  }
+
+  /**
+   * Gets job status + assembles draft from sections. Use this instead of getJob()
+   * when you need both metadata and content but want to avoid large single-query issues.
+   */
+  async getJobWithDraft(jobId: string): Promise<ContentGenerationJob | null> {
+    const [jobStatus, draftContent] = await Promise.all([
+      this.getJobStatus(jobId),
+      this.assembleDraft(jobId)
+    ]);
+
+    if (!jobStatus) return null;
+    return { ...jobStatus, draft_content: draftContent };
+  }
+
   async getSections(jobId: string): Promise<ContentGenerationSection[]> {
     const { data, error } = await this.supabase
       .from('content_generation_sections')

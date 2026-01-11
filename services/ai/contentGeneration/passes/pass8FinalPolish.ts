@@ -51,8 +51,9 @@ export async function executePass8(
       nextPassNumber: 9,  // Proceed to Pass 9 (Audit)
       promptBuilder: buildPass8Prompt,
 
-      // Batch processing: 3 sections per API call for efficiency
-      batchSize: 3,
+      // Process one section at a time to avoid timeout on long content
+      // Previous batchSize: 3 caused 23-27K char prompts that timed out after 140s
+      batchSize: 1,
 
       // Process ALL sections (no filtering - this is final polish)
       // Note: Pass 8 is NOT in PASSES_EXCLUDE_INTRO_CONCLUSION,

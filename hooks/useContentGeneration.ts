@@ -544,6 +544,31 @@ export function useContentGeneration({
     let updatedJob = currentJob;
     const shouldAbort = () => abortRef.current;
 
+    // CRITICAL FIX: Fetch fresh brief from database to ensure edits are used
+    // The 'brief' from hook props may be stale if user edited it before clicking Generate
+    let activeBrief = brief;
+    try {
+      const { data: freshBrief, error: briefError } = await supabase
+        .from('content_briefs')
+        .select('*')
+        .eq('id', briefId)
+        .single();
+
+      if (!briefError && freshBrief) {
+        // Use the fresh brief from database
+        activeBrief = freshBrief as unknown as ContentBrief;
+        console.log('[runPasses] Using fresh brief from database:', {
+          sections: activeBrief.structured_outline?.length || 0,
+          title: activeBrief.title
+        });
+      } else {
+        console.warn('[runPasses] Could not fetch fresh brief, using prop value:', briefError?.message);
+      }
+    } catch (err) {
+      console.warn('[runPasses] Error fetching fresh brief:', err);
+      // Fall back to prop brief if fetch fails
+    }
+
     // Ensure businessInfo has required fields with defaults
     // Include generation priorities for prompt customization
     const safeBusinessInfo: BusinessInfo & { generationPriorities?: ContentGenerationPriorities } = {
@@ -562,7 +587,7 @@ export function useContentGeneration({
     const captureViolations = () => {
       return getViolationsFromContent(
         updatedJob.draft_content || '',
-        brief,
+        activeBrief,
         safeBusinessInfo
       );
     };
@@ -597,7 +622,7 @@ export function useContentGeneration({
     const collectProgressiveData = async (passNumber: number, draftContent: string) => {
       try {
         const existingData = updatedJob.progressive_schema_data || createEmptyProgressiveData();
-        const newData = collectFromPass(existingData, passNumber, draftContent, brief);
+        const newData = collectFromPass(existingData, passNumber, draftContent, activeBrief);
 
         await orchestrator.updateJob(updatedJob.id, {
           progressive_schema_data: newData
@@ -671,7 +696,7 @@ export function useContentGeneration({
         const draftContent = updatedJob.draft_content || '';
         const result = checkQualityGate(
           draftContent,
-          brief,
+          activeBrief,
           safeBusinessInfo,
           passNumber,
           lastQualityScore,
@@ -711,7 +736,7 @@ export function useContentGeneration({
         await executePass1(
           orchestrator,
           updatedJob,
-          brief,
+          activeBrief,
           safeBusinessInfo,
           (key, heading, current, total) => {
             onLog(`Section ${current}/${total}: ${heading}`, 'success');
@@ -720,7 +745,7 @@ export function useContentGeneration({
         );
         if (shouldAbort()) return;
         // Refresh job state
-        updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
+        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
         // Collect progressive schema data from Pass 1
         await collectProgressiveData(1, updatedJob.draft_content || '');
         // Capture baseline structural snapshot
@@ -746,12 +771,12 @@ export function useContentGeneration({
         }
         onLog('Pass 2: Optimizing headers section-by-section...', 'info');
         await executePass2(
-          orchestrator, updatedJob, brief, safeBusinessInfo,
+          orchestrator, updatedJob, activeBrief, safeBusinessInfo,
           makeSectionProgressCallback(2, 'Headers'),
           shouldAbort
         );
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
+        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
         // Capture structural snapshot
         await captureAndLogStructuralChanges(2);
         // Check quality gate
@@ -765,12 +790,12 @@ export function useContentGeneration({
       if (updatedJob.current_pass === 3) {
         onLog('Pass 3: Optimizing lists section-by-section...', 'info');
         await executePass3(
-          orchestrator, updatedJob, brief, safeBusinessInfo,
+          orchestrator, updatedJob, activeBrief, safeBusinessInfo,
           makeSectionProgressCallback(3, 'Lists'),
           shouldAbort
         );
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
+        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
         // Collect progressive schema data from Pass 3 (lists/tables)
         await collectProgressiveData(3, updatedJob.draft_content || '');
         // Capture structural snapshot (critical - lists/tables added here)
@@ -786,12 +811,12 @@ export function useContentGeneration({
       if (updatedJob.current_pass === 4) {
         onLog('Pass 4: Integrating discourse section-by-section...', 'info');
         await executePass4(
-          orchestrator, updatedJob, brief, safeBusinessInfo,
+          orchestrator, updatedJob, activeBrief, safeBusinessInfo,
           makeSectionProgressCallback(4, 'Discourse'),
           shouldAbort
         );
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
+        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
         // Capture structural snapshot
         await captureAndLogStructuralChanges(4);
         // Check quality gate
@@ -805,12 +830,12 @@ export function useContentGeneration({
       if (updatedJob.current_pass === 5) {
         onLog('Pass 5: Applying micro semantics section-by-section...', 'info');
         await executePass5(
-          orchestrator, updatedJob, brief, safeBusinessInfo,
+          orchestrator, updatedJob, activeBrief, safeBusinessInfo,
           makeSectionProgressCallback(5, 'MicroSemantics'),
           shouldAbort
         );
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
+        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
         // Collect progressive schema data from Pass 5 (keywords, entities)
         await collectProgressiveData(5, updatedJob.draft_content || '');
         // Capture structural snapshot
@@ -827,12 +852,12 @@ export function useContentGeneration({
       if (updatedJob.current_pass === 6) {
         onLog('Pass 6: Adding visual semantics section-by-section...', 'info');
         await executePass6(
-          orchestrator, updatedJob, brief, safeBusinessInfo,
+          orchestrator, updatedJob, activeBrief, safeBusinessInfo,
           makeSectionProgressCallback(6, 'Visuals'),
           shouldAbort
         );
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
+        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
         // Collect progressive schema data from Pass 6 (images)
         await collectProgressiveData(6, updatedJob.draft_content || '');
 
@@ -859,12 +884,12 @@ export function useContentGeneration({
       if (updatedJob.current_pass === 7) {
         onLog('Pass 7: Synthesizing introduction with fully polished article context...', 'info');
         await executePass7(
-          orchestrator, updatedJob, brief, safeBusinessInfo,
+          orchestrator, updatedJob, activeBrief, safeBusinessInfo,
           makeSectionProgressCallback(7, 'Introduction'),
           shouldAbort
         );
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
+        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
         // Collect progressive schema data from Pass 7 (abstract from intro)
         await collectProgressiveData(7, updatedJob.draft_content || '');
         // Capture structural snapshot
@@ -880,12 +905,12 @@ export function useContentGeneration({
       if (updatedJob.current_pass === 8) {
         onLog('Pass 8: Applying final polish...', 'info');
         await executePass8(
-          orchestrator, updatedJob, brief, safeBusinessInfo,
+          orchestrator, updatedJob, activeBrief, safeBusinessInfo,
           makeSectionProgressCallback(8, 'FinalPolish'),
           shouldAbort
         );
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
+        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
         // Collect progressive schema data from Pass 8
         await collectProgressiveData(8, updatedJob.draft_content || '');
         // Capture structural snapshot (critical - verify preservation worked)
@@ -899,10 +924,10 @@ export function useContentGeneration({
       // Pass 9: Final Audit (includes auto-fix capability)
       if (updatedJob.current_pass === 9) {
         onLog('Pass 9: Running final audit...', 'info');
-        const result = await executePass9(orchestrator, updatedJob, brief, safeBusinessInfo);
+        const result = await executePass9(orchestrator, updatedJob, activeBrief, safeBusinessInfo);
         onLog(`Audit score: ${result.score}%`, 'success');
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJob(updatedJob.id) || updatedJob;
+        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
 
         // Collect progressive schema data from Pass 9 (audit scores)
         try {
@@ -927,14 +952,14 @@ export function useContentGeneration({
 
         // Build SEO pillars with defaults if not provided
         const safePillars: SEOPillars = pillars || {
-          centralEntity: brief.targetKeyword || '',
+          centralEntity: activeBrief.targetKeyword || '',
           sourceContext: safeBusinessInfo.industry || '',
-          centralSearchIntent: brief.searchIntent || 'informational'
+          centralSearchIntent: activeBrief.searchIntent || 'informational'
         };
 
         const pass10Result = await executePass10(
           updatedJob.id,
-          brief,
+          activeBrief,
           safeBusinessInfo,
           safePillars,
           updatedJob.draft_content || '',

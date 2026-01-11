@@ -142,31 +142,82 @@ interface DeltaSummaryProps {
   delta: PassDelta;
 }
 
+/**
+ * Format a rule ID into a human-readable name
+ * E.g., "CENTERPIECE_CHECK" -> "Centerpiece Check"
+ */
+function formatRuleName(ruleId: string): string {
+  return ruleId
+    .toLowerCase()
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 const DeltaSummary: React.FC<DeltaSummaryProps> = ({ delta }) => {
+  const [showDetails, setShowDetails] = React.useState(false);
+
+  const hasChanges = delta.rulesFixed.length > 0 || delta.rulesRegressed.length > 0;
+
   return (
-    <div className="flex items-center gap-3 text-sm">
-      {delta.rulesFixed.length > 0 && (
-        <span className="text-green-400 font-medium">
-          +{delta.rulesFixed.length} fixed
-        </span>
-      )}
-      {delta.rulesRegressed.length > 0 && (
-        <span className="text-red-400 font-medium">
-          -{delta.rulesRegressed.length} regressed
-        </span>
-      )}
-      {delta.rulesFixed.length === 0 && delta.rulesRegressed.length === 0 && (
-        <span className="text-gray-400">No changes</span>
-      )}
-      {delta.recommendation === 'revert' && (
-        <span className="px-2 py-0.5 text-xs font-medium rounded bg-red-900/50 text-red-300 border border-red-700">
-          Auto-reverting
-        </span>
-      )}
-      {delta.recommendation === 'review' && (
-        <span className="px-2 py-0.5 text-xs font-medium rounded bg-yellow-900/50 text-yellow-300 border border-yellow-700">
-          Needs review
-        </span>
+    <div className="text-sm">
+      {/* Summary row */}
+      <div className="flex items-center gap-3">
+        {delta.rulesFixed.length > 0 && (
+          <button
+            onClick={() => setShowDetails(!showDetails)}
+            className="text-green-400 font-medium hover:text-green-300 transition-colors"
+            title={`Click to see fixed rules: ${delta.rulesFixed.map(formatRuleName).join(', ')}`}
+          >
+            +{delta.rulesFixed.length} fixed
+          </button>
+        )}
+        {delta.rulesRegressed.length > 0 && (
+          <button
+            onClick={() => setShowDetails(!showDetails)}
+            className="text-red-400 font-medium hover:text-red-300 transition-colors"
+            title={`Click to see regressed rules: ${delta.rulesRegressed.map(formatRuleName).join(', ')}`}
+          >
+            -{delta.rulesRegressed.length} regressed
+          </button>
+        )}
+        {!hasChanges && (
+          <span className="text-gray-400">No changes</span>
+        )}
+        {delta.recommendation === 'revert' && (
+          <span className="px-2 py-0.5 text-xs font-medium rounded bg-red-900/50 text-red-300 border border-red-700">
+            Auto-reverting
+          </span>
+        )}
+        {delta.recommendation === 'review' && (
+          <span className="px-2 py-0.5 text-xs font-medium rounded bg-yellow-900/50 text-yellow-300 border border-yellow-700">
+            Needs review
+          </span>
+        )}
+      </div>
+
+      {/* Expanded details */}
+      {showDetails && hasChanges && (
+        <div className="mt-2 pt-2 border-t border-gray-700/50 space-y-1">
+          {delta.rulesFixed.length > 0 && (
+            <div className="text-xs">
+              <span className="text-green-400">Fixed: </span>
+              <span className="text-gray-300">
+                {delta.rulesFixed.slice(0, 5).map(formatRuleName).join(', ')}
+                {delta.rulesFixed.length > 5 && ` +${delta.rulesFixed.length - 5} more`}
+              </span>
+            </div>
+          )}
+          {delta.rulesRegressed.length > 0 && (
+            <div className="text-xs">
+              <span className="text-red-400">Regressed: </span>
+              <span className="text-gray-300">
+                {delta.rulesRegressed.slice(0, 5).map(formatRuleName).join(', ')}
+                {delta.rulesRegressed.length > 5 && ` +${delta.rulesRegressed.length - 5} more`}
+              </span>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -267,17 +318,6 @@ const PassTimelineItem: React.FC<PassTimelineItemProps> = ({
                 Net: {delta.netChange > 0 ? '+' : ''}{delta.netChange}
               </span>
             </div>
-
-            {/* Show regressed rules if any */}
-            {delta.rulesRegressed.length > 0 && (
-              <div className="mt-2 text-xs">
-                <span className="text-red-400">Regressed: </span>
-                <span className="text-gray-400 font-mono">
-                  {delta.rulesRegressed.slice(0, 5).join(', ')}
-                  {delta.rulesRegressed.length > 5 && ` +${delta.rulesRegressed.length - 5} more`}
-                </span>
-              </div>
-            )}
           </div>
         )}
 
