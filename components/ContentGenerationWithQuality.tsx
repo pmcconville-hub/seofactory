@@ -14,7 +14,7 @@
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { ContentGenerationJob, ContentGenerationSection, ValidationViolation } from '../types';
+import { ContentGenerationJob, ContentGenerationSection, ValidationViolation, BusinessInfo } from '../types';
 import { ContentGenerationProgress } from './ContentGenerationProgress';
 import {
   QualityRulePanel,
@@ -50,6 +50,10 @@ export interface ContentGenerationWithQualityProps {
   violations?: ValidationViolation[];
   /** Pass deltas from tracking */
   passDeltas?: PassDelta[];
+  /** Business info for context-aware quality checks */
+  businessInfo?: BusinessInfo;
+  /** Generated content for analysis */
+  content?: string;
   /** Callback when user approves completed article */
   onApprove?: () => void;
   /** Callback to request fixes for rules */
@@ -150,6 +154,8 @@ export const ContentGenerationWithQuality: React.FC<ContentGenerationWithQuality
   error,
   violations: propViolations,
   passDeltas: propPassDeltas,
+  businessInfo,
+  content,
   onApprove,
   onRequestFix,
   onEdit,
@@ -304,6 +310,8 @@ export const ContentGenerationWithQuality: React.FC<ContentGenerationWithQuality
                 violations={violations}
                 passDeltas={passDeltas}
                 overallScore={job.final_audit_score || 0}
+                businessInfo={businessInfo}
+                content={content}
                 onApprove={handleApprove}
                 onRequestFix={handleRequestFix}
                 onEdit={handleEdit}

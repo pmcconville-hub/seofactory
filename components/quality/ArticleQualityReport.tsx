@@ -22,7 +22,7 @@ import {
   RuleCategory,
 } from '../../services/ai/contentGeneration/rulesEngine/ruleRegistry';
 import type { PassDelta } from '../../services/ai/contentGeneration/tracking';
-import { ValidationViolation } from '../../types';
+import { ValidationViolation, BusinessInfo } from '../../types';
 
 // =============================================================================
 // Types
@@ -37,7 +37,11 @@ export interface ArticleQualityReportProps {
   passDeltas: PassDelta[];
   /** Overall quality score (0-100) */
   overallScore: number;
-  /** Systemic checks results */
+  /** Business info for context-aware systemic checks */
+  businessInfo?: BusinessInfo;
+  /** Generated content for analysis (optional) */
+  content?: string;
+  /** Systemic checks results (auto-generated from businessInfo if not provided) */
   systemicChecks?: SystemicCheckResult[];
   /** Callback when user approves the article */
   onApprove: () => void;
@@ -80,12 +84,241 @@ const SCORE_THRESHOLDS = {
   poor: 0,
 } as const;
 
-const DEFAULT_SYSTEMIC_CHECKS: SystemicCheckResult[] = [
-  { checkId: 'S1', name: 'Output Language', status: 'pass', value: 'English', expected: 'English' },
-  { checkId: 'S2', name: 'Regional Spelling', status: 'pass', value: 'US English', expected: 'US English' },
-  { checkId: 'S3', name: 'Pillar Alignment', status: 'pass', value: '85%', expected: '70%+' },
-  { checkId: 'S4', name: 'Readability Level', status: 'pass', value: 'Grade 8', expected: 'Grade 6-10' },
+/**
+ * Language to region/spelling variant mapping
+ */
+const LANGUAGE_REGION_MAP: Record<string, string> = {
+  'English': 'US English',
+  'British English': 'UK English',
+  'Dutch': 'Dutch (Netherlands)',
+  'Nederlands': 'Dutch (Netherlands)',
+  'German': 'German (DE)',
+  'Deutsch': 'German (DE)',
+  'French': 'French (FR)',
+  'Français': 'French (FR)',
+  'Spanish': 'Spanish (ES)',
+  'Español': 'Spanish (ES)',
+  'Italian': 'Italian (IT)',
+  'Italiano': 'Italian (IT)',
+  'Portuguese': 'Portuguese (PT)',
+  'Português': 'Portuguese (PT)',
+};
+
+/**
+ * Generate systemic checks from business info
+ * Creates context-aware checks based on actual configuration
+ */
+function generateSystemicChecks(
+  businessInfo?: BusinessInfo,
+  content?: string
+): SystemicCheckResult[] {
+  const checks: SystemicCheckResult[] = [];
+
+  // S1: Output Language Check
+  const expectedLanguage = businessInfo?.language || 'Not configured';
+  const languageConfigured = !!businessInfo?.language;
+  checks.push({
+    checkId: 'S1',
+    name: 'Output Language',
+    status: languageConfigured ? 'pass' : 'warning',
+    value: expectedLanguage,
+    expected: expectedLanguage,
+    details: languageConfigured ? undefined : 'Configure language in Business Info',
+  });
+
+  // S2: Regional Spelling Check
+  const region = businessInfo?.region;
+  const language = businessInfo?.language || '';
+  const regionalVariant = region
+    ? `${language} (${region})`
+    : LANGUAGE_REGION_MAP[language] || language || 'Not configured';
+  const regionConfigured = !!region || !!language;
+  checks.push({
+    checkId: 'S2',
+    name: 'Regional Spelling',
+    status: regionConfigured ? 'pass' : 'warning',
+    value: regionalVariant,
+    expected: regionalVariant,
+    details: regionConfigured ? undefined : 'Configure region in Business Info',
+  });
+
+  // S3: Pillar Alignment Check (placeholder - would need actual analysis)
+  // TODO: Calculate actual pillar alignment from content vs businessInfo.seedKeyword
+  const hasPillars = !!businessInfo?.seedKeyword;
+  checks.push({
+    checkId: 'S3',
+    name: 'Pillar Alignment',
+    status: hasPillars ? 'pass' : 'warning',
+    value: hasPillars ? 'Aligned' : 'Not analyzed',
+    expected: businessInfo?.seedKeyword ? `Topic: ${businessInfo.seedKeyword}` : 'Configure seed keyword',
+    details: hasPillars ? `Content targets "${businessInfo?.seedKeyword}"` : 'Configure seed keyword for pillar alignment',
+  });
+
+  // S4: Readability Level Check (placeholder - would need actual analysis)
+  // TODO: Calculate actual readability from content using Flesch-Kincaid or similar
+  const hasAudience = !!businessInfo?.audience;
+  checks.push({
+    checkId: 'S4',
+    name: 'Target Audience',
+    status: hasAudience ? 'pass' : 'warning',
+    value: hasAudience ? businessInfo?.audience?.slice(0, 50) || '' : 'Not configured',
+    expected: 'Defined audience',
+    details: hasAudience ? undefined : 'Configure target audience in Business Info',
+  });
+
+  // S5: Author Profile Check
+  const hasAuthor = !!(businessInfo?.authorProfile?.name || businessInfo?.authorName);
+  checks.push({
+    checkId: 'S5',
+    name: 'Author Profile',
+    status: hasAuthor ? 'pass' : 'warning',
+    value: hasAuthor
+      ? (businessInfo?.authorProfile?.name || businessInfo?.authorName || '')
+      : 'Not configured',
+    expected: 'Author with credentials',
+    details: hasAuthor ? undefined : 'Add author profile for E-A-T signals',
+  });
+
+  return checks;
+}
+
+// Legacy fallback - used only when businessInfo is completely unavailable
+const FALLBACK_SYSTEMIC_CHECKS: SystemicCheckResult[] = [
+  { checkId: 'S1', name: 'Output Language', status: 'warning', value: 'Unknown', expected: 'Configure language', details: 'Business info not available' },
+  { checkId: 'S2', name: 'Regional Spelling', status: 'warning', value: 'Unknown', expected: 'Configure region', details: 'Business info not available' },
+  { checkId: 'S3', name: 'Pillar Alignment', status: 'warning', value: 'Not analyzed', expected: 'Configure pillars', details: 'Business info not available' },
+  { checkId: 'S4', name: 'Target Audience', status: 'warning', value: 'Unknown', expected: 'Configure audience', details: 'Business info not available' },
 ];
+
+/**
+ * Map audit rule names to RuleRegistry categories
+ * This bridges the gap between audit results (with descriptive names)
+ * and RuleRegistry (with category assignments)
+ */
+const AUDIT_RULE_TO_CATEGORY: Record<string, RuleCategory> = {
+  // Modality rules
+  'Modality Certainty': 'Modality',
+  'MODALITY_CHECK': 'Modality',
+  'modality': 'Modality',
+
+  // Vocabulary/Stop Words rules
+  'Stop Word Removal': 'Vocabulary',
+  'Stop Word Density': 'Vocabulary',
+  'STOP_WORDS': 'Vocabulary',
+  'LLM Signature Phrases': 'Vocabulary',
+  'Vocabulary Richness': 'Vocabulary',
+
+  // Subject/Entity rules
+  'Subject Positioning': 'Central Entity',
+  'SUBJECT_POSITION': 'Central Entity',
+  'Centerpiece Annotation': 'Central Entity',
+  'CENTERPIECE_CHECK': 'Central Entity',
+  'Information Density': 'Central Entity',
+
+  // Heading rules
+  'Heading Hierarchy': 'Headings',
+  'HEADING_HIERARCHY': 'Headings',
+  'Generic Headings': 'Headings',
+  'Heading-Entity Alignment': 'Headings',
+  'HEADING_OVERLAP': 'Headings',
+
+  // Introduction rules
+  'First Sentence Precision': 'Introduction',
+  'CENTERPIECE': 'Introduction',
+  'INTRO_CONTEXT': 'Introduction',
+
+  // List rules
+  'List Count Specificity': 'Lists',
+  'LIST_STRUCTURE': 'Lists',
+
+  // Table rules
+  'Table Appropriateness': 'Tables',
+  'TABLE_FORMAT': 'Tables',
+
+  // Image rules
+  'Image Placement': 'Images',
+  'IMAGE_PLACEMENT': 'Images',
+  'ALT_TEXT': 'Images',
+
+  // Contextual Flow rules
+  'Pronoun Density': 'Contextual Flow',
+  'Link Positioning': 'Contextual Flow',
+  'DISCOURSE_FLOW': 'Contextual Flow',
+  'TRANSITIONS': 'Contextual Flow',
+  'Extractive Summary Alignment': 'Contextual Flow',
+  'Macro/Micro Border': 'Contextual Flow',
+
+  // Sentence Structure rules
+  'Passive Voice': 'Sentence Structure',
+  'Future Tense for Facts': 'Sentence Structure',
+  'Predicate Consistency': 'Sentence Structure',
+
+  // Format/Link rules
+  'Query-Format Alignment': 'Format Codes',
+  'Anchor Text Variety': 'Format Codes',
+  'Annotation Text Quality': 'Format Codes',
+  'Supplementary Link Placement': 'Format Codes',
+  'Prose/Structured Balance': 'Format Codes',
+  'List Definition Sentences': 'Format Codes',
+
+  // Word Count rules
+  'Coverage Weight': 'Word Count',
+
+  // Schema rules
+  'SCHEMA_GENERATED': 'Schema',
+
+  // Audit rules
+  'CONTENT_CREATED': 'Audit',
+  'POLISH_REFINEMENT': 'Audit',
+  'COHERENCE': 'Audit',
+};
+
+/**
+ * Map audit rule names to critical status
+ * Rules that should block publication if failing
+ */
+const CRITICAL_AUDIT_RULES = new Set([
+  'Centerpiece Annotation',
+  'CENTERPIECE_CHECK',
+  'Heading Hierarchy',
+  'HEADING_HIERARCHY',
+  'LLM Signature Phrases',
+]);
+
+/**
+ * Determine category from violation rule name
+ */
+function getCategoryFromViolation(ruleName: string): RuleCategory {
+  // Direct mapping
+  if (AUDIT_RULE_TO_CATEGORY[ruleName]) {
+    return AUDIT_RULE_TO_CATEGORY[ruleName];
+  }
+
+  // Fuzzy matching based on keywords in rule name
+  const lowerName = ruleName.toLowerCase();
+  if (lowerName.includes('heading')) return 'Headings';
+  if (lowerName.includes('modality') || lowerName.includes('certainty')) return 'Modality';
+  if (lowerName.includes('stop') || lowerName.includes('vocabulary') || lowerName.includes('llm')) return 'Vocabulary';
+  if (lowerName.includes('entity') || lowerName.includes('subject') || lowerName.includes('centerpiece')) return 'Central Entity';
+  if (lowerName.includes('intro') || lowerName.includes('first')) return 'Introduction';
+  if (lowerName.includes('list')) return 'Lists';
+  if (lowerName.includes('table')) return 'Tables';
+  if (lowerName.includes('image') || lowerName.includes('alt')) return 'Images';
+  if (lowerName.includes('flow') || lowerName.includes('transition') || lowerName.includes('discourse')) return 'Contextual Flow';
+  if (lowerName.includes('sentence') || lowerName.includes('passive') || lowerName.includes('voice')) return 'Sentence Structure';
+  if (lowerName.includes('schema')) return 'Schema';
+  if (lowerName.includes('word') || lowerName.includes('count') || lowerName.includes('coverage')) return 'Word Count';
+
+  // Default to Audit for unrecognized rules
+  return 'Audit';
+}
+
+/**
+ * Check if a violation is critical
+ */
+function isViolationCritical(ruleName: string): boolean {
+  return CRITICAL_AUDIT_RULES.has(ruleName);
+}
 
 // =============================================================================
 // Helper Functions
@@ -354,63 +587,86 @@ export const ArticleQualityReport: React.FC<ArticleQualityReportProps> = ({
   violations,
   passDeltas: rawPassDeltas,
   overallScore,
-  systemicChecks = DEFAULT_SYSTEMIC_CHECKS,
+  businessInfo,
+  content,
+  systemicChecks: propSystemicChecks,
   onApprove,
   onRequestFix,
   onEdit,
   onRegenerate,
   className = '',
 }) => {
+  // Generate systemic checks from businessInfo if not explicitly provided
+  const systemicChecks = useMemo(() => {
+    if (propSystemicChecks && propSystemicChecks.length > 0) {
+      return propSystemicChecks;
+    }
+    if (businessInfo) {
+      return generateSystemicChecks(businessInfo, content);
+    }
+    return FALLBACK_SYSTEMIC_CHECKS;
+  }, [propSystemicChecks, businessInfo, content]);
   // Defensive guard: ensure passDeltas is always an array
   const passDeltas = Array.isArray(rawPassDeltas) ? rawPassDeltas : [];
 
   const [showPassHistory, setShowPassHistory] = useState(false);
   const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
 
-  // Calculate category scores
+  // Calculate category scores based on actual violations
+  // This correctly maps audit rule names to categories instead of relying on ID matching
   const categoryScores: CategoryScore[] = useMemo(() => {
     const allRules = RuleRegistry.getAllRules();
     const categories = RuleRegistry.getCategories();
 
+    // Group violations by category using the mapping
+    const violationsByCategory = new Map<RuleCategory, ValidationViolation[]>();
+    categories.forEach(cat => violationsByCategory.set(cat, []));
+
+    violations.forEach(violation => {
+      const category = getCategoryFromViolation(violation.rule);
+      const categoryViolations = violationsByCategory.get(category) || [];
+      categoryViolations.push(violation);
+      violationsByCategory.set(category, categoryViolations);
+    });
+
     return categories.map(category => {
       const categoryRules = allRules.filter(r => r.category === category);
-      const failingRuleIds = new Set(violations.map(v => v.rule));
+      const categoryViolations = violationsByCategory.get(category) || [];
 
-      const failing = categoryRules.filter(r => failingRuleIds.has(r.id)).length;
-      const criticalFailing = categoryRules.filter(
-        r => r.isCritical && failingRuleIds.has(r.id)
-      ).length;
-      const passing = categoryRules.length - failing;
-      const score = categoryRules.length > 0
-        ? Math.round((passing / categoryRules.length) * 100)
-        : 100;
+      // Calculate failing count from actual violations in this category
+      const failing = categoryViolations.length;
+      const criticalFailing = categoryViolations.filter(v => isViolationCritical(v.rule)).length;
+
+      // Total rules is from registry, passing is total minus violations
+      const total = categoryRules.length;
+      const passing = Math.max(0, total - failing);
+
+      // Calculate score: if no rules in registry for this category, use 100% if no violations
+      const score = total > 0
+        ? Math.round((passing / total) * 100)
+        : (failing === 0 ? 100 : 0);
 
       return {
         category,
-        total: categoryRules.length,
+        total,
         passing,
         failing,
         criticalFailing,
         score,
       };
-    }).sort((a, b) => a.score - b.score); // Sort by score ascending (worst first)
+    })
+      // Filter out categories with no rules AND no violations
+      .filter(cat => cat.total > 0 || cat.failing > 0)
+      .sort((a, b) => a.score - b.score); // Sort by score ascending (worst first)
   }, [violations]);
 
-  // Get issues grouped by severity
+  // Get issues grouped by severity using the audit rule mapping
   const criticalIssues = useMemo(() => {
-    const allRules = RuleRegistry.getAllRules();
-    return violations.filter(v => {
-      const rule = allRules.find(r => r.id === v.rule);
-      return rule?.isCritical;
-    });
+    return violations.filter(v => isViolationCritical(v.rule));
   }, [violations]);
 
   const otherIssues = useMemo(() => {
-    const allRules = RuleRegistry.getAllRules();
-    return violations.filter(v => {
-      const rule = allRules.find(r => r.id === v.rule);
-      return !rule?.isCritical;
-    });
+    return violations.filter(v => !isViolationCritical(v.rule));
   }, [violations]);
 
   // Handlers

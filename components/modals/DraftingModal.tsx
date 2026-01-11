@@ -2857,6 +2857,8 @@ ${schemaScript}`;
                                     })) || []}
                                     passDeltas={[]}
                                     overallScore={databaseJobInfo?.auditScore || 0}
+                                    businessInfo={businessInfo}
+                                    content={draftContent}
                                     onApprove={() => {
                                         dispatch({ type: 'SET_NOTIFICATION', payload: 'Article approved!' });
                                     }}
