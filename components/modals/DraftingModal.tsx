@@ -2816,6 +2816,7 @@ ${schemaScript}`;
                       placeholders={imagePlaceholders}
                       businessInfo={businessInfo}
                       draftContent={draftContent}
+                      jobId={databaseJobInfo?.jobId}
                       onUpdateDraft={(newDraft, shouldAutoSave) => {
                         setDraftContent(newDraft);
                         setHasUnsavedChanges(true);

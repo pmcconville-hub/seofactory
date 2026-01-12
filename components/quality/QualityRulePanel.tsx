@@ -30,6 +30,11 @@ import { ValidationViolation } from '../../types';
 export interface QualityRulePanelProps {
   /** Current violations to show status */
   violations?: ValidationViolation[];
+  /**
+   * All rules that were evaluated (both passing and failing).
+   * If provided, allows accurate "passing" vs "not-checked" determination.
+   */
+  evaluatedRules?: Array<{ ruleName: string; isPassing: boolean }>;
   /** Click handler for rule details */
   onRuleClick?: (ruleId: string) => void;
   /** Additional CSS classes */
@@ -56,10 +61,23 @@ interface CategoryStats {
 // =============================================================================
 
 /**
- * Get the status of a rule based on violations
+ * Get the status of a rule based on violations and evaluatedRules
  */
-function getRuleStatus(rule: QualityRule, violations: ValidationViolation[]): RuleStatus {
-  // Find if there's a violation for this rule
+function getRuleStatus(
+  rule: QualityRule,
+  violations: ValidationViolation[],
+  evaluatedRules?: Array<{ ruleName: string; isPassing: boolean }>
+): RuleStatus {
+  // If evaluatedRules is provided, use it for accurate status
+  if (evaluatedRules && evaluatedRules.length > 0) {
+    const evaluated = evaluatedRules.find(r => r.ruleName === rule.name || r.ruleName === rule.id);
+    if (evaluated) {
+      return evaluated.isPassing ? 'passing' : 'failing';
+    }
+    return 'not-checked';
+  }
+
+  // Fallback: use violations only
   const violation = violations.find(v => v.rule === rule.id || v.rule === rule.name);
 
   if (violation) {
@@ -71,7 +89,8 @@ function getRuleStatus(rule: QualityRule, violations: ValidationViolation[]): Ru
     return 'not-checked';
   }
 
-  // If we have violations but this rule isn't in them, it's passing
+  // If we have violations but this rule isn't in them, assume passing
+  // (less accurate without evaluatedRules)
   return 'passing';
 }
 
@@ -240,6 +259,7 @@ const RuleItem: React.FC<RuleItemProps> = ({ rule, onClick }) => {
 
 export const QualityRulePanel: React.FC<QualityRulePanelProps> = ({
   violations = [],
+  evaluatedRules,
   onRuleClick,
   className = '',
 }) => {
@@ -250,13 +270,40 @@ export const QualityRulePanel: React.FC<QualityRulePanelProps> = ({
   const [expandedCategories, setExpandedCategories] = useState<Set<RuleCategory>>(new Set());
 
   // Get all rules with status
+  // IMPORTANT: When evaluatedRules is provided, show those rules directly
+  // instead of trying to match against the full registry (which uses different naming)
   const rulesWithStatus: RuleWithStatus[] = useMemo(() => {
+    // If evaluatedRules is provided with items, convert them to RuleWithStatus format
+    // This handles algorithmic audit results that use custom names like "Modality Certainty"
+    // instead of registry IDs like "I2"
+    if (evaluatedRules && evaluatedRules.length > 0) {
+      return evaluatedRules.map((evalRule, index) => {
+        // Try to find a matching registry rule for better metadata
+        const registryRule = RuleRegistry.getAllRules().find(
+          r => r.name === evalRule.ruleName || r.id === evalRule.ruleName
+        );
+
+        return {
+          // Use registry data if found, otherwise create synthetic rule
+          id: registryRule?.id || `ALGO-${index + 1}`,
+          category: (registryRule?.category || 'Audit') as RuleCategory,
+          name: evalRule.ruleName,
+          description: registryRule?.description || `Algorithmic check: ${evalRule.ruleName}`,
+          severity: (registryRule?.severity || 'warning') as RuleSeverity,
+          isCritical: registryRule?.isCritical || false,
+          status: evalRule.isPassing ? 'passing' as RuleStatus : 'failing' as RuleStatus,
+          violation: violations.find(v => v.rule === evalRule.ruleName),
+        };
+      });
+    }
+
+    // Fallback: No evaluatedRules, show registry rules with violations
     return RuleRegistry.getAllRules().map(rule => ({
       ...rule,
-      status: getRuleStatus(rule, violations),
+      status: getRuleStatus(rule, violations, evaluatedRules),
       violation: violations.find(v => v.rule === rule.id || v.rule === rule.name),
     }));
-  }, [violations]);
+  }, [violations, evaluatedRules]);
 
   // Apply filters
   const filteredRules = useMemo(() => {
@@ -289,10 +336,16 @@ export const QualityRulePanel: React.FC<QualityRulePanelProps> = ({
   // Group filtered rules by category
   const rulesByCategory = useMemo(() => {
     const grouped = new Map<RuleCategory, RuleWithStatus[]>();
-    const categories = RuleRegistry.getCategories();
 
-    // Initialize all categories (even empty ones get shown)
-    categories.forEach(cat => grouped.set(cat, []));
+    // When showing evaluated rules, only show categories that have rules
+    // (don't initialize all registry categories for algorithmic checks)
+    const isShowingEvaluatedRules = evaluatedRules && evaluatedRules.length > 0;
+
+    if (!isShowingEvaluatedRules) {
+      // Initialize all registry categories when showing full registry
+      const categories = RuleRegistry.getCategories();
+      categories.forEach(cat => grouped.set(cat, []));
+    }
 
     // Populate with filtered rules
     filteredRules.forEach(rule => {
@@ -302,7 +355,7 @@ export const QualityRulePanel: React.FC<QualityRulePanelProps> = ({
     });
 
     return grouped;
-  }, [filteredRules]);
+  }, [filteredRules, evaluatedRules]);
 
   // Calculate summary stats
   const summaryStats = useMemo(() => {

@@ -22,16 +22,60 @@ interface ImageManagementPanelProps {
   draftContent: string;
   onUpdateDraft: (newDraft: string, shouldAutoSave?: boolean) => void;
   onOpenVisualEditor?: (placeholder: ImagePlaceholder) => void;
+  /** Job ID for persisting generated images */
+  jobId?: string;
 }
 
 /**
  * Replace a placeholder pattern in the draft with actual image markdown
+ * Uses multiple matching strategies to handle description variations
  */
 function replacePlaceholder(draft: string, placeholder: ImagePlaceholder, imageUrl: string, altText: string): string {
-  const escapedDesc = placeholder.description.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`\\[IMAGE:\\s*${escapedDesc}[^\\]]*\\]`, 'i');
   const markdown = `![${altText}](${imageUrl})`;
-  return draft.replace(pattern, markdown);
+
+  // Strategy 1: Exact match on full description
+  const escapedDesc = placeholder.description.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const exactPattern = new RegExp(`\\[IMAGE:\\s*${escapedDesc}[^\\]]*\\]`, 'i');
+  if (exactPattern.test(draft)) {
+    console.log('[ImageManagement] Exact match found for:', placeholder.description.slice(0, 50));
+    return draft.replace(exactPattern, markdown);
+  }
+
+  // Strategy 2: Match on first few words of description (handles truncation)
+  const descWords = placeholder.description.split(/\s+/).slice(0, 4).join('\\s+');
+  const loosePattern = new RegExp(`\\[IMAGE:\\s*${descWords}[^\\]]*\\]`, 'i');
+  if (loosePattern.test(draft)) {
+    console.log('[ImageManagement] Loose match found for:', placeholder.description.slice(0, 50));
+    return draft.replace(loosePattern, markdown);
+  }
+
+  // Strategy 3: Match any IMAGE placeholder if we have a unique altText match
+  const altPattern = new RegExp(`\\[IMAGE:[^|]*\\|[^\\]]*alt="[^"]*${altText.slice(0, 20).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^"]*"[^\\]]*\\]`, 'i');
+  if (altPattern.test(draft)) {
+    console.log('[ImageManagement] Alt text match found for:', altText.slice(0, 30));
+    return draft.replace(altPattern, markdown);
+  }
+
+  // Strategy 4: For HERO images, try matching by type
+  if (placeholder.type === 'HERO') {
+    const heroPattern = /\[IMAGE:\s*HERO[^\]]*\]/i;
+    if (heroPattern.test(draft)) {
+      console.log('[ImageManagement] HERO type match found');
+      return draft.replace(heroPattern, markdown);
+    }
+    // Also try finding any placeholder near the start of content
+    const anyHeroPattern = /^([\s\S]{0,500})\[IMAGE:[^\]]*\]/;
+    const heroMatch = draft.match(anyHeroPattern);
+    if (heroMatch) {
+      console.log('[ImageManagement] Early placeholder match for HERO');
+      return draft.replace(/^([\s\S]{0,500})\[IMAGE:[^\]]*\]/, `$1${markdown}`);
+    }
+  }
+
+  console.warn('[ImageManagement] No placeholder pattern matched for:', placeholder.description.slice(0, 50));
+  console.warn('[ImageManagement] Draft contains IMAGE placeholders:', (draft.match(/\[IMAGE:[^\]]+\]/g) || []).length);
+
+  return draft; // No match found, return unchanged
 }
 
 /**
@@ -49,6 +93,7 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
   draftContent,
   onUpdateDraft,
   onOpenVisualEditor,
+  jobId,
 }) => {
   const { state } = useAppState();
 
@@ -61,6 +106,55 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
   useEffect(() => {
     initImageGeneration(supabase);
   }, [supabase]);
+
+  // Persist generated image to database so it's not lost on navigation
+  const persistGeneratedImage = useCallback(async (placeholderId: string, result: ImagePlaceholder) => {
+    if (!supabase || !jobId) {
+      console.log('[ImageManagement] Cannot persist - missing supabase or jobId');
+      return;
+    }
+
+    try {
+      // Get current job image_placeholders
+      const { data: job } = await supabase
+        .from('content_generation_jobs')
+        .select('image_placeholders')
+        .eq('id', jobId)
+        .single();
+
+      const currentPlaceholders: ImagePlaceholder[] = (job?.image_placeholders || []) as ImagePlaceholder[];
+
+      // Update or add the placeholder with generated URL
+      const updatedPlaceholders = currentPlaceholders.map(p => {
+        if (p.id === placeholderId) {
+          return {
+            ...p,
+            ...result,
+            status: result.generatedUrl ? 'generated' : result.userUploadUrl ? 'uploaded' : p.status,
+          };
+        }
+        return p;
+      });
+
+      // If placeholder wasn't in the list, add it
+      if (!currentPlaceholders.find(p => p.id === placeholderId)) {
+        updatedPlaceholders.push(result);
+      }
+
+      await supabase
+        .from('content_generation_jobs')
+        .update({
+          image_placeholders: updatedPlaceholders as unknown as Record<string, unknown>[],
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', jobId);
+
+      console.log('[ImageManagement] Persisted generated image to job:', placeholderId);
+    } catch (err) {
+      console.error('[ImageManagement] Failed to persist generated image:', err);
+    }
+  }, [supabase, jobId]);
+
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -86,6 +180,41 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
   useEffect(() => {
     draftRef.current = draftContent;
   }, [draftContent]);
+
+  // Load previously generated images from database on mount
+  useEffect(() => {
+    if (!supabase || !jobId) return;
+
+    const loadPersistedImages = async () => {
+      try {
+        const { data: job } = await supabase
+          .from('content_generation_jobs')
+          .select('image_placeholders')
+          .eq('id', jobId)
+          .single();
+
+        if (job?.image_placeholders && Array.isArray(job.image_placeholders)) {
+          const persistedImages = job.image_placeholders as ImagePlaceholder[];
+          const generatedMap = new Map<string, ImagePlaceholder>();
+
+          for (const p of persistedImages) {
+            if (p.generatedUrl || p.userUploadUrl) {
+              generatedMap.set(p.id, p);
+            }
+          }
+
+          if (generatedMap.size > 0) {
+            setGeneratedImages(generatedMap);
+            console.log('[ImageManagement] Loaded', generatedMap.size, 'persisted generated images');
+          }
+        }
+      } catch (err) {
+        console.error('[ImageManagement] Failed to load persisted images:', err);
+      }
+    };
+
+    loadPersistedImages();
+  }, [supabase, jobId]);
 
   // Detect already-inserted images by scanning draft for markdown images
   // This restores the "inserted" state when navigating back to the Images tab
@@ -195,6 +324,8 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
             newErrors.delete(nextId);
             return newErrors;
           });
+          // Persist to database so it's not lost on navigation
+          persistGeneratedImage(nextId, result);
         } else if (result.status === 'error') {
           setErrors(e => new Map(e).set(nextId, result.errorMessage || 'Generation failed'));
         }
@@ -207,7 +338,7 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
         setQueue(q => q.slice(1));
         setProgress(null);
       });
-  }, [queue, currentlyGenerating, placeholders, businessInfo, generatedImages, selectedStyle, customInstructions]);
+  }, [queue, currentlyGenerating, placeholders, businessInfo, generatedImages, selectedStyle, customInstructions, persistGeneratedImage]);
 
   // Handlers
   const handleSelectAll = useCallback(() => {
