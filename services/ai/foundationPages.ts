@@ -394,6 +394,7 @@ function transformToFoundationPage(row: Record<string, unknown>): FoundationPage
 
 /**
  * Save foundation pages to database
+ * Uses the create_foundation_pages SECURITY DEFINER function to properly handle RLS
  */
 export const saveFoundationPages = async (
   mapId: string,
@@ -404,10 +405,8 @@ export const saveFoundationPages = async (
 ): Promise<FoundationPage[]> => {
   const supabase = useSupabase();
 
+  // Prepare pages for the RPC function
   const pagesToInsert = pages.map(page => ({
-    id: page.id || uuidv4(),
-    map_id: mapId,
-    user_id: userId,
     page_type: page.page_type,
     title: page.title,
     slug: page.slug,
@@ -419,16 +418,47 @@ export const saveFoundationPages = async (
     metadata: page.metadata
   }));
 
-  const { data, error } = await supabase
-    .from('foundation_pages')
-    .upsert(pagesToInsert as any, { onConflict: 'map_id,page_type' })
-    .select();
+  // Use the SECURITY DEFINER function which properly sets user_id from map ownership
+  const { data, error } = await supabase.rpc('create_foundation_pages', {
+    p_map_id: mapId,
+    p_pages: pagesToInsert
+  });
 
   if (error) {
+    // Fallback to direct upsert if RPC doesn't exist (for backwards compatibility)
+    if (error.message.includes('function') && error.message.includes('does not exist')) {
+      console.warn('[FoundationPages] RPC function not found, falling back to direct upsert');
+      const directPages = pages.map(page => ({
+        id: page.id || uuidv4(),
+        map_id: mapId,
+        user_id: userId,
+        page_type: page.page_type,
+        title: page.title,
+        slug: page.slug,
+        meta_description: page.meta_description,
+        h1_template: page.h1_template,
+        schema_type: page.schema_type,
+        sections: page.sections,
+        nap_data: page.nap_data,
+        metadata: page.metadata
+      }));
+
+      const { data: upsertData, error: upsertError } = await supabase
+        .from('foundation_pages')
+        .upsert(directPages as any, { onConflict: 'map_id,page_type' })
+        .select();
+
+      if (upsertError) {
+        throw new Error(`Failed to save foundation pages: ${upsertError.message}`);
+      }
+
+      return (upsertData || []).map(row => transformToFoundationPage(row as Record<string, unknown>));
+    }
+
     throw new Error(`Failed to save foundation pages: ${error.message}`);
   }
 
-  return (data || []).map(row => transformToFoundationPage(row as Record<string, unknown>));
+  return (data || []).map((row: Record<string, unknown>) => transformToFoundationPage(row));
 };
 
 /**
