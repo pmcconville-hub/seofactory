@@ -588,25 +588,50 @@ export const saveNavigationStructure = async (
 ): Promise<NavigationStructure> => {
   const supabase = useSupabase();
 
-  const navToUpsert = {
-    id: navigation.id || uuidv4(),
-    map_id: mapId,
-    user_id: userId,
-    header: navigation.header,
-    footer: navigation.footer,
-    max_header_links: navigation.max_header_links,
-    max_footer_links: navigation.max_footer_links,
-    dynamic_by_section: navigation.dynamic_by_section,
-    metadata: navigation.metadata
-  };
-
-  const { data, error } = await supabase
-    .from('navigation_structures')
-    .upsert(navToUpsert as any, { onConflict: 'map_id' })
-    .select()
-    .single();
+  // Use SECURITY DEFINER function to avoid RLS conflicts
+  // The RPC function gets user_id from map ownership
+  const { data, error } = await supabase.rpc('upsert_navigation_structure', {
+    p_map_id: mapId,
+    p_header: navigation.header,
+    p_footer: navigation.footer,
+    p_max_header_links: navigation.max_header_links ?? 10,
+    p_max_footer_links: navigation.max_footer_links ?? 30,
+    p_dynamic_by_section: navigation.dynamic_by_section ?? true,
+    p_metadata: navigation.metadata ?? null
+  });
 
   if (error) {
+    // Fallback to direct upsert if RPC doesn't exist
+    if (error.message?.includes('function') && error.message?.includes('does not exist')) {
+      console.warn('upsert_navigation_structure RPC not found, using direct upsert');
+      const navToUpsert = {
+        id: navigation.id || uuidv4(),
+        map_id: mapId,
+        user_id: userId,
+        header: navigation.header,
+        footer: navigation.footer,
+        max_header_links: navigation.max_header_links,
+        max_footer_links: navigation.max_footer_links,
+        dynamic_by_section: navigation.dynamic_by_section,
+        metadata: navigation.metadata
+      };
+
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('navigation_structures')
+        .upsert(navToUpsert as any, { onConflict: 'map_id' })
+        .select()
+        .single();
+
+      if (fallbackError) {
+        if (fallbackError.message?.includes('406') || fallbackError.code === '42P01') {
+          console.warn('Navigation structures table not found, skipping save');
+          return navigation;
+        }
+        throw new Error(`Failed to save navigation structure: ${fallbackError.message}`);
+      }
+      return transformToNavigationStructure(fallbackData as Record<string, unknown>);
+    }
+
     // If table doesn't exist, just warn and return the navigation as-is
     if (error.message?.includes('406') || error.code === '42P01') {
       console.warn('Navigation structures table not found, skipping save');
