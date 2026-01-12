@@ -288,12 +288,12 @@ generate appropriate images based on the content.
 `
       : '';
 
-  return `You are a Holistic SEO editor specializing in visual semantics.
+  return `You are a Holistic SEO editor applying KORAYANESE FRAMEWORK for visual semantics.
 
 ${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
 
 ## Your Task
-Insert image placeholders in ONE section. Return ONLY the optimized section.
+Insert image placeholders following STRICT Korayanese positioning rules.
 ${relevantSemantics.length > 0 ? `Use the pre-planned visual semantics from the content brief.` : ''}
 
 ## Current Section to Optimize
@@ -306,38 +306,81 @@ ${section.current_content}
 ## Title: ${holistic.articleStructure.title}
 
 ${isFirstSection ? `
-## HERO Image Required
-This is the first section - include a HERO image after the first paragraph.
-Hero images appear at LCP position and should include title overlay.
-` : ''}
+## HERO IMAGE REQUIRED (KORAYANESE FRAMEWORK)
+This is the INTRODUCTION section. You MUST insert a HERO image.
+
+### HERO IMAGE POSITIONING RULE:
+The hero image MUST be placed:
+- AFTER the first paragraph (the definition/centerpiece annotation)
+- BEFORE any subsequent paragraphs
+- NEVER between the heading and the first paragraph
+
+### HERO IMAGE TYPE:
+- Must be ENGAGING (infographic, diagram, labeled visual) NOT expressive (generic stock photo)
+- Should include text overlay with H1/title concept
+- Must represent the central entity "${holistic.centralEntity}"
+
+### CORRECT STRUCTURE:
+## [Heading]
+[First paragraph - the definition/centerpiece annotation]
+
+[IMAGE: HERO infographic showing key aspects of ${holistic.centralEntity} with title overlay | alt="vocabulary-extending alt describing ${holistic.centralEntity}"]
+
+[Second paragraph onwards...]
+
+### WRONG STRUCTURE:
+## [Heading]
+[IMAGE: ...] <-- WRONG: Image before definition
+[First paragraph]
+` : `
+## SECTION IMAGE RULES
+For body sections (non-intro):
+- Place images AFTER explanatory paragraphs, not before
+- Pattern: Heading → Answer paragraph → Image → Next content
+- NEVER place image between heading and its answer
+`}
 ${visualSemanticsSection}
-## Visual Semantics Rules:
-1. **Alt Tag Vocabulary Extension**: Alt tags use NEW vocabulary not in headings (synonyms, related terms)
-2. **Context Bridging**: Alt text bridges image to surrounding content
-3. **No Image Between H and Text**: NEVER place image between heading and first paragraph
-4. **Textual Qualification**: Sentence before/after image MUST reference it
+
+## KORAYANESE IMAGE POSITIONING RULES:
+
+### RULE 1: HEADING-ANSWER PROXIMITY
+**NEVER place image between a heading and its first paragraph.**
+- The first paragraph after ANY heading must be the direct answer/definition
+- Images come AFTER the answer paragraph
+
+### RULE 2: IMAGE PLACEMENT PATTERN
+CORRECT: Heading → Paragraph (answer) → Image → Next paragraph
+WRONG: Heading → Image → Paragraph
+
+### RULE 3: TEXTUAL QUALIFICATION
+The sentence BEFORE or AFTER an image must reference what the image shows.
+- Example: "De onderstaande afbeelding toont..." or "...zoals weergegeven in het diagram hieronder."
+
+### RULE 4: ENGAGING OVER EXPRESSIVE
+- Prefer: Infographics, diagrams, labeled visuals, charts
+- Avoid: Generic stock photos, decorative images without information
 
 ## Image Placeholder Format:
-[IMAGE: detailed description | alt="vocabulary-extending alt text"]
+[IMAGE: detailed description of ENGAGING visual | alt="vocabulary-extending alt text with NEW terms not in headings"]
 
 ## Image Types:
-- **HERO**: For first section, includes text overlay
-- **SECTION**: Supporting content, placed AFTER explanations
+- **HERO**: ONLY for intro section - infographic with title overlay
+- **INFOGRAPHIC**: For summarizing multiple points visually
+- **DIAGRAM**: For processes, flows, structures
 - **CHART**: For statistical data, comparisons
-- **INFOGRAPHIC**: For bullet points, process summaries
-- **DIAGRAM**: For process flows, how-to steps
+- **TABLE-VISUAL**: Visual representation of comparative data
 
-## Vocabulary Terms to Avoid in Alt Text (already overused):
+## Vocabulary Terms to AVOID in Alt Text (already overused):
 ${holistic.vocabularyMetrics.overusedTerms.slice(0, 5).map(t => t.term).join(', ')}
 
 ## Instructions:
-1. Insert 0-2 image placeholders where appropriate
-2. ${relevantSemantics.length > 0 ? 'Use the pre-planned visual semantics from the brief when available' : 'Generate appropriate image descriptions based on content'}
-3. Place images AFTER paragraphs, never right after headings
-4. Use vocabulary-extending alt text
-5. Write descriptions and alt text in ${regionalLang}
+1. ${isFirstSection ? 'Insert HERO image AFTER first paragraph' : 'Insert 0-2 section images AFTER explanation paragraphs'}
+2. NEVER place image between heading and first paragraph
+3. Use ENGAGING image types (infographic, diagram) over expressive (photos)
+4. Use vocabulary-extending alt text with synonyms/related terms
+5. Write in ${regionalLang}
 
-**OUTPUT ONLY the optimized section content with image placeholders. No explanations.**`;
+**OUTPUT the section with properly positioned image placeholders. No explanations.**`;
 }
 
 // ============================================
@@ -540,56 +583,66 @@ export function buildPass7Prompt(ctx: SectionOptimizationContext): string {
   const { section, holistic, brief, businessInfo } = ctx;
   const regionalLang = getRegionalLanguageVariant(businessInfo.language, businessInfo.region);
 
-  // This pass only processes the introduction section
-  // It rewrites the intro AFTER the full article exists
-  // Now also generates a topic-specific heading (not generic "Introduction")
+  // Extract H2 topics for abstractive summary (excluding intro/conclusion)
+  const h2Topics = holistic.articleStructure.headingOutline
+    .filter(h => h.level === 2 && h.key !== 'intro' && h.key !== 'conclusion' &&
+      !h.heading.toLowerCase().includes('introduction') &&
+      !h.heading.toLowerCase().includes('conclusion') &&
+      !h.heading.toLowerCase().includes('samenvatting'))
+    .map((h, i) => `${i + 1}. ${h.heading}`);
 
-  return `You are a Holistic SEO editor rewriting the introduction AFTER the full article exists.
+  return `You are a Holistic SEO editor applying the KORAYANESE FRAMEWORK for introduction writing.
 
 ${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
 
 ## Your Task
-Write a NEW introduction with a TOPIC-SPECIFIC heading. Return both the heading and content.
+Write a NEW introduction following STRICT Korayanese framework rules. This introduction serves as the ONLY summary - there should be no separate conclusion/summary section duplicating this.
 
-## Current Introduction
+## Current Introduction (to be COMPLETELY REWRITTEN)
 ${section.current_content}
 
-## Full Article Structure (the intro must preview ALL these sections in order)
-${holistic.articleStructure.headingOutline
-  .filter(h => h.key !== 'intro' && !h.heading.toLowerCase().includes('introduction'))
-  .map((h, i) => `${i + 1}. ${h.heading} (${h.wordCount} words)`)
-  .join('\n')}
+## MANDATORY KORAYANESE RULES FOR INTRODUCTION
 
-## Brief Info
+### RULE 1: 400-CHARACTER DEFINITION (CENTERPIECE ANNOTATION)
+**FIRST SENTENCE MUST BE "X is Y" FORMAT:**
+- The absolute definition of "${holistic.centralEntity}" MUST appear in the FIRST 400 characters
+- Start immediately with: "${holistic.centralEntity} is..." or "${holistic.centralEntity} zijn..."
+- NO hooks, stories, rhetorical questions, or marketing language before the definition
+- WRONG: "Welkom bij onze gids over..." / "Heeft u zich ooit afgevraagd..." / "In dit artikel..."
+- CORRECT: "${holistic.centralEntity} is een [definitie]..."
+
+### RULE 2: ABSTRACTIVE SUMMARY (Article Preview)
+**The introduction must summarize ALL H2 sections in ORDER:**
+${h2Topics.join('\n')}
+
+After the definition, write ONE paragraph that mentions key concepts from EACH of these H2s in the SAME order they appear in the article. This is the "extractive alignment" - if someone read only the intro, they'd know exactly what topics the article covers.
+
+### RULE 3: TOPIC-SPECIFIC HEADING
+- NEVER use generic headings: "Introductie", "Overview", "Inleiding"
+- USE heading containing central entity: "${holistic.centralEntity}: Een Compleet Overzicht" or "Wat is ${holistic.centralEntity}?"
+
+### RULE 4: NO FLUFF
+- Remove ALL filler words: "ook", "eigenlijk", "gewoon", "echt", "zeer"
+- Every sentence = Entity + Attribute + Value (a FACT)
+- NO sentences without new information
+
+## Article Info
 Title: ${holistic.articleStructure.title}
 Central Entity: ${holistic.centralEntity}
-Key Takeaways: ${brief.keyTakeaways?.slice(0, 3).join(', ') || 'N/A'}
+Target Keyword: ${brief.targetKeyword || 'N/A'}
 ${holistic.featuredSnippetTarget ? `Featured Snippet Target: ${holistic.featuredSnippetTarget.question}` : ''}
 
-## Introduction Synthesis Rules:
-1. **Topic-Specific Heading**: NEVER use "Introduction" or "Overview" - use heading that includes central entity
-   - Good examples: "Wat is ${holistic.centralEntity}", "${holistic.centralEntity}: Een Overzicht", "Alles over ${holistic.centralEntity}"
-   - Bad examples: "Introduction", "Overview", "Getting Started"
-2. **Centerpiece Annotation**: Core answer/definition in FIRST 400 characters after heading
-3. **Summary Alignment**: Preview ALL H2/H3 topics in SAME ORDER as article
-4. **Key Terms**: Include at least one term from each major section
-5. **Featured Snippet**: Address the featured snippet target immediately
-6. **No Fluff**: Maximum information density
-7. **Word Count**: 150-250 words for content
+## OUTPUT FORMAT
+## [Topic-specific heading containing "${holistic.centralEntity}"]
 
-## Instructions:
-Write a NEW introduction (NOT just edit the old one) that:
-1. Has a topic-specific H2 heading containing "${holistic.centralEntity}" or key topic terms
-2. Starts with direct definition/answer (centerpiece annotation)
-3. Previews ALL major sections in order they appear
-4. Includes key terms from each section
-5. Sets reader expectations clearly
-6. Is written entirely in ${regionalLang}
+[First sentence: "${holistic.centralEntity} is/zijn [direct definition]..."]
 
-**OUTPUT FORMAT:**
-## [Topic-specific heading in ${regionalLang}]
+[Second paragraph: Preview of ALL H2 topics in order - "Dit artikel behandelt [topic1], [topic2], [topic3]..."]
 
-[Introduction content in ${regionalLang}]`;
+[Optional: 1-2 more sentences with key facts, NO MORE]
+
+**WORD COUNT: 150-200 words maximum. Information density over length.**
+**LANGUAGE: ${regionalLang} ONLY**`;
 }
 
 // ============================================
@@ -604,52 +657,65 @@ export function buildPass7ConclusionPrompt(ctx: SectionOptimizationContext): str
   const isMonetization = brief.topic_class === 'monetization' ||
     (brief as any).topicClass === 'monetization';
 
-  return `You are a Holistic SEO editor rewriting the conclusion AFTER the full article exists.
+  return `You are a Holistic SEO editor applying the KORAYANESE FRAMEWORK for conclusion writing.
 
 ${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
 
 ## Your Task
-Write a NEW conclusion with a TOPIC-SPECIFIC heading. Return both the heading and content.
+Write a NEW conclusion that serves as a CALL-TO-ACTION, NOT a summary.
 
-## Current Conclusion
+## IMPORTANT: NO REDUNDANT SUMMARY
+The INTRODUCTION already contains the abstractive summary of the article.
+DO NOT repeat that summary in the conclusion.
+The conclusion must ADD NEW VALUE, not duplicate the introduction.
+
+## Current Conclusion (to be COMPLETELY REWRITTEN)
 ${section.current_content}
 
-## Full Article Structure (summarize key points from each section)
-${holistic.articleStructure.headingOutline
-  .filter(h => h.key !== 'conclusion' && !h.heading.toLowerCase().includes('conclusion'))
-  .map((h, i) => `${i + 1}. ${h.heading}`)
-  .join('\n')}
-
-## Brief Info
+## Article Info
 Title: ${holistic.articleStructure.title}
 Central Entity: ${holistic.centralEntity}
-Key Takeaways: ${brief.keyTakeaways?.slice(0, 5).join(', ') || 'N/A'}
-${isMonetization ? `Business CTA: Contact for ${holistic.centralEntity} services/products` : ''}
+${isMonetization ? `Business: This is a MONETIZATION topic - include service/product CTA` : 'This is an INFORMATIONAL topic - reinforce practical value'}
 
-## Conclusion Synthesis Rules:
-1. **Topic-Specific Heading**: NEVER use "Conclusion" or "Summary" - use heading that includes central entity
-   - Good examples: "Conclusie: ${holistic.centralEntity} voor Uw Project", "${holistic.centralEntity} Samengevat", "De Keuze voor ${holistic.centralEntity}"
-   - Bad examples: "Conclusion", "Summary", "Final Thoughts", "Wrapping Up"
-2. **Key Points Summary**: Summarize 3-5 main takeaways from the article
-3. **Central Entity Reinforcement**: Reference ${holistic.centralEntity} explicitly
-4. **Actionable Close**: End with clear next step for the reader
-${isMonetization ? `5. **Call-to-Action**: Include CTA for ${holistic.centralEntity} services/consultation` : '5. **Educational Close**: Reinforce the learning value'}
-6. **No Fluff**: Maximum information density
-7. **Word Count**: 100-200 words for content
+## KORAYANESE CONCLUSION RULES
 
-## Instructions:
-Write a NEW conclusion (NOT just edit the old one) that:
-1. Has a topic-specific H2 heading containing "${holistic.centralEntity}" or key topic terms
-2. Summarizes key insights from ALL major sections
-3. Reinforces the central entity's importance
-4. Provides clear next steps/actionable advice
-${isMonetization ? '5. Includes appropriate call-to-action' : '5. Closes with educational value statement'}
-6. Is written entirely in ${regionalLang}
+### RULE 1: TOPIC-SPECIFIC HEADING (NOT "Samenvatting" or "Conclusie")
+- NEVER use: "Conclusie", "Samenvatting", "Summary", "Tot Slot", "Afsluitend"
+- USE: Action-oriented heading with central entity
+- Examples: "Neem Contact Op voor ${holistic.centralEntity}", "Start Vandaag met ${holistic.centralEntity}", "${holistic.centralEntity}: Uw Volgende Stap"
 
-**OUTPUT FORMAT:**
-## [Topic-specific conclusion heading in ${regionalLang}]
+### RULE 2: CALL-TO-ACTION FOCUS
+${isMonetization ? `
+**MONETIZATION CTA:**
+- Direct invitation to contact/request quote
+- Specific next step (call, email, form)
+- Urgency or benefit statement
+- Example: "Neem vandaag contact op voor een gratis inspectie van uw [product/service]."
+` : `
+**INFORMATIONAL CLOSE:**
+- Practical application statement
+- How reader can use this knowledge
+- Related topics they might explore
+- Example: "Met deze kennis kunt u nu zelfverzekerd [action] uitvoeren."
+`}
 
-[Conclusion content in ${regionalLang}]`;
+### RULE 3: NO SUMMARY REPETITION
+- DO NOT list key takeaways (intro already did this)
+- DO NOT summarize what was covered (intro already did this)
+- ONLY add: next steps, CTA, or practical application
+
+### RULE 4: BREVITY
+- Maximum 100 words
+- Every sentence must add actionable value
+- No fluff, no repetition
+
+## OUTPUT FORMAT
+## [Action-oriented heading with "${holistic.centralEntity}"]
+
+[2-3 sentences: Actionable close + CTA or practical application]
+
+**WORD COUNT: 50-100 words maximum.**
+**LANGUAGE: ${regionalLang} ONLY**`;
 }
 
 // ============================================

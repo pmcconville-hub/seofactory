@@ -97,6 +97,7 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
     structuralSnapshots?: Record<string, StructuralSnapshot>; // Element counts per pass
     passQualityScores?: Record<string, number>; // Quality scores per pass
     qualityWarning?: string | null; // Warning for quality regressions
+    auditDetails?: { algorithmicResults?: Array<{ ruleName: string; isPassing: boolean; details: string }> }; // Audit results from Pass 9
   } | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showDiffPreview, setShowDiffPreview] = useState(false);
@@ -379,7 +380,7 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
         // Get the latest job for this brief (any status - to detect incomplete jobs that can be resumed)
         const { data: jobData, error: jobError } = await supabase
           .from('content_generation_jobs')
-          .select('id, draft_content, updated_at, final_audit_score, passes_status, status, current_pass, schema_data, structural_snapshots, pass_quality_scores, quality_warning')
+          .select('id, draft_content, updated_at, final_audit_score, passes_status, status, current_pass, schema_data, structural_snapshots, pass_quality_scores, quality_warning, audit_details')
           .eq('brief_id', brief.id)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -504,6 +505,7 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
           structuralSnapshots: (jobData as any).structural_snapshots || {}, // Element counts per pass
           passQualityScores: (jobData as any).pass_quality_scores || {}, // Quality scores per pass
           qualityWarning: (jobData as any).quality_warning || null, // Quality regression warning
+          auditDetails: (jobData as any).audit_details || undefined, // Audit results from Pass 9
         });
 
         // If no newer/longer content found, don't show sync option
@@ -2434,6 +2436,7 @@ ${schemaScript}`;
                  <button
                     onClick={() => setActiveTab('preview')}
                     className={`px-3 py-1 text-sm rounded ${activeTab === 'preview' ? 'bg-gray-600 text-white font-medium' : 'text-gray-400 hover:text-gray-200'}`}
+                    title="Visual preview only. Downloaded HTML includes SEO optimization (schema, OG tags, semantic sections)."
                  >
                     HTML Preview
                  </button>
@@ -2794,8 +2797,11 @@ ${schemaScript}`;
                         disabled={isPolishing}
                     />
                 ) : activeTab === 'preview' ? (
-                    <div className="h-full overflow-y-auto p-8 bg-gray-950 text-gray-100">
-                        <div className="max-w-3xl mx-auto">
+                    <div className="h-full overflow-y-auto bg-gray-950 text-gray-100">
+                        <div className="bg-blue-900/20 border-b border-blue-700/30 px-8 py-2 text-xs text-blue-300">
+                            Visual preview only • Downloaded HTML includes SEO optimization (schema, Open Graph, semantic sections, embedded images)
+                        </div>
+                        <div className="p-8 max-w-3xl mx-auto">
                             {draftContent ? (
                                 <SimpleMarkdown content={safeString(draftContent)} />
                             ) : (
@@ -2853,37 +2859,44 @@ ${schemaScript}`;
                                     </div>
                                 )}
                             </div>
-                            {minimalJob ? (
-                                <ArticleQualityReport
-                                    jobId={minimalJob.id}
-                                    violations={brief?.contentAudit?.frameworkRules?.filter((r: any) => !r.isPassing).map((r: any) => ({
-                                        rule: r.ruleName,
-                                        text: r.details,
-                                        position: 0,
-                                        suggestion: r.remediation || 'Review and address this issue',
-                                        severity: 'warning' as const,
-                                    })) || []}
-                                    evaluatedRules={brief?.contentAudit?.frameworkRules?.map((r: any) => ({
-                                        ruleName: r.ruleName,
-                                        isPassing: r.isPassing,
-                                    })) || undefined}
-                                    passDeltas={[]}
-                                    overallScore={databaseJobInfo?.auditScore || 0}
-                                    businessInfo={businessInfo}
-                                    content={draftContent}
-                                    onApprove={() => {
-                                        dispatch({ type: 'SET_NOTIFICATION', payload: 'Article approved!' });
-                                    }}
-                                    onRequestFix={(ruleIds) => {
-                                        console.log('Request fix for rules:', ruleIds);
-                                        dispatch({ type: 'SET_NOTIFICATION', payload: `Requested fix for ${ruleIds.length} rule(s)` });
-                                    }}
-                                    onEdit={() => setActiveTab('edit')}
-                                    onRegenerate={() => {
-                                        dispatch({ type: 'SET_NOTIFICATION', payload: 'Regeneration not yet implemented in this view' });
-                                    }}
-                                />
-                            ) : (
+                            {minimalJob ? (() => {
+                                // Get audit rules from either brief.contentAudit OR job.audit_details
+                                const auditRules = brief?.contentAudit?.frameworkRules?.length > 0
+                                    ? brief.contentAudit.frameworkRules
+                                    : databaseJobInfo?.auditDetails?.algorithmicResults || [];
+
+                                return (
+                                    <ArticleQualityReport
+                                        jobId={minimalJob.id}
+                                        violations={auditRules.filter((r: any) => !r.isPassing).map((r: any) => ({
+                                            rule: r.ruleName,
+                                            text: r.details,
+                                            position: 0,
+                                            suggestion: r.remediation || 'Review and address this issue',
+                                            severity: 'warning' as const,
+                                        }))}
+                                        evaluatedRules={auditRules.length > 0 ? auditRules.map((r: any) => ({
+                                            ruleName: r.ruleName,
+                                            isPassing: r.isPassing,
+                                        })) : undefined}
+                                        passDeltas={[]}
+                                        overallScore={databaseJobInfo?.auditScore || 0}
+                                        businessInfo={businessInfo}
+                                        content={draftContent}
+                                        onApprove={() => {
+                                            dispatch({ type: 'SET_NOTIFICATION', payload: 'Article approved!' });
+                                        }}
+                                        onRequestFix={(ruleIds) => {
+                                            console.log('Request fix for rules:', ruleIds);
+                                            dispatch({ type: 'SET_NOTIFICATION', payload: `Requested fix for ${ruleIds.length} rule(s)` });
+                                        }}
+                                        onEdit={() => setActiveTab('edit')}
+                                        onRegenerate={() => {
+                                            dispatch({ type: 'SET_NOTIFICATION', payload: 'Regeneration not yet implemented in this view' });
+                                        }}
+                                    />
+                                );
+                            })() : (
                                 <div className="text-center py-8 text-gray-400">
                                     <p>No quality data available yet.</p>
                                     <p className="text-sm mt-2">Generate or polish content to see quality metrics.</p>
@@ -2894,18 +2907,31 @@ ${schemaScript}`;
                         {/* Quality Rules Panel */}
                         <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
                             <h3 className="text-lg font-semibold text-white mb-4">Quality Rules Checklist</h3>
-                            <QualityRulePanel
-                                violations={brief?.contentAudit?.frameworkRules?.filter((r: any) => !r.isPassing).map((r: any) => ({
-                                    rule: r.ruleName,
-                                    text: r.details,
-                                    position: 0,
-                                    suggestion: r.remediation || 'Review and address this issue',
-                                    severity: 'warning' as const,
-                                })) || []}
-                                onRuleClick={(ruleId) => {
-                                    console.log('Rule clicked:', ruleId);
-                                }}
-                            />
+                            {(() => {
+                                // Get audit rules from either brief.contentAudit OR job.audit_details
+                                const panelAuditRules = brief?.contentAudit?.frameworkRules?.length > 0
+                                    ? brief.contentAudit.frameworkRules
+                                    : databaseJobInfo?.auditDetails?.algorithmicResults || [];
+
+                                return (
+                                    <QualityRulePanel
+                                        violations={panelAuditRules.filter((r: any) => !r.isPassing).map((r: any) => ({
+                                            rule: r.ruleName,
+                                            text: r.details,
+                                            position: 0,
+                                            suggestion: r.remediation || 'Review and address this issue',
+                                            severity: 'warning' as const,
+                                        }))}
+                                        evaluatedRules={panelAuditRules.length > 0 ? panelAuditRules.map((r: any) => ({
+                                            ruleName: r.ruleName,
+                                            isPassing: r.isPassing,
+                                        })) : undefined}
+                                        onRuleClick={(ruleId) => {
+                                            console.log('Rule clicked:', ruleId);
+                                        }}
+                                    />
+                                );
+                            })()}
                         </div>
 
                         {/* Pass History & Content Viewer */}

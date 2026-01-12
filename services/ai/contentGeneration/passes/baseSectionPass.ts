@@ -480,29 +480,57 @@ function countImagePlaceholders(content: string): number {
 }
 
 /**
- * Count lists in content (both Markdown and HTML).
+ * Count list blocks in content (both Markdown and HTML).
+ *
+ * Counts both unordered lists (- or *) and ordered lists (1. 2. 3.).
+ * A list block is a group of consecutive list items.
  */
 function countLists(content: string): number {
-  // Markdown lists: lines starting with -, *, or 1.
-  const markdownLists = content.match(/(?:^|\n)(?:[-*]|\d+\.)\s+/g) || [];
-  // HTML lists
-  const htmlLists = content.match(/<[ou]l>/gi) || [];
-  // Count list blocks, not individual items
-  const listBlocks = (content.match(/(?:^|\n)[-*]\s+[^\n]+(?:\n[-*]\s+[^\n]+)*/gm) || []).length;
-  return Math.max(listBlocks, htmlLists.length);
+  // Split content into lines for analysis
+  const lines = content.split('\n');
+  let listCount = 0;
+  let inList = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    // Check if line is a list item (unordered: - or *, ordered: 1. 2. etc.)
+    const isListItem = /^[-*]\s+.+/.test(line) || /^\d+\.\s+.+/.test(line);
+
+    if (isListItem && !inList) {
+      // Starting a new list block
+      listCount++;
+      inList = true;
+    } else if (!isListItem && line.length > 0) {
+      // Non-empty, non-list line ends the list block
+      inList = false;
+    }
+    // Empty lines don't end list blocks (allows spacing between items)
+  }
+
+  // Also count HTML lists
+  const htmlLists = (content.match(/<[ou]l[^>]*>/gi) || []).length;
+
+  return listCount + htmlLists;
 }
 
 /**
  * Count tables in content (both Markdown and HTML).
+ *
+ * A markdown table is identified by its separator line which contains
+ * only pipes, dashes, colons, and spaces (e.g., |---|---|---|).
+ * We count separator lines (one per table), not individual cells.
  */
 function countTables(content: string): number {
-  // Markdown tables: | col | col | pattern
-  const markdownTableRows = content.match(/\|[^|]+\|/g) || [];
-  const markdownTables = markdownTableRows.length > 0 ?
-    Math.floor((content.match(/\|[-:]+\|/g) || []).length) : 0;
+  // Markdown tables: count separator lines (lines with |---| pattern that
+  // consist only of |, -, :, and spaces - one separator line per table)
+  // Match lines like: |---|---| or | --- | :--: | --: |
+  const separatorLinePattern = /^[\s]*\|[\s\-:|]+\|[\s]*$/gm;
+  const markdownTables = (content.match(separatorLinePattern) || []).length;
+
   // HTML tables
-  const htmlTables = (content.match(/<table>/gi) || []).length;
-  return Math.max(markdownTables, htmlTables);
+  const htmlTables = (content.match(/<table[^>]*>/gi) || []).length;
+
+  return markdownTables + htmlTables;
 }
 
 /**

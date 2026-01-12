@@ -10,7 +10,13 @@ interface SimpleMarkdownProps {
 
 export const SimpleMarkdown: React.FC<SimpleMarkdownProps> = ({ content }) => {
   // Track if we've seen the first image for hero treatment
-  let isFirstImage = true;
+  // Use a ref to persist across renders and properly track state during component tree construction
+  const firstImageRef = React.useRef(true);
+
+  // Reset the ref when content changes (new render cycle)
+  React.useEffect(() => {
+    firstImageRef.current = true;
+  }, [content]);
 
   const components: Components = useMemo(() => ({
     h1: ({ children }) => (
@@ -67,8 +73,8 @@ export const SimpleMarkdown: React.FC<SimpleMarkdownProps> = ({ content }) => {
       </a>
     ),
     img: ({ src, alt }) => {
-      const heroTreatment = isFirstImage;
-      if (isFirstImage) isFirstImage = false;
+      const heroTreatment = firstImageRef.current;
+      if (firstImageRef.current) firstImageRef.current = false;
 
       if (heroTreatment) {
         return (

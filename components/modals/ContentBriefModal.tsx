@@ -548,10 +548,18 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
     const showProgressUI = isGenerating || isPaused || isFailed || (job && !isComplete);
 
     // Generate pass deltas from job status for LiveGenerationMonitor
-    // Provides indicative improvements based on what each pass typically optimizes
+    // Use REAL passDeltas from quality_report when available, fall back to indicative improvements
     const passDeltas = useMemo((): PassDelta[] => {
         if (!job?.passes_status) return [];
 
+        // Check if we have real passDeltas from quality_report (stored after generation completes)
+        const qualityReport = (job as any).quality_report;
+        if (qualityReport?.passDeltas && Array.isArray(qualityReport.passDeltas) && qualityReport.passDeltas.length > 0) {
+            // Use real tracking data - this has actual rule fixes/regressions
+            return qualityReport.passDeltas;
+        }
+
+        // Fall back to indicative improvements for in-progress generation
         const deltas: PassDelta[] = [];
         const passKeys = [
             'pass_1_draft', 'pass_2_headers', 'pass_3_lists', 'pass_4_discourse',
@@ -590,7 +598,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
             }
         }
         return deltas;
-    }, [job?.passes_status]);
+    }, [job?.passes_status, (job as any)?.quality_report]);
 
     // Allow settings when: multi-pass enabled and NOT actively generating
     // Settings should be accessible even when there's an existing draft (for regeneration)

@@ -87,6 +87,56 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
     draftRef.current = draftContent;
   }, [draftContent]);
 
+  // Detect already-inserted images by scanning draft for markdown images
+  // This restores the "inserted" state when navigating back to the Images tab
+  useEffect(() => {
+    if (!draftContent || placeholders.length === 0) return;
+
+    // Find all markdown images in the draft: ![alt](url)
+    const imageMarkdownRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    const insertedMatches: string[] = [];
+    let match;
+
+    while ((match = imageMarkdownRegex.exec(draftContent)) !== null) {
+      const altText = match[1].toLowerCase();
+
+      // Try to match this inserted image back to a placeholder
+      for (const placeholder of placeholders) {
+        // Check if alt text contains significant words from placeholder description
+        const descWords = placeholder.description.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        const matchCount = descWords.filter(word => altText.includes(word)).length;
+
+        // If at least 2 words match, consider it the same image
+        if (matchCount >= 2 || altText.includes(placeholder.altTextSuggestion.toLowerCase().slice(0, 30))) {
+          insertedMatches.push(placeholder.id);
+        }
+      }
+    }
+
+    // Also detect if a placeholder's pattern is NO LONGER in the draft (meaning it was replaced)
+    for (const placeholder of placeholders) {
+      const escapedDesc = placeholder.description.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Use shorter prefix to match - just first 20 chars of description
+      const shortDesc = escapedDesc.slice(0, 40);
+      const pattern = new RegExp(`\\[IMAGE:\\s*${shortDesc}`, 'i');
+
+      if (!pattern.test(draftContent)) {
+        // The placeholder pattern is gone - it was likely replaced with an actual image
+        if (!insertedMatches.includes(placeholder.id)) {
+          insertedMatches.push(placeholder.id);
+        }
+      }
+    }
+
+    if (insertedMatches.length > 0) {
+      setInsertedIds(prev => {
+        const newSet = new Set(prev);
+        insertedMatches.forEach(id => newSet.add(id));
+        return newSet;
+      });
+    }
+  }, [draftContent, placeholders]);
+
   // Check available providers
   const availableProviders: string[] = [];
   if (businessInfo.markupGoApiKey) availableProviders.push('MarkupGo (HERO only)');
