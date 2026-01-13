@@ -271,38 +271,63 @@ function aggregatePatterns(
 
 /**
  * Generate comprehensive gap analysis
+ *
+ * NOTE: This is PRE-CONTENT analysis - user hasn't created content yet.
+ * The "gaps" represent:
+ * - Root attributes: What you MUST cover (70%+ competitors have these)
+ * - Rare attributes: Authority opportunities (20-69% have these)
+ * - Unique opportunities: Differentiation potential (under-covered in market)
+ * - Technical/Link gaps: Competitor weaknesses you can exploit
  */
 function generateGapAnalysis(
   competitors: CompetitorAnalysis[],
   marketClassification: ReturnType<typeof classifyAllAttributes>
 ): ComprehensiveGapAnalysis {
-  // Attribute gaps
+  // Attribute analysis - since user has no content yet, show what market covers
   const attributeGaps: AttributeGapAnalysis = {
     missingRoot: [],
     missingRare: [],
     uniqueOpportunities: [],
   };
 
-  // Identify missing root attributes (those covered by 70%+ but not all)
+  // ROOT attributes (70%+ competitors have these) - MUST cover these
   for (const attr of marketClassification.filter(a => a.rarity === 'root')) {
-    if (attr.competitorPercentage < 1.0) {
-      attributeGaps.missingRoot.push({
-        attribute: attr.attribute,
-        competitorsCovering: Math.round(attr.competitorPercentage * competitors.length),
-        priority: 'critical',
-        example: attr.examples[0]?.value || 'N/A',
-      });
-    }
+    attributeGaps.missingRoot.push({
+      attribute: attr.attribute,
+      competitorsCovering: Math.round(attr.competitorPercentage * competitors.length),
+      priority: 'critical',
+      example: attr.examples[0]?.value || 'N/A',
+    });
   }
 
-  // Technical gaps
+  // RARE attributes (20-69% have these) - Authority signals
+  for (const attr of marketClassification.filter(a => a.rarity === 'rare')) {
+    attributeGaps.missingRare.push({
+      attribute: attr.attribute,
+      competitorsCovering: Math.round(attr.competitorPercentage * competitors.length),
+      priority: 'high',
+      example: attr.examples[0]?.value || 'N/A',
+    });
+  }
+
+  // UNIQUE opportunities (attributes only 1-2 competitors cover - differentiation potential)
+  for (const attr of marketClassification.filter(a => a.rarity === 'unique')) {
+    attributeGaps.uniqueOpportunities.push({
+      attribute: attr.attribute,
+      noCompetitorHas: attr.competitorCount === 0,
+      potentialValue: attr.examples[0]?.value || 'Differentiation opportunity',
+      priority: 'medium',
+    });
+  }
+
+  // Technical gaps - analyze competitor weaknesses
   const technicalGaps = {
     missingSchemaTypes: [] as string[],
     entityLinkingGap: false,
     navigationIssues: [] as string[],
   };
 
-  // Find schema types used by most competitors
+  // Find schema types used by most competitors (you should have these)
   const schemaTypeCounts: Record<string, number> = {};
   for (const c of competitors) {
     for (const type of c.technical.schema.schemaTypes) {
@@ -310,30 +335,38 @@ function generateGapAnalysis(
     }
   }
 
-  // Types used by 50%+ are expected
+  // Types used by 50%+ are expected - list them as requirements
   for (const [type, count] of Object.entries(schemaTypeCounts)) {
     if (count >= competitors.length * 0.5) {
       technicalGaps.missingSchemaTypes.push(type);
     }
   }
 
-  // Entity linking gap
+  // Entity linking analysis - if competitors are weak, it's an opportunity
   const avgDisambiguation = competitors.reduce(
     (sum, c) => sum + c.technical.schema.entityLinking.disambiguationScore, 0
   ) / (competitors.length || 1);
 
-  if (avgDisambiguation > 50) {
-    technicalGaps.entityLinkingGap = true;
-  }
+  // If avg < 50, competitors are weak at entity linking - opportunity!
+  technicalGaps.entityLinkingGap = avgDisambiguation < 50;
 
-  // Link gaps
+  // Collect navigation issues across competitors
+  const navIssueSet = new Set<string>();
+  for (const c of competitors) {
+    for (const issue of c.technical.navigationAnalysis.issues) {
+      navIssueSet.add(issue.description);
+    }
+  }
+  technicalGaps.navigationIssues = Array.from(navIssueSet);
+
+  // Link gaps - competitor weaknesses = your opportunities
   const linkGaps = {
     flowIssues: [] as string[],
     anchorQualityIssues: [] as string[],
     bridgeOpportunities: [] as string[],
   };
 
-  // Collect common flow issues
+  // Collect flow issues from competitors
   const flowIssueSet = new Set<string>();
   for (const c of competitors) {
     for (const issue of c.links.pageRankFlow.flowAnalysis.issues) {
@@ -342,33 +375,112 @@ function generateGapAnalysis(
   }
   linkGaps.flowIssues = Array.from(flowIssueSet);
 
-  // Priority actions
+  // Collect anchor text quality issues from competitors
+  const anchorIssueSet = new Set<string>();
+  for (const c of competitors) {
+    for (const issue of c.links.internal.anchorTextQuality.issues) {
+      anchorIssueSet.add(issue.description);
+    }
+    // Also flag if competitors have generic anchors or repetition
+    if (c.links.internal.anchorTextQuality.genericCount > 3) {
+      anchorIssueSet.add('Excessive generic anchor text');
+    }
+    if (c.links.internal.anchorTextQuality.repetitionIssues.length > 0) {
+      anchorIssueSet.add('Anchor text repetition issues');
+    }
+  }
+  linkGaps.anchorQualityIssues = Array.from(anchorIssueSet);
+
+  // Identify bridge topic opportunities (topics competitors link to poorly)
+  const bridgeSet = new Set<string>();
+  for (const c of competitors) {
+    for (const bridge of c.links.bridgeTopics) {
+      if (!bridge.justification.isJustified) {
+        bridgeSet.add(`Improve bridge to: ${bridge.topic}`);
+      }
+    }
+    // Check for placement recommendations
+    for (const rec of c.links.placementPatterns.recommendations) {
+      bridgeSet.add(rec.action);
+    }
+  }
+  linkGaps.bridgeOpportunities = Array.from(bridgeSet);
+
+  // Priority actions based on analysis
   const priorityActions: ComprehensiveGapAnalysis['priorityActions'] = [];
 
+  // Content actions
   if (attributeGaps.missingRoot.length > 0) {
     priorityActions.push({
-      action: `Cover ${attributeGaps.missingRoot.length} missing root attributes`,
+      action: `Cover ${attributeGaps.missingRoot.length} root attributes that competitors consistently include`,
       category: 'content',
       priority: 'critical',
-      expectedImpact: 'Match competitor content depth',
+      expectedImpact: 'Match baseline competitor content coverage',
     });
   }
 
+  if (attributeGaps.missingRare.length > 0) {
+    priorityActions.push({
+      action: `Include ${attributeGaps.missingRare.length} rare attributes for authority signals`,
+      category: 'content',
+      priority: 'high',
+      expectedImpact: 'Demonstrate expertise beyond basic coverage',
+    });
+  }
+
+  if (attributeGaps.uniqueOpportunities.length > 0) {
+    priorityActions.push({
+      action: `Explore ${attributeGaps.uniqueOpportunities.length} unique differentiation opportunities`,
+      category: 'content',
+      priority: 'medium',
+      expectedImpact: 'Stand out from competitor content',
+    });
+  }
+
+  // Technical actions
   if (technicalGaps.entityLinkingGap) {
     priorityActions.push({
-      action: 'Add Wikidata entity linking to schema markup',
+      action: 'Add Wikidata entity linking - competitors are weak here',
       category: 'technical',
       priority: 'high',
-      expectedImpact: 'Improve entity disambiguation for Knowledge Panel',
+      expectedImpact: 'Gain advantage in entity disambiguation',
     });
   }
 
   if (technicalGaps.missingSchemaTypes.length > 0) {
     priorityActions.push({
-      action: `Add ${technicalGaps.missingSchemaTypes.join(', ')} schema types`,
+      action: `Implement ${technicalGaps.missingSchemaTypes.join(', ')} schema types`,
       category: 'technical',
       priority: 'high',
       expectedImpact: 'Match competitor structured data coverage',
+    });
+  }
+
+  if (technicalGaps.navigationIssues.length > 0) {
+    priorityActions.push({
+      action: `Avoid competitor navigation mistakes (${technicalGaps.navigationIssues.length} common issues found)`,
+      category: 'technical',
+      priority: 'medium',
+      expectedImpact: 'Better user experience and crawlability',
+    });
+  }
+
+  // Link actions
+  if (linkGaps.anchorQualityIssues.length > 0) {
+    priorityActions.push({
+      action: `Use better anchor text - competitors have ${linkGaps.anchorQualityIssues.length} common issues`,
+      category: 'links',
+      priority: 'high',
+      expectedImpact: 'Clearer topical signals to search engines',
+    });
+  }
+
+  if (linkGaps.flowIssues.length > 0) {
+    priorityActions.push({
+      action: `Optimize PageRank flow - avoid ${linkGaps.flowIssues.length} competitor mistakes`,
+      category: 'links',
+      priority: 'medium',
+      expectedImpact: 'Better link equity distribution',
     });
   }
 
@@ -382,36 +494,66 @@ function generateGapAnalysis(
 
 /**
  * Calculate opportunity scores
+ *
+ * Scores represent how much OPPORTUNITY exists to beat competitors:
+ * - High score = Competitors are weak in this area, easier to beat
+ * - Low score = Competitors are strong, harder to differentiate
  */
 function calculateScores(
   competitors: CompetitorAnalysis[],
   gaps: ComprehensiveGapAnalysis
 ): TopicSerpIntelligence['scores'] {
-  // Content opportunity: more gaps = more opportunity
-  const contentOpportunity = Math.min(100, gaps.attributes.missingRoot.length * 15 + gaps.attributes.missingRare.length * 10);
+  // Content opportunity based on:
+  // 1. Market diversity (more rare/unique attributes = more differentiation potential)
+  // 2. Competitor content quality weaknesses
+  const rareCount = gaps.attributes.missingRare.length;
+  const uniqueCount = gaps.attributes.uniqueOpportunities.length;
 
-  // Technical opportunity
-  const technicalOpportunity = Math.min(100,
-    (gaps.technical.entityLinkingGap ? 40 : 0) +
-    (gaps.technical.missingSchemaTypes.length * 15) +
-    (gaps.technical.navigationIssues.length * 10)
-  );
+  // Calculate avg competitor content score - lower = more opportunity
+  const avgContentScore = competitors.length > 0
+    ? competitors.reduce((sum, c) => sum + c.content.contentScore, 0) / competitors.length
+    : 50;
 
-  // Link opportunity
-  const linkOpportunity = Math.min(100,
-    gaps.links.flowIssues.length * 20 +
-    gaps.links.anchorQualityIssues.length * 15 +
-    gaps.links.bridgeOpportunities.length * 10
-  );
+  // Content opportunity: rare attributes + unique opportunities + inverse of competitor strength
+  const contentOpportunity = Math.min(100, Math.max(0,
+    (rareCount * 8) +                           // Each rare attribute = 8 points
+    (uniqueCount * 12) +                        // Each unique opportunity = 12 points
+    Math.max(0, (100 - avgContentScore) * 0.3)  // Weaker competitors = more opportunity
+  ));
 
-  // Overall difficulty (inverse of competitor weakness)
-  const avgCompetitorScore = competitors.reduce((sum, c) => sum + c.overallScore, 0) / (competitors.length || 1);
+  // Technical opportunity based on competitor technical weaknesses
+  const avgTechScore = competitors.length > 0
+    ? competitors.reduce((sum, c) => sum + c.technical.technicalScore, 0) / competitors.length
+    : 50;
+
+  const technicalOpportunity = Math.min(100, Math.max(0,
+    (gaps.technical.entityLinkingGap ? 35 : 0) +           // Entity linking weakness = 35 pts
+    (gaps.technical.navigationIssues.length * 10) +         // Each nav issue = 10 pts
+    Math.max(0, (100 - avgTechScore) * 0.4)                 // Weaker tech = more opportunity
+  ));
+
+  // Link opportunity based on competitor linking weaknesses
+  const avgLinkScore = competitors.length > 0
+    ? competitors.reduce((sum, c) => sum + c.links.linkScore, 0) / competitors.length
+    : 50;
+
+  const linkOpportunity = Math.min(100, Math.max(0,
+    (gaps.links.flowIssues.length * 15) +                   // Each flow issue = 15 pts
+    (gaps.links.anchorQualityIssues.length * 12) +          // Each anchor issue = 12 pts
+    (gaps.links.bridgeOpportunities.length * 8) +           // Each bridge opportunity = 8 pts
+    Math.max(0, (100 - avgLinkScore) * 0.3)                 // Weaker links = more opportunity
+  ));
+
+  // Overall difficulty = how strong competitors are overall (higher = harder to beat)
+  const avgCompetitorScore = competitors.length > 0
+    ? competitors.reduce((sum, c) => sum + c.overallScore, 0) / competitors.length
+    : 50;
   const overallDifficulty = Math.round(avgCompetitorScore);
 
   return {
-    contentOpportunity,
-    technicalOpportunity,
-    linkOpportunity,
+    contentOpportunity: Math.round(contentOpportunity),
+    technicalOpportunity: Math.round(technicalOpportunity),
+    linkOpportunity: Math.round(linkOpportunity),
     overallDifficulty,
   };
 }

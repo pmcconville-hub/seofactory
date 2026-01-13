@@ -460,9 +460,23 @@ export class ContentGenerationOrchestrator {
     const event = performanceLogger.startEvent('ASSEMBLY', 'assembleDraft');
 
     try {
+      // Get job and brief to include H1 title
+      const job = await this.getJob(jobId);
+      let articleTitle: string | null = null;
+
+      if (job?.brief_id) {
+        const { data: brief } = await this.supabase
+          .from('content_briefs')
+          .select('title')
+          .eq('id', job.brief_id)
+          .single();
+        articleTitle = brief?.title || null;
+      }
+
       const sections = await this.getSections(jobId);
 
-      const result = sections
+      // Build draft with sections
+      const sectionContent = sections
         .sort((a, b) => a.section_order - b.section_order)
         .map(s => {
           const content = (s.current_content || '').trim();
@@ -480,6 +494,21 @@ export class ContentGenerationOrchestrator {
           return `${expectedHeading}\n\n${content}`;
         })
         .join('\n\n');
+
+      // Assemble final draft with H1 title at the start
+      const parts: string[] = [];
+
+      // Add H1 from brief title (ensures H1 is always present in output)
+      if (articleTitle) {
+        parts.push(`# ${articleTitle}`);
+      }
+
+      // Add section content
+      if (sectionContent) {
+        parts.push(sectionContent);
+      }
+
+      const result = parts.join('\n\n');
 
       performanceLogger.endEvent(event.id);
       return result;

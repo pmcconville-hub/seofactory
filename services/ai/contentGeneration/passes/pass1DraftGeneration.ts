@@ -1,5 +1,5 @@
 // services/ai/contentGeneration/passes/pass1DraftGeneration.ts
-import { ContentBrief, ContentGenerationJob, SectionDefinition, BusinessInfo, BriefSection, SectionGenerationContext, DiscourseContext } from '../../../../types';
+import { ContentBrief, ContentGenerationJob, SectionDefinition, BusinessInfo, BriefSection, SectionGenerationContext, DiscourseContext, SectionFlowGuidance } from '../../../../types';
 import { ContentGenerationOrchestrator } from '../orchestrator';
 import { ContextChainer } from '../rulesEngine/contextChainer';
 import { AttributeRanker } from '../rulesEngine/attributeRanker';
@@ -14,6 +14,7 @@ import * as openRouterService from '../../../openRouterService';
 import { dispatchToProvider } from '../../providerDispatcher';
 import { createLogger } from '../../../../utils/debugLogger';
 import { ContentGenerationSettings, LENGTH_PRESETS, DEFAULT_CONTENT_LENGTH_SETTINGS } from '../../../../types/contentGeneration';
+import { buildFlowGuidance } from '../flowGuidanceBuilder';
 
 const log = createLogger('Pass1');
 
@@ -153,6 +154,9 @@ export async function executePass1(
       ? ContextChainer.extractForNext(previousContent)
       : null;
 
+    // Build flow guidance for this section (provides transition and structure context)
+    const flowGuidance = buildFlowGuidance(section, sections, brief, businessInfo);
+
     // Generate with retry and validation
     const content = await generateSectionWithRetry(
       section,
@@ -161,7 +165,8 @@ export async function executePass1(
       sections,
       discourseContext,
       3,
-      lengthGuidance
+      lengthGuidance,
+      flowGuidance
     );
 
     // Save to sections table
@@ -220,7 +225,8 @@ async function generateSectionWithRetry(
   allSections: SectionDefinition[],
   discourseContext: DiscourseContext | null,
   maxRetries: number,
-  lengthGuidance?: LengthGuidance
+  lengthGuidance?: LengthGuidance,
+  flowGuidance?: SectionFlowGuidance
 ): Promise<string> {
   let lastError: Error | null = null;
   let fixInstructions: string | undefined = undefined;
@@ -261,6 +267,7 @@ async function generateSectionWithRetry(
         ymylCategory: ymylDetection.category,
         language: businessInfo.language, // Pass language for multilingual validation
         lengthGuidance, // Content length guidance from settings
+        flowGuidance, // Flow guidance for transitions and article structure
       };
 
       // Use SectionPromptBuilder instead of legacy prompt

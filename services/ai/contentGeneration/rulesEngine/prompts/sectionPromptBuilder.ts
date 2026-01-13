@@ -1,6 +1,6 @@
 // services/ai/contentGeneration/rulesEngine/prompts/sectionPromptBuilder.ts
 
-import { SectionGenerationContext, BriefSection, FormatCode, BusinessInfo } from '../../../../../types';
+import { SectionGenerationContext, BriefSection, FormatCode, BusinessInfo, SectionFlowGuidance } from '../../../../../types';
 import type { ContentGenerationPriorities } from '../../../../../types/contentGeneration';
 import { BriefCodeParser } from '../briefCodeParser';
 import { PROHIBITED_PATTERNS } from '../validators/prohibitedLanguage';
@@ -118,6 +118,11 @@ ${discourseContext.subjectHint}
 `;
     }
 
+    // Add flow guidance if available
+    if (context.flowGuidance) {
+      prompt += this.buildFlowGuidanceSection(context.flowGuidance);
+    }
+
     // Add required phrases
     if (parsedCodes.requiredPhrases.length > 0) {
       prompt += `## Required Phrases (MUST include exactly)
@@ -190,5 +195,85 @@ ${fixInstructions}
     prompt += `Write the section content now. Output ONLY prose content, no heading or metadata.`;
 
     return prompt;
+  }
+
+  /**
+   * Build the flow guidance section for the prompt
+   */
+  private static buildFlowGuidanceSection(fg: SectionFlowGuidance): string {
+    let section = `## Content Flow Context
+Article: "${fg.articleTitle}" about "${fg.centralEntity}"
+Position: Section ${fg.sectionIndex + 1} of ${fg.totalSections}
+${fg.previousSectionHeading ? `Previous: "${fg.previousSectionHeading}"` : 'This is the opening section'}
+${fg.nextSectionHeading ? `Next: "${fg.nextSectionHeading}"` : 'This is the final section'}
+
+**FLOW PATTERN: ${fg.transitionPattern.toUpperCase()}**
+${this.getFlowInstructions(fg)}
+
+`;
+
+    // Add zone transition warning if applicable
+    if (fg.isZoneTransition) {
+      section += `**ZONE TRANSITION**: Moving from MAIN content to SUPPLEMENTARY. Use bridging language to signal the shift.
+
+`;
+    }
+
+    // Add suggested opener if available
+    if (fg.suggestedOpener) {
+      section += `**SUGGESTED OPENER**: "${fg.suggestedOpener}"
+
+`;
+    }
+
+    // Add attribute progression context
+    if (fg.attributeProgression) {
+      section += `**PROGRESSION**: ${fg.attributeProgression}
+
+`;
+    }
+
+    return section;
+  }
+
+  /**
+   * Get specific instructions for each flow pattern
+   */
+  private static getFlowInstructions(fg: SectionFlowGuidance): string {
+    switch (fg.transitionPattern) {
+      case 'opening':
+        return `- Establish the central entity "${fg.centralEntity}" immediately
+- Set reader expectations for what the article will cover
+- Use definitive language ("is", "are") not hedging ("might be")
+- Make a strong opening statement that anchors the topic`;
+
+      case 'deepening':
+        return `- Build on previous section's foundation
+- Progress from general to specific details
+- Reference concepts from "${fg.previousSectionHeading || 'the previous section'}" where natural
+- Go deeper into technical or nuanced aspects`;
+
+      case 'parallel':
+        return `- Cover a related aspect at the same depth level
+- Use parallel structure to previous section
+- Connect back to central entity "${fg.centralEntity}"
+- Treat this as exploring another facet of the topic`;
+
+      case 'bridging':
+        return `- Explicitly signal topic transition to reader
+- Summarize what was covered, preview what comes next
+- Use transitional phrases: "Having covered X, we now turn to Y"
+- Help the reader understand why we're shifting focus`;
+
+      case 'concluding':
+        return `- Synthesize key points from the article
+- Return to central entity "${fg.centralEntity}" with summary statement
+- Do NOT introduce new information or arguments
+- Provide closure and reinforce main takeaways
+- Avoid generic "In conclusion" openers - be specific`;
+
+      default:
+        return '- Follow natural topic progression';
+    }
   }
 }

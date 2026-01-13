@@ -287,19 +287,19 @@ const TopicSerpPanel: React.FC<TopicSerpPanelProps> = ({
           <ScoreCard
             label="Content Opportunity"
             score={scores.contentOpportunity}
-            description="Gap in attribute coverage"
+            description="Room to differentiate"
             color={scores.contentOpportunity > 60 ? 'green' : scores.contentOpportunity > 30 ? 'yellow' : 'red'}
           />
           <ScoreCard
             label="Technical Opportunity"
             score={scores.technicalOpportunity}
-            description="Schema & navigation gaps"
+            description="Competitor weaknesses"
             color={scores.technicalOpportunity > 60 ? 'green' : scores.technicalOpportunity > 30 ? 'yellow' : 'red'}
           />
           <ScoreCard
             label="Link Opportunity"
             score={scores.linkOpportunity}
-            description="Internal linking gaps"
+            description="Linking weaknesses"
             color={scores.linkOpportunity > 60 ? 'green' : scores.linkOpportunity > 30 ? 'yellow' : 'red'}
           />
           <ScoreCard
@@ -344,22 +344,22 @@ const TopicSerpPanel: React.FC<TopicSerpPanelProps> = ({
         <h4 className="text-sm font-medium text-gray-400 mb-3">Content Gaps</h4>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <GapSection
-            title="Missing Root Attributes"
+            title="Root Attributes"
             items={gaps.attributes.missingRoot.map(r => ({
               label: r.attribute,
-              detail: `${r.competitorsCovering} competitors have this`,
+              detail: `${r.competitorsCovering} competitors cover this`,
             }))}
             priority="critical"
-            emptyMessage="All root attributes covered"
+            emptyMessage="No root attributes found"
           />
           <GapSection
-            title="Missing Rare Attributes"
+            title="Rare Attributes"
             items={gaps.attributes.missingRare.map(r => ({
               label: r.attribute,
-              detail: `${r.competitorsCovering} competitors`,
+              detail: `${r.competitorsCovering} competitors cover this`,
             }))}
             priority="high"
-            emptyMessage="Good rare attribute coverage"
+            emptyMessage="No rare attributes found"
           />
           <GapSection
             title="Unique Opportunities"
@@ -368,7 +368,7 @@ const TopicSerpPanel: React.FC<TopicSerpPanelProps> = ({
               detail: r.potentialValue,
             }))}
             priority="medium"
-            emptyMessage="No unique opportunities identified"
+            emptyMessage="No differentiation opportunities found"
           />
         </div>
       </div>

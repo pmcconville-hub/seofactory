@@ -513,6 +513,40 @@ export interface DiscourseContext {
   subjectHint: string;
 }
 
+/**
+ * Flow guidance for section generation - provides context for smooth transitions
+ * and proper article structure during content generation.
+ */
+export interface SectionFlowGuidance {
+  // Position awareness
+  sectionIndex: number;              // 0-based index
+  totalSections: number;             // Total count
+  isFirstSection: boolean;
+  isLastSection: boolean;
+  isIntroduction: boolean;
+  isConclusion: boolean;
+
+  // Neighbor context
+  previousSectionHeading?: string;
+  nextSectionHeading?: string;
+
+  // Content zone (from brief)
+  contentZone: 'MAIN' | 'SUPPLEMENTARY';
+  isZoneTransition: boolean;         // True if crossing MAIN→SUPPLEMENTARY boundary
+
+  // Attribute context (from brief)
+  attributeCategory?: AttributeCategory;
+  attributeProgression: string;      // e.g., "Building from definition to specifics"
+
+  // Flow patterns
+  transitionPattern: 'opening' | 'deepening' | 'parallel' | 'bridging' | 'concluding';
+  suggestedOpener?: string;          // From discourse_anchors or contextualBridge
+
+  // Article context
+  centralEntity: string;
+  articleTitle: string;
+}
+
 export interface SectionGenerationContext {
   section: BriefSection;
   brief: ContentBrief;
@@ -533,6 +567,8 @@ export interface SectionGenerationContext {
     presetName: string;
     isShortContent: boolean;
   };
+  /** Flow guidance for smooth transitions and article structure */
+  flowGuidance?: SectionFlowGuidance;
 }
 
 export interface VisualSemantics {

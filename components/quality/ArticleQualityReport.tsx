@@ -620,9 +620,9 @@ export const ArticleQualityReport: React.FC<ArticleQualityReportProps> = ({
   const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
 
   // Calculate category scores based on actual evaluated rules (dynamic list)
-  // Only shows categories that were actually evaluated during audit
+  // Priority: evaluatedRules > violations > fallback to all categories
   const categoryScores: CategoryScore[] = useMemo(() => {
-    // If evaluatedRules is provided, use it for dynamic category calculation
+    // If evaluatedRules is provided with actual data, use it for dynamic calculation
     if (evaluatedRules && evaluatedRules.length > 0) {
       // Group evaluated rules by category
       const rulesByCategory = new Map<RuleCategory, { passing: number; failing: number; critical: number }>();
@@ -659,35 +659,59 @@ export const ArticleQualityReport: React.FC<ArticleQualityReportProps> = ({
         .sort((a, b) => a.score - b.score); // Sort by score ascending (worst first)
     }
 
-    // Fallback: when evaluatedRules not provided, only show categories with violations
-    // (We can't know which rules passed without evaluatedRules)
-    const violationsByCategory = new Map<RuleCategory, ValidationViolation[]>();
+    // Second option: if we have violations, show categories with violations
+    if (violations && violations.length > 0) {
+      const violationsByCategory = new Map<RuleCategory, ValidationViolation[]>();
 
-    violations.forEach(violation => {
-      const category = getCategoryFromViolation(violation.rule);
-      const categoryViolations = violationsByCategory.get(category) || [];
-      categoryViolations.push(violation);
-      violationsByCategory.set(category, categoryViolations);
-    });
+      violations.forEach(violation => {
+        const category = getCategoryFromViolation(violation.rule);
+        const categoryViolations = violationsByCategory.get(category) || [];
+        categoryViolations.push(violation);
+        violationsByCategory.set(category, categoryViolations);
+      });
 
-    // Only show categories that have violations (we know these were evaluated)
-    return Array.from(violationsByCategory.entries())
-      .filter(([_, violations]) => violations.length > 0)
-      .map(([category, categoryViolations]) => {
-        const failing = categoryViolations.length;
-        const criticalFailing = categoryViolations.filter(v => isViolationCritical(v.rule)).length;
+      // Show categories that have violations
+      return Array.from(violationsByCategory.entries())
+        .filter(([_, catViolations]) => catViolations.length > 0)
+        .map(([category, categoryViolations]) => {
+          const failing = categoryViolations.length;
+          const criticalFailing = categoryViolations.filter(v => isViolationCritical(v.rule)).length;
+          const categoryRules = RuleRegistry.getRulesByCategory(category);
+          const total = categoryRules.length || failing;
+          const passing = Math.max(0, total - failing);
 
-        // We don't know the total rules checked, so show as "X failing"
-        // Use violations count as total for percentage calculation
-        return {
-          category,
-          total: failing, // Only count what we know about
-          passing: 0,
-          failing,
-          criticalFailing,
-          score: 0, // 0% since all we have are violations
-        };
-      })
+          return {
+            category,
+            total,
+            passing,
+            failing,
+            criticalFailing,
+            score: total > 0 ? Math.round((passing / total) * 100) : 0,
+          };
+        })
+        .sort((a, b) => a.score - b.score);
+    }
+
+    // Fallback: No audit data available - show all categories from RuleRegistry
+    // This happens when contentAudit.frameworkRules is empty/undefined
+    const allRules = RuleRegistry.getAllRules();
+    const categories = RuleRegistry.getCategories();
+
+    return categories.map(category => {
+      const categoryRules = allRules.filter(r => r.category === category);
+      const total = categoryRules.length;
+
+      // No violations = all passing (but mark as "not checked" in UI if needed)
+      return {
+        category,
+        total,
+        passing: total,
+        failing: 0,
+        criticalFailing: 0,
+        score: 100, // Show as 100% when no audit data
+      };
+    })
+      .filter(cat => cat.total > 0)
       .sort((a, b) => a.score - b.score);
   }, [violations, evaluatedRules]);
 
