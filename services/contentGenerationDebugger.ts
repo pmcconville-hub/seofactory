@@ -607,13 +607,18 @@ export function runValidationGate(
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // Collect errors
+  // Strategy blockers are only errors after Pass 6 (when structure is finalized)
+  // In early passes, sections are still being optimized
   if (strategyResult.blockers.length > 0) {
-    errors.push(...strategyResult.blockers.map(b => `Strategy blocker: ${b.name}`));
+    if (passNumber >= 6) {
+      errors.push(...strategyResult.blockers.map(b => `Strategy blocker: ${b.name}`));
+    } else {
+      // In early passes, strategy blockers are warnings (content still being built)
+      warnings.push(...strategyResult.blockers.map(b => `Strategy blocker (will be addressed): ${b.name}`));
+    }
   }
-  if (!ruleResult.passed) {
-    errors.push(...ruleResult.violations.map(v => `Rule violation: ${v.message}`));
-  }
+
+  // Rule violations that are critical (duplicate content)
   if (duplicates.duplicateParagraphs.length > 0) {
     errors.push(`Duplicate content: ${duplicates.duplicateParagraphs.length} paragraphs repeated`);
   }
@@ -621,7 +626,16 @@ export function runValidationGate(
     errors.push(`Duplicate images: ${duplicates.duplicateImages.length} images repeated`);
   }
 
-  // Collect warnings
+  // Rule violations only block after Pass 4 (when content is more mature)
+  if (!ruleResult.passed && ruleResult.violations.length > 0) {
+    if (passNumber >= 4) {
+      errors.push(...ruleResult.violations.map(v => `Rule violation: ${v.message}`));
+    } else {
+      warnings.push(...ruleResult.violations.map(v => `Rule issue (will be addressed): ${v.message}`));
+    }
+  }
+
+  // Collect other warnings
   warnings.push(...ruleResult.warnings.map(w => w.message));
   if (strategyResult.overallCompliance < 70) {
     warnings.push(`Low strategy compliance: ${strategyResult.overallCompliance}%`);
