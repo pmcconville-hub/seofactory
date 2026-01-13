@@ -373,8 +373,8 @@ function determineSectionsNeedingOptimization(
       tablesAssigned++;
     }
 
-    // Check if section needs an image
-    if (!classification.hasImageAlready && shouldHaveImage(section, sectionType)) {
+    // Check if section needs an image - SMART: use brief's visual plan
+    if (!classification.hasImageAlready && shouldHaveImage(section, sectionType, brief)) {
       imagesNeeded.push(section.section_key);
     }
 
@@ -434,14 +434,50 @@ function shouldHaveTable(heading: string, sectionType: SectionContentType, langu
 
 /**
  * Determines if a section should have an image.
+ * SMART: Prioritizes brief's planned images over heuristics.
  */
-function shouldHaveImage(section: ContentGenerationSection, sectionType: SectionContentType): boolean {
-  // Macro sections should have images (hero, concept diagrams)
+function shouldHaveImage(section: ContentGenerationSection, sectionType: SectionContentType, brief?: ContentBrief): boolean {
+  const sectionKey = section.section_key?.toLowerCase() || '';
+  const sectionHeading = (section.section_heading || '').toLowerCase();
+
+  // SMART: First check enhanced_visual_semantics.section_images (keyed by section)
+  if (brief?.enhanced_visual_semantics?.section_images) {
+    const sectionImages = brief.enhanced_visual_semantics.section_images;
+    // Check if any key matches this section (by key or heading)
+    for (const key of Object.keys(sectionImages)) {
+      const normalizedKey = key.toLowerCase();
+      if (sectionKey.includes(normalizedKey) || normalizedKey.includes(sectionKey) ||
+          sectionHeading.includes(normalizedKey) || normalizedKey.includes(sectionHeading)) {
+        return true; // Brief planned an image for this section
+      }
+    }
+  }
+
+  // SMART: Also check visual_semantics array for matching descriptions
+  if (brief?.visual_semantics && brief.visual_semantics.length > 0) {
+    // Check if any visual semantic description mentions this section
+    for (const visual of brief.visual_semantics) {
+      const desc = (visual.description || '').toLowerCase();
+      if (desc.includes(sectionKey) || desc.includes(sectionHeading) ||
+          sectionHeading.includes(desc.split(' ').slice(0, 3).join(' '))) {
+        return true; // Brief planned an image related to this section
+      }
+    }
+    // If brief has visual_semantics but none match, still allow based on count
+    // If we have 4 planned images and 4 body sections, distribute images
+    const plannedImageCount = brief.visual_semantics.length;
+    if (plannedImageCount > 0 && sectionType === 'body') {
+      // Body sections can get images to meet the planned count
+      return true;
+    }
+  }
+
+  // Fallback: Macro sections should have images (hero, concept diagrams)
   if (sectionType === 'macro') {
     return true;
   }
 
-  // Body sections with significant content should have images
+  // Fallback: Body sections with significant content should have images
   const content = section.current_content || '';
   const wordCount = content.split(/\s+/).length;
 

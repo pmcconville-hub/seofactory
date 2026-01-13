@@ -53,27 +53,46 @@ export async function executePass1(
   shouldAbort: () => boolean,
   options?: Pass1Options
 ): Promise<string> {
-  // 1. Determine effective max sections from settings
-  const lengthSettings = options?.settings?.contentLength ?? DEFAULT_CONTENT_LENGTH_SETTINGS;
-  const preset = LENGTH_PRESETS[lengthSettings.preset];
+  // 1. SMART SECTION DETECTION: Analyze brief complexity to determine appropriate content length
+  // The brief itself tells us what's needed - don't blindly apply topic type presets
+  const briefSectionCount = brief.structured_outline?.length || 0;
+  const briefImageCount = brief.visual_semantics?.length || 0;
+  const serpTargetWords = brief.serpAnalysis?.avgWordCount || 0;
+  const hasDetailedOutline = briefSectionCount >= 5;
+  const hasVisualPlan = briefImageCount >= 2;
+  const isComprehensiveBrief = hasDetailedOutline || hasVisualPlan || serpTargetWords > 1500;
 
-  // Calculate effective max sections
+  // Log what the brief tells us
+  log.info(`Brief analysis: ${briefSectionCount} sections, ${briefImageCount} images, SERP target: ${serpTargetWords} words`);
+
+  const lengthSettings = options?.settings?.contentLength ?? DEFAULT_CONTENT_LENGTH_SETTINGS;
+
+  // Calculate effective max sections - BRIEF COMPLEXITY OVERRIDES TOPIC TYPE
   let effectiveMaxSections: number | undefined;
+  let decisionReason: string;
+
   if (lengthSettings.maxSections !== undefined) {
     // User override takes precedence
     effectiveMaxSections = lengthSettings.maxSections;
+    decisionReason = 'User specified maxSections override';
+  } else if (isComprehensiveBrief) {
+    // SMART: Brief has detailed structure - respect it regardless of topic type
+    effectiveMaxSections = briefSectionCount > 0 ? briefSectionCount + 2 : undefined; // +2 for intro/conclusion
+    decisionReason = `Brief defines ${briefSectionCount} sections with ${briefImageCount} images - generating all content`;
+    log.info(`[SMART] Brief complexity detected: ignoring topic type '${options?.topicType}', using full brief structure`);
   } else if (lengthSettings.respectTopicType && options?.topicType && options.topicType !== 'unknown') {
-    // Auto-adjust based on topic type
+    // Only use topic type for simple briefs without detailed structure
     const topicTypePreset = options.topicType === 'core' ? 'comprehensive' :
                             options.topicType === 'outer' ? 'short' : 'standard';
     effectiveMaxSections = LENGTH_PRESETS[topicTypePreset].maxSections;
-    log.info(`Auto-adjusting maxSections for ${options.topicType} topic: ${effectiveMaxSections}`);
+    decisionReason = `Simple brief, using ${options.topicType} topic preset`;
   } else {
     // Use preset default
-    effectiveMaxSections = preset.maxSections;
+    effectiveMaxSections = LENGTH_PRESETS[lengthSettings.preset].maxSections;
+    decisionReason = `Using ${lengthSettings.preset} preset default`;
   }
 
-  log.info(`Content length settings: preset=${lengthSettings.preset}, maxSections=${effectiveMaxSections}`);
+  log.info(`Content length decision: ${decisionReason} → maxSections=${effectiveMaxSections || 'unlimited'}`);
 
   // 2. Parse sections from brief with maxSections limit
   let sections = orchestrator.parseSectionsFromBrief(brief, { maxSections: effectiveMaxSections });
@@ -118,16 +137,35 @@ export async function executePass1(
   // 5. Track discourse context for S-P-O chaining
   let previousContent: string | null = null;
 
-  // 6. Build length guidance for section prompts
-  const sectionWordRange = lengthSettings.respectTopicType && options?.topicType && options.topicType !== 'unknown'
-    ? LENGTH_PRESETS[options.topicType === 'core' ? 'comprehensive' : options.topicType === 'outer' ? 'short' : 'standard'].sectionWordRange
-    : preset.sectionWordRange;
+  // 6. Build length guidance for section prompts - SMART: based on brief, not just preset
+  let sectionWordRange: { min: number; max: number };
+  let isShortContent: boolean;
+
+  if (isComprehensiveBrief && serpTargetWords > 0) {
+    // SMART: Calculate word range from SERP target and section count
+    const targetWordsPerSection = Math.round(serpTargetWords / Math.max(sections.length, 1));
+    sectionWordRange = {
+      min: Math.max(100, Math.round(targetWordsPerSection * 0.8)),
+      max: Math.round(targetWordsPerSection * 1.2)
+    };
+    isShortContent = false;
+    log.info(`[SMART] Section word range calculated from SERP: ${sectionWordRange.min}-${sectionWordRange.max} words (target: ${serpTargetWords} total)`);
+  } else if (lengthSettings.respectTopicType && options?.topicType && options.topicType !== 'unknown' && !isComprehensiveBrief) {
+    // Only use topic type for simple briefs
+    const topicTypePreset = options.topicType === 'core' ? 'comprehensive' : options.topicType === 'outer' ? 'short' : 'standard';
+    sectionWordRange = LENGTH_PRESETS[topicTypePreset].sectionWordRange;
+    isShortContent = topicTypePreset === 'short'; // Only 'short' from topic type mapping
+  } else {
+    sectionWordRange = LENGTH_PRESETS[lengthSettings.preset].sectionWordRange;
+    isShortContent = lengthSettings.preset === 'minimal' || lengthSettings.preset === 'short';
+  }
+
   const lengthGuidance: LengthGuidance = {
     targetWords: sectionWordRange,
-    presetName: lengthSettings.preset,
-    isShortContent: lengthSettings.preset === 'minimal' || lengthSettings.preset === 'short'
+    presetName: isComprehensiveBrief ? 'comprehensive (auto)' : lengthSettings.preset,
+    isShortContent
   };
-  log.info(`Section word range: ${sectionWordRange.min}-${sectionWordRange.max} words (${lengthSettings.preset} preset)`);
+  log.info(`Section word range: ${sectionWordRange.min}-${sectionWordRange.max} words`);
 
   // 7. Generate each section
   for (const section of sections) {

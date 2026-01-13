@@ -841,6 +841,27 @@ export function useContentGeneration({
     try {
       // Pass 1: Draft Generation
       if (updatedJob.current_pass === 1) {
+        // SMART BRIEF ANALYSIS: Show user what the AI detected
+        const briefSectionCount = activeBrief.structured_outline?.length || 0;
+        const briefImageCount = activeBrief.visual_semantics?.length || 0;
+        const serpTargetWords = activeBrief.serpAnalysis?.avgWordCount || 0;
+        const hasDetailedOutline = briefSectionCount >= 5;
+        const hasVisualPlan = briefImageCount >= 2;
+        const isComprehensiveBrief = hasDetailedOutline || hasVisualPlan || serpTargetWords > 1500;
+
+        // Log what the AI analyzed
+        onLog(`📊 Brief analysis: ${briefSectionCount} sections, ${briefImageCount} images, SERP target: ${serpTargetWords} words`, 'info');
+
+        if (isComprehensiveBrief) {
+          onLog(`🧠 AI Decision: Brief is comprehensive - generating full content (ignoring "${topic?.type || 'unknown'}" topic type preset)`, 'info');
+        } else if (topic?.type === 'outer') {
+          onLog(`🧠 AI Decision: Simple brief + outer topic - using shorter content format`, 'info');
+        } else if (topic?.type === 'core') {
+          onLog(`🧠 AI Decision: Core topic - using comprehensive content format`, 'info');
+        } else {
+          onLog(`🧠 AI Decision: Using standard content format`, 'info');
+        }
+
         onLog('Pass 1: Generating draft section-by-section...', 'info');
         await executePass1(
           orchestrator,
