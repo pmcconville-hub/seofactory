@@ -85,7 +85,15 @@ function checkContextualBridgeLinks(ctx: EnforcementContext): RuleViolation[] {
   const { brief, fullDraft } = ctx;
 
   // Check if brief has contextual bridge requirements
-  const bridgeLinks = brief.contextualBridge?.suggestedLinks || [];
+  // contextualBridge can be ContextualBridgeLink[] or ContextualBridgeSection
+  let bridgeLinks: Array<{ url?: string; anchor?: string; anchorText?: string; targetTopic?: string }> = [];
+  if (brief.contextualBridge) {
+    if (Array.isArray(brief.contextualBridge)) {
+      bridgeLinks = brief.contextualBridge.map(l => ({ anchor: l.anchorText, url: l.targetTopic }));
+    } else if (brief.contextualBridge.links) {
+      bridgeLinks = brief.contextualBridge.links.map(l => ({ anchor: l.anchorText, url: l.targetTopic }));
+    }
+  }
 
   if (bridgeLinks.length === 0) {
     return []; // No bridge link requirements
@@ -124,7 +132,13 @@ function checkVisualSemanticsPlaceholders(ctx: EnforcementContext): RuleViolatio
   const violations: RuleViolation[] = [];
   const { brief, fullDraft } = ctx;
 
-  const visualSemantics = brief.visual_semantics || brief.enhanced_visual_semantics?.placements || [];
+  // Get visual semantics from either array or enhanced object
+  let visualSemantics: Array<unknown> = [];
+  if (brief.visual_semantics && brief.visual_semantics.length > 0) {
+    visualSemantics = brief.visual_semantics;
+  } else if (brief.enhanced_visual_semantics?.section_images) {
+    visualSemantics = Object.values(brief.enhanced_visual_semantics.section_images);
+  }
 
   if (visualSemantics.length === 0) {
     return []; // No visual semantics requirements

@@ -42,6 +42,16 @@ import {
   type StructuralSnapshot,
   type SnapshotDiff
 } from '../services/ai/contentGeneration/structuralValidator';
+import {
+  evaluateStrategy,
+  type StrategyChecklist
+} from '../services/contentStrategyEnforcer';
+import {
+  storePassSnapshot,
+  storeSectionVersion,
+  runValidationGate,
+  type PassSnapshot
+} from '../services/contentGenerationDebugger';
 
 // Helper functions for building quality report
 function buildCategoryScores(auditDetails: AuditDetails | null): Record<string, number> {
@@ -729,6 +739,105 @@ export function useContentGeneration({
       }
     };
 
+    // Helper to store pass snapshot for debugging
+    let previousDraftContent = '';
+    const storeDebugSnapshot = async (passNumber: number, passName: string) => {
+      if (!generationSettings?.storePassSnapshots) return;
+
+      try {
+        const currentDraft = updatedJob.draft_content || '';
+        const sections = await orchestrator.getSections(updatedJob.id);
+
+        const snapshot: PassSnapshot = {
+          passNumber,
+          passName,
+          timestamp: new Date().toISOString(),
+          beforeContent: previousDraftContent,
+          afterContent: currentDraft,
+          sectionsModified: sections.filter(s => {
+            const passKey = `pass_${passNumber}_content` as keyof typeof s;
+            return s[passKey] != null;
+          }).map(s => s.section_key),
+          wordCountBefore: previousDraftContent.split(/\s+/).filter(Boolean).length,
+          wordCountAfter: currentDraft.split(/\s+/).filter(Boolean).length,
+          validationResult: qualityScores[passNumber] ? {
+            passed: !qualityScores[passNumber].hasSevereRegression,
+            score: qualityScores[passNumber].scoreAfter,
+            violations: [],
+            warnings: []
+          } : undefined
+        };
+
+        storePassSnapshot(updatedJob.id, snapshot);
+        previousDraftContent = currentDraft;
+
+        // Also store individual section versions
+        for (const section of sections) {
+          const passKey = `pass_${passNumber}_content` as keyof typeof section;
+          const content = section[passKey] as string | null | undefined;
+          if (content) {
+            storeSectionVersion(updatedJob.id, section.section_key, passNumber, content);
+          }
+        }
+      } catch (err) {
+        console.warn(`[DebugSnapshot] Failed to store snapshot for pass ${passNumber}:`, err);
+      }
+    };
+
+    // Helper to run validation gate between passes
+    const runInterPassValidation = async (passNumber: number): Promise<boolean> => {
+      const validationMode = generationSettings?.validationMode ?? 'hard';
+      if (validationMode === 'soft') return true; // Skip validation in soft mode
+
+      try {
+        const sections = await orchestrator.getSections(updatedJob.id);
+        const currentDraft = updatedJob.draft_content || '';
+
+        const gateResult = runValidationGate(
+          validationMode,
+          activeBrief,
+          sections,
+          currentDraft,
+          passNumber
+        );
+
+        // Log validation result
+        if (!gateResult.passed) {
+          onLog(`Validation gate after Pass ${passNumber}: ${gateResult.errors.length} errors`, 'warning');
+          gateResult.errors.forEach(e => console.error(`[ValidationGate] ${e}`));
+        }
+
+        if (gateResult.warnings.length > 0) {
+          console.warn(`[ValidationGate] Warnings after Pass ${passNumber}:`, gateResult.warnings);
+        }
+
+        // In checkpoint mode with issues, set job to checkpoint status
+        if (gateResult.requiresCheckpoint) {
+          await orchestrator.updateJob(updatedJob.id, {
+            status: 'checkpoint',
+            quality_warning: `Checkpoint required after Pass ${passNumber}: ${gateResult.errors.join('; ')}`
+          } as any);
+          onLog(`Checkpoint required after Pass ${passNumber} - review needed`, 'warning');
+          return false; // Don't proceed automatically
+        }
+
+        // In hard mode, don't proceed if validation failed
+        if (!gateResult.canProceed) {
+          await orchestrator.updateJob(updatedJob.id, {
+            status: 'failed',
+            quality_warning: `Validation failed after Pass ${passNumber}: ${gateResult.errors.join('; ')}`
+          } as any);
+          onLog(`Generation stopped after Pass ${passNumber} - validation failed`, 'failure');
+          return false;
+        }
+
+        return true;
+      } catch (err) {
+        console.warn(`[ValidationGate] Failed to run validation for pass ${passNumber}:`, err);
+        return true; // Continue on error (don't block generation)
+      }
+    };
+
     try {
       // Pass 1: Draft Generation
       if (updatedJob.current_pass === 1) {
@@ -758,6 +867,41 @@ export function useContentGeneration({
         await checkAndStoreQualityGate(1);
         // Initialize violation tracking after draft generation
         violationsBeforePass = captureViolations();
+
+        // STRATEGY VALIDATION: Check if draft meets basic requirements before proceeding
+        try {
+          const sections = await orchestrator.getSections(updatedJob.id);
+          const strategyCheck = evaluateStrategy({
+            brief: activeBrief,
+            draft: updatedJob.draft_content || '',
+            sections,
+          });
+
+          console.log('[Strategy Check] After Pass 1:', {
+            compliance: strategyCheck.overallCompliance,
+            blockers: strategyCheck.blockers.length,
+            warnings: strategyCheck.warnings.length,
+          });
+
+          // Log blockers as warnings (don't fail, but alert user)
+          if (strategyCheck.blockers.length > 0) {
+            onLog(`Strategy validation found ${strategyCheck.blockers.length} issue(s) after draft generation`, 'warning');
+            strategyCheck.blockers.forEach(b => {
+              console.warn(`[Strategy Blocker] ${b.name}: ${b.description}. Suggestion: ${b.suggestion}`);
+            });
+          }
+
+          // Log compliance score
+          onLog(`Draft compliance: ${strategyCheck.overallCompliance}%`, strategyCheck.overallCompliance >= 60 ? 'info' : 'warning');
+        } catch (strategyError) {
+          console.warn('[Strategy Check] Failed to run strategy validation:', strategyError);
+          // Don't fail the pass if strategy check fails
+        }
+
+        // Store debug snapshot and run validation gate
+        await storeDebugSnapshot(1, 'Draft Generation');
+        const canProceed = await runInterPassValidation(1);
+        if (!canProceed) return; // Stop if validation gate fails
       }
 
       // Helper for section progress callbacks
@@ -787,6 +931,10 @@ export function useContentGeneration({
         await checkAndStoreQualityGate(2);
         // Track pass completion
         trackPassCompletion(2);
+        // Store debug snapshot and run validation gate
+        await storeDebugSnapshot(2, 'Headers');
+        const canProceed2 = await runInterPassValidation(2);
+        if (!canProceed2) return;
       }
 
       // Pass 3: Lists & Tables (section-by-section with holistic context)
@@ -808,6 +956,10 @@ export function useContentGeneration({
         await checkAndStoreQualityGate(3);
         // Track pass completion
         trackPassCompletion(3);
+        // Store debug snapshot and run validation gate
+        await storeDebugSnapshot(3, 'Lists & Tables');
+        const canProceed3 = await runInterPassValidation(3);
+        if (!canProceed3) return;
       }
 
       // Pass 4: Discourse Integration (section-by-section with holistic context)
@@ -827,6 +979,10 @@ export function useContentGeneration({
         await checkAndStoreQualityGate(4);
         // Track pass completion
         trackPassCompletion(4);
+        // Store debug snapshot and run validation gate
+        await storeDebugSnapshot(4, 'Discourse Integration');
+        const canProceed4 = await runInterPassValidation(4);
+        if (!canProceed4) return;
       }
 
       // Pass 5: Micro Semantics (section-by-section with holistic context)
@@ -848,6 +1004,10 @@ export function useContentGeneration({
         await checkAndStoreQualityGate(5);
         // Track pass completion
         trackPassCompletion(5);
+        // Store debug snapshot and run validation gate
+        await storeDebugSnapshot(5, 'Micro Semantics');
+        const canProceed5 = await runInterPassValidation(5);
+        if (!canProceed5) return;
       }
 
       // Pass 6: Visual Semantics (section-by-section with holistic context)
@@ -881,6 +1041,10 @@ export function useContentGeneration({
         await checkAndStoreQualityGate(6);
         // Track pass completion
         trackPassCompletion(6);
+        // Store debug snapshot and run validation gate
+        await storeDebugSnapshot(6, 'Visual Semantics');
+        const canProceed6 = await runInterPassValidation(6);
+        if (!canProceed6) return;
       }
 
       // Pass 7: Introduction Synthesis (AFTER body is fully polished)
@@ -902,6 +1066,10 @@ export function useContentGeneration({
         await checkAndStoreQualityGate(7);
         // Track pass completion
         trackPassCompletion(7);
+        // Store debug snapshot and run validation gate
+        await storeDebugSnapshot(7, 'Introduction Synthesis');
+        const canProceed7 = await runInterPassValidation(7);
+        if (!canProceed7) return;
       }
 
       // Pass 8: Final Polish
@@ -923,6 +1091,43 @@ export function useContentGeneration({
         await checkAndStoreQualityGate(8);
         // Track pass completion
         trackPassCompletion(8);
+        // Store debug snapshot (validation already runs below via strategy check)
+        await storeDebugSnapshot(8, 'Final Polish');
+
+        // COMPREHENSIVE STRATEGY VALIDATION before final audit
+        try {
+          const sections = await orchestrator.getSections(updatedJob.id);
+          const finalStrategyCheck = evaluateStrategy({
+            brief: activeBrief,
+            draft: updatedJob.draft_content || '',
+            sections,
+          });
+
+          console.log('[Strategy Check] After Pass 8 (pre-audit):', {
+            compliance: finalStrategyCheck.overallCompliance,
+            blockers: finalStrategyCheck.blockers.length,
+            warnings: finalStrategyCheck.warnings.length,
+            isComplete: finalStrategyCheck.isComplete,
+            summary: finalStrategyCheck.summary,
+          });
+
+          // Log detailed compliance report
+          onLog(`Pre-audit compliance: ${finalStrategyCheck.overallCompliance}% - ${finalStrategyCheck.summary}`, 'info');
+
+          if (finalStrategyCheck.blockers.length > 0) {
+            onLog(`${finalStrategyCheck.blockers.length} issue(s) may affect quality:`, 'warning');
+            finalStrategyCheck.blockers.slice(0, 3).forEach(b => {
+              onLog(`  • ${b.name}: ${b.suggestion}`, 'info');
+            });
+          }
+
+          // Store strategy results in job for later analysis
+          await orchestrator.updateJob(updatedJob.id, {
+            quality_warning: !finalStrategyCheck.isComplete ? finalStrategyCheck.summary : null,
+          });
+        } catch (strategyError) {
+          console.warn('[Strategy Check] Failed to run pre-audit validation:', strategyError);
+        }
       }
 
       // Pass 9: Final Audit (includes auto-fix capability)

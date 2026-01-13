@@ -356,7 +356,13 @@ function checkSearchIntentAlignment(ctx: StrategyContext): StrategyRequirement {
 function checkVisualSemantics(ctx: StrategyContext): StrategyRequirement {
   const { brief, draft } = ctx;
 
-  const visualSemantics = brief.visual_semantics || brief.enhanced_visual_semantics?.placements || [];
+  // Get visual semantics from either array or enhanced object
+  let visualSemantics: Array<unknown> = [];
+  if (brief.visual_semantics && brief.visual_semantics.length > 0) {
+    visualSemantics = brief.visual_semantics;
+  } else if (brief.enhanced_visual_semantics?.section_images) {
+    visualSemantics = Object.values(brief.enhanced_visual_semantics.section_images);
+  }
 
   if (visualSemantics.length === 0) {
     return {
@@ -406,8 +412,8 @@ function checkVisualSemantics(ctx: StrategyContext): StrategyRequirement {
 function checkCentralEntityCoverage(ctx: StrategyContext): StrategyRequirement {
   const { brief, draft } = ctx;
 
-  // Get central entity from brief or pillars
-  const centralEntity = brief.entity || brief.centralEntity;
+  // Get central entity from brief - use targetKeyword or derive from title
+  const centralEntity = brief.targetKeyword || brief.title?.split(/[:\-–|]/)[0]?.trim();
 
   if (!centralEntity) {
     return {
@@ -473,7 +479,7 @@ function checkCentralEntityCoverage(ctx: StrategyContext): StrategyRequirement {
 function checkEavCoverage(ctx: StrategyContext): StrategyRequirement {
   const { brief, draft, eavs } = ctx;
 
-  const attributes = eavs || brief.semanticTriples || [];
+  const attributes = eavs || brief.eavs || brief.contextualVectors || [];
 
   if (attributes.length === 0) {
     return {
@@ -492,7 +498,7 @@ function checkEavCoverage(ctx: StrategyContext): StrategyRequirement {
   // Check which attributes are mentioned
   const coveredAttributes = attributes.filter(eav => {
     const attrLower = eav.attribute.toLowerCase();
-    const valueLower = (eav.value || '').toLowerCase();
+    const valueLower = String(eav.value || '').toLowerCase();
     return draftLower.includes(attrLower) || (valueLower && draftLower.includes(valueLower));
   });
 

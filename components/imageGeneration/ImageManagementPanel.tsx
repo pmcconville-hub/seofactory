@@ -6,6 +6,7 @@ import { ImageCard } from './ImageCard';
 import { Button } from '../ui/Button';
 import { useAppState } from '../../state/appState';
 import { getSupabaseClient } from '../../services/supabaseClient';
+import { Json } from '../../database.types';
 
 const IMAGE_STYLES: { value: ImageStyle; label: string; description: string }[] = [
   { value: 'photorealistic', label: 'Photorealistic', description: 'Professional photography style' },
@@ -122,7 +123,7 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
         .eq('id', jobId)
         .single();
 
-      const currentPlaceholders: ImagePlaceholder[] = (job?.image_placeholders || []) as ImagePlaceholder[];
+      const currentPlaceholders: ImagePlaceholder[] = (job?.image_placeholders || []) as unknown as ImagePlaceholder[];
 
       // Update or add the placeholder with generated URL
       const updatedPlaceholders = currentPlaceholders.map(p => {
@@ -144,7 +145,7 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
       await supabase
         .from('content_generation_jobs')
         .update({
-          image_placeholders: updatedPlaceholders as unknown as Record<string, unknown>[],
+          image_placeholders: updatedPlaceholders as unknown as Json,
           updated_at: new Date().toISOString()
         })
         .eq('id', jobId);
@@ -194,7 +195,7 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
           .single();
 
         if (job?.image_placeholders && Array.isArray(job.image_placeholders)) {
-          const persistedImages = job.image_placeholders as ImagePlaceholder[];
+          const persistedImages = job.image_placeholders as unknown as ImagePlaceholder[];
           const generatedMap = new Map<string, ImagePlaceholder>();
 
           for (const p of persistedImages) {

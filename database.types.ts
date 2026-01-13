@@ -397,6 +397,10 @@ export type Database = {
           schema_entities: Json | null
           schema_page_type: string | null
           progressive_schema_data: Json | null
+          quality_warning: string | null
+          image_placeholders: Json | null
+          pass_quality_scores: Json | null
+          structural_snapshots: Json | null
         }
         Insert: {
           id?: string
@@ -424,6 +428,10 @@ export type Database = {
           schema_entities?: Json | null
           schema_page_type?: string | null
           progressive_schema_data?: Json | null
+          quality_warning?: string | null
+          image_placeholders?: Json | null
+          pass_quality_scores?: Json | null
+          structural_snapshots?: Json | null
         }
         Update: {
           id?: string
@@ -451,6 +459,10 @@ export type Database = {
           schema_entities?: Json | null
           schema_page_type?: string | null
           progressive_schema_data?: Json | null
+          quality_warning?: string | null
+          image_placeholders?: Json | null
+          pass_quality_scores?: Json | null
+          structural_snapshots?: Json | null
         }
         Relationships: [
           {
@@ -491,6 +503,7 @@ export type Database = {
           status: string | null
           created_at: string | null
           updated_at: string | null
+          pass_contents: Json | null
         }
         Insert: {
           id?: string
@@ -513,6 +526,7 @@ export type Database = {
           status?: string | null
           created_at?: string | null
           updated_at?: string | null
+          pass_contents?: Json | null
         }
         Update: {
           id?: string
@@ -535,6 +549,7 @@ export type Database = {
           status?: string | null
           created_at?: string | null
           updated_at?: string | null
+          pass_contents?: Json | null
         }
         Relationships: [
           {

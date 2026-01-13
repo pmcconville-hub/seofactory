@@ -160,6 +160,11 @@ export interface ContentGenerationSettings {
   checkpointAfterPass1: boolean;
   passes: PassConfigMap;
 
+  // Validation & Debug settings
+  validationMode: 'soft' | 'hard' | 'checkpoint';  // soft=warn, hard=fail, checkpoint=pause
+  storePassSnapshots: boolean;  // Store content before/after each pass for debugging
+  enableDebugExport: boolean;   // Allow exporting full generation data
+
   // Timestamps
   createdAt: string;
   updatedAt: string;
@@ -188,6 +193,9 @@ export interface ContentGenerationSettingsRow {
   pass_config: {
     checkpoint_after_pass_1: boolean;
     passes: Record<string, { enabled: boolean; store_version: boolean }>;
+    validation_mode?: 'soft' | 'hard' | 'checkpoint';
+    store_pass_snapshots?: boolean;
+    enable_debug_export?: boolean;
   };
   created_at: string;
   updated_at: string;
@@ -535,7 +543,11 @@ export const DEFAULT_CONTENT_GENERATION_SETTINGS: Omit<ContentGenerationSettings
     pass_7_intro: { enabled: true, storeVersion: true },
     pass_8_polish: { enabled: true, storeVersion: true },
     pass_9_audit: { enabled: true, storeVersion: false }
-  }
+  },
+  // Validation & Debug - default to hard mode for quality control
+  validationMode: 'hard',
+  storePassSnapshots: true,
+  enableDebugExport: true
 };
 
 // ============================================================================
@@ -601,6 +613,10 @@ export function settingsRowToInterface(row: ContentGenerationSettingsRow): Conte
         storeVersion: row.pass_config.passes.pass_9_audit?.store_version ?? false
       }
     },
+    // Validation & Debug settings (with sensible defaults)
+    validationMode: row.pass_config.validation_mode ?? 'hard',
+    storePassSnapshots: row.pass_config.store_pass_snapshots ?? true,
+    enableDebugExport: row.pass_config.enable_debug_export ?? true,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -639,7 +655,11 @@ export function settingsToDbInsert(
         pass_7_intro: { enabled: settings.passes.pass_7_intro.enabled, store_version: settings.passes.pass_7_intro.storeVersion },
         pass_8_polish: { enabled: settings.passes.pass_8_polish.enabled, store_version: settings.passes.pass_8_polish.storeVersion },
         pass_9_audit: { enabled: settings.passes.pass_9_audit.enabled, store_version: settings.passes.pass_9_audit.storeVersion }
-      }
+      },
+      // Validation & Debug settings
+      validation_mode: settings.validationMode,
+      store_pass_snapshots: settings.storePassSnapshots,
+      enable_debug_export: settings.enableDebugExport
     }
   };
 }

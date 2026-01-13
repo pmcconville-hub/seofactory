@@ -2995,6 +2995,15 @@ export interface ContentGenerationJob {
 
   // Quality enforcement report (comprehensive quality data)
   quality_report?: QualityReport | null;
+
+  // Quality warning message (from strategy validation)
+  quality_warning?: string | null;
+
+  // Structural snapshots for tracking changes across passes
+  structural_snapshots?: Record<string, unknown>;
+
+  // Pass quality scores for tracking quality trends
+  pass_quality_scores?: Record<string, number>;
 }
 
 export interface AuditDetails {
@@ -3426,6 +3435,8 @@ export interface SectionOptimizationContext {
   brief: ContentBrief;
   businessInfo: BusinessInfo;
   passNumber: number;
+  /** All sections in the article - used for deduplication checks in Pass 4 (Visual Semantics) */
+  allSections?: ContentGenerationSection[];
 }
 
 /**

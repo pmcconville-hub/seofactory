@@ -9,7 +9,7 @@ import {
 } from '../../../../types';
 import { ContentGenerationOrchestrator } from '../orchestrator';
 import { executeSectionPass } from './baseSectionPass';
-import { buildPass6Prompt } from '../rulesEngine/prompts/sectionOptimizationPromptBuilder';
+import { buildPass6Prompt, buildPass6BatchPrompt } from '../rulesEngine/prompts/sectionOptimizationPromptBuilder';
 
 /**
  * Pass 4: Discourse Integration (exported as executePass4 via index.ts)
@@ -41,8 +41,9 @@ export async function executePass6(
       nextPassNumber: 5,  // Proceed to Pass 5 (Micro Semantics)
       promptBuilder: buildPass6Prompt,
 
-      // Batch processing: 3 sections per API call
+      // Batch processing: 3 sections per API call with proper batch prompt
       batchSize: 3,
+      buildBatchPrompt: buildPass6BatchPrompt,
 
       // Selective processing: Only sections needing discourse improvement
       filterSections: (sections: ContentGenerationSection[], budget: ContentFormatBudget) => {

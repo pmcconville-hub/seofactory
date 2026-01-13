@@ -158,6 +158,7 @@ export async function executePass1(
     const flowGuidance = buildFlowGuidance(section, sections, brief, businessInfo);
 
     // Generate with retry and validation
+    const validationMode = options?.settings?.validationMode ?? 'hard';
     const content = await generateSectionWithRetry(
       section,
       brief,
@@ -166,7 +167,8 @@ export async function executePass1(
       discourseContext,
       3,
       lengthGuidance,
-      flowGuidance
+      flowGuidance,
+      validationMode
     );
 
     // Save to sections table
@@ -226,7 +228,8 @@ async function generateSectionWithRetry(
   discourseContext: DiscourseContext | null,
   maxRetries: number,
   lengthGuidance?: LengthGuidance,
-  flowGuidance?: SectionFlowGuidance
+  flowGuidance?: SectionFlowGuidance,
+  validationMode: 'soft' | 'hard' | 'checkpoint' = 'hard'
 ): Promise<string> {
   let lastError: Error | null = null;
   let fixInstructions: string | undefined = undefined;
@@ -304,9 +307,21 @@ async function generateSectionWithRetry(
           await delay(1000 * Math.pow(2, attempt - 1));
           continue; // Retry with fix instructions
         } else {
-          // Max retries reached, return content with errors logged
-          log.error(`Section "${section.heading}" failed validation after ${maxRetries} attempts. Proceeding with last attempt.`);
-          return content;
+          // Max retries reached - behavior depends on validation mode
+          const errorSummary = errors.map(e => e.text || e.suggestion).join('; ');
+
+          if (validationMode === 'hard') {
+            // HARD MODE: Throw error, do not save bad content
+            throw new Error(`VALIDATION_FAILED: Section "${section.heading}" failed validation after ${maxRetries} attempts. Errors: ${errorSummary}`);
+          } else if (validationMode === 'checkpoint') {
+            // CHECKPOINT MODE: Log for review but return content
+            log.error(`[CHECKPOINT] Section "${section.heading}" needs review. Errors: ${errorSummary}`);
+            return `<!-- VALIDATION_CHECKPOINT: ${errorSummary} -->\n${content}`;
+          } else {
+            // SOFT MODE: Warn and continue (legacy behavior)
+            log.error(`Section "${section.heading}" failed validation after ${maxRetries} attempts. Proceeding with last attempt.`);
+            return content;
+          }
         }
       }
 

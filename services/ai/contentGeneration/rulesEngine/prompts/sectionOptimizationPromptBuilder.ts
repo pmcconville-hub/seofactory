@@ -5,7 +5,9 @@ import {
   HolisticSummaryContext,
   ContentFormatBudget,
   ContentBrief,
-  BusinessInfo
+  BusinessInfo,
+  BriefVisualSemantics,
+  VisualSemanticAnalysis
 } from '../../../../../types';
 import { serializeHolisticContext } from '../../holisticAnalyzer';
 import { getLanguageName, getLanguageAndRegionInstruction, getRegionalLanguageVariant } from '../../../../../utils/languageUtils';
@@ -255,16 +257,52 @@ function extractExistingImageDescriptions(
 
 /**
  * Get visual semantics suggestions relevant to a specific section.
- * Matches based on section heading, key, or description overlap.
+ * Checks enhanced_visual_semantics.section_images first (keyed by section),
+ * then falls back to visual_semantics array with fuzzy matching.
  */
 function getRelevantVisualSemantics(
   section: ContentGenerationSection,
-  visualSemantics: Array<{ description: string; alt_text?: string; section_hint?: string; type?: string }> | undefined
-): Array<{ description: string; alt_text?: string; type?: string }> {
-  if (!visualSemantics || visualSemantics.length === 0) return [];
-
+  visualSemantics: Array<{ description: string; alt_text?: string; section_hint?: string; type?: string }> | undefined,
+  enhancedVisualSemantics?: BriefVisualSemantics
+): Array<{ description: string; alt_text?: string; type?: string; figcaption?: string }> {
+  const results: Array<{ description: string; alt_text?: string; type?: string; figcaption?: string }> = [];
   const sectionKey = section.section_key?.toLowerCase() || '';
   const sectionHeading = section.section_heading?.toLowerCase() || '';
+
+  // First, check enhanced_visual_semantics.section_images (keyed by section)
+  if (enhancedVisualSemantics?.section_images) {
+    // Try exact key match first
+    const exactMatch = Object.entries(enhancedVisualSemantics.section_images).find(
+      ([key]) => key.toLowerCase() === sectionKey
+    );
+    if (exactMatch) {
+      const vs = exactMatch[1];
+      results.push({
+        description: vs.image_description,
+        alt_text: vs.alt_text_recommendation,
+        type: 'ENHANCED',
+        figcaption: vs.figcaption_text
+      });
+    }
+
+    // Also check if this is intro section and needs hero image
+    if ((sectionKey === 'intro' || section.section_order === 0) && enhancedVisualSemantics.hero_image) {
+      const hero = enhancedVisualSemantics.hero_image;
+      results.push({
+        description: hero.image_description + ' (HERO IMAGE)',
+        alt_text: hero.alt_text_recommendation,
+        type: 'HERO',
+        figcaption: hero.figcaption_text
+      });
+    }
+  }
+
+  // If we found enhanced semantics, return those (they're more specific)
+  if (results.length > 0) return results;
+
+  // Fall back to visual_semantics array with fuzzy matching
+  if (!visualSemantics || visualSemantics.length === 0) return [];
+
   const sectionContent = (section.current_content || '').toLowerCase().substring(0, 500);
 
   return visualSemantics.filter(vs => {
@@ -291,9 +329,9 @@ export function buildPass4Prompt(ctx: SectionOptimizationContext): string {
   const regionalLang = getRegionalLanguageVariant(businessInfo.language, businessInfo.region);
   const isFirstSection = section.section_order === 0 || section.section_key === 'intro';
 
-  // Get visual semantics from brief - this is the PRIMARY guide
+  // Get visual semantics from brief - check enhanced_visual_semantics first, then fall back to visual_semantics
   const briefVisualSemantics = brief?.visual_semantics || [];
-  const relevantSemantics = getRelevantVisualSemantics(section, briefVisualSemantics);
+  const relevantSemantics = getRelevantVisualSemantics(section, briefVisualSemantics, brief?.enhanced_visual_semantics);
 
   // Check what images already exist in previous sections to avoid duplicates
   const existingImageDescriptions = extractExistingImageDescriptions(section, ctx.allSections || []);
@@ -306,7 +344,8 @@ These images were planned during content briefing. Use them as your guide:
 ${relevantSemantics.map((vs, i) => `
 ${i + 1}. **Description:** ${vs.description}
    **Alt Text:** ${vs.alt_text || 'Generate vocabulary-extending alt text'}
-   **Type:** ${vs.type || 'SECTION'}
+   **Type:** ${vs.type || 'SECTION'}${vs.figcaption ? `
+   **Figcaption:** ${vs.figcaption}` : ''}
 `).join('')}
 
 IMPORTANT: Use these pre-planned image descriptions when inserting placeholders.
@@ -423,6 +462,129 @@ ${holistic.vocabularyMetrics.overusedTerms.slice(0, 5).map(t => t.term).join(', 
 5. Write in ${regionalLang}
 
 **OUTPUT the section with properly positioned image placeholders. No explanations.**`;
+}
+
+/**
+ * Batch prompt for Pass 4: Visual Semantics
+ * Processes multiple sections in a single API call with image placement.
+ * Uses [SECTION: key] markers for reliable parsing.
+ */
+export function buildPass4BatchPrompt(
+  batch: ContentGenerationSection[],
+  holistic: HolisticSummaryContext,
+  budget: ContentFormatBudget,
+  brief: ContentBrief,
+  businessInfo: BusinessInfo
+): string {
+  const regionalLang = getRegionalLanguageVariant(businessInfo.language, businessInfo.region);
+
+  // Track all images already in the article to prevent duplicates
+  const allExistingImages: string[] = [];
+  const imagePattern = /\[IMAGE:\s*([^|]+)\s*\|/gi;
+
+  // Get visual semantics from brief for guidance
+  const briefVisualSemantics = brief?.visual_semantics || [];
+  const enhancedVisualSemantics = brief?.enhanced_visual_semantics;
+
+  // Build section entries with deduplication context and section-specific image recommendations
+  const sectionEntries = batch.map((section, idx) => {
+    // Extract images from this section and all previous
+    const content = section.current_content || '';
+    let match;
+    while ((match = imagePattern.exec(content)) !== null) {
+      allExistingImages.push(match[1].trim());
+    }
+
+    const isFirstSection = section.section_order === 0 || section.section_key === 'intro';
+    const classification = budget.sectionClassifications.find(c => c.sectionKey === section.section_key);
+    const needsImage = budget.sectionsNeedingOptimization.images.includes(section.section_key);
+
+    // Get section-specific image from enhanced_visual_semantics if available
+    const sectionKey = section.section_key?.toLowerCase() || '';
+    let sectionImageRecommendation = '';
+    if (enhancedVisualSemantics?.section_images) {
+      const match = Object.entries(enhancedVisualSemantics.section_images).find(
+        ([key]) => key.toLowerCase() === sectionKey
+      );
+      if (match) {
+        const vs = match[1];
+        sectionImageRecommendation = `
+**RECOMMENDED IMAGE:** ${vs.image_description}
+**ALT TEXT:** ${vs.alt_text_recommendation}
+**FIGCAPTION:** ${vs.figcaption_text}`;
+      }
+    }
+
+    // Hero image for intro section
+    if (isFirstSection && enhancedVisualSemantics?.hero_image) {
+      const hero = enhancedVisualSemantics.hero_image;
+      sectionImageRecommendation = `
+**HERO IMAGE RECOMMENDED:** ${hero.image_description}
+**ALT TEXT:** ${hero.alt_text_recommendation}
+**FIGCAPTION:** ${hero.figcaption_text}`;
+    }
+
+    return `
+[SECTION: ${section.section_key}]
+**Type:** ${classification?.type || 'body'}
+**Heading:** ${section.section_heading}
+**Section Order:** ${section.section_order + 1} of ${holistic.articleStructure.totalSections}
+**Needs Image:** ${needsImage ? 'YES' : 'NO (preserve existing only)'}
+${isFirstSection ? '**HERO REQUIRED:** YES - This is the intro section' : ''}${sectionImageRecommendation}
+**Current Content:**
+${content}
+`;
+  }).join('\n---\n');
+
+  return `You are a Holistic SEO editor applying KORAYANESE FRAMEWORK for visual semantics to MULTIPLE sections.
+
+${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
+
+## Central Entity: ${holistic.centralEntity}
+## Article Title: ${holistic.articleStructure.title}
+
+## CRITICAL: UNIQUE IMAGES PER SECTION
+Each section MUST have a UNIQUE image. DO NOT reuse or duplicate image descriptions across sections.
+
+${allExistingImages.length > 0 ? `
+## IMAGES ALREADY IN ARTICLE (DO NOT DUPLICATE):
+${allExistingImages.slice(0, 10).map(d => `- "${d.slice(0, 60)}..."`).join('\n')}
+` : ''}
+
+${briefVisualSemantics.length > 0 ? `
+## VISUAL SEMANTICS FROM BRIEF (Use as guidance):
+${briefVisualSemantics.slice(0, 5).map((vs, i) => `${i + 1}. ${vs.description} (${vs.type || 'SECTION'})`).join('\n')}
+` : ''}
+
+## KORAYANESE IMAGE RULES:
+1. **NEVER** place image between heading and first paragraph
+2. Pattern: Heading → Answer paragraph → Image → Next content
+3. HERO image (intro only): After first definition paragraph, with title overlay
+4. Use ENGAGING types: infographics, diagrams, charts (NOT stock photos)
+5. Alt text must extend vocabulary (use synonyms, NOT heading words)
+
+## Image Placeholder Format:
+[IMAGE: detailed description of ENGAGING visual | alt="vocabulary-extending alt text"]
+
+## Vocabulary Terms to AVOID in Alt Text:
+${holistic.vocabularyMetrics.overusedTerms.slice(0, 5).map(t => t.term).join(', ')}
+
+## Sections to Process
+${sectionEntries}
+
+## Output Format
+For EACH section, output exactly:
+[SECTION: section-key]
+...content with properly positioned image placeholder(s)...
+
+CRITICAL RULES:
+- Each [SECTION: key] marker MUST match the original section key EXACTLY
+- Each section must have UNIQUE image descriptions (no duplicates)
+- Keep sections in the same order as input
+- Only add images to sections marked "Needs Image: YES"
+- Preserve all existing content structure
+
+**OUTPUT ONLY the section markers and content in ${regionalLang}. No explanations.**`;
 }
 
 // ============================================
@@ -595,6 +757,7 @@ ${buildSelfVerificationChecklist(holistic.centralEntity, section.current_content
 
 /**
  * Extract contextual bridge links from brief
+ * Combines contextualBridge and suggested_internal_links for comprehensive internal linking
  */
 function extractContextualBridgeLinks(brief?: ContentBrief): Array<{
   targetTopic: string;
@@ -602,19 +765,139 @@ function extractContextualBridgeLinks(brief?: ContentBrief): Array<{
   reasoning: string;
   annotation_text_hint?: string;
 }> {
-  if (!brief?.contextualBridge) return [];
+  const links: Array<{
+    targetTopic: string;
+    anchorText: string;
+    reasoning: string;
+    annotation_text_hint?: string;
+  }> = [];
 
-  // Handle both array and section object formats
-  if (Array.isArray(brief.contextualBridge)) {
-    return brief.contextualBridge;
+  // Extract from contextualBridge (legacy format)
+  if (brief?.contextualBridge) {
+    // Handle both array and section object formats
+    if (Array.isArray(brief.contextualBridge)) {
+      links.push(...brief.contextualBridge);
+    } else if (brief.contextualBridge.type === 'section' && brief.contextualBridge.links) {
+      links.push(...brief.contextualBridge.links);
+    }
   }
 
-  // Section format with nested links
-  if (brief.contextualBridge.type === 'section' && brief.contextualBridge.links) {
-    return brief.contextualBridge.links;
+  // Extract from suggested_internal_links (newer format from brief generation)
+  if (brief?.suggested_internal_links && brief.suggested_internal_links.length > 0) {
+    for (const suggestion of brief.suggested_internal_links) {
+      // Check if this link is already in the list (by anchor text)
+      const existingAnchor = suggestion.anchor_text || suggestion.anchor || '';
+      const isDuplicate = links.some(l =>
+        l.anchorText.toLowerCase() === existingAnchor.toLowerCase()
+      );
+
+      if (!isDuplicate && existingAnchor) {
+        links.push({
+          targetTopic: suggestion.url || suggestion.title || suggestion.anchor || '',
+          anchorText: existingAnchor,
+          reasoning: suggestion.title ? `Link to related topic: ${suggestion.title}` : 'Suggested internal link for topic relevance',
+          annotation_text_hint: undefined
+        });
+      }
+    }
   }
 
-  return [];
+  return links;
+}
+
+/**
+ * Batch prompt for Pass 6: Discourse Integration
+ * Processes multiple sections in a single API call with discourse flow optimization.
+ * Uses [SECTION: key] markers for reliable parsing.
+ */
+export function buildPass6BatchPrompt(
+  batch: ContentGenerationSection[],
+  holistic: HolisticSummaryContext,
+  budget: ContentFormatBudget,
+  brief: ContentBrief,
+  businessInfo: BusinessInfo
+): string {
+  const regionalLang = getRegionalLanguageVariant(businessInfo.language, businessInfo.region);
+
+  // Get all sections for adjacent context
+  const allSectionKeys = batch.map(s => s.section_key);
+
+  // Extract contextual bridge links from brief
+  const contextualBridgeLinks = extractContextualBridgeLinks(brief);
+  const hasLinksToBridge = contextualBridgeLinks.length > 0;
+
+  // Build section entries with adjacent context
+  const sectionEntries = batch.map((section, idx) => {
+    // Find adjacent sections for context
+    const prevSection = idx > 0 ? batch[idx - 1] : null;
+    const nextSection = idx < batch.length - 1 ? batch[idx + 1] : null;
+
+    const classification = budget.sectionClassifications.find(c => c.sectionKey === section.section_key);
+    const needsDiscourse = budget.sectionsNeedingOptimization.discourse.includes(section.section_key);
+
+    return `
+[SECTION: ${section.section_key}]
+**Type:** ${classification?.type || 'body'}
+**Heading:** ${section.section_heading}
+**Needs Discourse Improvement:** ${needsDiscourse ? 'YES' : 'NO (preserve as-is)'}
+${prevSection ? `**Previous Section:** "${prevSection.section_heading}"` : '**Position:** FIRST section'}
+${nextSection ? `**Next Section:** "${nextSection.section_heading}"` : '**Position:** LAST section'}
+**Current Content:**
+${section.current_content || ''}
+`;
+  }).join('\n---\n');
+
+  return `You are a Holistic SEO editor specializing in discourse integration for MULTIPLE sections.
+
+${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
+
+## Central Entity: ${holistic.centralEntity}
+## Article Title: ${holistic.articleStructure.title}
+
+## Discourse Anchors (use at transitions):
+${holistic.discourseAnchors.join(', ')}
+
+${hasLinksToBridge ? `
+## INTERNAL LINKS TO ADD WITH CONTEXTUAL BRIDGES:
+${contextualBridgeLinks.slice(0, 5).map(link => `
+- **Link to:** "${link.targetTopic}"
+  **Anchor text:** "${link.anchorText}"
+  **Why link:** ${link.reasoning}
+`).join('')}
+
+### Contextual Bridge Rules:
+1. NEVER place link at start of sentence - links come at END
+2. The sentence BEFORE the link must establish WHY this topic is relevant
+3. The link anchor text should flow naturally in the sentence
+` : ''}
+
+## Discourse Rules:
+1. **Paragraph Transitions:** End of paragraph A hooks into start of paragraph B
+2. **Section Opening:** Reference previous section's conclusion if applicable
+3. **Section Closing:** Hint at what comes next if applicable
+4. **Contextual Bridges:** Use bridge sentences between sub-topics
+5. **Link Annotation:** Text around links explains WHY the link exists
+
+## CRITICAL: STRUCTURE PRESERVATION
+- PRESERVE ALL lists, tables, and image placeholders exactly
+- DO NOT convert structured content back to prose
+- Only optimize TEXT within structures, not the structures themselves
+
+## Sections to Process
+${sectionEntries}
+
+## Output Format
+For EACH section, output exactly:
+[SECTION: section-key]
+...content with improved discourse flow...
+
+CRITICAL RULES:
+- Each [SECTION: key] marker MUST match the original section key EXACTLY
+- Keep sections in the same order as input
+- Only modify sections marked "Needs Discourse Improvement: YES"
+- Preserve ALL lists, tables, [IMAGE: ...] placeholders, and links
+
+**OUTPUT ONLY the section markers and content in ${regionalLang}. No explanations.**`;
 }
 
 // ============================================
@@ -907,8 +1190,10 @@ export const SectionOptimizationPromptBuilder = {
   buildPass3Prompt,
   buildPass3BatchPrompt,
   buildPass4Prompt,
+  buildPass4BatchPrompt,
   buildPass5Prompt,
   buildPass6Prompt,
+  buildPass6BatchPrompt,
   buildPass7Prompt,
   buildPass7ConclusionPrompt,
   buildPass8Prompt,

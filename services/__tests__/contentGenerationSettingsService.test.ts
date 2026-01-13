@@ -209,6 +209,10 @@ describe('ContentGenerationSettingsService', () => {
         audienceExpertise: AudienceExpertise.EXPERT,
         checkpointAfterPass1: true,
         passes: DEFAULT_CONTENT_GENERATION_SETTINGS.passes,
+        contentLength: DEFAULT_CONTENT_GENERATION_SETTINGS.contentLength,
+        validationMode: 'hard' as const,
+        storePassSnapshots: true,
+        enableDebugExport: true,
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z'
       };
@@ -260,6 +264,10 @@ describe('ContentGenerationSettingsService', () => {
         audienceExpertise: AudienceExpertise.INTERMEDIATE,
         checkpointAfterPass1: false,
         passes: DEFAULT_CONTENT_GENERATION_SETTINGS.passes,
+        contentLength: DEFAULT_CONTENT_GENERATION_SETTINGS.contentLength,
+        validationMode: 'hard' as const,
+        storePassSnapshots: true,
+        enableDebugExport: true,
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z'
       };

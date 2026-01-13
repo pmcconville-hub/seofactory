@@ -264,26 +264,72 @@ async function processSectionsBatched(
       // Parse batch response
       const parsedResults = parseBatchResponse(response, batch);
 
-      // Update each section
-      for (const [section, optimizedContent] of parsedResults) {
-        if (optimizedContent && optimizedContent.trim()) {
-          const originalContent = section.current_content || '';
-          // Pass format budget for smart preservation decisions
-          const cleanedContent = cleanOptimizedContent(optimizedContent, originalContent, section.section_key, config.passNumber, formatBudget);
+      // Check if batch parsing failed (returned empty map for multi-section batch)
+      if (parsedResults.size === 0 && batch.length > 1) {
+        log.warn(`Batch parsing failed for ${batch.length} sections - falling back to individual processing`);
 
-          const updatedSection: ContentGenerationSection = {
-            ...section,
-            current_content: cleanedContent,
-            current_pass: config.passNumber,
-            updated_at: new Date().toISOString()
-          };
+        // Fall back to individual processing for this batch
+        for (const section of batch) {
+          if (shouldAbort && shouldAbort()) {
+            throw new Error('Pass aborted by user');
+          }
 
-          await orchestrator.upsertSection(updatedSection);
+          try {
+            const adjacentContext = buildAdjacentContext(allSections, section);
+            const ctx: SectionOptimizationContext = {
+              section,
+              holistic: holisticContext,
+              adjacentContext,
+              brief,
+              businessInfo,
+              passNumber: config.passNumber,
+              allSections  // For deduplication checks in Pass 4 (Visual Semantics)
+            };
 
-          // Save per-pass version for rollback capability
-          await savePassVersion(orchestrator, updatedSection, config.passNumber);
+            const individualPrompt = config.promptBuilder(ctx);
+            const individualResponse = await callProviderWithFallback(businessInfo, individualPrompt, 2);
 
-          log.log(`Section ${section.section_key}: ${originalContent.length} → ${cleanedContent.length} chars`);
+            if (typeof individualResponse === 'string' && individualResponse.trim()) {
+              const originalContent = section.current_content || '';
+              const cleanedContent = cleanOptimizedContent(individualResponse, originalContent, section.section_key, config.passNumber, formatBudget);
+
+              const updatedSection: ContentGenerationSection = {
+                ...section,
+                current_content: cleanedContent,
+                current_pass: config.passNumber,
+                updated_at: new Date().toISOString()
+              };
+
+              await orchestrator.upsertSection(updatedSection);
+              await savePassVersion(orchestrator, updatedSection, config.passNumber);
+              log.log(`Section ${section.section_key} (individual fallback): ${originalContent.length} → ${cleanedContent.length} chars`);
+            }
+          } catch (individualError) {
+            log.error(`Error processing section ${section.section_key} individually:`, individualError);
+          }
+        }
+      } else {
+        // Batch parsing succeeded - update each section
+        for (const [section, optimizedContent] of parsedResults) {
+          if (optimizedContent && optimizedContent.trim()) {
+            const originalContent = section.current_content || '';
+            // Pass format budget for smart preservation decisions
+            const cleanedContent = cleanOptimizedContent(optimizedContent, originalContent, section.section_key, config.passNumber, formatBudget);
+
+            const updatedSection: ContentGenerationSection = {
+              ...section,
+              current_content: cleanedContent,
+              current_pass: config.passNumber,
+              updated_at: new Date().toISOString()
+            };
+
+            await orchestrator.upsertSection(updatedSection);
+
+            // Save per-pass version for rollback capability
+            await savePassVersion(orchestrator, updatedSection, config.passNumber);
+
+            log.log(`Section ${section.section_key}: ${originalContent.length} → ${cleanedContent.length} chars`);
+          }
         }
       }
 
@@ -355,7 +401,8 @@ async function processSectionsIndividually(
       adjacentContext,
       brief,
       businessInfo,
-      passNumber: config.passNumber
+      passNumber: config.passNumber,
+      allSections  // For deduplication checks in Pass 4 (Visual Semantics)
     };
 
     try {
@@ -428,6 +475,10 @@ function createBatches<T>(items: T[], batchSize: number): T[][] {
  * content...
  * [SECTION: section-key-2]
  * content...
+ *
+ * IMPORTANT: This parser requires explicit section markers to prevent content duplication.
+ * If markers are missing for multi-section batches, it returns an empty map which signals
+ * to the caller that individual processing should be used instead.
  */
 function parseBatchResponse(
   response: string,
@@ -440,30 +491,50 @@ function parseBatchResponse(
   const matches = [...response.matchAll(sectionPattern)];
 
   if (matches.length > 0) {
-    // Structured response found
+    // Structured response found - parse each section
     for (const match of matches) {
       const sectionKey = match[1].trim();
       const content = match[2].trim();
 
       const section = batch.find(s => s.section_key === sectionKey);
       if (section && content) {
+        // Check for duplicate content assignment (critical for preventing duplication bug)
+        const existingContent = [...results.values()];
+        const isDuplicate = existingContent.some(existing =>
+          existing.length > 200 && content.length > 200 &&
+          existing.substring(0, 200) === content.substring(0, 200)
+        );
+
+        if (isDuplicate) {
+          console.error(`[parseBatchResponse] DUPLICATE CONTENT DETECTED for section ${sectionKey} - skipping to prevent duplication`);
+          continue;
+        }
+
         results.set(section, content);
+      } else if (!section) {
+        console.warn(`[parseBatchResponse] Unknown section key in response: ${sectionKey}`);
       }
     }
+
+    // Validate that we got all expected sections
+    if (results.size < batch.length) {
+      const missingKeys = batch
+        .filter(s => !results.has(s))
+        .map(s => s.section_key);
+      console.warn(`[parseBatchResponse] Missing ${missingKeys.length} sections in response: ${missingKeys.join(', ')}`);
+    }
   } else {
-    // Fallback: If only one section in batch, use entire response
+    // No section markers found
     if (batch.length === 1) {
+      // Single section batch - safe to use entire response
       results.set(batch[0], response.trim());
     } else {
-      // Multiple sections but no markers - try splitting by heading
-      console.warn('[parseBatchResponse] No section markers found in batch response, attempting heading-based split');
-      const headingSplit = response.split(/(?=^##+ )/m);
-
-      for (let i = 0; i < Math.min(headingSplit.length, batch.length); i++) {
-        if (headingSplit[i].trim()) {
-          results.set(batch[i], headingSplit[i].trim());
-        }
-      }
+      // CRITICAL: Multiple sections without markers - DO NOT use heading-based split
+      // This was causing the duplication bug where the same content got assigned to multiple sections
+      console.error(`[parseBatchResponse] CRITICAL: No section markers found for batch of ${batch.length} sections. ` +
+        `This would cause content duplication. Returning empty map - sections will need individual processing.`);
+      // Return empty map - caller should handle this by falling back to individual processing
+      // DO NOT attempt heading-based split as it causes content duplication
     }
   }
 

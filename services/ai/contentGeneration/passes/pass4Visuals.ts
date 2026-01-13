@@ -9,7 +9,7 @@ import {
 } from '../../../../types';
 import { ContentGenerationOrchestrator } from '../orchestrator';
 import { executeSectionPass } from './baseSectionPass';
-import { buildPass4Prompt } from '../rulesEngine/prompts/sectionOptimizationPromptBuilder';
+import { buildPass4Prompt, buildPass4BatchPrompt } from '../rulesEngine/prompts/sectionOptimizationPromptBuilder';
 
 /**
  * Pass 6: Visual Semantics (exported as executePass6 via index.ts)
@@ -41,8 +41,9 @@ export async function executePass4(
       nextPassNumber: 7,  // Proceed to Pass 7 (Introduction Synthesis)
       promptBuilder: buildPass4Prompt,
 
-      // Batch processing: 5 sections per API call
+      // Batch processing: 5 sections per API call with proper batch prompt
       batchSize: 5,
+      buildBatchPrompt: buildPass4BatchPrompt,
 
       // Selective processing: Only sections needing images
       filterSections: (sections: ContentGenerationSection[], budget: ContentFormatBudget) => {

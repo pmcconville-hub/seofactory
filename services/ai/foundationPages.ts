@@ -21,6 +21,7 @@ import * as anthropicService from '../anthropicService';
 import { AIResponseSanitizer } from '../aiResponseSanitizer';
 import { useSupabase } from '../supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
+import { Json } from '../../database.types';
 import React from 'react';
 
 // Type for AI-generated foundation pages response
@@ -405,7 +406,7 @@ export const saveFoundationPages = async (
 ): Promise<FoundationPage[]> => {
   const supabase = useSupabase();
 
-  // Prepare pages for the RPC function
+  // Prepare pages for the RPC function - cast to Json for Supabase compatibility
   const pagesToInsert = pages.map(page => ({
     page_type: page.page_type,
     title: page.title,
@@ -413,15 +414,15 @@ export const saveFoundationPages = async (
     meta_description: page.meta_description,
     h1_template: page.h1_template,
     schema_type: page.schema_type,
-    sections: page.sections,
-    nap_data: page.nap_data,
-    metadata: page.metadata
+    sections: page.sections as unknown as Record<string, unknown>[],
+    nap_data: page.nap_data as unknown as Record<string, unknown>,
+    metadata: page.metadata as unknown as Record<string, unknown>
   }));
 
   // Use the SECURITY DEFINER function which properly sets user_id from map ownership
   const { data, error } = await supabase.rpc('create_foundation_pages', {
     p_map_id: mapId,
-    p_pages: pagesToInsert
+    p_pages: pagesToInsert as unknown as Json
   });
 
   if (error) {
@@ -589,15 +590,15 @@ export const saveNavigationStructure = async (
   const supabase = useSupabase();
 
   // Use SECURITY DEFINER function to avoid RLS conflicts
-  // The RPC function gets user_id from map ownership
+  // The RPC function gets user_id from map ownership - cast complex types to Json for Supabase compatibility
   const { data, error } = await supabase.rpc('upsert_navigation_structure', {
     p_map_id: mapId,
-    p_header: navigation.header,
-    p_footer: navigation.footer,
+    p_header: navigation.header as unknown as Json,
+    p_footer: navigation.footer as unknown as Json,
     p_max_header_links: navigation.max_header_links ?? 10,
     p_max_footer_links: navigation.max_footer_links ?? 30,
     p_dynamic_by_section: navigation.dynamic_by_section ?? true,
-    p_metadata: navigation.metadata ?? null
+    p_metadata: (navigation.metadata ?? null) as Json
   });
 
   if (error) {

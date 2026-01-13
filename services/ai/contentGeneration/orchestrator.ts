@@ -2,6 +2,7 @@
 import { getSupabaseClient } from '../../supabaseClient';
 import { ContentGenerationJob, ContentGenerationSection, ContentBrief, PassesStatus, SectionDefinition, PASS_NAMES, ImagePlaceholder } from '../../../types';
 import { performanceLogger, setCurrentJobId } from '../../performanceLogger';
+import { Json } from '../../../database.types';
 
 export interface OrchestratorCallbacks {
   onPassStart: (passNumber: number, passName: string) => void;
@@ -156,7 +157,7 @@ export class ContentGenerationOrchestrator {
     const { data, error } = await this.supabase
       .from('content_generation_jobs')
       .update({
-        image_placeholders: placeholders as unknown as Record<string, unknown>[],
+        image_placeholders: placeholders as unknown as Json,
         updated_at: new Date().toISOString()
       })
       .eq('id', jobId)
@@ -477,9 +478,49 @@ export class ContentGenerationOrchestrator {
 
       const sections = await this.getSections(jobId);
 
-      // Build draft with sections
-      const sectionContent = sections
-        .sort((a, b) => a.section_order - b.section_order)
+      // DEDUPLICATION STEP 1: Deduplicate by section_key (keep latest version by updated_at)
+      const uniqueSections = new Map<string, ContentGenerationSection>();
+      for (const section of sections) {
+        const existing = uniqueSections.get(section.section_key);
+        if (!existing) {
+          uniqueSections.set(section.section_key, section);
+        } else {
+          // Keep the one with the later updated_at timestamp
+          const existingDate = new Date(existing.updated_at || 0);
+          const currentDate = new Date(section.updated_at || 0);
+          if (currentDate > existingDate) {
+            console.warn(`[assembleDraft] Duplicate section_key detected: ${section.section_key}. Keeping latest version.`);
+            uniqueSections.set(section.section_key, section);
+          }
+        }
+      }
+
+      if (uniqueSections.size < sections.length) {
+        console.warn(`[assembleDraft] Deduplicated ${sections.length - uniqueSections.size} duplicate sections by key`);
+      }
+
+      // DEDUPLICATION STEP 2: Detect content duplication across different sections
+      const sortedSections = [...uniqueSections.values()].sort((a, b) => a.section_order - b.section_order);
+      const contentFingerprints = new Map<string, string>(); // fingerprint -> section_key
+
+      for (const section of sortedSections) {
+        const content = (section.current_content || '').trim();
+        if (content.length < 200) continue; // Skip short sections
+
+        // Create a fingerprint from the first 200 chars (ignoring whitespace variations)
+        const fingerprint = content.substring(0, 200).replace(/\s+/g, ' ').toLowerCase();
+
+        const existingKey = contentFingerprints.get(fingerprint);
+        if (existingKey) {
+          console.error(`[assembleDraft] DUPLICATE CONTENT DETECTED: Section "${section.section_key}" has same content as "${existingKey}"`);
+          // Don't remove - just warn. The fix should be in the generation, not here.
+        } else {
+          contentFingerprints.set(fingerprint, section.section_key);
+        }
+      }
+
+      // Build draft with deduplicated sections
+      const sectionContent = sortedSections
         .map(s => {
           const content = (s.current_content || '').trim();
           const expectedHeading = s.section_level === 2 ? `## ${s.section_heading}` : `### ${s.section_heading}`;

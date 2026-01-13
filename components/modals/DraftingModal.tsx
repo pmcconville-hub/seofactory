@@ -38,6 +38,8 @@ import { useFeatureGate } from '../../hooks/usePermissions';
 import { QualityRulePanel, ArticleQualityReport } from '../quality';
 import { PassDiffViewer } from '../drafting/PassDiffViewer';
 import type { StructuralSnapshot } from '../../services/ai/contentGeneration/structuralValidator';
+import { ContentAnalysisPanel } from '../analysis/ContentAnalysisPanel';
+import { exportDebugData, formatForClaudeAnalysis, getPassSnapshots, clearDebugData } from '../../services/contentGenerationDebugger';
 
 interface DraftingModalProps {
   isOpen: boolean;
@@ -62,7 +64,7 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
   const briefFromState = activeBriefTopic ? activeMap?.briefs?.[activeBriefTopic.id] : null;
   const brief = briefFromState || briefProp;
 
-  const [activeTab, setActiveTab] = useState<'edit' | 'preview' | 'images' | 'quality'>('edit');
+  const [activeTab, setActiveTab] = useState<'edit' | 'preview' | 'images' | 'quality' | 'debug'>('edit');
   const [draftContent, setDraftContent] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isPolishing, setIsPolishing] = useState(false);
@@ -2070,6 +2072,16 @@ ${schemaScript}`;
                       </span>
                     )}
                  </button>
+                 <button
+                    onClick={() => setActiveTab('debug')}
+                    className={`px-3 py-1 text-sm rounded flex items-center gap-1 ${
+                      activeTab === 'debug'
+                        ? 'bg-purple-600 text-white font-medium'
+                        : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                 >
+                    Debug
+                 </button>
              </div>
 
              {isPolishing && (
@@ -2698,6 +2710,52 @@ ${schemaScript}`;
                                         dispatch({ type: 'SET_NOTIFICATION', payload: `Rolled back to pass ${passNumber}. Refresh to see changes.` });
                                     }}
                                 />
+                            </div>
+                        )}
+                    </div>
+                ) : activeTab === 'debug' ? (
+                    <div className="h-full overflow-y-auto">
+                        {brief && draftContent && (
+                            <ContentAnalysisPanel
+                                brief={brief}
+                                draft={draftContent}
+                                sections={[]} // Sections will be loaded by the panel if needed
+                                job={databaseJobInfo ? {
+                                    id: databaseJobInfo.jobId,
+                                    draft_content: draftContent,
+                                    status: databaseJobInfo.jobStatus,
+                                    current_pass: databaseJobInfo.currentPass
+                                } as any : undefined}
+                                businessInfo={businessInfo}
+                                onExport={async (format) => {
+                                    if (!brief || !businessInfo) return;
+                                    // Minimal export for now
+                                    const debugData = {
+                                        exportedAt: new Date().toISOString(),
+                                        brief,
+                                        draftContent,
+                                        job: databaseJobInfo,
+                                        passSnapshots: getPassSnapshots(databaseJobInfo?.jobId || ''),
+                                    };
+                                    if (format === 'clipboard') {
+                                        const text = JSON.stringify(debugData, null, 2);
+                                        await navigator.clipboard.writeText(text);
+                                        dispatch({ type: 'SET_NOTIFICATION', payload: 'Debug data copied to clipboard' });
+                                    } else {
+                                        const blob = new Blob([JSON.stringify(debugData, null, 2)], { type: 'application/json' });
+                                        const url = URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = `debug-${databaseJobInfo?.jobId || 'unknown'}.json`;
+                                        a.click();
+                                        URL.revokeObjectURL(url);
+                                    }
+                                }}
+                            />
+                        )}
+                        {(!brief || !draftContent) && (
+                            <div className="flex items-center justify-center h-full text-gray-400">
+                                <p>Generate content first to see analysis</p>
                             </div>
                         )}
                     </div>

@@ -194,6 +194,11 @@ ${isShortContent ? `**SHORT CONTENT MODE**: Be concise and dense. Every sentence
       prompt += this.buildSearchIntentGuidance(brief.searchIntent, section, context.allSections || []);
     }
 
+    // Add SERP analysis insights
+    if (brief.serpAnalysis) {
+      prompt += this.buildSerpAnalysisGuidance(brief.serpAnalysis, section, context.allSections || []);
+    }
+
     // Add fix instructions if this is a retry
     if (fixInstructions) {
       prompt += `## CORRECTIONS REQUIRED (from previous attempt)
@@ -406,5 +411,139 @@ ${isEarlySection ? '- Early sections should quickly establish what to do and how
     }
 
     return section;
+  }
+
+  /**
+   * Build SERP analysis guidance
+   * Uses People Also Ask, competitor headings, and content gaps to inform content
+   */
+  private static buildSerpAnalysisGuidance(
+    serpAnalysis: NonNullable<import('../../../../../types').ContentBrief['serpAnalysis']>,
+    currentSection: BriefSection,
+    allSections: BriefSection[]
+  ): string {
+    let section = '';
+    const sectionIndex = allSections.findIndex(s => s.key === currentSection.key);
+    const sectionHeadingLower = currentSection.heading.toLowerCase();
+
+    // People Also Ask - match relevant questions to this section
+    if (serpAnalysis.peopleAlsoAsk && serpAnalysis.peopleAlsoAsk.length > 0) {
+      // Find questions that might be relevant to this section
+      const relevantQuestions = serpAnalysis.peopleAlsoAsk.filter(q => {
+        const qLower = q.toLowerCase();
+        // Match if question contains words from section heading or vice versa
+        const headingWords = sectionHeadingLower.split(/\s+/).filter(w => w.length > 3);
+        return headingWords.some(word => qLower.includes(word));
+      });
+
+      if (relevantQuestions.length > 0) {
+        section += `## People Also Ask (Answer these if relevant)
+${relevantQuestions.slice(0, 3).map(q => `- ${q}`).join('\n')}
+
+Integrate answers naturally into the content (don't use Q&A format unless appropriate).
+
+`;
+      } else if (sectionIndex === 0 || sectionIndex === allSections.length - 1) {
+        // For intro/conclusion, show all PAA questions as context
+        section += `## People Also Ask (Context)
+Users searching this topic also ask:
+${serpAnalysis.peopleAlsoAsk.slice(0, 5).map(q => `- ${q}`).join('\n')}
+
+${sectionIndex === 0 ? 'Ensure the article will address these questions.' : 'Summarize how this article addressed key user questions.'}
+
+`;
+      }
+    }
+
+    // Content Gaps - opportunities to differentiate from competitors
+    if (serpAnalysis.contentGaps && serpAnalysis.contentGaps.length > 0) {
+      // Find gaps relevant to this section
+      const relevantGaps = serpAnalysis.contentGaps.filter(gap => {
+        const gapLower = gap.toLowerCase();
+        const headingWords = sectionHeadingLower.split(/\s+/).filter(w => w.length > 3);
+        return headingWords.some(word => gapLower.includes(word));
+      });
+
+      if (relevantGaps.length > 0) {
+        section += `## Content Gap Opportunity
+Competitors are MISSING this information - differentiate by covering:
+${relevantGaps.slice(0, 2).map(g => `- ${g}`).join('\n')}
+
+`;
+      }
+    }
+
+    // Competitor headings - for structural alignment (only for early sections)
+    if (sectionIndex < 3 && serpAnalysis.competitorHeadings && serpAnalysis.competitorHeadings.length > 0) {
+      // Extract common patterns from competitor headings
+      const allHeadings = serpAnalysis.competitorHeadings.flatMap(c => c.headings.map(h => h.text));
+      const relevantHeadings = allHeadings.filter(h => {
+        const hLower = h.toLowerCase();
+        const headingWords = sectionHeadingLower.split(/\s+/).filter(w => w.length > 3);
+        return headingWords.some(word => hLower.includes(word));
+      });
+
+      if (relevantHeadings.length >= 2) {
+        section += `## Competitor Structure (for reference)
+Similar sections in ranking content:
+${[...new Set(relevantHeadings)].slice(0, 3).map(h => `- "${h}"`).join('\n')}
+
+`;
+      }
+    }
+
+    // Query type format guidance
+    if (serpAnalysis.query_type) {
+      section += `## Query Type: ${serpAnalysis.query_type}
+${this.getQueryTypeGuidance(serpAnalysis.query_type)}
+
+`;
+    }
+
+    return section;
+  }
+
+  /**
+   * Get specific guidance based on query type
+   */
+  private static getQueryTypeGuidance(queryType: string): string {
+    const type = queryType.toLowerCase();
+
+    if (type.includes('definitional') || type.includes('what is')) {
+      return `Structure for DEFINITION queries:
+- Lead with a clear, concise definition
+- Follow with key characteristics
+- Include examples for clarity`;
+    }
+
+    if (type.includes('comparative') || type.includes('vs') || type.includes('versus')) {
+      return `Structure for COMPARISON queries:
+- Use comparison tables or structured lists
+- Highlight key differentiators
+- Include pros/cons for each option`;
+    }
+
+    if (type.includes('procedural') || type.includes('how to')) {
+      return `Structure for HOW-TO queries:
+- Use numbered steps
+- Include prerequisites if any
+- Be specific and actionable`;
+    }
+
+    if (type.includes('causal') || type.includes('why')) {
+      return `Structure for CAUSAL queries:
+- Explain root causes clearly
+- Use cause-effect relationships
+- Include supporting evidence`;
+    }
+
+    if (type.includes('list') || type.includes('best') || type.includes('top')) {
+      return `Structure for LIST queries:
+- Use numbered or bulleted lists
+- Include brief descriptions for each item
+- Consider ranking or categorizing`;
+    }
+
+    return `Follow natural content flow for this query type.`;
   }
 }
