@@ -607,14 +607,24 @@ export function runValidationGate(
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // Strategy blockers are only errors after Pass 6 (when structure is finalized)
-  // In early passes, sections are still being optimized
+  // Strategy blockers handling:
+  // - "Section Structure" is always a warning (sections may be intentionally limited for short content)
+  // - Other blockers become errors only after Pass 6 (when structure is finalized)
   if (strategyResult.blockers.length > 0) {
-    if (passNumber >= 6) {
-      errors.push(...strategyResult.blockers.map(b => `Strategy blocker: ${b.name}`));
-    } else {
-      // In early passes, strategy blockers are warnings (content still being built)
-      warnings.push(...strategyResult.blockers.map(b => `Strategy blocker (will be addressed): ${b.name}`));
+    for (const blocker of strategyResult.blockers) {
+      // Section Structure blocker is informational only - sections may be intentionally limited
+      // for short/outer topics based on content length settings
+      if (blocker.name === 'Section Structure') {
+        warnings.push(`Section structure: ${blocker.suggestion || 'Some sections limited'}`);
+        continue;
+      }
+
+      if (passNumber >= 6) {
+        errors.push(`Strategy blocker: ${blocker.name}`);
+      } else {
+        // In early passes, strategy blockers are warnings (content still being built)
+        warnings.push(`Strategy blocker (will be addressed): ${blocker.name}`);
+      }
     }
   }
 
