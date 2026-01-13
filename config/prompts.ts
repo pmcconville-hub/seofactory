@@ -1,6 +1,7 @@
 
 // config/prompts.ts
 import { BusinessInfo, SEOPillars, SemanticTriple, EnrichedTopic, ContentBrief, BriefSection, ResponseCode, GscRow, ValidationIssue, ExpansionMode, AuthorProfile, ContextualFlowIssue, FoundationPage, NavigationStructure, WebsiteType, HolisticSummary } from '../types';
+import { MarketPatterns } from '../types/competitiveIntelligence';
 import { KnowledgeGraph } from '../lib/knowledgeGraph';
 import { getWebsiteTypeConfig } from './websiteTypeTemplates';
 import { getMonetizationPromptEnhancement, shouldApplyMonetizationEnhancement } from '../utils/monetizationPromptUtils';
@@ -120,6 +121,73 @@ export const getStylometryInstructions = (profile?: AuthorProfile): string => {
     }
 
     return stylePrompt;
+};
+
+/**
+ * Generate market data section for content brief prompt
+ * Injects real competitor analysis data to enhance brief generation
+ */
+export const getMarketDataPromptSection = (marketPatterns?: MarketPatterns): string => {
+    if (!marketPatterns || marketPatterns.dataQuality === 'none') {
+        return '';
+    }
+
+    const sections: string[] = [];
+
+    sections.push(`
+## COMPETITOR ANALYSIS DATA (Real SERP Analysis)
+
+Based on analysis of ${marketPatterns.competitorsAnalyzed} competitors (Data Quality: ${marketPatterns.dataQuality.toUpperCase()}):
+
+### Content Benchmarks
+- **Average word count**: ${marketPatterns.content.avgWordCount} words (Confidence: ${marketPatterns.content.wordCountConfidence})
+- **Recommended target**: ${marketPatterns.content.recommendedWordCount} words
+- **Word count range**: ${marketPatterns.content.wordCountRange.min} - ${marketPatterns.content.wordCountRange.max} words
+- **Average headings**: ${marketPatterns.structure.avgH2Count} H2s, ${marketPatterns.structure.avgH3Count} H3s
+- **Dominant audience level**: ${marketPatterns.content.dominantAudienceLevel}
+- **Dominant content template**: ${marketPatterns.structure.dominantContentTemplate}`);
+
+    if (marketPatterns.semantic.requiredTopics.length > 0) {
+        sections.push(`
+### Required Topics (70%+ competitors cover)
+${marketPatterns.semantic.requiredTopics.slice(0, 10).map(t => `- ${t}`).join('\n')}`);
+    }
+
+    if (marketPatterns.semantic.differentiationTopics.length > 0) {
+        sections.push(`
+### Differentiation Opportunities (rare/unique topics)
+${marketPatterns.semantic.differentiationTopics.slice(0, 8).map(t => `- ${t}`).join('\n')}`);
+    }
+
+    sections.push(`
+### Visual Requirements
+- **Average images**: ${marketPatterns.visuals.avgImageCount}
+- **${marketPatterns.visuals.hasVideoPercentage}%** of competitors have video content
+- **Recommended image count**: ${marketPatterns.visuals.recommendedImageCount}
+${marketPatterns.visuals.commonImageTypes.length > 0 ? `- **Common image types**: ${marketPatterns.visuals.commonImageTypes.join(', ')}` : ''}`);
+
+    sections.push(`
+### Technical Requirements
+- **Common schema types**: ${marketPatterns.technical.commonSchemaTypes.join(', ') || 'Article'}
+- **${marketPatterns.technical.schemaPresencePercentage}%** use structured data
+- **Recommended schema types**: ${marketPatterns.technical.recommendedSchemaTypes.join(', ')}`);
+
+    if (marketPatterns.warnings.length > 0) {
+        sections.push(`
+### Analysis Notes
+${marketPatterns.warnings.map(w => `⚠️ ${w}`).join('\n')}`);
+    }
+
+    sections.push(`
+### IMPORTANT: Use This Data
+- Set **serpAnalysis.avgWordCount** to approximately ${marketPatterns.content.recommendedWordCount}
+- Set **serpAnalysis.avgHeadings** to approximately ${marketPatterns.structure.avgH2Count + marketPatterns.structure.avgH3Count}
+- Include the **Required Topics** in your structured_outline
+- Prioritize **Differentiation Opportunities** for unique content angles
+- Ensure visual recommendations align with the competitor benchmarks
+`);
+
+    return sections.join('\n');
 };
 
 export const SUGGEST_CENTRAL_ENTITY_CANDIDATES_PROMPT = (info: BusinessInfo): string => `
@@ -583,7 +651,7 @@ ${jsonResponseInstruction}
 Respond with a JSON object containing "responseCode" and "reasoning".
 `;
 
-export const GENERATE_CONTENT_BRIEF_PROMPT = (info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, knowledgeGraph: KnowledgeGraph, responseCode: ResponseCode): string => {
+export const GENERATE_CONTENT_BRIEF_PROMPT = (info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, knowledgeGraph: KnowledgeGraph, responseCode: ResponseCode, marketPatterns?: MarketPatterns): string => {
     const kgContext = knowledgeGraph
         ? JSON.stringify(knowledgeGraph.query(`SELECT ?term WHERE { ?node term ?term . } LIMIT 15`), null, 2)
         : "No Knowledge Graph available.";
@@ -592,12 +660,15 @@ export const GENERATE_CONTENT_BRIEF_PROMPT = (info: BusinessInfo, topic: Enriche
 
     const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
 
+    const marketDataSection = getMarketDataPromptSection(marketPatterns);
+
     return `
 You are an expert Algorithmic Architect and Holistic SEO Strategist.
 Your goal is to generate a content brief that strictly minimizes the **Cost of Retrieval** for search engines.
 You do not write generic outlines. You engineer data structures for information retrieval.
 
 ${languageInstruction}
+${marketDataSection}
 
 **Target Topic:** "${topic.title}"
 **Description:** "${topic.description}"

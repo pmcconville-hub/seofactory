@@ -710,3 +710,373 @@ export interface TopicSerpIntelligence {
     overallDifficulty: number;
   };
 }
+
+// =============================================================================
+// COMPREHENSIVE COMPETITOR EXTRACTION (Phase 1)
+// =============================================================================
+
+/**
+ * Analysis depth configuration
+ */
+export type AnalysisDepth = 'quick' | 'standard' | 'thorough';
+
+export const DEPTH_CONFIG: Record<AnalysisDepth, { competitors: number; label: string }> = {
+  quick: { competitors: 3, label: 'Quick (3 competitors)' },
+  standard: { competitors: 5, label: 'Standard (5 competitors)' },
+  thorough: { competitors: 10, label: 'Thorough (10 competitors)' }
+};
+
+/**
+ * Fetch status tracking with provider info
+ */
+export interface FetchStatus {
+  htmlSuccess: boolean;
+  markdownSuccess: boolean;
+  provider: 'jina' | 'firecrawl' | 'direct' | 'failed';
+  warnings: string[];
+  fetchedAt: Date;
+  responseTimeMs?: number;
+}
+
+/**
+ * Content metrics from actual extraction
+ */
+export interface ContentMetrics {
+  wordCount: number;
+  wordCountSource: 'html' | 'markdown' | 'estimated';
+  paragraphCount: number;
+  sentenceCount: number;
+  avgSentenceLength: number;
+  readingLevel: string;        // Flesch-Kincaid grade level
+  audienceLevel: 'beginner' | 'intermediate' | 'expert' | 'mixed';
+}
+
+/**
+ * Content structure analysis
+ */
+export interface ContentStructure {
+  title: string;
+  h1: string;
+  headings: { level: number; text: string }[];
+  h2Count: number;
+  h3Count: number;
+  headingPattern: 'question-based' | 'how-to' | 'numbered-list' | 'descriptive' | 'mixed';
+  hasTableOfContents: boolean;
+  hasFaq: boolean;
+  contentTemplate: 'guide' | 'listicle' | 'comparison' | 'product' | 'how-to' | 'faq' | 'news' | 'review' | 'unknown';
+}
+
+/**
+ * Image inventory item
+ */
+export interface ImageInventoryItem {
+  src: string;
+  alt: string;
+  title?: string;
+  type: 'hero' | 'diagram' | 'photo' | 'infographic' | 'chart' | 'screenshot' | 'icon' | 'unknown';
+  position: 'hero' | 'inline' | 'sidebar' | 'footer';
+  hasAlt: boolean;
+  width?: number;
+  height?: number;
+}
+
+/**
+ * Visual content analysis
+ */
+export interface VisualAnalysis {
+  imageCount: number;
+  imageCountSource: 'html' | 'markdown' | 'estimated';
+  images: ImageInventoryItem[];
+  heroImage?: ImageInventoryItem;
+  hasVideo: boolean;
+  videoSources: string[];
+  tableCount: number;
+  listCount: number;
+  altTextQuality: {
+    score: number;
+    withAlt: number;
+    withoutAlt: number;
+    descriptive: number;
+    keywordStuffed: number;
+  };
+}
+
+/**
+ * Technical SEO analysis
+ */
+export interface TechnicalSeoAnalysis {
+  schemaTypes: string[];
+  schemaSource: 'json-ld' | 'microdata' | 'rdfa' | 'inferred' | 'none';
+  schemaEntities: {
+    name: string;
+    type: string;
+    wikidataId?: string;
+  }[];
+  hasAboutMentions: boolean;
+  hasBreadcrumbs: boolean;
+  breadcrumbStructure?: string[];
+  semanticTags: string[];
+  metaTags: {
+    title?: string;
+    description?: string;
+    canonical?: string;
+    ogTitle?: string;
+    ogDescription?: string;
+    ogImage?: string;
+  };
+}
+
+/**
+ * Semantic content analysis
+ */
+export interface SemanticAnalysis {
+  eavTriples: ClassifiedSemanticTriple[];
+  eavSource: 'ai-extracted' | 'heading-proxy' | 'none';
+  topicsDiscussed: string[];
+  uniqueAngles: string[];
+  keyPhrases: string[];
+}
+
+/**
+ * Link summary (simplified for extraction)
+ */
+export interface LinkSummary {
+  internalCount: number;
+  externalCount: number;
+  authorityLinks: string[];    // .edu, .gov, Wikipedia
+  noFollowCount: number;
+}
+
+/**
+ * Comprehensive extraction result for a single competitor
+ */
+export interface ComprehensiveExtraction {
+  url: string;
+  domain: string;
+  position?: number;           // SERP position if known
+  fetchedAt: Date;
+
+  // Fetch status with fallback tracking
+  fetchStatus: FetchStatus;
+
+  // Content metrics
+  content: ContentMetrics;
+
+  // Structure analysis
+  structure: ContentStructure;
+
+  // Visual analysis
+  visuals: VisualAnalysis;
+
+  // Technical SEO
+  technical: TechnicalSeoAnalysis;
+
+  // Semantic analysis
+  semantic: SemanticAnalysis;
+
+  // Link summary
+  links: LinkSummary;
+
+  // Raw content (for debugging/further processing)
+  raw?: {
+    html?: string;
+    markdown?: string;
+  };
+}
+
+/**
+ * Failed extraction result (for graceful degradation)
+ */
+export interface FailedExtraction {
+  url: string;
+  domain: string;
+  fetchedAt: Date;
+  fetchStatus: FetchStatus;
+  error: string;
+}
+
+/**
+ * Extraction result union type
+ */
+export type ExtractionResult = ComprehensiveExtraction | FailedExtraction;
+
+/**
+ * Type guard for successful extraction
+ */
+export function isSuccessfulExtraction(result: ExtractionResult): result is ComprehensiveExtraction {
+  return result.fetchStatus.htmlSuccess || result.fetchStatus.markdownSuccess;
+}
+
+// =============================================================================
+// MARKET PATTERNS (Phase 2)
+// =============================================================================
+
+/**
+ * Content benchmarks from market analysis
+ */
+export interface ContentBenchmarks {
+  avgWordCount: number;
+  wordCountRange: { min: number; max: number };
+  recommendedWordCount: number;
+  wordCountConfidence: 'high' | 'medium' | 'low';
+
+  avgParagraphs: number;
+  avgHeadings: number;
+  avgSentenceLength: number;
+  audienceLevelDistribution: Record<string, number>;
+  dominantAudienceLevel: string;
+}
+
+/**
+ * Structure benchmarks from market analysis
+ */
+export interface StructureBenchmarks {
+  commonHeadingPatterns: string[];
+  avgH2Count: number;
+  avgH3Count: number;
+  hasTocPercentage: number;
+  hasFaqPercentage: number;
+  dominantContentTemplate: string;
+}
+
+/**
+ * Visual benchmarks from market analysis
+ */
+export interface VisualBenchmarks {
+  avgImageCount: number;
+  imageCountRange: { min: number; max: number };
+  recommendedImageCount: number;
+  hasVideoPercentage: number;
+  avgTableCount: number;
+  commonImageTypes: string[];
+}
+
+/**
+ * Technical benchmarks from market analysis
+ */
+export interface TechnicalBenchmarks {
+  commonSchemaTypes: string[];
+  schemaPresencePercentage: number;
+  hasAboutMentionsPercentage: number;
+  recommendedSchemaTypes: string[];
+}
+
+/**
+ * Semantic benchmarks from market analysis
+ */
+export interface SemanticBenchmarks {
+  rootAttributes: { attribute: string; coverage: number }[];
+  rareAttributes: { attribute: string; coverage: number }[];
+  uniqueOpportunities: string[];
+  requiredTopics: string[];
+  differentiationTopics: string[];
+}
+
+/**
+ * Market patterns aggregated from competitor analysis
+ */
+export interface MarketPatterns {
+  // Sample info
+  competitorsAnalyzed: number;
+  competitorsFailed: number;
+  totalRequested: number;
+  dataQuality: 'high' | 'medium' | 'low' | 'none';
+  analyzedAt: Date;
+  warnings: string[];
+
+  // Benchmarks by category
+  content: ContentBenchmarks;
+  structure: StructureBenchmarks;
+  visuals: VisualBenchmarks;
+  technical: TechnicalBenchmarks;
+  semantic: SemanticBenchmarks;
+}
+
+/**
+ * Default market patterns (fallback when no data available)
+ */
+export function createDefaultMarketPatterns(warnings: string[]): MarketPatterns {
+  return {
+    competitorsAnalyzed: 0,
+    competitorsFailed: 0,
+    totalRequested: 0,
+    dataQuality: 'none',
+    analyzedAt: new Date(),
+    warnings: [...warnings, 'Using default values - no competitor data available'],
+
+    content: {
+      avgWordCount: 1500,
+      wordCountRange: { min: 1000, max: 2500 },
+      recommendedWordCount: 1500,
+      wordCountConfidence: 'low',
+      avgParagraphs: 20,
+      avgHeadings: 8,
+      avgSentenceLength: 18,
+      audienceLevelDistribution: {},
+      dominantAudienceLevel: 'intermediate',
+    },
+
+    structure: {
+      commonHeadingPatterns: [],
+      avgH2Count: 6,
+      avgH3Count: 8,
+      hasTocPercentage: 0,
+      hasFaqPercentage: 0,
+      dominantContentTemplate: 'guide',
+    },
+
+    visuals: {
+      avgImageCount: 5,
+      imageCountRange: { min: 3, max: 10 },
+      recommendedImageCount: 5,
+      hasVideoPercentage: 0,
+      avgTableCount: 1,
+      commonImageTypes: [],
+    },
+
+    technical: {
+      commonSchemaTypes: ['Article'],
+      schemaPresencePercentage: 0,
+      hasAboutMentionsPercentage: 0,
+      recommendedSchemaTypes: ['Article'],
+    },
+
+    semantic: {
+      rootAttributes: [],
+      rareAttributes: [],
+      uniqueOpportunities: [],
+      requiredTopics: [],
+      differentiationTopics: [],
+    },
+  };
+}
+
+// =============================================================================
+// ANALYSIS WARNING SYSTEM
+// =============================================================================
+
+/**
+ * Analysis warning for user notification
+ */
+export interface AnalysisWarning {
+  url?: string;
+  message: string;
+  severity: 'info' | 'warning' | 'error';
+  fallbackUsed?: string;
+  timestamp: Date;
+}
+
+/**
+ * Analysis status for progress tracking
+ */
+export interface AnalysisStatus {
+  stage: 'idle' | 'fetching-serp' | 'analyzing-competitors' | 'aggregating' | 'complete' | 'error';
+  progress: number;
+  currentUrl?: string;
+  competitorsTotal: number;
+  competitorsSuccess: number;
+  competitorsFailed: number;
+  warnings: AnalysisWarning[];
+  startedAt?: Date;
+  completedAt?: Date;
+}

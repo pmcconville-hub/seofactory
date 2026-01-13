@@ -34,8 +34,8 @@ ${this.info.authorProfile ? `- Author: ${this.info.authorProfile.name} (${this.i
         return prompts.ANALYZE_TOPIC_VIABILITY_PROMPT(topic, context, this.info);
     }
 
-    getBriefPrompt(topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, kg: KnowledgeGraph, responseCode: ResponseCode): string {
-        return prompts.GENERATE_CONTENT_BRIEF_PROMPT(this.info, topic, allTopics, pillars, kg, responseCode);
+    getBriefPrompt(topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, kg: KnowledgeGraph, responseCode: ResponseCode, marketPatterns?: import('../../../types/competitiveIntelligence').MarketPatterns): string {
+        return prompts.GENERATE_CONTENT_BRIEF_PROMPT(this.info, topic, allTopics, pillars, kg, responseCode, marketPatterns);
     }
 
     getDraftPrompt(brief: ContentBrief): string {

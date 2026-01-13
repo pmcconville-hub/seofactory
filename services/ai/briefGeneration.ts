@@ -1,5 +1,6 @@
 
-import { BusinessInfo, ResponseCode, ContentBrief, EnrichedTopic, SEOPillars, KnowledgeGraph, ContentIntegrityResult, SchemaGenerationResult, AuditRuleResult, BriefVisualSemantics, StreamingProgressCallback, HolisticSummary } from '../../types';
+import { BusinessInfo, ResponseCode, ContentBrief, EnrichedTopic, SEOPillars, KnowledgeGraph, ContentIntegrityResult, SchemaGenerationResult, AuditRuleResult, BriefVisualSemantics, StreamingProgressCallback, HolisticSummary, CompetitorSpecs } from '../../types';
+import { MarketPatterns } from '../../types/competitiveIntelligence';
 import * as geminiService from '../geminiService';
 import * as openAiService from '../openAiService';
 import * as anthropicService from '../anthropicService';
@@ -12,6 +13,49 @@ import { analyzeImageRequirements } from '../visualSemanticsService';
 import { shouldApplyMonetizationEnhancement, getMonetizationValidationRules } from './briefOptimization';
 import { validateLanguageSettings } from '../../utils/languageUtils';
 import React from 'react';
+
+/**
+ * Convert MarketPatterns to CompetitorSpecs for storage in ContentBrief
+ */
+const convertToCompetitorSpecs = (marketPatterns: MarketPatterns): CompetitorSpecs => {
+    // Find top competitor word count (max in range)
+    const topWordCount = marketPatterns.content.wordCountRange.max;
+
+    return {
+        dataQuality: marketPatterns.dataQuality,
+        analysisDate: marketPatterns.analyzedAt.toISOString(),
+        competitorsAnalyzed: marketPatterns.competitorsAnalyzed,
+
+        targetWordCount: marketPatterns.content.recommendedWordCount,
+        wordCountRange: marketPatterns.content.wordCountRange,
+        wordCountConfidence: marketPatterns.content.wordCountConfidence,
+
+        targetImageCount: marketPatterns.visuals.recommendedImageCount,
+        recommendedImageTypes: marketPatterns.visuals.commonImageTypes,
+        hasVideoPercentage: marketPatterns.visuals.hasVideoPercentage,
+
+        requiredSchemaTypes: marketPatterns.technical.recommendedSchemaTypes,
+        schemaPresencePercentage: marketPatterns.technical.schemaPresencePercentage,
+
+        avgH2Count: marketPatterns.structure.avgH2Count,
+        avgH3Count: marketPatterns.structure.avgH3Count,
+        dominantContentTemplate: marketPatterns.structure.dominantContentTemplate,
+        dominantAudienceLevel: marketPatterns.content.dominantAudienceLevel,
+
+        requiredTopics: marketPatterns.semantic.requiredTopics,
+        differentiationTopics: marketPatterns.semantic.differentiationTopics,
+        rootAttributes: marketPatterns.semantic.rootAttributes,
+        rareAttributes: marketPatterns.semantic.rareAttributes,
+
+        benchmarks: {
+            topCompetitorWordCount: topWordCount,
+            avgCompetitorWordCount: marketPatterns.content.avgWordCount,
+            topCompetitorImageCount: marketPatterns.visuals.imageCountRange.max,
+        },
+
+        warnings: marketPatterns.warnings,
+    };
+};
 
 /**
  * Validate language and region settings before generation
@@ -372,17 +416,37 @@ const suggestLengthPreset = (topic: EnrichedTopic): {
 };
 
 export const generateContentBrief = async (
-    businessInfo: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, knowledgeGraph: KnowledgeGraph, responseCode: ResponseCode, dispatch: React.Dispatch<any>
+    businessInfo: BusinessInfo,
+    topic: EnrichedTopic,
+    allTopics: EnrichedTopic[],
+    pillars: SEOPillars,
+    knowledgeGraph: KnowledgeGraph,
+    responseCode: ResponseCode,
+    dispatch: React.Dispatch<any>,
+    marketPatterns?: MarketPatterns  // Optional: competitor-derived market patterns
 ): Promise<Omit<ContentBrief, 'id' | 'topic_id' | 'articleDraft'>> => {
     // Validate language and region settings before generation
     validateLanguageAndRegion(businessInfo, dispatch);
 
+    // Log if using market data
+    if (marketPatterns && marketPatterns.dataQuality !== 'none') {
+        dispatch({
+            type: 'LOG_EVENT',
+            payload: {
+                service: 'BriefGeneration',
+                message: `Using competitor analysis data (${marketPatterns.competitorsAnalyzed} competitors, quality: ${marketPatterns.dataQuality})`,
+                status: 'info',
+                timestamp: Date.now()
+            }
+        });
+    }
+
     const brief = await dispatchToProvider(businessInfo, {
-        gemini: () => geminiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch),
-        openai: () => openAiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch),
-        anthropic: () => anthropicService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch),
-        perplexity: () => perplexityService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch),
-        openrouter: () => openRouterService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch),
+        gemini: () => geminiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns),
+        openai: () => openAiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns),
+        anthropic: () => anthropicService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns),
+        perplexity: () => perplexityService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns),
+        openrouter: () => openRouterService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns),
     });
 
     // Validate monetization briefs meet minimum requirements
@@ -390,15 +454,22 @@ export const generateContentBrief = async (
         validateMonetizationBrief(brief, dispatch);
     }
 
-    // Suggest content length based on topic type
+    // Suggest content length based on topic type and market data
     const lengthSuggestion = suggestLengthPreset(topic);
 
     // Enrich with enhanced visual semantics and length suggestion
     const enrichedBrief = await enrichBriefWithVisualSemantics(brief, topic);
+
+    // Attach competitor specs if market patterns provided
+    const competitorSpecs = marketPatterns && marketPatterns.dataQuality !== 'none'
+        ? convertToCompetitorSpecs(marketPatterns)
+        : undefined;
+
     return {
         ...enrichedBrief,
         suggestedLengthPreset: lengthSuggestion.preset,
-        suggestedLengthReason: lengthSuggestion.reason
+        suggestedLengthReason: lengthSuggestion.reason,
+        competitorSpecs,
     };
 };
 

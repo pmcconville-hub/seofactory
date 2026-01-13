@@ -411,10 +411,11 @@ export const suggestResponseCode = async (info: BusinessInfo, topic: string, dis
 };
 
 export const generateContentBrief = async (
-    info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, kg: KnowledgeGraph, code: ResponseCode, dispatch: React.Dispatch<any>
+    info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, kg: KnowledgeGraph, code: ResponseCode, dispatch: React.Dispatch<any>,
+    marketPatterns?: import('../types/competitiveIntelligence').MarketPatterns
 ): Promise<Omit<ContentBrief, 'id' | 'topic_id' | 'articleDraft'>> => {
     const sanitizer = new AIResponseSanitizer(dispatch);
-    const prompt = prompts.GENERATE_CONTENT_BRIEF_PROMPT(info, topic, allTopics, pillars, kg, code);
+    const prompt = prompts.GENERATE_CONTENT_BRIEF_PROMPT(info, topic, allTopics, pillars, kg, code, marketPatterns);
     
     // Define expected schema for sanitizer (mirroring Gemini schema but for sanitizer consumption)
     const schema = {

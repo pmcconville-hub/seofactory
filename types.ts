@@ -796,6 +796,35 @@ export interface ContentBrief {
   // Content length recommendation
   suggestedLengthPreset?: 'minimal' | 'short' | 'standard' | 'comprehensive';
   suggestedLengthReason?: string;
+
+  // Competitor-derived specifications (from enhanced brief generation)
+  competitorSpecs?: {
+    dataQuality: 'high' | 'medium' | 'low' | 'none';
+    analysisDate: string;
+    competitorsAnalyzed: number;
+    targetWordCount: number;
+    wordCountRange: { min: number; max: number };
+    wordCountConfidence: 'high' | 'medium' | 'low';
+    targetImageCount: number;
+    recommendedImageTypes: string[];
+    hasVideoPercentage: number;
+    requiredSchemaTypes: string[];
+    schemaPresencePercentage: number;
+    avgH2Count: number;
+    avgH3Count: number;
+    dominantContentTemplate: string;
+    dominantAudienceLevel: string;
+    requiredTopics: string[];
+    differentiationTopics: string[];
+    rootAttributes: { attribute: string; coverage: number }[];
+    rareAttributes: { attribute: string; coverage: number }[];
+    benchmarks: {
+      topCompetitorWordCount: number;
+      avgCompetitorWordCount: number;
+      topCompetitorImageCount: number;
+    };
+    warnings: string[];
+  };
 }
 
 export interface SerpResult {

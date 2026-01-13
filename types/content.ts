@@ -341,6 +341,59 @@ export interface ContentBrief {
 
   // Business fields
   cta?: string; // Call to action for business conversion
+
+  // Competitor-derived specifications (Phase 3 Enhancement)
+  competitorSpecs?: CompetitorSpecs;
+
+  // Content length suggestion based on topic type and market data
+  suggestedLengthPreset?: 'minimal' | 'short' | 'standard' | 'comprehensive';
+  suggestedLengthReason?: string;
+}
+
+/**
+ * Competitor-derived specifications for content brief
+ * Generated from market pattern analysis (Phase 3)
+ */
+export interface CompetitorSpecs {
+  dataQuality: 'high' | 'medium' | 'low' | 'none';
+  analysisDate: string;
+  competitorsAnalyzed: number;
+
+  // Word count targets
+  targetWordCount: number;
+  wordCountRange: { min: number; max: number };
+  wordCountConfidence: 'high' | 'medium' | 'low';
+
+  // Visual requirements
+  targetImageCount: number;
+  recommendedImageTypes: string[];
+  hasVideoPercentage: number;
+
+  // Schema requirements
+  requiredSchemaTypes: string[];
+  schemaPresencePercentage: number;
+
+  // Content structure
+  avgH2Count: number;
+  avgH3Count: number;
+  dominantContentTemplate: string;
+  dominantAudienceLevel: string;
+
+  // Semantic requirements
+  requiredTopics: string[];
+  differentiationTopics: string[];
+  rootAttributes: { attribute: string; coverage: number }[];
+  rareAttributes: { attribute: string; coverage: number }[];
+
+  // Benchmarks
+  benchmarks: {
+    topCompetitorWordCount: number;
+    avgCompetitorWordCount: number;
+    topCompetitorImageCount: number;
+  };
+
+  // Analysis warnings
+  warnings: string[];
 }
 
 // ============================================================================

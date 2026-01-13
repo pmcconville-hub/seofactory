@@ -36,6 +36,9 @@ import {
 } from '../settings/ContentGenerationModeSelector';
 import { LiveGenerationMonitor } from '../quality/LiveGenerationMonitor';
 import type { PassDelta } from '../../services/ai/contentGeneration/tracking';
+import { useEnhancedBriefGeneration, EnhancedBriefGenerationOptions } from '../../hooks/useEnhancedBriefGeneration';
+import { AnalysisStatusPanel } from '../analysis/AnalysisStatusPanel';
+import { AnalysisDepth, DEPTH_CONFIG } from '../../types/competitiveIntelligence';
 
 interface ContentBriefModalProps {
   allTopics: EnrichedTopic[];
@@ -163,47 +166,87 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
     // Competitive intelligence state
     const [showCompetitiveAnalysis, setShowCompetitiveAnalysis] = useState(false);
 
-    // Handle full brief regeneration (from scratch)
+    // Analysis depth selector for enhanced brief generation
+    const [analysisDepth, setAnalysisDepth] = useState<AnalysisDepth>(() => {
+        try {
+            const saved = localStorage.getItem('briefAnalysisDepth');
+            if (saved && ['quick', 'standard', 'thorough'].includes(saved)) {
+                return saved as AnalysisDepth;
+            }
+        } catch (e) {
+            console.warn('Failed to load analysis depth from localStorage:', e);
+        }
+        return 'standard';
+    });
+
+    // Persist analysis depth to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('briefAnalysisDepth', analysisDepth);
+        } catch (e) {
+            console.warn('Failed to save analysis depth to localStorage:', e);
+        }
+    }, [analysisDepth]);
+
+    // Enhanced brief generation hook
+    const {
+        isAnalyzing,
+        isGeneratingBrief,
+        status: analysisStatus,
+        generateEnhancedBrief,
+        cancel: cancelEnhancedGeneration,
+        clearCache: clearAnalysisCache,
+    } = useEnhancedBriefGeneration();
+
+    // Handle full brief regeneration (from scratch) - now uses enhanced competitor-aware generation
     const handleFullRegenerate = useCallback(async () => {
         if (!brief || !activeMapId || !activeBriefTopic || !activeMap?.pillars || !knowledgeGraph) return;
 
         setIsRegeneratingBrief(true);
         try {
-            // Import the brief generation service
-            const { generateContentBrief } = await import('../../services/ai/briefGeneration');
-
             // Determine response code (default to INFORMATIONAL for existing content)
             const responseCode = (activeBriefTopic.metadata?.response_code as ResponseCode) || ResponseCode.INFORMATIONAL;
 
             dispatch({ type: 'SET_LOADING', payload: { key: 'brief', value: true } });
-            dispatch({ type: 'SET_NOTIFICATION', payload: 'Regenerating brief from scratch...' });
+            dispatch({ type: 'SET_NOTIFICATION', payload: 'Analyzing competitors and regenerating brief...' });
 
-            // Generate new brief using existing knowledge graph from state
-            const newBrief = await generateContentBrief(
+            // Use enhanced brief generation with competitor analysis
+            const result = await generateEnhancedBrief(
                 effectiveBusinessInfo,
                 activeBriefTopic,
                 allTopics,
                 activeMap.pillars,
                 knowledgeGraph,
                 responseCode,
-                dispatch
+                dispatch,
+                {
+                    analysisDepth,
+                    cacheMaxAgeDays: 30,
+                    forceReanalysis: false, // Use cached data if available and fresh
+                    skipAnalysis: false,
+                }
             );
 
-            if (newBrief) {
+            if (result.error) {
+                throw new Error(result.error);
+            }
+
+            if (result.brief) {
                 // Persist to Supabase - cast complex objects to any for JSON storage
                 const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
                 const { data: updateData, error: dbError } = await supabase
                     .from('content_briefs')
                     .update({
-                        meta_description: newBrief.metaDescription,
-                        structured_outline: newBrief.structured_outline as any,
-                        serp_analysis: newBrief.serpAnalysis as any,
-                        contextual_bridge: newBrief.contextualBridge as any,
-                        visuals: newBrief.visuals as any,
-                        visual_semantics: newBrief.visual_semantics as any,
-                        featured_snippet_target: newBrief.featured_snippet_target as any,
-                        query_type_format: newBrief.query_type_format,
-                        discourse_anchors: newBrief.discourse_anchors as any,
+                        meta_description: result.brief.metaDescription,
+                        structured_outline: result.brief.structured_outline as any,
+                        serp_analysis: result.brief.serpAnalysis as any,
+                        contextual_bridge: result.brief.contextualBridge as any,
+                        visuals: result.brief.visuals as any,
+                        visual_semantics: result.brief.visual_semantics as any,
+                        featured_snippet_target: result.brief.featured_snippet_target as any,
+                        query_type_format: result.brief.query_type_format,
+                        discourse_anchors: result.brief.discourse_anchors as any,
+                        competitor_specs: result.brief.competitorSpecs as any, // NEW: Save competitor data
                         updated_at: new Date().toISOString()
                     })
                     .eq('id', brief.id)
@@ -226,10 +269,17 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                     payload: {
                         mapId: activeMapId,
                         topicId: activeBriefTopic.id,
-                        updates: newBrief
+                        updates: result.brief
                     }
                 });
-                dispatch({ type: 'SET_NOTIFICATION', payload: 'Brief regenerated successfully!' });
+
+                // Show success with warnings if any
+                const warningCount = result.warnings.filter(w => w.severity !== 'info').length;
+                if (warningCount > 0) {
+                    dispatch({ type: 'SET_NOTIFICATION', payload: `Brief regenerated with ${warningCount} warning(s). Check analysis for details.` });
+                } else {
+                    dispatch({ type: 'SET_NOTIFICATION', payload: 'Brief regenerated successfully with competitor data!' });
+                }
             }
         } catch (error) {
             console.error('Brief regeneration failed:', error);
@@ -238,7 +288,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
             setIsRegeneratingBrief(false);
             dispatch({ type: 'SET_LOADING', payload: { key: 'brief', value: false } });
         }
-    }, [brief, activeMapId, activeBriefTopic, activeMap?.pillars, effectiveBusinessInfo, allTopics, knowledgeGraph, dispatch]);
+    }, [brief, activeMapId, activeBriefTopic, activeMap?.pillars, effectiveBusinessInfo, allTopics, knowledgeGraph, dispatch, generateEnhancedBrief, analysisDepth]);
 
     // Handle repair missing fields
     const handleRepairMissing = useCallback(async (missingFields: string[]) => {
@@ -955,13 +1005,74 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                     )}
 
                     <div className="space-y-6">
+                        {/* Competitor Analysis Status Panel - shows during enhanced brief generation */}
+                        {(isAnalyzing || isGeneratingBrief || analysisStatus.stage !== 'idle') && (
+                            <AnalysisStatusPanel
+                                status={analysisStatus}
+                                onCancel={cancelEnhancedGeneration}
+                                compact={false}
+                            />
+                        )}
+
+                        {/* Analysis Depth Selector - shown when not generating */}
+                        {!isAnalyzing && !isGeneratingBrief && activeBriefTopic && (
+                            <Card className="p-4 bg-gray-900/50 border border-gray-700">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <h3 className="font-semibold text-sm text-gray-300">Competitor Analysis Depth</h3>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Affects how many competitors are analyzed before generating the brief
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <select
+                                            value={analysisDepth}
+                                            onChange={(e) => setAnalysisDepth(e.target.value as AnalysisDepth)}
+                                            className="text-sm bg-gray-800 border border-gray-600 text-gray-200 rounded px-3 py-1.5 focus:ring-blue-500 focus:border-blue-500"
+                                        >
+                                            <option value="quick">{DEPTH_CONFIG.quick.label}</option>
+                                            <option value="standard">{DEPTH_CONFIG.standard.label}</option>
+                                            <option value="thorough">{DEPTH_CONFIG.thorough.label}</option>
+                                        </select>
+                                        <button
+                                            onClick={() => clearAnalysisCache(activeBriefTopic.id)}
+                                            className="text-xs text-gray-500 hover:text-gray-300 px-2 py-1 rounded border border-gray-700 hover:border-gray-600"
+                                            title="Clear cached competitor analysis for this topic"
+                                        >
+                                            Clear Cache
+                                        </button>
+                                    </div>
+                                </div>
+                                {/* Show cached analysis info if available */}
+                                {brief.competitorSpecs && (
+                                    <div className="mt-3 pt-3 border-t border-gray-700">
+                                        <div className="flex items-center gap-4 text-xs text-gray-400">
+                                            <span>
+                                                Last analyzed: {new Date(brief.competitorSpecs.analysisDate).toLocaleDateString()}
+                                            </span>
+                                            <span className={`font-medium ${
+                                                brief.competitorSpecs.dataQuality === 'high' ? 'text-green-400' :
+                                                brief.competitorSpecs.dataQuality === 'medium' ? 'text-yellow-400' :
+                                                brief.competitorSpecs.dataQuality === 'low' ? 'text-red-400' : 'text-gray-500'
+                                            }`}>
+                                                {brief.competitorSpecs.competitorsAnalyzed} competitors • {brief.competitorSpecs.dataQuality} quality
+                                            </span>
+                                            <span>
+                                                Target: {brief.competitorSpecs.targetWordCount} words
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+                            </Card>
+                        )}
+
                         {/* Brief Health Overview */}
                         <BriefHealthOverview
                             brief={brief}
                             onRepairMissing={handleRepairMissing}
                             onRegenerateBrief={handleFullRegenerate}
                             isRepairing={isRepairingBrief}
-                            isRegenerating={isRegeneratingBrief}
+                            isRegenerating={isRegeneratingBrief || isAnalyzing || isGeneratingBrief}
                         />
 
                         {/* Competitive Intelligence Section */}

@@ -77,7 +77,7 @@ class CacheService {
         ttlSeconds: number = 3600 // Default to 1 hour
     ): Promise<T> {
         const key = this.generateCacheKey(context, params);
-        
+
         // 1. Check in-memory cache
         const memEntry = this.memoryCache.get(key);
         if (memEntry && Date.now() < memEntry.expiry) {
@@ -104,8 +104,49 @@ class CacheService {
         };
         this.memoryCache.set(key, entry);
         await this.setToDb(key, freshData, ttlSeconds);
-        
+
         return freshData;
+    }
+
+    /**
+     * Direct cache get - check memory then IndexedDB
+     */
+    public async get<T>(key: string): Promise<T | null> {
+        // 1. Check in-memory cache
+        const memEntry = this.memoryCache.get(key);
+        if (memEntry && Date.now() < memEntry.expiry) {
+            return memEntry.value as T;
+        }
+
+        // 2. Check IndexedDB cache
+        const dbValue = await this.getFromDb(key);
+        return dbValue as T | null;
+    }
+
+    /**
+     * Direct cache set - store in both memory and IndexedDB
+     */
+    public async set<T>(key: string, value: T, ttlSeconds: number = 3600): Promise<void> {
+        const entry: CacheEntry = {
+            key,
+            value,
+            expiry: Date.now() + ttlSeconds * 1000,
+        };
+        this.memoryCache.set(key, entry);
+        await this.setToDb(key, value, ttlSeconds);
+    }
+
+    /**
+     * Delete a specific cache entry
+     */
+    public async delete(key: string): Promise<void> {
+        this.memoryCache.delete(key);
+        try {
+            const db = await this.dbPromise;
+            await db.delete(STORE_NAME, key);
+        } catch (error) {
+            console.error("Error deleting item from IndexedDB:", error);
+        }
     }
 }
 
