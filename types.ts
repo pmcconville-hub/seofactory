@@ -1205,6 +1205,7 @@ export interface AuditRuleResult {
     details: string;
     remediation?: string; // The suggested fix for the AI re-generation loop
     affectedTextSnippet?: string; // The specific sentence/paragraph failing the rule
+    score?: number; // Optional numeric score (0-100) for rules that provide granular quality metrics
 }
 
 // NEW: Triple Analysis Types

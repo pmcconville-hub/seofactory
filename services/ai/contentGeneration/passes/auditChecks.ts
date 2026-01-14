@@ -1376,10 +1376,17 @@ export function checkTableAppropriateness(draft: string): AuditRuleResult {
  * Check 25: Sentence Length
  * Sentences should be under 30 words for optimal NLP processing
  * Semantic SEO framework requirement
+ *
+ * Note: The language parameter is accepted for consistency with other audit checks
+ * and could be used for language-specific thresholds (e.g., German compound words
+ * naturally create longer sentences). Currently uses universal 30-word threshold.
  */
 function checkSentenceLength(text: string, language?: string): AuditRuleResult {
+  // Language parameter available for future language-specific thresholds
+  void language;
+
   const sentences = splitSentences(text);
-  const threshold = 30; // Default English threshold
+  const threshold = 30; // Universal threshold - could vary by language in future
 
   const longSentences = sentences.filter(sentence => {
     const wordCount = sentence.split(/\s+/).filter(w => w.length > 0).length;

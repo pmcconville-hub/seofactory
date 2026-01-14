@@ -229,6 +229,7 @@ export interface AuditRuleResult {
   details: string;
   remediation?: string;
   affectedTextSnippet?: string;
+  score?: number; // Optional numeric score (0-100) for rules that provide granular quality metrics
 }
 
 /**
