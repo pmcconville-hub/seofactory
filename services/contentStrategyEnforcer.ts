@@ -497,6 +497,7 @@ function checkEavCoverage(ctx: StrategyContext): StrategyRequirement {
 
   // Check which attributes are mentioned
   const coveredAttributes = attributes.filter(eav => {
+    if (!eav.attribute) return false;  // Skip malformed EAVs
     const attrLower = eav.attribute.toLowerCase();
     const valueLower = String(eav.value || '').toLowerCase();
     return draftLower.includes(attrLower) || (valueLower && draftLower.includes(valueLower));
@@ -561,6 +562,7 @@ function checkStructureAlignment(ctx: StrategyContext): StrategyRequirement {
 
   // Match headings to outline
   const matchedSections = outlineSections.filter(section => {
+    if (!section.heading) return false;  // Skip malformed sections
     const sectionHeading = section.heading.toLowerCase().trim();
     return draftHeadings.some(dh =>
       dh.includes(sectionHeading) ||
@@ -585,7 +587,7 @@ function checkStructureAlignment(ctx: StrategyContext): StrategyRequirement {
   }
 
   const missingSections = outlineSections
-    .filter(s => !matchedSections.includes(s))
+    .filter(s => !matchedSections.includes(s) && s.heading)
     .slice(0, 3)
     .map(s => s.heading);
 
