@@ -547,12 +547,97 @@ function checkBestPractices(
 // EXTERNAL VALIDATION
 // ============================================================================
 
-async function runExternalSchemaValidation(
+interface ExternalValidationResult {
+  source: string;
+  isValid: boolean;
+  errors: string[];
+}
+
+/**
+ * Run external schema validation
+ * Option 1: Local vocabulary validation (always available)
+ * Option 2: Google Rich Results Test API (if configured - future)
+ */
+export async function runExternalSchemaValidation(
   schema: object
-): Promise<{ source: string; isValid: boolean; errors: string[] } | undefined> {
-  // Note: This would typically call Google's Rich Results Test API or similar
-  // For now, we'll return undefined as external validation requires API setup
-  return undefined;
+): Promise<ExternalValidationResult | undefined> {
+  try {
+    // Always run local vocabulary validation
+    const vocabErrors = validateSchemaVocabulary(schema);
+
+    return {
+      source: 'local-vocabulary',
+      isValid: vocabErrors.length === 0,
+      errors: vocabErrors
+    };
+  } catch (error) {
+    console.error('[SchemaValidator] External validation failed:', error);
+    return undefined;
+  }
+}
+
+/**
+ * Validate schema against Schema.org vocabulary
+ * Checks @type values, property names, and deprecated properties
+ */
+export function validateSchemaVocabulary(schema: object): string[] {
+  const errors: string[] = [];
+
+  // Common Schema.org types
+  const VALID_TYPES = new Set([
+    'Article', 'NewsArticle', 'BlogPosting', 'TechArticle', 'HowTo', 'FAQPage',
+    'Organization', 'LocalBusiness', 'Person', 'Product', 'Service', 'Event',
+    'WebPage', 'WebSite', 'BreadcrumbList', 'ListItem', 'ImageObject', 'VideoObject',
+    'Question', 'Answer', 'Review', 'AggregateRating', 'Offer', 'ItemList',
+    'HowToStep', 'HowToSection', 'HowToDirection', 'HowToTip', 'HowToSupply', 'HowToTool',
+    'MedicalWebPage', 'HealthTopicContent', 'AboutPage', 'ContactPage',
+    'ItemListElement', 'ClaimReview', 'Rating', 'PostalAddress', 'GeoCoordinates',
+    // Additional types from existing SCHEMA_ORG_TYPES set
+    'Corporation', 'ProfilePage', 'CollectionPage', 'Place', 'Thing', 'CreativeWork',
+    'MonetaryAmount', 'QuantitativeValue'
+  ]);
+
+  // Deprecated Schema.org properties to warn about
+  const DEPRECATED_PROPERTIES = new Set([
+    'mainEntityOfPage', // Replaced by @id or isPartOf
+  ]);
+
+  // Validate recursively
+  function validateNode(node: any, path: string) {
+    if (!node || typeof node !== 'object') return;
+
+    if (Array.isArray(node)) {
+      node.forEach((item, index) => validateNode(item, `${path}[${index}]`));
+      return;
+    }
+
+    // Check @type
+    if (node['@type']) {
+      const types = Array.isArray(node['@type']) ? node['@type'] : [node['@type']];
+      for (const type of types) {
+        if (!VALID_TYPES.has(type)) {
+          errors.push(`Unknown @type "${type}" at ${path} - verify it exists in Schema.org vocabulary`);
+        }
+      }
+    }
+
+    // Check for deprecated properties
+    for (const prop of Object.keys(node)) {
+      if (DEPRECATED_PROPERTIES.has(prop)) {
+        errors.push(`Deprecated property "${prop}" at ${path} - consider using alternatives`);
+      }
+    }
+
+    // Recurse into nested objects
+    for (const [key, value] of Object.entries(node)) {
+      if (typeof value === 'object' && value !== null) {
+        validateNode(value, `${path}.${key}`);
+      }
+    }
+  }
+
+  validateNode(schema, 'root');
+  return errors;
 }
 
 // ============================================================================
