@@ -50,8 +50,21 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Missing Anthropic API key' }, 400, origin);
     }
 
-    // Get the request body
-    const body = await req.json();
+    // Get the request body with better error handling
+    let body: any;
+    try {
+      const rawBody = await req.text();
+      if (!rawBody || rawBody.trim() === '') {
+        return json({ error: 'Empty request body' }, 400, origin);
+      }
+      body = JSON.parse(rawBody);
+    } catch (parseError: any) {
+      console.error('[anthropic-proxy] JSON parse error:', parseError.message);
+      return json({
+        error: 'Invalid JSON in request body',
+        details: parseError.message
+      }, 400, origin);
+    }
 
     // Validate required fields
     if (!body.model || !body.messages) {
@@ -181,10 +194,17 @@ Deno.serve(async (req: Request) => {
 
   } catch (error: any) {
     const elapsed = Date.now() - startTime;
-    console.error(`[anthropic-proxy] Function error after ${elapsed}ms:`, error);
+    const errorDetails = {
+      message: error.message || 'Unknown error',
+      name: error.name || 'Error',
+      stack: error.stack?.split('\n').slice(0, 3).join('\n') || 'No stack trace',
+    };
+    console.error(`[anthropic-proxy] Function error after ${elapsed}ms:`, errorDetails);
     return json({
       error: error.message || 'Internal server error',
-      elapsed_ms: elapsed
+      error_type: error.name || 'UnknownError',
+      elapsed_ms: elapsed,
+      details: errorDetails.stack
     }, 500, origin);
   }
 });

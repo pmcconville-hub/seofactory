@@ -516,10 +516,10 @@ export function validateForExport(markdown: string): ExportValidationResult {
   const blockers: string[] = [];
   const warnings: string[] = [];
 
-  // Check for unresolved IMAGE placeholders
+  // Check for unresolved IMAGE placeholders (warning, not blocker - users can add images in CMS)
   const imagePlaceholders = markdown.match(/\[IMAGE:[^\]]+\]/g);
   if (imagePlaceholders && imagePlaceholders.length > 0) {
-    blockers.push(`${imagePlaceholders.length} unresolved [IMAGE:...] placeholder(s) found`);
+    warnings.push(`${imagePlaceholders.length} unresolved [IMAGE:...] placeholder(s) - add images before publishing`);
   }
 
   // Check for other placeholders
