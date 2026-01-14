@@ -39,6 +39,7 @@ import {
 } from './ai/centralEntityAnalyzer';
 
 import { extractPageContent } from './jinaService';
+import { scrapeUrl as firecrawlScrapeUrl } from './firecrawlService';
 import { cacheService } from './cacheService';
 
 // =============================================================================
@@ -212,19 +213,53 @@ export async function analyzeContentForUrl(
         ? parseHtmlContent(options.providedContent)
         : parseMarkdownContent(options.providedContent);
     } else {
-      // Fetch via Jina
-      if (!options.jinaApiKey) {
-        throw new Error('Jina API key required to fetch content. Provide jinaApiKey or providedContent.');
+      // Try providers in order: Jina -> Firecrawl
+      let content: string | null = null;
+      let lastError: Error | null = null;
+
+      // Try Jina first (if key available)
+      if (options.jinaApiKey && !content) {
+        try {
+          const proxyConfig = options.supabaseUrl && options.supabaseAnonKey
+            ? { supabaseUrl: options.supabaseUrl, supabaseAnonKey: options.supabaseAnonKey }
+            : undefined;
+          const jinaResult = await extractPageContent(url, options.jinaApiKey, proxyConfig);
+          if (jinaResult?.content) {
+            content = jinaResult.content;
+          }
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          // Check if it's a balance/auth error (don't retry other providers for auth issues)
+          const errorMsg = lastError.message.toLowerCase();
+          if (errorMsg.includes('402') || errorMsg.includes('insufficient') || errorMsg.includes('balance')) {
+            console.warn(`[ContentAnalysis] Jina API balance depleted, falling back to Firecrawl for ${url}`);
+          }
+        }
       }
-      // Build proxy config for CORS bypass
-      const proxyConfig = options.supabaseUrl && options.supabaseAnonKey
-        ? { supabaseUrl: options.supabaseUrl, supabaseAnonKey: options.supabaseAnonKey }
-        : undefined;
-      const jinaResult = await extractPageContent(url, options.jinaApiKey, proxyConfig);
-      if (!jinaResult || !jinaResult.content) {
-        throw new Error(`Failed to fetch content from ${url}`);
+
+      // Fallback to Firecrawl (if Jina failed and key available)
+      if (!content && options.firecrawlApiKey) {
+        try {
+          const firecrawlResult = await firecrawlScrapeUrl(url, options.firecrawlApiKey);
+          if (firecrawlResult?.markdown) {
+            content = firecrawlResult.markdown;
+            console.log(`[ContentAnalysis] Fetched ${url} via Firecrawl fallback`);
+          }
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          console.warn(`[ContentAnalysis] Firecrawl fallback also failed for ${url}:`, lastError.message);
+        }
       }
-      parsedContent = parseMarkdownContent(jinaResult.content);
+
+      // If still no content, throw error
+      if (!content) {
+        if (!options.jinaApiKey && !options.firecrawlApiKey) {
+          throw new Error('No API key provided. Provide jinaApiKey or firecrawlApiKey.');
+        }
+        throw lastError || new Error(`Failed to fetch content from ${url} - all providers failed`);
+      }
+
+      parsedContent = parseMarkdownContent(content);
     }
 
     // Extract EAVs
