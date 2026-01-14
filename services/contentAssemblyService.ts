@@ -368,6 +368,7 @@ export function convertToHtml(markdown: string, options: AssemblyOptions = {}): 
  * Handles special characters, accents, and multi-language text.
  */
 export function generateSlug(title: string): string {
+  if (!title) return 'article';
   return title
     .toLowerCase()
     // Replace accented characters with ASCII equivalents

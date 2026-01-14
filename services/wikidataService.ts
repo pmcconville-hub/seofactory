@@ -285,6 +285,10 @@ export async function resolveEntity(
   type?: SchemaEntityType,
   language: string = 'en'
 ): Promise<ResolvedEntity | null> {
+  // Guard against undefined inputs
+  if (!name) return null;
+  const safeContext = context || '';
+
   // Search for the entity
   const searchResults = await searchWikidata(name, type, language, 5);
 
@@ -305,7 +309,7 @@ export async function resolveEntity(
     // Description contains context words
     if (result.description) {
       const descWords = result.description.toLowerCase().split(/\s+/);
-      const contextWords = context.toLowerCase().split(/\s+/);
+      const contextWords = safeContext.toLowerCase().split(/\s+/);
       const matches = contextWords.filter(w => descWords.includes(w)).length;
       score += matches * 2;
 
