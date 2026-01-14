@@ -2,6 +2,7 @@
 
 import { ValidationViolation, SectionGenerationContext } from '../../../../../types';
 import { getLanguageName } from '../../../../../utils/languageUtils';
+import { splitSentences } from '../../../../../utils/sentenceTokenizer';
 
 /**
  * Multilingual article prefixes (definite/indefinite articles)
@@ -38,7 +39,7 @@ export class StructureValidator {
     const language = context.language;
     const articlePrefixes = getArticlePrefixes(language);
 
-    const sentences = content.split(/[.!?]+\s*/).filter(s => s.trim().length > 0);
+    const sentences = splitSentences(content);
     let entityAsSubjectCount = 0;
 
     sentences.forEach((sentence, idx) => {

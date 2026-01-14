@@ -17,6 +17,7 @@ import {
   ContextualBridgeSection,
 } from '../../../types';
 import { SectionDefinition } from '../../../config/contentPrompts/sectionPrompt';
+import { splitSentences } from '../../../utils/sentenceTokenizer';
 
 /**
  * Build flow guidance for a section before generation
@@ -224,7 +225,8 @@ function extractBridgeOpener(
     const bridgeSection = bridge as ContextualBridgeSection;
     // Extract first sentence from the content as opener suggestion
     if (bridgeSection.content) {
-      const firstSentence = bridgeSection.content.split(/[.!?]/)[0]?.trim();
+      const sentences = splitSentences(bridgeSection.content);
+      const firstSentence = sentences[0]?.trim();
       return firstSentence || undefined;
     }
   }

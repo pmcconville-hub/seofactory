@@ -1,6 +1,7 @@
 // services/ai/contentGeneration/rulesEngine/validators/formatCodeValidator.ts
 
 import { ValidationViolation, FormatCode } from '../../../../../types';
+import { splitSentences } from '../../../../../utils/sentenceTokenizer';
 
 export class FormatCodeValidator {
   private static readonly FS_MIN_WORDS = 40;
@@ -64,7 +65,7 @@ export class FormatCodeValidator {
     const violations: ValidationViolation[] = [];
 
     // PAA should have definition + expansion structure
-    const sentences = content.split(/[.!?]+\s*/).filter(s => s.trim().length > 0);
+    const sentences = splitSentences(content);
 
     if (sentences.length < 2) {
       violations.push({

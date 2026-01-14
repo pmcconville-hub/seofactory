@@ -2,6 +2,7 @@
 
 import { ValidationViolation, SemanticTriple, SectionGenerationContext } from '../../../../../types';
 import { getLanguageName } from '../../../../../utils/languageUtils';
+import { splitSentences } from '../../../../../utils/sentenceTokenizer';
 
 /**
  * Result of EAV density validation
@@ -290,7 +291,7 @@ export class EAVDensityValidator {
    */
   static validate(content: string, context?: SectionGenerationContext): ValidationViolation[] {
     const violations: ValidationViolation[] = [];
-    const sentences = this.splitSentences(content);
+    const sentences = splitSentences(content);
     const language = context?.language;
     const patterns = getEavPatterns(language);
     const eavPatterns = buildEavRegexPatterns(patterns.verbs);
@@ -339,7 +340,7 @@ export class EAVDensityValidator {
    * Calculate EAV density percentage based on EAV patterns
    */
   static calculateDensity(content: string, language?: string): number {
-    const sentences = this.splitSentences(content);
+    const sentences = splitSentences(content);
     if (sentences.length === 0) return 0;
 
     const patterns = getEavPatterns(language);
@@ -370,13 +371,6 @@ export class EAVDensityValidator {
     });
 
     return Math.round((foundCount / eavTerms.length) * 100);
-  }
-
-  private static splitSentences(content: string): string[] {
-    return content
-      .split(/(?<=[.!?])\s+/)
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
   }
 }
 

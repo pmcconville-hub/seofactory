@@ -2,6 +2,7 @@
 
 import { ValidationViolation, SectionGenerationContext } from '../../../../../types';
 import { getLanguageName } from '../../../../../utils/languageUtils';
+import { splitSentences } from '../../../../../utils/sentenceTokenizer';
 
 /**
  * Multilingual bridge/transition patterns
@@ -64,7 +65,8 @@ export class ContextualBridgeValidator {
     const language = context.language;
     const bridgePatterns = getBridgePatterns(language);
 
-    const firstSentence = content.split(/[.!?]/)[0] || '';
+    const sentences = splitSentences(content);
+    const firstSentence = sentences[0] || '';
     const hasBridge = bridgePatterns.some(p => p.test(firstSentence));
 
     if (!hasBridge) {

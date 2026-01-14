@@ -6,6 +6,7 @@ import {
   HolisticSummaryContext
 } from '../../../types';
 import { getLanguageName } from '../../../utils/languageUtils';
+import { splitSentences } from '../../../utils/sentenceTokenizer';
 
 /**
  * Multilingual stop words for vocabulary analysis
@@ -301,7 +302,7 @@ function extractSectionKeyTerms(
     const content = s.current_content || '';
 
     // Extract last sentence for discourse chaining
-    const sentences = content.split(/[.!?]+/).filter(sent => sent.trim());
+    const sentences = splitSentences(content);
     const lastSentence = sentences[sentences.length - 1]?.trim() || '';
 
     // Extract top 5 key terms using simple TF-IDF approximation

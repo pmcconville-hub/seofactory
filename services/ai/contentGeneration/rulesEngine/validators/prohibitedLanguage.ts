@@ -2,6 +2,7 @@
 
 import { ValidationViolation, SectionGenerationContext } from '../../../../../types';
 import { getLanguageName } from '../../../../../utils/languageUtils';
+import { splitSentences } from '../../../../../utils/sentenceTokenizer';
 
 /**
  * Multilingual patterns for prohibited language detection
@@ -254,7 +255,7 @@ export class ProhibitedLanguageValidator {
     }
 
     // Check ambiguous pronouns at sentence starts
-    const sentences = content.split(/[.!?]+\s*/);
+    const sentences = splitSentences(content);
     sentences.forEach((sentence) => {
       for (const pattern of patterns.AMBIGUOUS_PRONOUNS) {
         if (pattern.test(sentence)) {

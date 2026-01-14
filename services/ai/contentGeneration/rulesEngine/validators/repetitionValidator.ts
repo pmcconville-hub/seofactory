@@ -1,6 +1,7 @@
 // services/ai/contentGeneration/rulesEngine/validators/repetitionValidator.ts
 
 import { ValidationViolation, ContentGenerationSection } from '../../../../../types';
+import { splitSentences } from '../../../../../utils/sentenceTokenizer';
 
 // Common opening patterns that indicate repetitive section starts (multilingual)
 const REPETITIVE_OPENING_PATTERNS = [
@@ -21,7 +22,7 @@ export class RepetitionValidator {
   static validate(content: string): ValidationViolation[] {
     const violations: ValidationViolation[] = [];
 
-    const sentences = content.split(/[.!?]+\s*/).filter(s => s.trim().length > 10);
+    const sentences = splitSentences(content).filter(s => s.trim().length > 10);
 
     // Check for similar sentences (simplified approach)
     for (let i = 0; i < sentences.length; i++) {
@@ -62,7 +63,8 @@ export class RepetitionValidator {
 
       // Get first sentence after any heading
       const content = section.current_content.replace(/^#+\s+.+\n+/, '');
-      const firstSentence = content.split(/[.!?]/)[0]?.trim() || '';
+      const sentences = splitSentences(content);
+      const firstSentence = sentences[0]?.trim() || '';
 
       if (firstSentence.length > 20) {
         sectionOpenings.push({

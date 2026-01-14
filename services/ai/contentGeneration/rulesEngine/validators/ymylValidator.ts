@@ -2,6 +2,7 @@
 
 import { ValidationViolation, SectionGenerationContext } from '../../../../../types';
 import { getLanguageName } from '../../../../../utils/languageUtils';
+import { splitSentences } from '../../../../../utils/sentenceTokenizer';
 
 type YMYLCategory = 'HEALTH' | 'FINANCE' | 'LEGAL' | 'SAFETY';
 
@@ -397,7 +398,7 @@ export class YMYLValidator {
     }
 
     // Check for citation placement (fact first, then source)
-    const sentences = content.split(/[.!?]+\s*/);
+    const sentences = splitSentences(content);
 
     sentences.forEach(sentence => {
       if (patterns.badCitation.test(sentence.trim())) {
