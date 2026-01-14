@@ -293,7 +293,7 @@ export async function resolveEntity(
     return null;
   }
 
-  // Score results based on context and type
+  // Score results based on context and type, with context-aware validation
   const scoredResults = searchResults.map(result => {
     let score = 0;
 
@@ -308,6 +308,41 @@ export async function resolveEntity(
       const contextWords = context.toLowerCase().split(/\s+/);
       const matches = contextWords.filter(w => descWords.includes(w)).length;
       score += matches * 2;
+
+      // CONTEXT-AWARE VALIDATION: Penalize clearly wrong entity types
+      // These are entity types that should never match technical/domain content
+      const wrongTypeIndicators = [
+        'family name', 'surname', 'given name', 'first name',
+        'disambiguation', 'wikimedia', 'taxon', 'species',
+        'gene', 'protein', 'chemical compound', 'mineral',
+        'fictional character', 'mythological', 'album',
+        'single', 'song', 'music video', 'television episode'
+      ];
+
+      const descLower = result.description.toLowerCase();
+      for (const indicator of wrongTypeIndicators) {
+        if (descLower.includes(indicator)) {
+          // Heavy penalty for wrong type matches
+          score -= 20;
+          console.log(`[WikidataService] Penalizing "${result.label}" - wrong type: "${indicator}"`);
+          break;
+        }
+      }
+
+      // Bonus for domain-relevant descriptions
+      const domainIndicators = [
+        'construction', 'building', 'architecture', 'engineering',
+        'roofing', 'plumbing', 'electrical', 'hvac', 'insulation',
+        'material', 'technique', 'method', 'process', 'tool',
+        'professional', 'industry', 'trade', 'craft'
+      ];
+
+      for (const indicator of domainIndicators) {
+        if (descLower.includes(indicator)) {
+          score += 5;
+          break;
+        }
+      }
     }
 
     return { result, score };
@@ -316,8 +351,15 @@ export async function resolveEntity(
   // Sort by score
   scoredResults.sort((a, b) => b.score - a.score);
 
+  // Skip results with negative scores (clearly wrong matches)
+  const validResults = scoredResults.filter(r => r.score > 0);
+  if (!validResults.length) {
+    console.log(`[WikidataService] No valid matches found for "${name}" after context validation`);
+    return null;
+  }
+
   // Get the best match
-  const bestMatch = scoredResults[0].result;
+  const bestMatch = validResults[0].result;
 
   // Fetch full entity data
   const entityData = await getWikidataEntity(bestMatch.id, language);

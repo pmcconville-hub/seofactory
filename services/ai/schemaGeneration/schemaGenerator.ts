@@ -205,10 +205,34 @@ function buildSchemaGraph(
   config: Pass9Config
 ): object {
   const graphItems: object[] = [];
-  const baseUrl = context.businessInfo.domain
-    ? `https://${context.businessInfo.domain.replace(/^https?:\/\//, '')}`
-    : 'https://example.com';
-  const pageUrl = context.url || `${baseUrl}/${context.brief.slug}`;
+
+  // Ensure we have a valid base URL with proper domain
+  let baseUrl = 'https://example.com';
+  if (context.businessInfo.domain) {
+    // Remove any protocol prefix and ensure https://
+    const cleanDomain = context.businessInfo.domain
+      .replace(/^https?:\/\//, '')
+      .replace(/\/$/, ''); // Remove trailing slash
+    baseUrl = `https://${cleanDomain}`;
+  }
+
+  // Build page URL with proper slug
+  let pageUrl: string;
+  if (context.url && context.url.startsWith('http')) {
+    // Full URL provided - use it
+    pageUrl = context.url;
+  } else {
+    // Build from slug or path
+    const slug = context.brief.slug || context.url || 'article';
+    const cleanSlug = slug.replace(/^\/+/, ''); // Remove leading slashes
+    pageUrl = `${baseUrl}/${cleanSlug}`;
+  }
+
+  // Validate URLs don't have missing domains (e.g., "https:///path")
+  if (pageUrl.includes('https:///') || pageUrl.includes('http:///')) {
+    console.warn('[SchemaGenerator] Malformed URL detected, using fallback');
+    pageUrl = `${baseUrl}/article`;
+  }
 
   // 1. Organization schema (if enabled)
   if (config.includeOrganizationSchema) {
@@ -273,7 +297,46 @@ function buildSchemaGraph(
   );
   graphItems.push(mainSchema);
 
-  // 6. Add entity schemas for significant entities
+  // 6. Add FAQ schema if questions with answers are found
+  const faqQuestions = extractFAQQuestions(context);
+  if (faqQuestions.length >= 2) {
+    const faqSchema = {
+      '@type': 'FAQPage',
+      '@id': `${pageUrl}#faq`,
+      mainEntity: faqQuestions.map(q => ({
+        '@type': 'Question',
+        name: q.question,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: q.answer
+        }
+      }))
+    };
+    graphItems.push(faqSchema);
+    console.log(`[SchemaGenerator] Added FAQPage schema with ${faqQuestions.length} questions`);
+  }
+
+  // 7. Add HowTo schema if steps are found
+  const howToSteps = extractHowToSteps(context);
+  if (howToSteps.length >= 3) {
+    const howToSchema = {
+      '@type': 'HowTo',
+      '@id': `${pageUrl}#howto`,
+      name: context.brief.title,
+      description: context.brief.metaDescription || `How to ${context.brief.title}`,
+      step: howToSteps.map((step, index) => ({
+        '@type': 'HowToStep',
+        position: index + 1,
+        name: step.name,
+        text: step.text,
+        ...(step.imageUrl && { image: step.imageUrl })
+      }))
+    };
+    graphItems.push(howToSchema);
+    console.log(`[SchemaGenerator] Added HowTo schema with ${howToSteps.length} steps`);
+  }
+
+  // 8. Add entity schemas for significant entities
   for (const entity of resolvedEntities) {
     if (entity.type !== 'Organization' && entity.type !== 'Person') {
       // Only add entities that aren't already represented
@@ -427,6 +490,30 @@ function buildMainContentSchema(
     case 'HomePage':
     case 'WebPage':
     default: {
+      // Check if this is actually long-form content that should be an Article
+      // This is a safety fallback when page type detection fails
+      const wordCount = context.progressiveData?.wordCount || estimateWordCount(context.draftContent);
+      const sectionCount = context.brief.structured_outline?.length || 0;
+      const isLongFormContent = wordCount >= 1000 || sectionCount >= 5;
+
+      if (isLongFormContent && pageType !== 'HomePage') {
+        // Upgrade to Article schema for long-form content
+        console.log(`[SchemaGenerator] Upgrading WebPage to Article for long-form content (${wordCount} words, ${sectionCount} sections)`);
+        return createArticleSchema('Article', {
+          headline: context.brief.title,
+          description: context.brief.metaDescription,
+          url: pageUrl,
+          datePublished: now,
+          dateModified: now,
+          authorId,
+          publisherId,
+          wordCount,
+          keywords: context.progressiveData?.keywords || extractKeywords(context.brief),
+          inLanguage: context.businessInfo.language || 'en'
+        });
+      }
+
+      // Standard WebPage for short content or actual homepage
       return {
         '@type': 'WebPage',
         '@id': pageUrl,
@@ -443,27 +530,65 @@ function buildMainContentSchema(
 }
 
 /**
- * Extract FAQ questions from brief/content
+ * Extract FAQ questions from brief AND actual content.
+ * Looks for question headings (H2/H3 with ?) and their answers in the draft.
  */
 function extractFAQQuestions(
   context: SchemaGenerationContext
 ): Array<{ question: string; answer: string }> {
   const questions: Array<{ question: string; answer: string }> = [];
+  const seenQuestions = new Set<string>();
 
-  // From People Also Ask
-  if (context.brief.serpAnalysis?.peopleAlsoAsk) {
-    for (const paa of context.brief.serpAnalysis.peopleAlsoAsk.slice(0, 5)) {
-      questions.push({
-        question: paa,
-        answer: '' // Would be extracted from content
-      });
+  // 1. Extract from actual draft content - look for headings with questions
+  if (context.draftContent) {
+    // Pattern: ## Question? followed by paragraph(s)
+    const faqPattern = /^(#{2,3})\s+([^?\n]+\?)\s*\n+((?:(?!^#{1,3}\s).+\n?)+)/gm;
+    let match;
+
+    while ((match = faqPattern.exec(context.draftContent)) !== null) {
+      const question = match[2].trim();
+      const answer = match[3]
+        .replace(/\n+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .substring(0, 500); // Limit answer length
+
+      if (question && answer && !seenQuestions.has(question.toLowerCase())) {
+        seenQuestions.add(question.toLowerCase());
+        questions.push({ question, answer });
+      }
     }
   }
 
-  // From outline sections that are questions
+  // 2. From People Also Ask (if we didn't find answers in content, try to match)
+  if (context.brief.serpAnalysis?.peopleAlsoAsk && context.draftContent) {
+    for (const paa of context.brief.serpAnalysis.peopleAlsoAsk.slice(0, 5)) {
+      if (seenQuestions.has(paa.toLowerCase())) continue;
+
+      // Try to find answer in content for this PAA question
+      const questionWords = paa.toLowerCase().replace(/[?]/g, '').split(/\s+/).slice(0, 5);
+      const searchPattern = new RegExp(questionWords.join('.*'), 'i');
+
+      // Look for a paragraph that seems to answer this question
+      const paragraphs = context.draftContent.split(/\n\n+/);
+      for (const para of paragraphs) {
+        if (para.length > 50 && para.length < 600 && searchPattern.test(para)) {
+          seenQuestions.add(paa.toLowerCase());
+          questions.push({
+            question: paa,
+            answer: para.replace(/\n+/g, ' ').trim().substring(0, 500)
+          });
+          break;
+        }
+      }
+    }
+  }
+
+  // 3. From outline sections that are questions
   if (context.brief.structured_outline) {
     for (const section of context.brief.structured_outline) {
-      if (section.heading.includes('?')) {
+      if (section.heading.includes('?') && !seenQuestions.has(section.heading.toLowerCase())) {
+        seenQuestions.add(section.heading.toLowerCase());
         questions.push({
           question: section.heading,
           answer: section.subordinate_text_hint || ''
@@ -472,25 +597,74 @@ function extractFAQQuestions(
     }
   }
 
-  return questions;
+  // Only return FAQs with actual answers
+  return questions.filter(q => q.answer.length > 20).slice(0, 10);
 }
 
 /**
- * Extract HowTo steps from brief
+ * Extract HowTo steps from brief AND actual content.
+ * Looks for numbered lists, step patterns, and process headings.
  */
 function extractHowToSteps(
   context: SchemaGenerationContext
 ): Array<{ name: string; text: string; imageUrl?: string }> {
   const steps: Array<{ name: string; text: string; imageUrl?: string }> = [];
 
-  if (context.brief.structured_outline) {
-    let stepNumber = 0;
+  // 1. Extract from actual content - look for ordered lists (steps)
+  if (context.draftContent) {
+    // Pattern: Look for ordered lists after "how to" or "steps" headings
+    const howToSectionPattern = /^##\s+(?:How\s+to|Stappen|Steps|Werkwijze|Procedure)[^\n]*\n+((?:\d+\.\s+[^\n]+\n?)+)/gim;
+    let match;
+
+    while ((match = howToSectionPattern.exec(context.draftContent)) !== null) {
+      const listContent = match[1];
+      const listItems = listContent.match(/\d+\.\s+([^\n]+)/g);
+
+      if (listItems && listItems.length >= 3) {
+        for (const item of listItems) {
+          const stepText = item.replace(/^\d+\.\s+/, '').trim();
+          if (stepText.length > 10) {
+            steps.push({
+              name: stepText.substring(0, 100),
+              text: stepText
+            });
+          }
+        }
+        break; // Use first how-to section found
+      }
+    }
+
+    // If no how-to section, look for any significant ordered list
+    if (steps.length === 0) {
+      const orderedListPattern = /(\d+\.\s+[^\n]+(?:\n\d+\.\s+[^\n]+){2,})/g;
+      const lists = context.draftContent.match(orderedListPattern);
+
+      if (lists && lists.length > 0) {
+        const firstList = lists[0];
+        const listItems = firstList.match(/\d+\.\s+([^\n]+)/g);
+
+        if (listItems && listItems.length >= 3) {
+          for (const item of listItems.slice(0, 8)) {
+            const stepText = item.replace(/^\d+\.\s+/, '').trim();
+            if (stepText.length > 10) {
+              steps.push({
+                name: stepText.substring(0, 100),
+                text: stepText
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 2. From brief outline if no steps found in content
+  if (steps.length === 0 && context.brief.structured_outline) {
     for (const section of context.brief.structured_outline) {
       // Check if section looks like a step
       if (/^step\s*\d+/i.test(section.heading) ||
           /^\d+\.\s/.test(section.heading) ||
           section.methodology_note?.toLowerCase().includes('step')) {
-        stepNumber++;
         steps.push({
           name: section.heading.replace(/^step\s*\d+[:\s]*/i, '').replace(/^\d+\.\s*/, ''),
           text: section.subordinate_text_hint || section.heading
@@ -499,7 +673,7 @@ function extractHowToSteps(
     }
   }
 
-  return steps;
+  return steps.slice(0, 10);
 }
 
 /**

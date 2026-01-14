@@ -340,6 +340,31 @@ export function detectPageType(
     signals.push({ type: 'Product', weight: 0.2, source: 'Product indicators' });
   }
 
+  // 4b. Long-form content detection - CRITICAL for proper Article classification
+  // Content with 1500+ words, 5+ sections, and technical depth = Article/BlogPosting
+  const wordCount = draftContent ? draftContent.split(/\s+/).filter(w => w.length > 0).length : 0;
+  const sectionCount = (brief.structured_outline?.length || 0);
+  const hasMetaDescription = !!(brief.metaDescription && brief.metaDescription.length > 50);
+  const hasTechnicalContent = !!(brief.contextualVectors && brief.contextualVectors.length > 3);
+
+  if (wordCount >= 1500 || (sectionCount >= 5 && hasMetaDescription)) {
+    // This is long-form content - strong signal for Article
+    signals.push({
+      type: 'Article',
+      weight: 0.45,
+      source: `Long-form content (${wordCount > 0 ? wordCount + ' words' : sectionCount + ' sections'})`
+    });
+  }
+
+  // If we have structured outline with multiple sections, it's likely an article
+  if (sectionCount >= 3 && hasTechnicalContent) {
+    signals.push({
+      type: 'Article',
+      weight: 0.3,
+      source: 'Structured outline with technical depth'
+    });
+  }
+
   // 5. Featured snippet target
   if (brief.featured_snippet_target) {
     if (brief.featured_snippet_target.target_type === 'LIST') {

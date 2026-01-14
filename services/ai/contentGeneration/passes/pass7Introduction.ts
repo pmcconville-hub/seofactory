@@ -181,6 +181,11 @@ async function processIntroOrConclusion(
       .replace(/[ \t]+$/gm, '')
       .trim();
 
+    // Validate and fix generic headings for intro sections
+    if (type === 'intro') {
+      content = fixGenericIntroHeading(content, holisticContext.centralEntity);
+    }
+
     // Update section
     await orchestrator.upsertSection({
       ...section,
@@ -194,4 +199,69 @@ async function processIntroOrConclusion(
   } catch (error) {
     console.error(`[Pass7] Error optimizing ${type} section:`, error);
   }
+}
+
+/**
+ * Fix generic intro headings that the AI might still produce.
+ * Validates against banned patterns and replaces with topic-specific alternatives.
+ */
+function fixGenericIntroHeading(content: string, centralEntity: string): string {
+  // Banned generic patterns (case-insensitive)
+  const bannedPatterns = [
+    /^##\s+.*\bIntroductie\b.*$/im,
+    /^##\s+.*\bInleiding\b.*$/im,
+    /^##\s+.*\bOverzicht\b.*$/im,
+    /^##\s+.*\bEen Overzicht\b.*$/im,
+    /^##\s+.*\bIntroduction\b.*$/im,
+    /^##\s+.*\bOverview\b.*$/im,
+    /^##\s+.*\bAn Overview\b.*$/im,
+    /^##\s+.*\bSamenvatting\b.*$/im,
+    /^##\s+.*\bSummary\b.*$/im,
+  ];
+
+  // Check if heading contains banned patterns
+  const headingMatch = content.match(/^##\s+(.+)$/m);
+  if (!headingMatch) return content; // No H2 heading found
+
+  const currentHeading = headingMatch[0];
+  const headingText = headingMatch[1];
+
+  // Check against banned patterns
+  for (const pattern of bannedPatterns) {
+    if (pattern.test(currentHeading)) {
+      log.warn(` Detected generic heading: "${headingText}" - replacing with topic-specific heading`);
+
+      // Generate better heading
+      let newHeading: string;
+      if (centralEntity.length > 30) {
+        // Long entity - use question format
+        newHeading = `## Wat is ${centralEntity}?`;
+      } else if (centralEntity.split(' ').length >= 3) {
+        // Multi-word entity - use direct format
+        newHeading = `## ${centralEntity}: De Complete Gids`;
+      } else {
+        // Short entity - use comprehensive format
+        newHeading = `## Alles over ${centralEntity}`;
+      }
+
+      return content.replace(currentHeading, newHeading);
+    }
+  }
+
+  // Also check if heading is just "[Entity]: Een Overzicht" pattern
+  const overviewPattern = new RegExp(`^##\\s+${escapeRegex(centralEntity)}:\\s*(Een\\s+)?(Overzicht|Overview|Introductie|Introduction)$`, 'i');
+  if (overviewPattern.test(currentHeading)) {
+    log.warn(` Detected generic overview pattern in heading - replacing`);
+    const newHeading = `## Wat is ${centralEntity}?`;
+    return content.replace(currentHeading, newHeading);
+  }
+
+  return content;
+}
+
+/**
+ * Escape special regex characters in a string
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

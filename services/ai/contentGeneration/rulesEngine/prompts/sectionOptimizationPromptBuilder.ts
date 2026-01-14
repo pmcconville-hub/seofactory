@@ -943,8 +943,16 @@ ${h2Topics.join('\n')}
 After the definition, write ONE paragraph that mentions key concepts from EACH of these H2s in the SAME order they appear in the article. This is the "extractive alignment" - if someone read only the intro, they'd know exactly what topics the article covers.
 
 ### RULE 3: TOPIC-SPECIFIC HEADING
-- NEVER use generic headings: "Introductie", "Overview", "Inleiding"
-- USE heading containing central entity: "${holistic.centralEntity}: Een Compleet Overzicht" or "Wat is ${holistic.centralEntity}?"
+**BANNED GENERIC TERMS (never use these in heading):**
+- Dutch: "Introductie", "Inleiding", "Overzicht", "Een Overzicht", "Samenvatting"
+- English: "Introduction", "Overview", "An Overview", "Summary"
+- Generic patterns: "[Topic]: Een Overzicht", "[Topic]: Een Introductie"
+
+**GOOD HEADING PATTERNS:**
+- "Wat is ${holistic.centralEntity}?" (question format)
+- "${holistic.centralEntity}: De Complete Gids" (comprehensive)
+- "Alles over ${holistic.centralEntity}" (informative)
+- "${holistic.centralEntity}: Kernprincipes en Toepassingen" (specific)
 
 ### RULE 4: NO FLUFF
 - Remove ALL filler words: "ook", "eigenlijk", "gewoon", "echt", "zeer"

@@ -165,15 +165,25 @@ export function convertMarkdownToSemanticHtml(md: string, options: AssemblyOptio
     }
   };
 
+  // Helper to convert inline markdown (bold, italic, code) in a string
+  const processInlineMarkdown = (text: string): string => {
+    return text
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>');
+  };
+
   // Helper to flush table HTML
   const flushTable = () => {
     if (tableHeaders.length > 0 || tableBody.length > 0) {
       html += '<table>\n';
       if (tableHeaders.length > 0) {
-        html += '<thead><tr>' + tableHeaders.map(h => `<th scope="col">${h}</th>`).join('') + '</tr></thead>\n';
+        // Process inline markdown in table headers
+        html += '<thead><tr>' + tableHeaders.map(h => `<th scope="col">${processInlineMarkdown(h)}</th>`).join('') + '</tr></thead>\n';
       }
       if (tableBody.length > 0) {
-        html += '<tbody>' + tableBody.map(row => '<tr>' + row.map(c => `<td>${c}</td>`).join('') + '</tr>').join('\n') + '</tbody>\n';
+        // Process inline markdown in table cells
+        html += '<tbody>' + tableBody.map(row => '<tr>' + row.map(c => `<td>${processInlineMarkdown(c)}</td>`).join('') + '</tr>').join('\n') + '</tbody>\n';
       }
       html += '</table>\n';
     }
@@ -350,6 +360,39 @@ export function convertToHtml(markdown: string, options: AssemblyOptions = {}): 
 }
 
 // =============================================================================
+// Slug Generation
+// =============================================================================
+
+/**
+ * Generate a URL-friendly slug from a title.
+ * Handles special characters, accents, and multi-language text.
+ */
+export function generateSlug(title: string): string {
+  return title
+    .toLowerCase()
+    // Replace accented characters with ASCII equivalents
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    // Replace special Dutch/German characters
+    .replace(/ü/g, 'u')
+    .replace(/ö/g, 'o')
+    .replace(/ä/g, 'a')
+    .replace(/ë/g, 'e')
+    .replace(/ï/g, 'i')
+    .replace(/ß/g, 'ss')
+    // Replace spaces and underscores with hyphens
+    .replace(/[\s_]+/g, '-')
+    // Remove any character that's not alphanumeric or hyphen
+    .replace(/[^a-z0-9-]/g, '')
+    // Remove multiple consecutive hyphens
+    .replace(/-+/g, '-')
+    // Remove leading/trailing hyphens
+    .replace(/^-+|-+$/g, '')
+    // Limit length for URLs
+    .substring(0, 80);
+}
+
+// =============================================================================
 // Full HTML Document Builder
 // =============================================================================
 
@@ -364,7 +407,6 @@ export function buildFullHtmlDocument(markdown: string, options: FullHtmlOptions
     targetKeyword = '',
     language = 'en',
     authorName = '',
-    canonicalUrl = '',
     publishDate = new Date(),
     schemaScript = '',
     ogTags = '',
@@ -372,11 +414,56 @@ export function buildFullHtmlDocument(markdown: string, options: FullHtmlOptions
     centerpiece = '',
   } = options;
 
+  // Generate canonical URL from title slug if not provided
+  let canonicalUrl = options.canonicalUrl || '';
+  if (!canonicalUrl || canonicalUrl.endsWith('/article/') || canonicalUrl.endsWith('/article')) {
+    // Extract base domain from existing URL or use placeholder
+    const baseDomain = canonicalUrl
+      ? canonicalUrl.replace(/\/article\/?$/, '')
+      : '';
+
+    if (baseDomain) {
+      const slug = generateSlug(title);
+      canonicalUrl = `${baseDomain}/${slug}`;
+    }
+  }
+
   // Calculate word count
   const wordCount = options.wordCount ?? markdown.split(/\s+/).filter(Boolean).length;
 
-  // Convert content to semantic HTML
-  const contentHtml = convertMarkdownToSemanticHtml(markdown, options);
+  // Convert content to semantic HTML and process IMAGE placeholders
+  let contentHtml = convertMarkdownToSemanticHtml(markdown, options);
+  contentHtml = convertImagePlaceholders(contentHtml);
+
+  // Check if we have IMAGE placeholders (to include placeholder styles)
+  const hasImagePlaceholders = contentHtml.includes('class="image-placeholder"');
+
+  // Detect and remove duplicate centerpiece from content
+  // The centerpiece is rendered separately, so if the first paragraph duplicates it, remove it
+  if (centerpiece && centerpiece.length > 20) {
+    // Normalize text for comparison (remove markdown/html, lowercase, trim)
+    const normalizeText = (text: string) => text
+      .replace(/<[^>]+>/g, '')
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const normalizedCenterpiece = normalizeText(centerpiece);
+
+    // Find first paragraph in content
+    const firstParagraphMatch = contentHtml.match(/<p>([^<]+)<\/p>/);
+    if (firstParagraphMatch) {
+      const firstParaText = normalizeText(firstParagraphMatch[1]);
+      // If first paragraph starts with (or is very similar to) the centerpiece, remove it
+      if (firstParaText.startsWith(normalizedCenterpiece.slice(0, 50)) ||
+          normalizedCenterpiece.startsWith(firstParaText.slice(0, 50))) {
+        // Remove the duplicate first paragraph
+        contentHtml = contentHtml.replace(firstParagraphMatch[0], '');
+      }
+    }
+  }
 
   // Build the full document
   return `<!DOCTYPE html>
@@ -384,7 +471,7 @@ export function buildFullHtmlDocument(markdown: string, options: FullHtmlOptions
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="${metaDescription.replace(/"/g, '&quot;')}">
+${metaDescription ? `<meta name="description" content="${metaDescription.replace(/"/g, '&quot;')}">` : '<!-- Add meta description when publishing -->'}
 ${targetKeyword ? `<meta name="keywords" content="${targetKeyword}">` : ''}
 <meta name="robots" content="index, follow">
 ${authorName ? `<meta name="author" content="${authorName.replace(/"/g, '&quot;')}">` : ''}
@@ -393,7 +480,7 @@ ${canonicalUrl ? `<link rel="canonical" href="${canonicalUrl}">` : '<!-- Add can
 ${lcpPreload}
 ${ogTags}
 ${schemaScript}
-<style>*{box-sizing:border-box}body{font-family:Georgia,'Times New Roman',serif;line-height:1.8;max-width:750px;margin:0 auto;padding:2rem;color:#2d2d2d;background:#fafafa}main{display:block}article{display:block}section{margin-bottom:2rem}h1{font-size:2.2rem;color:#1a1a1a;margin-top:0;margin-bottom:0.5rem;line-height:1.2}h2{font-size:1.5rem;color:#1a1a1a;margin-top:2.5rem;border-bottom:2px solid #e0e0e0;padding-bottom:0.5rem}h3{font-size:1.25rem;color:#333;margin-top:2rem}h4{font-size:1.1rem;color:#444;margin-top:1.5rem}p{margin:1rem 0}img{max-width:100%;height:auto;border-radius:8px;margin:1.5rem 0;box-shadow:0 4px 12px rgba(0,0,0,0.1)}figure{margin:2rem 0;text-align:center}figcaption{font-size:0.9rem;color:#666;font-style:italic;margin-top:0.5rem}table{border-collapse:collapse;width:100%;margin:1.5rem 0;font-size:0.95rem}th,td{border:1px solid #ddd;padding:0.75rem;text-align:left}th{background:#f0f0f0;font-weight:600}tr:nth-child(even){background:#f9f9f9}code{background:#f0f0f0;padding:0.2em 0.4em;border-radius:3px;font-size:0.9em;font-family:'Consolas',monospace}pre{background:#f5f5f5;padding:1rem;border-radius:8px;overflow-x:auto}blockquote{border-left:4px solid #0066cc;margin:1.5rem 0;padding:0.5rem 1rem;background:#f9f9f9;font-style:italic}a{color:#0066cc;text-decoration:none}a:hover{text-decoration:underline}ul,ol{padding-left:1.5rem;margin:1rem 0}li{margin:0.5rem 0}.byline{color:#666;font-size:0.9rem;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid #e0e0e0}hr{border:none;border-top:1px solid #e0e0e0;margin:2rem 0}</style>
+<style>*{box-sizing:border-box}body{font-family:Georgia,'Times New Roman',serif;line-height:1.8;max-width:750px;margin:0 auto;padding:2rem;color:#2d2d2d;background:#fafafa}main{display:block}article{display:block}section{margin-bottom:2rem}h1{font-size:2.2rem;color:#1a1a1a;margin-top:0;margin-bottom:0.5rem;line-height:1.2}h2{font-size:1.5rem;color:#1a1a1a;margin-top:2.5rem;border-bottom:2px solid #e0e0e0;padding-bottom:0.5rem}h3{font-size:1.25rem;color:#333;margin-top:2rem}h4{font-size:1.1rem;color:#444;margin-top:1.5rem}p{margin:1rem 0}img{max-width:100%;height:auto;border-radius:8px;margin:1.5rem 0;box-shadow:0 4px 12px rgba(0,0,0,0.1)}figure{margin:2rem 0;text-align:center}figcaption{font-size:0.9rem;color:#666;font-style:italic;margin-top:0.5rem}table{border-collapse:collapse;width:100%;margin:1.5rem 0;font-size:0.95rem}th,td{border:1px solid #ddd;padding:0.75rem;text-align:left}th{background:#f0f0f0;font-weight:600}tr:nth-child(even){background:#f9f9f9}code{background:#f0f0f0;padding:0.2em 0.4em;border-radius:3px;font-size:0.9em;font-family:'Consolas',monospace}pre{background:#f5f5f5;padding:1rem;border-radius:8px;overflow-x:auto}blockquote{border-left:4px solid #0066cc;margin:1.5rem 0;padding:0.5rem 1rem;background:#f9f9f9;font-style:italic}a{color:#0066cc;text-decoration:none}a:hover{text-decoration:underline}ul,ol{padding-left:1.5rem;margin:1rem 0}li{margin:0.5rem 0}.byline{color:#666;font-size:0.9rem;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid #e0e0e0}hr{border:none;border-top:1px solid #e0e0e0;margin:2rem 0}${hasImagePlaceholders ? '.image-placeholder{border:2px dashed #ccc;border-radius:8px;background:linear-gradient(135deg,#f5f5f5 0%,#fafafa 100%);padding:2rem;margin:1.5rem 0;text-align:center}.image-placeholder .placeholder-content{display:flex;flex-direction:column;align-items:center;gap:0.5rem;color:#999}.image-placeholder .placeholder-label{font-size:0.9rem;font-weight:500;color:#666}.image-placeholder figcaption{margin-top:1rem;font-size:0.85rem;color:#666;font-style:italic}' : ''}</style>
 </head>
 <body>
 <main>
@@ -470,10 +557,13 @@ export function extractCenterpiece(markdown: string, maxLength: number = 400): s
 }
 
 /**
- * Strip H1 from markdown content (for preview that shows title separately)
+ * Strip ALL H1 headers from markdown content.
+ * This ensures no duplicate H1s in the body when title is rendered separately.
+ * Catches H1s anywhere in the document, not just at the start.
  */
 export function stripH1FromMarkdown(markdown: string): string {
-  return markdown.replace(/^# .+\n?/m, '');
+  // Remove ALL lines that are H1 headers (# followed by space, not ##)
+  return markdown.replace(/^# [^#\n].*$/gm, '').replace(/\n{3,}/g, '\n\n');
 }
 
 /**
@@ -496,6 +586,72 @@ export function calculateWordCount(markdown: string): number {
 
   return plainText.split(/\s+/).filter(Boolean).length;
 }
+
+// =============================================================================
+// IMAGE Placeholder Processing
+// =============================================================================
+
+/**
+ * Convert [IMAGE:...] placeholders to styled HTML figure elements.
+ * This makes placeholders visible as proper image slots in the final HTML
+ * rather than raw text that looks broken.
+ *
+ * Format: [IMAGE: Description text | alt="Alt text"]
+ * Output: <figure class="image-placeholder">...</figure>
+ */
+export function convertImagePlaceholders(html: string): string {
+  // Pattern matches [IMAGE: description | alt="text"] or [IMAGE: description]
+  const placeholderPattern = /\[IMAGE:\s*([^\]|]+?)(?:\s*\|\s*alt="([^"]*)")?\]/g;
+
+  return html.replace(placeholderPattern, (match, description, altText) => {
+    const desc = description?.trim() || 'Image placeholder';
+    const alt = altText?.trim() || desc;
+
+    return `<figure class="image-placeholder" data-alt="${alt.replace(/"/g, '&quot;')}">
+  <div class="placeholder-content">
+    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+      <circle cx="8.5" cy="8.5" r="1.5"/>
+      <polyline points="21 15 16 10 5 21"/>
+    </svg>
+    <span class="placeholder-label">Add Image</span>
+  </div>
+  <figcaption>${desc}</figcaption>
+</figure>`;
+  });
+}
+
+/**
+ * CSS styles for image placeholders (to be injected into document)
+ */
+export const imagePlaceholderStyles = `
+.image-placeholder {
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%);
+  padding: 2rem;
+  margin: 1.5rem 0;
+  text-align: center;
+}
+.image-placeholder .placeholder-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: #999;
+}
+.image-placeholder .placeholder-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #666;
+}
+.image-placeholder figcaption {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: #666;
+  font-style: italic;
+}
+`;
 
 // =============================================================================
 // Content Validation for Export

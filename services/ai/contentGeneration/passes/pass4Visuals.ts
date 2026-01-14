@@ -45,11 +45,28 @@ export async function executePass4(
       batchSize: 5,
       buildBatchPrompt: buildPass4BatchPrompt,
 
-      // Selective processing: Only sections needing images
+      // Selective processing: Sections needing images + ALWAYS include intro for hero image
       filterSections: (sections: ContentGenerationSection[], budget: ContentFormatBudget) => {
-        return sections.filter(s =>
-          budget.sectionsNeedingOptimization.images.includes(s.section_key)
-        );
+        return sections.filter(s => {
+          // Always process intro section for HERO image (Korayanese framework requirement)
+          const isIntroSection = s.section_key === 'intro' ||
+            s.section_order === 0 ||
+            s.section_heading?.toLowerCase().includes('introductie') ||
+            s.section_heading?.toLowerCase().includes('introduction') ||
+            s.section_heading?.toLowerCase().startsWith('wat is');
+
+          if (isIntroSection) {
+            // Check if intro already has an image - if not, force processing
+            const hasImage = (s.current_content || '').includes('[IMAGE:');
+            if (!hasImage) {
+              console.log('[Pass4] Forcing intro section processing for hero image');
+              return true;
+            }
+          }
+
+          // Otherwise use budget-based selection
+          return budget.sectionsNeedingOptimization.images.includes(s.section_key);
+        });
       }
     },
     onSectionProgress,
