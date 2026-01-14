@@ -341,6 +341,9 @@ export function convertMarkdownToSemanticHtml(md: string, options: AssemblyOptio
     html += '</section>\n';
   }
 
+  // Convert IMAGE placeholders to styled figure elements
+  html = convertImagePlaceholders(html);
+
   return html;
 }
 
@@ -432,9 +435,8 @@ export function buildFullHtmlDocument(markdown: string, options: FullHtmlOptions
   // Calculate word count
   const wordCount = options.wordCount ?? markdown.split(/\s+/).filter(Boolean).length;
 
-  // Convert content to semantic HTML and process IMAGE placeholders
-  let contentHtml = convertMarkdownToSemanticHtml(markdown, options);
-  contentHtml = convertImagePlaceholders(contentHtml);
+  // Convert content to semantic HTML (includes IMAGE placeholder conversion)
+  const contentHtml = convertMarkdownToSemanticHtml(markdown, options);
 
   // Check if we have IMAGE placeholders (to include placeholder styles)
   const hasImagePlaceholders = contentHtml.includes('class="image-placeholder"');
@@ -734,20 +736,9 @@ export function validateForExport(markdown: string): ExportValidationResult {
 export function cleanForExport(markdown: string): string {
   let cleaned = markdown;
 
-  // Remove multiple consecutive H1s, keep only first
-  const h1Pattern = /^#\s+.+$/gm;
-  const h1Matches = cleaned.match(h1Pattern);
-  if (h1Matches && h1Matches.length > 1) {
-    // Keep first H1, remove others
-    let firstH1Found = false;
-    cleaned = cleaned.replace(h1Pattern, (match) => {
-      if (!firstH1Found) {
-        firstH1Found = true;
-        return match;
-      }
-      return ''; // Remove subsequent H1s
-    });
-  }
+  // CRITICAL: Remove ALL H1 headers - the HTML template adds its own H1
+  // This prevents raw "# Title" from appearing in the body
+  cleaned = stripH1FromMarkdown(cleaned);
 
   // Clean up excessive blank lines (more than 2 consecutive)
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
