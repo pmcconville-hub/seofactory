@@ -1,7 +1,7 @@
 # Multi-Tenancy UX/UI Specification
 
 **Date:** 2026-01-09
-**Status:** Approved
+**Status:** ✅ IMPLEMENTED (see `2026-01-10-multi-tenancy-ui-integration.md` for component status)
 **Companion Doc:** `2026-01-09-multi-tenancy-design.md` (backend architecture)
 
 ---

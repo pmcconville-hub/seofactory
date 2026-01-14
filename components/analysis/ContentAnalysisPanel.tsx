@@ -115,14 +115,14 @@ type TabId = 'overview' | 'brief' | 'output' | 'comparison' | 'issues';
 
 function ScoreBadge({ score, label }: { score: number; label: string }) {
   const color =
-    score >= 80 ? 'text-green-600 bg-green-100' :
-    score >= 60 ? 'text-yellow-600 bg-yellow-100' :
-    'text-red-600 bg-red-100';
+    score >= 80 ? 'text-green-400 bg-green-900/50 border border-green-700' :
+    score >= 60 ? 'text-yellow-400 bg-yellow-900/50 border border-yellow-700' :
+    'text-red-400 bg-red-900/50 border border-red-700';
 
   return (
     <div className={`px-3 py-2 rounded-lg ${color}`}>
       <div className="text-2xl font-bold">{score}%</div>
-      <div className="text-xs">{label}</div>
+      <div className="text-xs opacity-80">{label}</div>
     </div>
   );
 }
@@ -150,15 +150,15 @@ function ExpandableSection({
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div className="border rounded-lg">
+    <div className="border border-gray-700 rounded-lg">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-4 py-2 text-left hover:bg-gray-50"
+        className="w-full flex items-center justify-between px-4 py-2 text-left text-gray-200 hover:bg-gray-700/50"
       >
         <span className="font-medium">{title}</span>
-        {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        {isOpen ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
       </button>
-      {isOpen && <div className="px-4 py-3 border-t bg-gray-50">{children}</div>}
+      {isOpen && <div className="px-4 py-3 border-t border-gray-700 bg-gray-800/50">{children}</div>}
     </div>
   );
 }
@@ -174,7 +174,7 @@ function OverviewTab({ report }: { report: ContentAnalysisReport }) {
   return (
     <div className="space-y-6">
       {/* Scores */}
-      <div className="flex gap-4">
+      <div className="flex gap-4 flex-wrap">
         <ScoreBadge score={report.overallScore} label="Overall" />
         <ScoreBadge score={report.strategyScore} label="Strategy" />
         <ScoreBadge score={report.rulesScore} label="Rules" />
@@ -183,43 +183,43 @@ function OverviewTab({ report }: { report: ContentAnalysisReport }) {
 
       {/* Summary */}
       <div className={`p-4 rounded-lg ${
-        criticalCount > 0 ? 'bg-red-50 border border-red-200' :
-        warningCount > 0 ? 'bg-yellow-50 border border-yellow-200' :
-        'bg-green-50 border border-green-200'
+        criticalCount > 0 ? 'bg-red-900/30 border border-red-700 text-red-300' :
+        warningCount > 0 ? 'bg-yellow-900/30 border border-yellow-700 text-yellow-300' :
+        'bg-green-900/30 border border-green-700 text-green-300'
       }`}>
         <p className="font-medium">{report.summary}</p>
       </div>
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-3 bg-gray-50 rounded-lg">
-          <div className="text-sm text-gray-500">Words</div>
-          <div className="text-lg font-semibold">{report.outputSummary.wordCount.toLocaleString()}</div>
+        <div className="p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
+          <div className="text-sm text-gray-400">Words</div>
+          <div className="text-lg font-semibold text-gray-100">{report.outputSummary.wordCount.toLocaleString()}</div>
         </div>
-        <div className="p-3 bg-gray-50 rounded-lg">
-          <div className="text-sm text-gray-500">Sections</div>
-          <div className="text-lg font-semibold">{report.outputSummary.sectionCount}</div>
+        <div className="p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
+          <div className="text-sm text-gray-400">Sections</div>
+          <div className="text-lg font-semibold text-gray-100">{report.outputSummary.sectionCount}</div>
         </div>
-        <div className="p-3 bg-gray-50 rounded-lg">
-          <div className="text-sm text-gray-500">Images</div>
-          <div className="text-lg font-semibold">{report.outputSummary.imageCount}</div>
+        <div className="p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
+          <div className="text-sm text-gray-400">Images</div>
+          <div className="text-lg font-semibold text-gray-100">{report.outputSummary.imageCount}</div>
         </div>
-        <div className="p-3 bg-gray-50 rounded-lg">
-          <div className="text-sm text-gray-500">Links</div>
-          <div className="text-lg font-semibold">{report.outputSummary.internalLinkCount}</div>
+        <div className="p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
+          <div className="text-sm text-gray-400">Links</div>
+          <div className="text-lg font-semibold text-gray-100">{report.outputSummary.internalLinkCount}</div>
         </div>
       </div>
 
       {/* Top Issues */}
       {report.issues.length > 0 && (
         <div>
-          <h3 className="font-semibold mb-2">Top Issues</h3>
+          <h3 className="font-semibold mb-2 text-gray-200">Top Issues</h3>
           <div className="space-y-2">
             {report.issues.slice(0, 5).map((issue, idx) => (
-              <div key={idx} className="flex items-start gap-2 p-2 bg-gray-50 rounded">
+              <div key={idx} className="flex items-start gap-2 p-2 bg-gray-800/50 border border-gray-700 rounded">
                 <SeverityIcon severity={issue.severity} />
-                <div className="flex-1 text-sm">
-                  <span className="font-medium">{issue.category}:</span> {issue.message}
+                <div className="flex-1 text-sm text-gray-300">
+                  <span className="font-medium text-gray-200">{issue.category}:</span> {issue.message}
                 </div>
               </div>
             ))}
@@ -238,44 +238,44 @@ function BriefTab({ summary }: { summary: BriefAnalysisSummary }) {
   return (
     <div className="space-y-4">
       {/* Brief Header */}
-      <div className="p-4 bg-gray-50 rounded-lg">
-        <h3 className="font-semibold text-lg">{summary.title}</h3>
-        <p className="text-sm text-gray-500">Target: {summary.targetKeyword}</p>
+      <div className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
+        <h3 className="font-semibold text-lg text-gray-100">{summary.title}</h3>
+        <p className="text-sm text-gray-400">Target: {summary.targetKeyword}</p>
       </div>
 
       {/* Completeness Score */}
       <div className="flex items-center gap-4">
         <ScoreBadge score={summary.completenessScore} label="Completeness" />
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-gray-400">
           {summary.populatedFields.length} of {summary.populatedFields.length + summary.emptyFields.length} fields populated
         </p>
       </div>
 
       {/* Key Metrics */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="p-3 border rounded-lg">
-          <div className="text-sm text-gray-500">Target Word Count</div>
-          <div className="font-semibold">{summary.targetWordCount?.toLocaleString() || 'Not specified'}</div>
+        <div className="p-3 border border-gray-700 bg-gray-800/30 rounded-lg">
+          <div className="text-sm text-gray-400">Target Word Count</div>
+          <div className="font-semibold text-gray-100">{summary.targetWordCount?.toLocaleString() || 'Not specified'}</div>
         </div>
-        <div className="p-3 border rounded-lg">
-          <div className="text-sm text-gray-500">Search Intent</div>
-          <div className="font-semibold">{summary.searchIntent || 'Not specified'}</div>
+        <div className="p-3 border border-gray-700 bg-gray-800/30 rounded-lg">
+          <div className="text-sm text-gray-400">Search Intent</div>
+          <div className="font-semibold text-gray-100">{summary.searchIntent || 'Not specified'}</div>
         </div>
-        <div className="p-3 border rounded-lg">
-          <div className="text-sm text-gray-500">Sections</div>
-          <div className="font-semibold">{summary.sectionCount}</div>
+        <div className="p-3 border border-gray-700 bg-gray-800/30 rounded-lg">
+          <div className="text-sm text-gray-400">Sections</div>
+          <div className="font-semibold text-gray-100">{summary.sectionCount}</div>
         </div>
-        <div className="p-3 border rounded-lg">
-          <div className="text-sm text-gray-500">Visual Semantics</div>
-          <div className="font-semibold">{summary.visualSemanticsCount}</div>
+        <div className="p-3 border border-gray-700 bg-gray-800/30 rounded-lg">
+          <div className="text-sm text-gray-400">Visual Semantics</div>
+          <div className="font-semibold text-gray-100">{summary.visualSemanticsCount}</div>
         </div>
-        <div className="p-3 border rounded-lg">
-          <div className="text-sm text-gray-500">CTA</div>
-          <div className="font-semibold">{summary.ctaPresent ? 'Yes' : 'No'}</div>
+        <div className="p-3 border border-gray-700 bg-gray-800/30 rounded-lg">
+          <div className="text-sm text-gray-400">CTA</div>
+          <div className="font-semibold text-gray-100">{summary.ctaPresent ? 'Yes' : 'No'}</div>
         </div>
-        <div className="p-3 border rounded-lg">
-          <div className="text-sm text-gray-500">Internal Links</div>
-          <div className="font-semibold">{summary.internalLinksCount}</div>
+        <div className="p-3 border border-gray-700 bg-gray-800/30 rounded-lg">
+          <div className="text-sm text-gray-400">Internal Links</div>
+          <div className="font-semibold text-gray-100">{summary.internalLinksCount}</div>
         </div>
       </div>
 
@@ -283,7 +283,7 @@ function BriefTab({ summary }: { summary: BriefAnalysisSummary }) {
       <ExpandableSection title="Populated Fields" defaultOpen={true}>
         <div className="flex flex-wrap gap-2">
           {summary.populatedFields.map(field => (
-            <span key={field} className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
+            <span key={field} className="px-2 py-1 bg-green-900/50 text-green-400 border border-green-700 text-xs rounded">
               {field}
             </span>
           ))}
@@ -293,7 +293,7 @@ function BriefTab({ summary }: { summary: BriefAnalysisSummary }) {
       <ExpandableSection title="Empty Fields">
         <div className="flex flex-wrap gap-2">
           {summary.emptyFields.map(field => (
-            <span key={field} className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
+            <span key={field} className="px-2 py-1 bg-red-900/50 text-red-400 border border-red-700 text-xs rounded">
               {field}
             </span>
           ))}
@@ -312,55 +312,55 @@ function OutputTab({ summary }: { summary: OutputAnalysisSummary }) {
     <div className="space-y-4">
       {/* Main Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-4 bg-gray-50 rounded-lg text-center">
-          <FileText className="w-6 h-6 mx-auto text-gray-400 mb-1" />
-          <div className="text-2xl font-bold">{summary.wordCount.toLocaleString()}</div>
-          <div className="text-xs text-gray-500">Words</div>
+        <div className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg text-center">
+          <FileText className="w-6 h-6 mx-auto text-gray-500 mb-1" />
+          <div className="text-2xl font-bold text-gray-100">{summary.wordCount.toLocaleString()}</div>
+          <div className="text-xs text-gray-400">Words</div>
         </div>
-        <div className="p-4 bg-gray-50 rounded-lg text-center">
-          <Layers className="w-6 h-6 mx-auto text-gray-400 mb-1" />
-          <div className="text-2xl font-bold">{summary.sectionCount}</div>
-          <div className="text-xs text-gray-500">Sections</div>
+        <div className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg text-center">
+          <Layers className="w-6 h-6 mx-auto text-gray-500 mb-1" />
+          <div className="text-2xl font-bold text-gray-100">{summary.sectionCount}</div>
+          <div className="text-xs text-gray-400">Sections</div>
         </div>
-        <div className="p-4 bg-gray-50 rounded-lg text-center">
-          <ImageIcon className="w-6 h-6 mx-auto text-gray-400 mb-1" />
-          <div className="text-2xl font-bold">{summary.imageCount}</div>
-          <div className="text-xs text-gray-500">Images</div>
+        <div className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg text-center">
+          <ImageIcon className="w-6 h-6 mx-auto text-gray-500 mb-1" />
+          <div className="text-2xl font-bold text-gray-100">{summary.imageCount}</div>
+          <div className="text-xs text-gray-400">Images</div>
         </div>
-        <div className="p-4 bg-gray-50 rounded-lg text-center">
-          <Link2 className="w-6 h-6 mx-auto text-gray-400 mb-1" />
-          <div className="text-2xl font-bold">{summary.internalLinkCount}</div>
-          <div className="text-xs text-gray-500">Internal Links</div>
+        <div className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg text-center">
+          <Link2 className="w-6 h-6 mx-auto text-gray-500 mb-1" />
+          <div className="text-2xl font-bold text-gray-100">{summary.internalLinkCount}</div>
+          <div className="text-xs text-gray-400">Internal Links</div>
         </div>
       </div>
 
       {/* Heading Structure */}
-      <div className="p-4 border rounded-lg">
-        <h4 className="font-semibold mb-2 flex items-center gap-2">
-          <BarChart3 className="w-4 h-4" />
+      <div className="p-4 border border-gray-700 bg-gray-800/30 rounded-lg">
+        <h4 className="font-semibold mb-2 flex items-center gap-2 text-gray-200">
+          <BarChart3 className="w-4 h-4 text-gray-400" />
           Heading Structure
         </h4>
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
-            <div className="text-lg font-bold">{summary.headingStructure.h1Count}</div>
-            <div className="text-xs text-gray-500">H1</div>
+            <div className="text-lg font-bold text-gray-100">{summary.headingStructure.h1Count}</div>
+            <div className="text-xs text-gray-400">H1</div>
           </div>
           <div>
-            <div className="text-lg font-bold">{summary.headingStructure.h2Count}</div>
-            <div className="text-xs text-gray-500">H2</div>
+            <div className="text-lg font-bold text-gray-100">{summary.headingStructure.h2Count}</div>
+            <div className="text-xs text-gray-400">H2</div>
           </div>
           <div>
-            <div className="text-lg font-bold">{summary.headingStructure.h3Count}</div>
-            <div className="text-xs text-gray-500">H3</div>
+            <div className="text-lg font-bold text-gray-100">{summary.headingStructure.h3Count}</div>
+            <div className="text-xs text-gray-400">H3</div>
           </div>
         </div>
         <div className="mt-2 text-sm">
           {summary.headingStructure.properHierarchy ? (
-            <span className="text-green-600 flex items-center gap-1">
+            <span className="text-green-400 flex items-center gap-1">
               <CheckCircle className="w-4 h-4" /> Proper hierarchy
             </span>
           ) : (
-            <span className="text-red-600 flex items-center gap-1">
+            <span className="text-red-400 flex items-center gap-1">
               <XCircle className="w-4 h-4" /> Hierarchy issues detected
             </span>
           )}
@@ -368,15 +368,15 @@ function OutputTab({ summary }: { summary: OutputAnalysisSummary }) {
       </div>
 
       {/* CTA Status */}
-      <div className="p-4 border rounded-lg">
+      <div className="p-4 border border-gray-700 bg-gray-800/30 rounded-lg">
         <div className="flex items-center gap-2">
           {summary.ctaFound ? (
             <CheckCircle className="w-5 h-5 text-green-500" />
           ) : (
             <XCircle className="w-5 h-5 text-red-500" />
           )}
-          <span className="font-medium">Call-to-Action</span>
-          <span className="text-sm text-gray-500">
+          <span className="font-medium text-gray-200">Call-to-Action</span>
+          <span className="text-sm text-gray-400">
             {summary.ctaFound ? 'Detected in content' : 'Not found in content'}
           </span>
         </div>
@@ -384,24 +384,24 @@ function OutputTab({ summary }: { summary: OutputAnalysisSummary }) {
 
       {/* Duplicate Detection */}
       {summary.duplicateContentDetected && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-          <div className="flex items-center gap-2 text-red-600 font-semibold mb-2">
+        <div className="p-4 bg-red-900/30 border border-red-700 rounded-lg">
+          <div className="flex items-center gap-2 text-red-400 font-semibold mb-2">
             <AlertOctagon className="w-5 h-5" />
             Duplicate Content Detected
           </div>
-          <p className="text-sm text-red-700">
+          <p className="text-sm text-red-300">
             Found duplicates in sections: {summary.duplicateSections.join(', ')}
           </p>
         </div>
       )}
 
       {summary.duplicateImages.length > 0 && (
-        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <div className="flex items-center gap-2 text-yellow-600 font-semibold mb-2">
+        <div className="p-4 bg-yellow-900/30 border border-yellow-700 rounded-lg">
+          <div className="flex items-center gap-2 text-yellow-400 font-semibold mb-2">
             <AlertTriangle className="w-5 h-5" />
             Duplicate Images
           </div>
-          <ul className="text-sm text-yellow-700 list-disc list-inside">
+          <ul className="text-sm text-yellow-300 list-disc list-inside">
             {summary.duplicateImages.map((img, idx) => (
               <li key={idx}>{img}</li>
             ))}
@@ -422,10 +422,10 @@ function ComparisonTab({ comparisons }: { comparisons: RequirementComparison[] }
       {comparisons.map((comp, idx) => (
         <div
           key={idx}
-          className={`p-3 border rounded-lg ${comp.met ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}
+          className={`p-3 border rounded-lg ${comp.met ? 'bg-green-900/30 border-green-700' : 'bg-red-900/30 border-red-700'}`}
         >
           <div className="flex items-center justify-between">
-            <span className="font-medium">{comp.requirement}</span>
+            <span className={`font-medium ${comp.met ? 'text-green-300' : 'text-red-300'}`}>{comp.requirement}</span>
             {comp.met ? (
               <CheckCircle className="w-5 h-5 text-green-500" />
             ) : (
@@ -433,8 +433,8 @@ function ComparisonTab({ comparisons }: { comparisons: RequirementComparison[] }
             )}
           </div>
           <div className="flex gap-4 mt-1 text-sm">
-            <span className="text-gray-500">Expected: <strong>{comp.expected}</strong></span>
-            <span className="text-gray-500">Actual: <strong>{comp.actual}</strong></span>
+            <span className="text-gray-400">Expected: <strong className="text-gray-300">{comp.expected}</strong></span>
+            <span className="text-gray-400">Actual: <strong className="text-gray-300">{comp.actual}</strong></span>
           </div>
         </div>
       ))}
@@ -456,16 +456,16 @@ function IssuesTab({ issues }: { issues: ContentAnalysisReport['issues'] }) {
       {/* Critical Issues */}
       {critical.length > 0 && (
         <div>
-          <h4 className="font-semibold text-red-600 mb-2 flex items-center gap-2">
+          <h4 className="font-semibold text-red-400 mb-2 flex items-center gap-2">
             <XCircle className="w-4 h-4" />
             Critical Issues ({critical.length})
           </h4>
           <div className="space-y-2">
             {critical.map((issue, idx) => (
-              <div key={idx} className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <div className="font-medium text-red-700">{issue.message}</div>
-                {issue.location && <div className="text-xs text-red-500 mt-1">Location: {issue.location}</div>}
-                <div className="text-sm text-red-600 mt-1">Suggestion: {issue.suggestion}</div>
+              <div key={idx} className="p-3 bg-red-900/30 border border-red-700 rounded-lg">
+                <div className="font-medium text-red-300">{issue.message}</div>
+                {issue.location && <div className="text-xs text-red-400 mt-1">Location: {issue.location}</div>}
+                <div className="text-sm text-red-400 mt-1">Suggestion: {issue.suggestion}</div>
               </div>
             ))}
           </div>
@@ -475,15 +475,15 @@ function IssuesTab({ issues }: { issues: ContentAnalysisReport['issues'] }) {
       {/* Warnings */}
       {warnings.length > 0 && (
         <div>
-          <h4 className="font-semibold text-yellow-600 mb-2 flex items-center gap-2">
+          <h4 className="font-semibold text-yellow-400 mb-2 flex items-center gap-2">
             <AlertTriangle className="w-4 h-4" />
             Warnings ({warnings.length})
           </h4>
           <div className="space-y-2">
             {warnings.map((issue, idx) => (
-              <div key={idx} className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <div className="font-medium text-yellow-700">{issue.message}</div>
-                <div className="text-sm text-yellow-600 mt-1">Suggestion: {issue.suggestion}</div>
+              <div key={idx} className="p-3 bg-yellow-900/30 border border-yellow-700 rounded-lg">
+                <div className="font-medium text-yellow-300">{issue.message}</div>
+                <div className="text-sm text-yellow-400 mt-1">Suggestion: {issue.suggestion}</div>
               </div>
             ))}
           </div>
@@ -493,14 +493,14 @@ function IssuesTab({ issues }: { issues: ContentAnalysisReport['issues'] }) {
       {/* Info */}
       {infos.length > 0 && (
         <div>
-          <h4 className="font-semibold text-blue-600 mb-2 flex items-center gap-2">
+          <h4 className="font-semibold text-blue-400 mb-2 flex items-center gap-2">
             <Info className="w-4 h-4" />
             Info ({infos.length})
           </h4>
           <div className="space-y-2">
             {infos.map((issue, idx) => (
-              <div key={idx} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="text-blue-700">{issue.message}</div>
+              <div key={idx} className="p-3 bg-blue-900/30 border border-blue-700 rounded-lg">
+                <div className="text-blue-300">{issue.message}</div>
               </div>
             ))}
           </div>
@@ -509,10 +509,10 @@ function IssuesTab({ issues }: { issues: ContentAnalysisReport['issues'] }) {
 
       {/* All Clear */}
       {issues.length === 0 && (
-        <div className="p-6 text-center bg-green-50 rounded-lg">
+        <div className="p-6 text-center bg-green-900/30 border border-green-700 rounded-lg">
           <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-2" />
-          <h4 className="font-semibold text-green-700">No Issues Found</h4>
-          <p className="text-sm text-green-600">Content passed all quality checks.</p>
+          <h4 className="font-semibold text-green-400">No Issues Found</h4>
+          <p className="text-sm text-green-300">Content passed all quality checks.</p>
         </div>
       )}
     </div>
@@ -577,8 +577,8 @@ export function ContentAnalysisPanel({
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${
               activeTab === tab.id
-                ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-900/30'
+                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
             }`}
           >
             {tab.icon}
