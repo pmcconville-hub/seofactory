@@ -569,6 +569,11 @@ export interface SectionGenerationContext {
   };
   /** Flow guidance for smooth transitions and article structure */
   flowGuidance?: SectionFlowGuidance;
+  /** Previous section context for cross-section transition validation */
+  previousSection?: {
+    heading: string;
+    content?: string;
+  };
 }
 
 export interface VisualSemantics {
