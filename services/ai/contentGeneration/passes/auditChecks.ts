@@ -145,6 +145,9 @@ export function runAlgorithmicAudit(
   // 24. Image Placement
   results.push(checkImagePlacement(draft));
 
+  // 25. Sentence Length (Semantic SEO Requirement)
+  results.push(checkSentenceLength(draft, language));
+
   return results;
 }
 
@@ -1370,6 +1373,47 @@ export function checkTableAppropriateness(draft: string): AuditRuleResult {
 }
 
 /**
+ * Check 25: Sentence Length
+ * Sentences should be under 30 words for optimal NLP processing
+ * Semantic SEO framework requirement
+ */
+function checkSentenceLength(text: string, language?: string): AuditRuleResult {
+  const sentences = splitSentences(text);
+  const threshold = 30; // Default English threshold
+
+  const longSentences = sentences.filter(sentence => {
+    const wordCount = sentence.split(/\s+/).filter(w => w.length > 0).length;
+    return wordCount > threshold;
+  });
+
+  if (longSentences.length > 2) {
+    return {
+      ruleName: 'Sentence Length',
+      isPassing: false,
+      details: `${longSentences.length} sentences exceed ${threshold} words. Long sentences reduce readability and NLP accuracy.`,
+      remediation: 'Break long sentences into shorter ones (under 30 words each).',
+      score: Math.max(0, 100 - (longSentences.length * 15)),
+    };
+  }
+
+  if (longSentences.length > 0) {
+    return {
+      ruleName: 'Sentence Length',
+      isPassing: true, // Pass with warning
+      details: `${longSentences.length} sentence(s) exceed ${threshold} words - acceptable but could be improved.`,
+      score: 100 - (longSentences.length * 10),
+    };
+  }
+
+  return {
+    ruleName: 'Sentence Length',
+    isPassing: true,
+    details: 'All sentences are within recommended length.',
+    score: 100,
+  };
+}
+
+/**
  * Check 24: Image Placement
  * Images should NOT appear between a heading and the first paragraph
  */
@@ -1438,7 +1482,8 @@ const RULE_TO_ISSUE_TYPE: Record<string, AuditIssueType> = {
   'Prose/Structured Balance': 'no_lists',
   'List Definition Sentences': 'no_lists',
   'Table Appropriateness': 'no_lists',
-  'Image Placement': 'missing_image'
+  'Image Placement': 'missing_image',
+  'Sentence Length': 'poor_flow'
 };
 
 /**
@@ -1473,7 +1518,8 @@ const RULE_SEVERITY: Record<string, 'critical' | 'warning' | 'suggestion'> = {
   'Prose/Structured Balance': 'warning',
   'List Definition Sentences': 'warning',
   'Table Appropriateness': 'suggestion',
-  'Image Placement': 'critical'
+  'Image Placement': 'critical',
+  'Sentence Length': 'warning'
 };
 
 /**

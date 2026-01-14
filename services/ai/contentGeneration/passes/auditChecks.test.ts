@@ -546,3 +546,68 @@ The main topic is discussed here without distractions.
     expect(placementCheck?.details).toContain('Introduction contains');
   });
 });
+
+// =====================================================
+// Sentence Length Check (Semantic SEO Requirement)
+// =====================================================
+
+describe('checkSentenceLength', () => {
+  it('passes when sentences are short', () => {
+    const text = `## Introduction
+
+This is short. This is also short. Good content here.
+
+## Main Topic
+
+Test keyword is a concept. It has specific meaning. The approach works well.`;
+    const brief = createMockBrief();
+    const info = createMockBusinessInfo();
+
+    const results = runAlgorithmicAudit(text, brief, info);
+    const rule = results.find(r => r.ruleName === 'Sentence Length');
+
+    expect(rule).toBeDefined();
+    expect(rule?.isPassing).toBe(true);
+    expect(rule?.score).toBe(100);
+  });
+
+  it('warns when some sentences are long', () => {
+    const longSentence = 'This is a very long sentence that goes on and on and on and on and on and on and on and on and on and on and on and on and on and on and on to exceed thirty words easily.';
+    const text = `## Introduction
+
+Short sentence here. ${longSentence} Another short one.
+
+## Main Topic
+
+More short content.`;
+    const brief = createMockBrief();
+    const info = createMockBusinessInfo();
+
+    const results = runAlgorithmicAudit(text, brief, info);
+    const rule = results.find(r => r.ruleName === 'Sentence Length');
+
+    expect(rule).toBeDefined();
+    expect(rule?.isPassing).toBe(true); // 1 long sentence is a warning, not failure
+    expect(rule?.score).toBeLessThan(100);
+  });
+
+  it('fails when too many sentences are long', () => {
+    const longSentence = 'This is a very long sentence that goes on and on and on and on and on and on and on and on and on and on and on and on and on and on and on to exceed thirty words easily.';
+    const text = `## Introduction
+
+${longSentence} ${longSentence} ${longSentence}
+
+## More Content
+
+Additional content here.`;
+    const brief = createMockBrief();
+    const info = createMockBusinessInfo();
+
+    const results = runAlgorithmicAudit(text, brief, info);
+    const rule = results.find(r => r.ruleName === 'Sentence Length');
+
+    expect(rule).toBeDefined();
+    expect(rule?.isPassing).toBe(false);
+    expect(rule?.details).toContain('exceed');
+  });
+});
