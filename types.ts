@@ -3045,6 +3045,14 @@ export interface AuditDetails {
     }>;
     recommendations: string[];
   };
+  // Cross-page EAV consistency check results (Knowledge-Based Trust)
+  crossPageContradictions?: Array<{
+    entity: string;
+    attribute: string;
+    currentValue: string;
+    conflictingValue: string;
+    conflictingArticle: { id: string; title: string };
+  }>;
 }
 
 /**

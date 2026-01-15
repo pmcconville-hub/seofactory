@@ -4,6 +4,8 @@ import { ContentGenerationOrchestrator } from '../orchestrator';
 import { runAlgorithmicAudit } from './auditChecks';
 import { buildHolisticSummary } from '../holisticAnalyzer';
 import { calculateBriefCompliance, COMPLIANCE_THRESHOLD } from '../../compliance/complianceScoring';
+import { validateCrossPageEavConsistency } from '../rulesEngine/validators/crossPageEavValidator';
+import { useSupabase } from '../../../supabaseClient';
 import { createLogger } from '../../../../utils/debugLogger';
 
 const log = createLogger('Pass8Audit');
@@ -47,8 +49,11 @@ export async function executePass8(
   const holisticContext = buildHolisticSummary(sections, brief, businessInfo);
   log.log(` Holistic context: TTR=${(holisticContext.vocabularyMetrics.typeTokenRatio * 100).toFixed(1)}%, ${holisticContext.articleStructure.totalWordCount} words`);
 
-  // Run all algorithmic checks
-  const algorithmicResults = runAlgorithmicAudit(draft, brief, businessInfo);
+  // Get all EAVs from the brief (or empty array) - also used for algorithmic audit
+  const allEavs: SemanticTriple[] = brief.eavs || [];
+
+  // Run all algorithmic checks (pass language and EAVs for proper EAV density validation)
+  const algorithmicResults = runAlgorithmicAudit(draft, brief, businessInfo, businessInfo.language, allEavs);
 
   // Calculate algorithmic score
   const passingRules = algorithmicResults.filter(r => r.isPassing).length;
@@ -70,8 +75,7 @@ export async function executePass8(
     metadata: {}
   };
 
-  // Get all EAVs from the brief (or empty array)
-  const allEavs: SemanticTriple[] = brief.eavs || [];
+  // allEavs is already defined above for algorithmic audit
 
   const complianceResult = calculateBriefCompliance(
     brief,
@@ -85,8 +89,46 @@ export async function executePass8(
     log.log(` Compliance Issues: ${complianceResult.issues.length} (${complianceResult.issues.filter(i => i.severity === 'critical').length} critical)`);
   }
 
-  // Combined final score: 60% algorithmic + 40% compliance
-  const finalScore = Math.round(algorithmicScore * 0.6 + complianceResult.overall * 0.4);
+  // Cross-page EAV consistency check (Knowledge-Based Trust)
+  // This ensures facts are consistent across all articles in the topical map
+  let crossPageContradictions: Array<{
+    entity: string;
+    attribute: string;
+    currentValue: string;
+    conflictingValue: string;
+    conflictingArticle: { id: string; title: string };
+  }> = [];
+  let crossPagePenalty = 0;
+
+  if (job.map_id && allEavs.length > 0) {
+    try {
+      const supabase = useSupabase();
+      const crossPageResult = await validateCrossPageEavConsistency(
+        job.id,
+        job.map_id,
+        allEavs,
+        supabase
+      );
+
+      if (!crossPageResult.isConsistent) {
+        crossPageContradictions = crossPageResult.contradictions;
+        // Apply penalty: -2 points per contradiction, max -10 points
+        crossPagePenalty = Math.min(crossPageResult.contradictions.length * 2, 10);
+        log.warn(` Cross-page contradictions found: ${crossPageResult.contradictions.length}`);
+        for (const contradiction of crossPageResult.contradictions) {
+          log.warn(`   - "${contradiction.entity}" ${contradiction.attribute}: "${contradiction.currentValue}" vs "${contradiction.conflictingValue}" in "${contradiction.conflictingArticle.title}"`);
+        }
+      } else {
+        log.log(` Cross-page EAV consistency: PASSED (no contradictions)`);
+      }
+    } catch (err) {
+      // Non-fatal - log but continue with audit
+      log.warn(` Cross-page EAV check failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+
+  // Combined final score: 60% algorithmic + 40% compliance - cross-page penalty
+  const finalScore = Math.max(0, Math.round(algorithmicScore * 0.6 + complianceResult.overall * 0.4) - crossPagePenalty);
 
   // Quality enforcement thresholds
   const CRITICAL_THRESHOLD = 50;  // Below this, content is blocked
@@ -142,7 +184,9 @@ export async function executePass8(
         recommendation: i.recommendation
       })),
       recommendations: complianceResult.recommendations
-    }
+    },
+    // Include cross-page contradictions if any were found
+    ...(crossPageContradictions.length > 0 && { crossPageContradictions })
   };
 
   // Update job with the assembled draft (source of truth after section processing)
