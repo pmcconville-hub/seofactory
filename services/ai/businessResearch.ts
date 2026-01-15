@@ -112,7 +112,11 @@ const scrapeWebsite = async (
   businessInfo: BusinessInfo,
   dispatch: React.Dispatch<AppAction>
 ): Promise<{ title: string; description: string; content: string } | null> => {
+  console.log('[SmartWizard] scrapeWebsite called for URL:', url);
+  console.log('[SmartWizard] jinaApiKey available:', !!businessInfo.jinaApiKey);
+
   if (!businessInfo.jinaApiKey) {
+    console.warn('[SmartWizard] No Jina API key configured - scraping will be skipped');
     dispatch({
       type: 'LOG_EVENT',
       payload: {
@@ -140,7 +144,14 @@ const scrapeWebsite = async (
       ? { supabaseUrl: businessInfo.supabaseUrl, supabaseAnonKey: businessInfo.supabaseAnonKey }
       : undefined;
 
+    console.log('[SmartWizard] proxyConfig available:', !!proxyConfig);
+    console.log('[SmartWizard] supabaseUrl:', businessInfo.supabaseUrl ? 'SET' : 'NOT SET');
+    console.log('[SmartWizard] supabaseAnonKey:', businessInfo.supabaseAnonKey ? 'SET' : 'NOT SET');
+    console.log('[SmartWizard] jinaApiKey length:', businessInfo.jinaApiKey?.length || 0);
+    console.log('[SmartWizard] Calling extractPageContent...');
+
     const extraction = await extractPageContent(url, businessInfo.jinaApiKey, proxyConfig);
+    console.log('[SmartWizard] extractPageContent returned:', extraction ? 'success' : 'null');
 
     return {
       title: extraction.title || '',
@@ -148,6 +159,7 @@ const scrapeWebsite = async (
       content: extraction.content?.substring(0, 8000) || '', // Limit content size for AI
     };
   } catch (error) {
+    console.error('[SmartWizard] Failed to scrape website:', error);
     dispatch({
       type: 'LOG_EVENT',
       payload: {
