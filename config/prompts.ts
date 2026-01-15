@@ -694,6 +694,11 @@ ${businessContext(info)}
 2.  **The Contextual Bridge (Rule II.D):** You MUST define a specific 'contextualBridge' object. This is a dedicated section (transition paragraph) that bridges the **Macro Context** (The Site's Core Entity) to the **Micro Context** (This Article's Topic).
 3.  **Subordinate Text (Rule II.F):** For every H2/H3 in the 'structured_outline', provide a 'subordinate_text_hint'. This MUST dictate the syntax of the *very first sentence* (e.g., "Define [Topic] as [Category] that [Function]...").
 4.  **Introductory Summary (Rule II.E):** Mandate an abstractive summary at the start.
+5.  **Discourse Anchor Sequence (Rule II.G):** For each section transition, define in 'discourse_anchor_sequence':
+    - Which section leads to which (from_section -> to_section)
+    - The bridging concept that connects them
+    - Key terms that should appear in the transition sentence
+    - Type of transition (elaboration, contrast, cause_effect, sequence, example, summary)
 
 #### **III. LINGUISTIC DIRECTIVES**
 1.  **Explicit Naming (Rule III.D):** Instruct the writer to use **Explicit Naming**. Strictly FORBID ambiguous pronouns ("it", "they", "this") when referring to the Central Entity.
@@ -800,6 +805,15 @@ Respond with a SINGLE valid JSON object. Generate the 'structured_outline' FIRST
     }
   ],
   "discourse_anchors": ["string", "string"],
+  "discourse_anchor_sequence": [
+    {
+      "from_section": "Previous section heading",
+      "to_section": "Next section heading",
+      "bridge_concept": "The concept linking these sections",
+      "transition_terms": ["term1", "term2"],
+      "transition_type": "elaboration|contrast|cause_effect|sequence|example|summary"
+    }
+  ],
   "serpAnalysis": {
     "peopleAlsoAsk": ["string"],
     "competitorHeadings": [],

@@ -605,6 +605,23 @@ export interface VisualPlacementEntry {
   placement_rationale: string;
 }
 
+/**
+ * Defines the discourse anchor sequence for progressive context flow.
+ * Framework: "Each transition requires a Contextual Bridge"
+ */
+export interface DiscourseAnchorEntry {
+  /** The section this anchor leads FROM */
+  from_section: string;
+  /** The section this anchor leads TO */
+  to_section: string;
+  /** The bridging concept that connects the two sections */
+  bridge_concept: string;
+  /** Key terms that should appear in the transition */
+  transition_terms: string[];
+  /** Type of transition */
+  transition_type: 'elaboration' | 'contrast' | 'cause_effect' | 'sequence' | 'example' | 'summary';
+}
+
 // Image Generation Types
 export type ImageType = 'HERO' | 'SECTION' | 'INFOGRAPHIC' | 'CHART' | 'DIAGRAM' | 'AUTHOR';
 
@@ -801,6 +818,8 @@ export interface ContentBrief {
   /** Map of image placements anchored to entity mentions */
   visual_placement_map?: VisualPlacementEntry[];
   discourse_anchors?: string[]; // List of mutual words for transitions
+  /** Structured sequence of discourse anchors for section transitions */
+  discourse_anchor_sequence?: DiscourseAnchorEntry[];
 
   // Enhanced Visual Semantics (Koray's "Pixels, Letters, and Bytes" Framework)
   enhanced_visual_semantics?: BriefVisualSemantics;
