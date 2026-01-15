@@ -194,10 +194,6 @@ export class CenterpieceValidator {
       return null;
     }
 
-    // Also include central entity terms for matching
-    const entityTerms = this.extractKeyTerms(centralEntity);
-    const allRelevantTerms = [...new Set([...headingTerms, ...entityTerms])];
-
     // Check how many heading terms appear in the first sentence
     const sentenceLower = firstSentence.toLowerCase();
     const matchedTerms = headingTerms.filter(term => {
