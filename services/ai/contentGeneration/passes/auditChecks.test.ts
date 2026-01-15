@@ -1,7 +1,7 @@
 // services/ai/contentGeneration/passes/auditChecks.test.ts
 import { describe, it, expect } from 'vitest';
 import { runAlgorithmicAudit } from './auditChecks';
-import { ContentBrief, BusinessInfo } from '../../../../types';
+import { ContentBrief, BusinessInfo, SemanticTriple } from '../../../../types';
 
 // Helper to create minimal test fixtures
 const createMockBrief = (overrides: Partial<ContentBrief> = {}): ContentBrief => ({
@@ -609,5 +609,118 @@ Additional content here.`;
     expect(rule).toBeDefined();
     expect(rule?.isPassing).toBe(false);
     expect(rule?.details).toContain('exceed');
+  });
+});
+
+// =====================================================
+// EAV Density Check (Semantic SEO Requirement)
+// =====================================================
+
+describe('checkEavDensity', () => {
+  it('passes with high pattern density when EAVs are not provided', () => {
+    // Content with lots of "X is Y" patterns (EAV-like structures)
+    const text = `## Introduction
+
+Water is essential for human survival. The human body is composed of approximately 60% water.
+Dehydration is a condition where the body loses more fluid than it takes in.
+The recommended daily water intake is 2-3 liters for most adults.
+
+## Benefits
+
+Hydration is critical for cognitive function. Brain performance is directly linked to water intake.
+Blood pressure is regulated by proper fluid balance. Kidney function is optimized with adequate water.`;
+
+    const brief = createMockBrief();
+    const info = createMockBusinessInfo();
+
+    const results = runAlgorithmicAudit(text, brief, info);
+    const rule = results.find(r => r.ruleName === 'EAV Density');
+
+    expect(rule).toBeDefined();
+    expect(rule?.isPassing).toBe(true);
+    expect(rule?.score).toBeGreaterThanOrEqual(50);
+  });
+
+  it('warns when EAV density is moderate', () => {
+    // Content with some EAV patterns but also fluff
+    const text = `## Introduction
+
+Water is important for health. People should drink more water. It really helps a lot.
+Many experts agree about this topic. There are several considerations to keep in mind.
+
+## Details
+
+Some studies suggest benefits. The research shows interesting findings about hydration.
+Various factors play a role. Drinking water has many implications.`;
+
+    const brief = createMockBrief();
+    const info = createMockBusinessInfo();
+
+    const results = runAlgorithmicAudit(text, brief, info);
+    const rule = results.find(r => r.ruleName === 'EAV Density');
+
+    expect(rule).toBeDefined();
+    // Should still pass but with a lower score
+    expect(rule?.details).toContain('%');
+  });
+
+  it('fails when content lacks EAV patterns', () => {
+    // Vague content with no "X is Y" structures
+    const text = `## Introduction
+
+Thinking about this topic. Considering various things. Looking at possibilities.
+Many considerations here. Very important stuff. Quite remarkable really.
+
+## More Content
+
+Some general thoughts. Random observations follow. Nothing specific mentioned.
+Vague statements continue. Abstract concepts prevail.`;
+
+    const brief = createMockBrief();
+    const info = createMockBusinessInfo();
+
+    const results = runAlgorithmicAudit(text, brief, info);
+    const rule = results.find(r => r.ruleName === 'EAV Density');
+
+    expect(rule).toBeDefined();
+    expect(rule?.isPassing).toBe(false);
+    expect(rule?.details).toContain('lack');
+    expect(rule?.score).toBeLessThan(30);
+  });
+
+  it('uses term density when EAVs are provided', () => {
+    const eavs = [
+      {
+        subject: { label: 'Water Filter', type: 'Product' },
+        predicate: { relation: 'has', type: 'attribute' },
+        object: { value: 'activated carbon', type: 'string' }
+      },
+      {
+        subject: { label: 'Reverse Osmosis', type: 'Process' },
+        predicate: { relation: 'removes', type: 'action' },
+        object: { value: '99% of contaminants', type: 'string' }
+      }
+    ] as any;
+
+    // Content using the EAV terms
+    const text = `## Water Filter Overview
+
+A water filter is a device that removes impurities. The most common type uses activated carbon.
+Activated carbon is effective for removing chlorine and bad tastes.
+
+## Reverse Osmosis
+
+Reverse osmosis is a filtration method. It removes 99% of contaminants from water.
+The reverse osmosis process uses a semipermeable membrane.`;
+
+    const brief = createMockBrief({ eavs });
+    const info = createMockBusinessInfo();
+
+    const results = runAlgorithmicAudit(text, brief, info, 'en', eavs);
+    const rule = results.find(r => r.ruleName === 'EAV Density');
+
+    expect(rule).toBeDefined();
+    expect(rule?.isPassing).toBe(true);
+    expect(rule?.details).toContain('Term density');
   });
 });

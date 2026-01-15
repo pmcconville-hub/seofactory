@@ -1,5 +1,5 @@
 // services/ai/contentGeneration/passes/auditChecks.ts
-import { ContentBrief, BusinessInfo, AuditRuleResult, AuditIssue, AuditIssueType } from '../../../../types';
+import { ContentBrief, BusinessInfo, AuditRuleResult, AuditIssue, AuditIssueType, SemanticTriple } from '../../../../types';
 import { v4 as uuidv4 } from 'uuid';
 import { splitSentences } from '../../../../utils/sentenceTokenizer';
 import * as geminiService from '../../../geminiService';
@@ -9,6 +9,7 @@ import * as perplexityService from '../../../perplexityService';
 import * as openRouterService from '../../../openRouterService';
 import { dispatchToProvider } from '../../providerDispatcher';
 import { getAuditPatterns } from './auditPatternsMultilingual';
+import { EAVDensityValidator } from '../rulesEngine/validators/eavDensity';
 
 // No-op dispatch for standalone calls
 const noOpDispatch = () => {};
@@ -44,12 +45,14 @@ const STOP_WORDS_FULL = getAuditPatterns('en').stopWordsFull;
  * @param brief - The content brief
  * @param info - Business information
  * @param language - ISO language code (e.g., 'nl', 'en', 'de', 'fr', 'es') for multilingual pattern matching
+ * @param eavs - Optional SemanticTriple array for EAV density validation
  */
 export function runAlgorithmicAudit(
   draft: string,
   brief: ContentBrief,
   info: BusinessInfo,
-  language?: string
+  language?: string,
+  eavs?: SemanticTriple[]
 ): AuditRuleResult[] {
   const results: AuditRuleResult[] = [];
   // Get language-specific patterns
@@ -97,8 +100,8 @@ export function runAlgorithmicAudit(
   // 9. Centerpiece Annotation
   results.push(checkCenterpieceAnnotation(draft, info.seedKeyword, language));
 
-  // 10. Information Density
-  results.push(checkInformationDensity(draft, info.seedKeyword));
+  // 10. Repetitive Language (formerly Information Density)
+  results.push(checkRepetitiveLanguage(draft, info.seedKeyword));
 
   // 11. LLM Signature Phrases
   results.push(checkLLMSignaturePhrases(draft, language));
@@ -147,6 +150,9 @@ export function runAlgorithmicAudit(
 
   // 25. Sentence Length (Semantic SEO Requirement)
   results.push(checkSentenceLength(draft, language));
+
+  // 26. EAV Density (Semantic SEO Requirement)
+  results.push(checkEavDensity(draft, eavs, language));
 
   return results;
 }
@@ -551,7 +557,13 @@ function checkCenterpieceAnnotation(text: string, centralEntity: string, languag
   return { ruleName: 'Centerpiece Annotation', isPassing: true, details: 'Core answer appears early in content.' };
 }
 
-function checkInformationDensity(text: string, centralEntity: string): AuditRuleResult {
+/**
+ * Check for repetitive language patterns with the central entity
+ * Note: This is NOT an EAV density check - see checkEavDensity for that.
+ * This function detects short, repetitive sentences that mention the entity
+ * without adding new information (e.g., "Product X is great. Product X is nice.")
+ */
+function checkRepetitiveLanguage(text: string, centralEntity: string): AuditRuleResult {
   const sentences = splitSentences(text);
   const entityRegex = new RegExp(centralEntity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
 
@@ -572,13 +584,13 @@ function checkInformationDensity(text: string, centralEntity: string): AuditRule
 
   if (repetitiveCount > 3) {
     return {
-      ruleName: 'Information Density',
+      ruleName: 'Repetitive Language',
       isPassing: false,
       details: `${repetitiveCount} potentially repetitive entity mentions.`,
       remediation: 'Each sentence with entity should add new attribute/value.'
     };
   }
-  return { ruleName: 'Information Density', isPassing: true, details: 'Good information density.' };
+  return { ruleName: 'Repetitive Language', isPassing: true, details: 'Good information density.' };
 }
 
 function checkLLMSignaturePhrases(text: string, language?: string): AuditRuleResult {
@@ -1421,6 +1433,57 @@ function checkSentenceLength(text: string, language?: string): AuditRuleResult {
 }
 
 /**
+ * Check 26: EAV Density
+ * Validates Entity-Attribute-Value density using the proper EAV validator
+ * This is a core Semantic SEO requirement measuring factual content density
+ *
+ * @param text - The content to analyze
+ * @param eavs - Optional EAV triples for term-based density calculation
+ * @param language - Optional language code for multilingual EAV pattern matching
+ */
+function checkEavDensity(text: string, eavs: SemanticTriple[] | undefined, language?: string): AuditRuleResult {
+  // Calculate pattern-based density (sentences with EAV structure)
+  const patternDensity = EAVDensityValidator.calculateDensity(text, language);
+
+  // Calculate term density if EAVs provided
+  let termDensity = 0;
+  if (eavs && eavs.length > 0) {
+    termDensity = EAVDensityValidator.calculateTermDensity(text, eavs);
+  }
+
+  // Combined score (weight pattern density higher)
+  const combinedScore = eavs && eavs.length > 0
+    ? Math.round(patternDensity * 0.6 + termDensity * 0.4)
+    : patternDensity;
+
+  if (combinedScore < 30) {
+    return {
+      ruleName: 'EAV Density',
+      isPassing: false,
+      details: `EAV density is ${combinedScore}% - content lacks factual substance. Pattern density: ${patternDensity}%, Term density: ${termDensity}%.`,
+      remediation: 'Add more Entity-Attribute-Value statements (e.g., "X is Y", "X has Z").',
+      score: combinedScore,
+    };
+  }
+
+  if (combinedScore < 50) {
+    return {
+      ruleName: 'EAV Density',
+      isPassing: true,
+      details: `EAV density is ${combinedScore}% - acceptable but could be improved. Pattern density: ${patternDensity}%, Term density: ${termDensity}%.`,
+      score: combinedScore,
+    };
+  }
+
+  return {
+    ruleName: 'EAV Density',
+    isPassing: true,
+    details: `EAV density is ${combinedScore}% - good factual content. Pattern density: ${patternDensity}%, Term density: ${termDensity}%.`,
+    score: combinedScore,
+  };
+}
+
+/**
  * Check 24: Image Placement
  * Images should NOT appear between a heading and the first paragraph
  */
@@ -1475,7 +1538,7 @@ const RULE_TO_ISSUE_TYPE: Record<string, AuditIssueType> = {
   'Link Positioning': 'broken_link',
   'First Sentence Precision': 'weak_intro',
   'Centerpiece Annotation': 'weak_intro',
-  'Information Density': 'poor_flow',
+  'Repetitive Language': 'poor_flow',
   'LLM Phrase Detection': 'poor_flow',
   'Vocabulary Richness': 'poor_flow',
   'Content Coverage Weight': 'section_too_long',
@@ -1490,7 +1553,8 @@ const RULE_TO_ISSUE_TYPE: Record<string, AuditIssueType> = {
   'List Definition Sentences': 'no_lists',
   'Table Appropriateness': 'no_lists',
   'Image Placement': 'missing_image',
-  'Sentence Length': 'poor_flow'
+  'Sentence Length': 'poor_flow',
+  'EAV Density': 'missing_eav_coverage'
 };
 
 /**
@@ -1511,7 +1575,7 @@ const RULE_SEVERITY: Record<string, 'critical' | 'warning' | 'suggestion'> = {
   'Link Positioning': 'warning',
   'First Sentence Precision': 'warning',
   'Centerpiece Annotation': 'critical',
-  'Information Density': 'suggestion',
+  'Repetitive Language': 'suggestion',
   'LLM Phrase Detection': 'critical',
   'Vocabulary Richness': 'warning',
   'Content Coverage Weight': 'warning',
@@ -1526,7 +1590,8 @@ const RULE_SEVERITY: Record<string, 'critical' | 'warning' | 'suggestion'> = {
   'List Definition Sentences': 'warning',
   'Table Appropriateness': 'suggestion',
   'Image Placement': 'critical',
-  'Sentence Length': 'warning'
+  'Sentence Length': 'warning',
+  'EAV Density': 'warning'
 };
 
 /**
