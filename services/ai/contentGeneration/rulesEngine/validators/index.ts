@@ -77,12 +77,11 @@ export class RulesValidator {
       violations.push(...FormatCodeValidator.validate(content, context.section.format_code));
     }
 
-    // 5. Centerpiece (intro only)
+    // 5. Centerpiece and Heading-Answer validation
     // Skip in Pass 1 - Pass 7 (Introduction Synthesis) handles intro
+    // Now runs for ALL sections, not just intro
     if (runAll || !isPass1) {
-      if (context.section.level === 1 || context.section.heading.toLowerCase().includes('introduction')) {
-        violations.push(...CenterpieceValidator.validate(content, context));
-      }
+      violations.push(...CenterpieceValidator.validate(content, context));
     }
 
     // 6. YMYL Safe Answer Protocol

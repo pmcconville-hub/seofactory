@@ -76,6 +76,25 @@ function getCenterpiecePatterns(language?: string): LanguageCenterpiecePatterns 
 
 export class CenterpieceValidator {
   private static readonly CENTERPIECE_CHAR_LIMIT = 400;
+  private static readonly HEADING_ANSWER_THRESHOLD = 0.4; // 40% of heading terms must appear
+
+  // Common stopwords and question words to filter out when extracting heading keywords
+  private static readonly STOPWORDS = new Set([
+    // English stopwords
+    'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should',
+    'may', 'might', 'must', 'shall', 'can', 'need', 'dare', 'ought', 'used',
+    'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as', 'into',
+    'through', 'during', 'before', 'after', 'above', 'below', 'between',
+    'and', 'but', 'or', 'nor', 'so', 'yet', 'both', 'either', 'neither',
+    'not', 'only', 'own', 'same', 'than', 'too', 'very', 'just',
+    'about', 'this', 'that', 'these', 'those', 'it', 'its',
+    'you', 'your', 'yours', 'we', 'our', 'ours', 'they', 'their', 'theirs',
+    'i', 'me', 'my', 'mine', 'he', 'him', 'his', 'she', 'her', 'hers',
+    // Question words
+    'what', 'which', 'who', 'whom', 'whose', 'when', 'where', 'why', 'how',
+    'much', 'many', 'often', 'long',
+  ]);
 
   static validate(content: string, context: SectionGenerationContext): ValidationViolation[] {
     const violations: ValidationViolation[] = [];
@@ -100,6 +119,14 @@ export class CenterpieceValidator {
         suggestion: `First sentence lacks definitive verb. Start with a direct definition using appropriate verbs for the language.`,
         severity: isIntroSection ? 'error' : 'warning',  // Error for intro, warning for others
       });
+    }
+
+    // For NON-intro sections, validate first sentence answers the heading's implied question
+    if (!isIntroSection && firstSentence && context.section?.heading) {
+      const headingAnswerViolation = this.validateHeadingAnswer(firstSentence, context.section.heading, centralEntity);
+      if (headingAnswerViolation) {
+        violations.push(headingAnswerViolation);
+      }
     }
 
     // Centerpiece checks only for intro sections or when entity is provided
@@ -148,6 +175,78 @@ export class CenterpieceValidator {
     }
 
     return violations;
+  }
+
+  /**
+   * Validate that the first sentence answers the heading's implied question.
+   * Extracts key terms from heading and checks if they appear in the first sentence.
+   */
+  private static validateHeadingAnswer(
+    firstSentence: string,
+    heading: string,
+    centralEntity: string
+  ): ValidationViolation | null {
+    // Extract key terms from heading (removing question words and stopwords)
+    const headingTerms = this.extractKeyTerms(heading);
+
+    // If heading has no meaningful terms, skip validation
+    if (headingTerms.length === 0) {
+      return null;
+    }
+
+    // Also include central entity terms for matching
+    const entityTerms = this.extractKeyTerms(centralEntity);
+    const allRelevantTerms = [...new Set([...headingTerms, ...entityTerms])];
+
+    // Check how many heading terms appear in the first sentence
+    const sentenceLower = firstSentence.toLowerCase();
+    const matchedTerms = headingTerms.filter(term => {
+      // Check for whole word match or start of word (for plurals, verb forms)
+      const termPattern = new RegExp(`\\b${this.escapeRegex(term)}`, 'i');
+      return termPattern.test(sentenceLower);
+    });
+
+    // Calculate match ratio based on heading terms only
+    const matchRatio = matchedTerms.length / headingTerms.length;
+
+    // If less than 40% of heading terms appear, flag as violation
+    if (matchRatio < this.HEADING_ANSWER_THRESHOLD) {
+      return {
+        rule: 'HEADING_ANSWER_MISSING',
+        text: firstSentence.substring(0, 100) + (firstSentence.length > 100 ? '...' : ''),
+        position: 0,
+        suggestion: `First sentence must directly answer the heading's question. Include key terms: ${headingTerms.slice(0, 5).join(', ')}`,
+        severity: 'warning',
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract key terms from a string, filtering out stopwords and question words.
+   */
+  private static extractKeyTerms(text: string): string[] {
+    if (!text) return [];
+
+    // Split into words, lowercase, and filter
+    const words = text
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ')  // Remove punctuation
+      .split(/\s+/)
+      .filter(word =>
+        word.length > 2 &&
+        !this.STOPWORDS.has(word)
+      );
+
+    return [...new Set(words)];  // Remove duplicates
+  }
+
+  /**
+   * Escape special regex characters in a string.
+   */
+  private static escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   /**
