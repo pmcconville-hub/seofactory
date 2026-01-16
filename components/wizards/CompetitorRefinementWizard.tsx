@@ -40,6 +40,8 @@ const CompetitorRefinementWizard: React.FC<CompetitorRefinementWizardProps> = ({
     const [selectedCompetitorUrls, setSelectedCompetitorUrls] = useState<string[]>(activeMap?.competitors || []);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [manualUrl, setManualUrl] = useState('');
+    const [manualCompetitors, setManualCompetitors] = useState<SerpResult[]>([]);
 
     const fetchCompetitors = useCallback(async () => {
         if (!activeMap || !activeMap.pillars) return;
@@ -67,10 +69,52 @@ const CompetitorRefinementWizard: React.FC<CompetitorRefinementWizardProps> = ({
     }, [fetchCompetitors]);
 
     const handleToggleCompetitor = (url: string) => {
-        setSelectedCompetitorUrls(prev => 
+        setSelectedCompetitorUrls(prev =>
             prev.includes(url) ? prev.filter(u => u !== url) : [...prev, url]
         );
     };
+
+    const handleAddManualCompetitor = () => {
+        if (!manualUrl.trim()) return;
+
+        // Normalize URL - add https:// if missing
+        let normalizedUrl = manualUrl.trim();
+        if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
+            normalizedUrl = 'https://' + normalizedUrl;
+        }
+
+        // Check if already exists
+        const allUrls = [...competitors.map(c => c.link), ...manualCompetitors.map(c => c.link)];
+        if (allUrls.includes(normalizedUrl)) {
+            setManualUrl('');
+            return;
+        }
+
+        // Extract domain for title
+        let domain = normalizedUrl;
+        try {
+            domain = new URL(normalizedUrl).hostname;
+        } catch {}
+
+        const newCompetitor: SerpResult = {
+            position: 0,
+            title: domain,
+            link: normalizedUrl,
+            snippet: 'Manually added competitor'
+        };
+
+        setManualCompetitors(prev => [...prev, newCompetitor]);
+        setSelectedCompetitorUrls(prev => [...prev, normalizedUrl]);
+        setManualUrl('');
+    };
+
+    const handleRemoveManualCompetitor = (url: string) => {
+        setManualCompetitors(prev => prev.filter(c => c.link !== url));
+        setSelectedCompetitorUrls(prev => prev.filter(u => u !== url));
+    };
+
+    // Combine discovered and manual competitors
+    const allCompetitors = [...competitors, ...manualCompetitors];
 
     return (
         <Card className="max-w-3xl w-full">
@@ -86,35 +130,69 @@ const CompetitorRefinementWizard: React.FC<CompetitorRefinementWizardProps> = ({
                     </div>
                 )}
                 {error && <div className="text-red-400 bg-red-900/20 p-4 rounded-md text-center">{error}</div>}
-                {!isLoading && !error && competitors.length === 0 && (
-                    <div className="text-yellow-400 bg-yellow-900/20 p-4 rounded-md text-center">
-                        <p className="font-semibold mb-2">No competitors found</p>
+                {!isLoading && !error && competitors.length === 0 && manualCompetitors.length === 0 && (
+                    <div className="text-yellow-400 bg-yellow-900/20 p-4 rounded-md text-center mb-4">
+                        <p className="font-semibold mb-2">No competitors discovered automatically</p>
                         <p className="text-sm text-gray-400">
-                            This could be because:
-                        </p>
-                        <ul className="text-sm text-gray-400 mt-2 list-disc list-inside text-left">
-                            <li>DataForSEO credentials are not configured in Settings</li>
-                            <li>The search query returned no organic results</li>
-                            <li>All results were filtered out (publication sites, own domain)</li>
-                        </ul>
-                        <p className="text-sm text-gray-400 mt-3">
-                            You can still proceed without competitors, or configure DataForSEO in Settings.
+                            Add competitors manually below, or proceed without them if your topic is unique.
                         </p>
                     </div>
                 )}
+
+                {/* Manual competitor input */}
+                <div className="mb-4">
+                    <label className="block text-sm text-gray-400 mb-2">Add competitor manually</label>
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            value={manualUrl}
+                            onChange={(e) => setManualUrl(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAddManualCompetitor()}
+                            placeholder="https://competitor-website.com"
+                            className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                        />
+                        <Button onClick={handleAddManualCompetitor} variant="secondary" disabled={!manualUrl.trim()}>
+                            Add
+                        </Button>
+                    </div>
+                </div>
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-4">
                     {/* Deduplicate competitors by URL to avoid duplicate keys */}
-                    {competitors
+                    {allCompetitors
                         .filter((c, index, self) => self.findIndex(x => x.link === c.link) === index)
-                        .map((c, index) => (
-                        <div key={`${c.link}-${index}`} className={`p-3 rounded-lg flex items-start gap-3 cursor-pointer border ${selectedCompetitorUrls.includes(c.link) ? 'bg-blue-900/20 border-blue-700' : 'bg-gray-900/50 border-gray-700'}`} onClick={() => handleToggleCompetitor(c.link)}>
-                            <input type="checkbox" checked={selectedCompetitorUrls.includes(c.link)} readOnly className="mt-1 flex-shrink-0" />
-                            <div>
-                                <p className="font-semibold text-white">{c.title}</p>
-                                <p className="text-xs text-green-400 font-mono break-all">{c.link}</p>
-                            </div>
-                        </div>
-                    ))}
+                        .map((c, index) => {
+                            const isManual = manualCompetitors.some(mc => mc.link === c.link);
+                            return (
+                                <div
+                                    key={`${c.link}-${index}`}
+                                    className={`p-3 rounded-lg flex items-start gap-3 cursor-pointer border ${selectedCompetitorUrls.includes(c.link) ? 'bg-blue-900/20 border-blue-700' : 'bg-gray-900/50 border-gray-700'}`}
+                                    onClick={() => handleToggleCompetitor(c.link)}
+                                >
+                                    <input type="checkbox" checked={selectedCompetitorUrls.includes(c.link)} readOnly className="mt-1 flex-shrink-0" />
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <p className="font-semibold text-white">{c.title}</p>
+                                            {isManual && (
+                                                <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">Manual</span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-green-400 font-mono break-all">{c.link}</p>
+                                    </div>
+                                    {isManual && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleRemoveManualCompetitor(c.link);
+                                            }}
+                                            className="text-gray-500 hover:text-red-400 text-sm"
+                                            title="Remove"
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })}
                 </div>
             </div>
             <footer className="p-4 bg-gray-800 border-t border-gray-700 flex justify-between items-center">
@@ -122,12 +200,12 @@ const CompetitorRefinementWizard: React.FC<CompetitorRefinementWizardProps> = ({
                 <Button
                     onClick={() => onFinalize(selectedCompetitorUrls)}
                     disabled={isLoading}
-                    title={competitors.length === 0 ? "Proceeding without competitor data" : undefined}
+                    title={selectedCompetitorUrls.length === 0 ? "Proceeding without competitor data" : undefined}
                 >
                     {state.isLoading.map ? <Loader /> : (
-                        competitors.length === 0
+                        selectedCompetitorUrls.length === 0
                             ? 'Skip & Generate Map'
-                            : `Finalize & Generate Map`
+                            : `Finalize & Generate Map (${selectedCompetitorUrls.length})`
                     )}
                 </Button>
             </footer>
