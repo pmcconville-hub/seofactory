@@ -79,8 +79,29 @@ const CompetitorRefinementWizard: React.FC<CompetitorRefinementWizardProps> = ({
                     <h1 className="text-3xl font-bold text-white">Refine Competitors</h1>
                     <p className="text-gray-400 mt-2">Select relevant competitors to inform map generation.</p>
                 </header>
-                {isLoading && <div className="flex justify-center"><Loader /></div>}
+                {isLoading && (
+                    <div className="flex flex-col items-center gap-3 py-8">
+                        <Loader />
+                        <p className="text-gray-400 text-sm">Discovering competitors via DataForSEO...</p>
+                    </div>
+                )}
                 {error && <div className="text-red-400 bg-red-900/20 p-4 rounded-md text-center">{error}</div>}
+                {!isLoading && !error && competitors.length === 0 && (
+                    <div className="text-yellow-400 bg-yellow-900/20 p-4 rounded-md text-center">
+                        <p className="font-semibold mb-2">No competitors found</p>
+                        <p className="text-sm text-gray-400">
+                            This could be because:
+                        </p>
+                        <ul className="text-sm text-gray-400 mt-2 list-disc list-inside text-left">
+                            <li>DataForSEO credentials are not configured in Settings</li>
+                            <li>The search query returned no organic results</li>
+                            <li>All results were filtered out (publication sites, own domain)</li>
+                        </ul>
+                        <p className="text-sm text-gray-400 mt-3">
+                            You can still proceed without competitors, or configure DataForSEO in Settings.
+                        </p>
+                    </div>
+                )}
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-4">
                     {/* Deduplicate competitors by URL to avoid duplicate keys */}
                     {competitors
@@ -98,8 +119,16 @@ const CompetitorRefinementWizard: React.FC<CompetitorRefinementWizardProps> = ({
             </div>
             <footer className="p-4 bg-gray-800 border-t border-gray-700 flex justify-between items-center">
                 <Button onClick={onBack} variant="secondary">Back</Button>
-                <Button onClick={() => onFinalize(selectedCompetitorUrls)} disabled={isLoading || selectedCompetitorUrls.length === 0}>
-                    {state.isLoading.map ? <Loader /> : `Finalize & Generate Map`}
+                <Button
+                    onClick={() => onFinalize(selectedCompetitorUrls)}
+                    disabled={isLoading}
+                    title={competitors.length === 0 ? "Proceeding without competitor data" : undefined}
+                >
+                    {state.isLoading.map ? <Loader /> : (
+                        competitors.length === 0
+                            ? 'Skip & Generate Map'
+                            : `Finalize & Generate Map`
+                    )}
                 </Button>
             </footer>
         </Card>

@@ -147,6 +147,9 @@ export const fetchSerpResults = async (query: string, login: string, password: s
         const url = 'https://api.dataforseo.com/v3/serp/google/organic/live/advanced';
         const credentials = btoa(`${login}:${password}`);
 
+        console.log('[DataForSEO] Starting SERP request for:', { query, locationName, languageCode });
+        const startTime = Date.now();
+
         try {
             const response = await fetchWithProxy(url, {
                 method: 'POST',
@@ -157,12 +160,15 @@ export const fetchSerpResults = async (query: string, login: string, password: s
                 body: JSON.stringify(postData)
             });
 
+            console.log(`[DataForSEO] Response received in ${Date.now() - startTime}ms, status: ${response.status}`);
+
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(`DataForSEO API HTTP Error: ${response.status} ${response.statusText}. Response: ${errorText}`);
             }
 
             const data = await response.json();
+            console.log(`[DataForSEO] Parsed response, status_code: ${data.status_code}, tasks: ${data.tasks?.length}`);
 
             if (data.status_code !== 20000) {
                 throw new Error(`DataForSEO API Error: ${data.status_message}`);
@@ -170,6 +176,14 @@ export const fetchSerpResults = async (query: string, login: string, password: s
             
             const taskResult = data.tasks?.[0]?.result?.[0];
             if (!taskResult || !taskResult.items) {
+                console.warn('[DataForSEO] No SERP results returned. Response structure:', {
+                    hasTaskResult: !!taskResult,
+                    hasItems: !!taskResult?.items,
+                    itemCount: taskResult?.items?.length,
+                    tasks: data.tasks?.length,
+                    statusMessage: data.status_message
+                });
+                // Return empty array but log for debugging - this is a valid state (no organic results)
                 return [];
             }
 
