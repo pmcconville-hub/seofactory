@@ -4,9 +4,12 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAppState } from '../../state/appState';
 import { AppStep, SEOPillars, SemanticTriple, SerpResult, BusinessInfo } from '../../types';
 import * as serpApiService from '../../services/serpApiService';
+import { discoverCompetitorsWithAI } from '../../services/perplexityService';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Loader } from '../ui/Loader';
+
+type DiscoveryMethod = 'idle' | 'serp' | 'ai' | 'done';
 
 interface CompetitorRefinementWizardProps {
   onFinalize: (competitors: string[]) => void;
@@ -42,26 +45,58 @@ const CompetitorRefinementWizard: React.FC<CompetitorRefinementWizardProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [manualUrl, setManualUrl] = useState('');
     const [manualCompetitors, setManualCompetitors] = useState<SerpResult[]>([]);
+    const [discoveryMethod, setDiscoveryMethod] = useState<DiscoveryMethod>('idle');
+    const [discoveredViaAI, setDiscoveredViaAI] = useState(false);
 
     const fetchCompetitors = useCallback(async () => {
         if (!activeMap || !activeMap.pillars) return;
         setIsLoading(true);
         setError(null);
+        setDiscoveryMethod('serp');
+        setDiscoveredViaAI(false);
+
+        let results: SerpResult[] = [];
+
+        // Step 1: Try DataForSEO/SERP-based discovery
         try {
-            const results = await serpApiService.discoverInitialCompetitors(
-                activeMap.pillars.centralEntity, 
-                effectiveBusinessInfo, 
+            results = await serpApiService.discoverInitialCompetitors(
+                activeMap.pillars.centralEntity,
+                effectiveBusinessInfo,
                 dispatch
             );
-            setCompetitors(results);
-            if(selectedCompetitorUrls.length === 0) {
-              setSelectedCompetitorUrls(results.slice(0, 5).map(r => r.link)); // Pre-select top 5 if none selected
-            }
         } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to discover competitors.');
-        } finally {
-            setIsLoading(false);
+            console.warn('[CompetitorWizard] SERP discovery failed:', e);
+            // Don't set error yet - we'll try AI fallback
         }
+
+        // Step 2: If SERP returns empty and Perplexity is configured, try AI discovery
+        if (results.length === 0 && effectiveBusinessInfo.perplexityApiKey) {
+            setDiscoveryMethod('ai');
+            try {
+                console.log('[CompetitorWizard] SERP returned empty, falling back to AI discovery...');
+                results = await discoverCompetitorsWithAI(
+                    activeMap.pillars,
+                    effectiveBusinessInfo,
+                    dispatch
+                );
+                console.log(`[CompetitorWizard] AI discovery found ${results.length} competitors`);
+                if (results.length > 0) {
+                    setDiscoveredViaAI(true);
+                }
+            } catch (e) {
+                console.warn('[CompetitorWizard] AI discovery also failed:', e);
+                setError(e instanceof Error ? e.message : 'Failed to discover competitors via AI.');
+            }
+        }
+
+        setDiscoveryMethod('done');
+        setCompetitors(results);
+
+        if (results.length > 0 && selectedCompetitorUrls.length === 0) {
+            setSelectedCompetitorUrls(results.slice(0, 5).map(r => r.link)); // Pre-select top 5 if none selected
+        }
+
+        setIsLoading(false);
     }, [activeMap, effectiveBusinessInfo, dispatch, selectedCompetitorUrls.length]);
 
     useEffect(() => {
@@ -126,7 +161,11 @@ const CompetitorRefinementWizard: React.FC<CompetitorRefinementWizardProps> = ({
                 {isLoading && (
                     <div className="flex flex-col items-center gap-3 py-8">
                         <Loader />
-                        <p className="text-gray-400 text-sm">Discovering competitors via DataForSEO...</p>
+                        <p className="text-gray-400 text-sm">
+                            {discoveryMethod === 'serp' && 'Discovering competitors via DataForSEO...'}
+                            {discoveryMethod === 'ai' && 'SERP returned empty. Discovering competitors via AI (Perplexity)...'}
+                            {discoveryMethod === 'idle' && 'Initializing competitor discovery...'}
+                        </p>
                     </div>
                 )}
                 {error && <div className="text-red-400 bg-red-900/20 p-4 rounded-md text-center">{error}</div>}
@@ -134,7 +173,10 @@ const CompetitorRefinementWizard: React.FC<CompetitorRefinementWizardProps> = ({
                     <div className="text-yellow-400 bg-yellow-900/20 p-4 rounded-md text-center mb-4">
                         <p className="font-semibold mb-2">No competitors discovered automatically</p>
                         <p className="text-sm text-gray-400">
-                            Add competitors manually below, or proceed without them if your topic is unique.
+                            {effectiveBusinessInfo.perplexityApiKey
+                                ? 'Both SERP and AI-based discovery found no competitors.'
+                                : 'SERP-based discovery found no competitors. Configure Perplexity API key for AI-based fallback.'}
+                            {' '}Add competitors manually below, or proceed without them if your topic is unique.
                         </p>
                     </div>
                 )}
@@ -162,6 +204,7 @@ const CompetitorRefinementWizard: React.FC<CompetitorRefinementWizardProps> = ({
                         .filter((c, index, self) => self.findIndex(x => x.link === c.link) === index)
                         .map((c, index) => {
                             const isManual = manualCompetitors.some(mc => mc.link === c.link);
+                            const isFromAI = !isManual && discoveredViaAI;
                             return (
                                 <div
                                     key={`${c.link}-${index}`}
@@ -175,8 +218,14 @@ const CompetitorRefinementWizard: React.FC<CompetitorRefinementWizardProps> = ({
                                             {isManual && (
                                                 <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">Manual</span>
                                             )}
+                                            {isFromAI && (
+                                                <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded">AI</span>
+                                            )}
                                         </div>
                                         <p className="text-xs text-green-400 font-mono break-all">{c.link}</p>
+                                        {c.snippet && !isManual && (
+                                            <p className="text-xs text-gray-500 mt-1 line-clamp-2">{c.snippet}</p>
+                                        )}
                                     </div>
                                     {isManual && (
                                         <button

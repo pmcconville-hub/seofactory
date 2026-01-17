@@ -7,7 +7,8 @@ import {
     ContextualCoverageMetrics, InternalLinkAuditResult, TopicalAuthorityScore,
     PublicationPlan, ContentIntegrityResult, SchemaGenerationResult,
     TopicViabilityResult, TopicBlueprint, FlowAuditResult, ContextualFlowIssue,
-    KnowledgeGraph, MapMergeAnalysis, TopicSimilarityResult, TopicMergeDecision, TopicalMap
+    KnowledgeGraph, MapMergeAnalysis, TopicSimilarityResult, TopicMergeDecision, TopicalMap,
+    SerpResult
 } from '../types';
 import * as prompts from '../config/prompts';
 import { CONTENT_BRIEF_FALLBACK } from '../config/schemas';
@@ -699,4 +700,115 @@ export const generateNewSection = async (
     ...result,
     key: `section-${Date.now()}`,
   } as BriefSection;
+};
+
+// ============================================
+// AI-BASED COMPETITOR DISCOVERY
+// Uses Perplexity's web search to find competitors based on SEO pillars
+// Fallback when SERP-based discovery fails (e.g., new domains)
+// ============================================
+
+/**
+ * Discovers competitors using AI-powered web search.
+ * This is useful when SERP-based discovery fails (e.g., for new domains).
+ * Instead of looking at who ranks for the domain, this looks at who ranks
+ * for the SUBJECT (Central Entity + Source Context + Central Search Intent).
+ */
+export const discoverCompetitorsWithAI = async (
+  pillars: SEOPillars,
+  businessInfo: BusinessInfo,
+  dispatch: React.Dispatch<any>
+): Promise<SerpResult[]> => {
+  const sanitizer = new AIResponseSanitizer(dispatch);
+
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: {
+      service: 'Perplexity',
+      message: `Discovering competitors via AI for: ${pillars.centralEntity}`,
+      status: 'info',
+      timestamp: Date.now(),
+    },
+  });
+
+  const prompt = `You are an expert SEO strategist with deep knowledge of competitive landscapes.
+
+I need you to find the top competitors for a business with these SEO pillars:
+
+**Central Entity (CE):** ${pillars.centralEntity}
+**Source Context (SC):** ${pillars.sourceContext}
+**Central Search Intent (CSI):** ${pillars.centralSearchIntent}
+${businessInfo.domain ? `**Our Domain:** ${businessInfo.domain}` : ''}
+${businessInfo.projectName ? `**Project:** ${businessInfo.projectName}` : ''}
+
+Search the web and find 10-15 websites that are major competitors in this space. These should be:
+1. Websites that rank well for queries related to the Central Search Intent
+2. Websites that cover the same Central Entity and Source Context
+3. Direct competitors who would compete for the same audience
+4. Both large established players AND up-and-coming competitors
+
+DO NOT include:
+- Social media platforms (Facebook, Twitter, Instagram, LinkedIn, YouTube)
+- Generic directories or aggregators (Wikipedia, Yelp, etc.)
+- News sites unless they are specifically about this topic
+- Our own domain: ${businessInfo.domain || 'N/A'}
+
+Return a JSON array of competitors with this structure:
+[
+  {
+    "position": 1,
+    "title": "Competitor Name or Website Title",
+    "link": "https://competitor-website.com",
+    "snippet": "Brief description of why this is a relevant competitor"
+  }
+]
+
+IMPORTANT: Return ONLY the JSON array, no markdown, no explanation.`;
+
+  const fallback: SerpResult[] = [];
+
+  try {
+    const result = await callApi(
+      prompt,
+      businessInfo,
+      dispatch,
+      (text) => sanitizer.sanitizeArray<SerpResult>(text, fallback),
+      'discoverCompetitorsWithAI'
+    );
+
+    // Filter out any results that match our own domain
+    const filteredResults = result.filter((r: SerpResult) => {
+      if (!businessInfo.domain) return true;
+      try {
+        const competitorDomain = new URL(r.link).hostname.replace('www.', '');
+        const ourDomain = businessInfo.domain.replace('www.', '').replace(/^https?:\/\//, '');
+        return !competitorDomain.includes(ourDomain) && !ourDomain.includes(competitorDomain);
+      } catch {
+        return true;
+      }
+    });
+
+    dispatch({
+      type: 'LOG_EVENT',
+      payload: {
+        service: 'Perplexity',
+        message: `AI discovered ${filteredResults.length} competitors`,
+        status: 'success',
+        timestamp: Date.now(),
+      },
+    });
+
+    return filteredResults;
+  } catch (error) {
+    dispatch({
+      type: 'LOG_EVENT',
+      payload: {
+        service: 'Perplexity',
+        message: `AI competitor discovery failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        status: 'failure',
+        timestamp: Date.now(),
+      },
+    });
+    return fallback;
+  }
 };
