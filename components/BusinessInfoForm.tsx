@@ -480,35 +480,37 @@ const BusinessInfoForm: React.FC<BusinessInfoFormProps> = ({ onSave, onBack, isL
                                     <InfoTooltip text="Select your website type to get optimized AI strategies for content structure, EAV priorities, and linking patterns. This affects how topical maps and briefs are generated." />
                                 </h3>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                {(Object.keys(WEBSITE_TYPE_CONFIG) as WebsiteType[]).map((type) => {
-                                    const config = WEBSITE_TYPE_CONFIG[type];
-                                    const isSelected = localBusinessInfo.websiteType === type;
-                                    return (
-                                        <button
-                                            key={type}
-                                            type="button"
-                                            onClick={() => setLocalBusinessInfo(prev => ({ ...prev, websiteType: type }))}
-                                            className={`p-3 rounded-lg border text-left transition-all ${
-                                                isSelected
-                                                    ? 'border-cyan-500 bg-cyan-900/30 ring-1 ring-cyan-500'
-                                                    : 'border-gray-700 bg-gray-800/50 hover:border-gray-600 hover:bg-gray-800'
-                                            }`}
-                                        >
-                                            <div className="flex items-center justify-between mb-1">
-                                                <span className={`font-medium ${isSelected ? 'text-cyan-300' : 'text-gray-200'}`}>
-                                                    {config.label}
-                                                </span>
-                                                {isSelected && (
-                                                    <svg className="w-4 h-4 text-cyan-400" fill="currentColor" viewBox="0 0 20 20">
-                                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                                    </svg>
-                                                )}
-                                            </div>
-                                            <p className="text-xs text-gray-400 line-clamp-2">{config.description}</p>
-                                        </button>
-                                    );
-                                })}
+                            <div className="max-h-80 overflow-y-auto pr-1">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {(Object.keys(WEBSITE_TYPE_CONFIG) as WebsiteType[]).map((type) => {
+                                        const config = WEBSITE_TYPE_CONFIG[type];
+                                        const isSelected = localBusinessInfo.websiteType === type;
+                                        return (
+                                            <button
+                                                key={type}
+                                                type="button"
+                                                onClick={() => setLocalBusinessInfo(prev => ({ ...prev, websiteType: type }))}
+                                                className={`p-3 rounded-lg border text-left transition-all ${
+                                                    isSelected
+                                                        ? 'border-cyan-500 bg-cyan-900/30 ring-1 ring-cyan-500'
+                                                        : 'border-gray-700 bg-gray-800/50 hover:border-gray-600 hover:bg-gray-800'
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <span className={`font-medium text-sm ${isSelected ? 'text-cyan-300' : 'text-gray-200'}`}>
+                                                        {config.label}
+                                                    </span>
+                                                    {isSelected && (
+                                                        <svg className="w-4 h-4 text-cyan-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                        </svg>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-gray-400 line-clamp-2">{config.description}</p>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                             {localBusinessInfo.websiteType && (
                                 <div className="mt-3 pt-3 border-t border-gray-700">
