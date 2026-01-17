@@ -636,6 +636,7 @@ export interface SectionFlowGuidance {
   // Flow patterns
   transitionPattern: 'opening' | 'deepening' | 'parallel' | 'bridging' | 'concluding';
   suggestedOpener?: string;          // From discourse_anchors or contextualBridge
+  bridgeContent?: string;            // Full contextual bridge content for zone transitions
 
   // Article context
   centralEntity: string;

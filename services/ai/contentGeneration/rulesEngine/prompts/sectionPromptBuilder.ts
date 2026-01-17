@@ -1,10 +1,48 @@
 // services/ai/contentGeneration/rulesEngine/prompts/sectionPromptBuilder.ts
 
-import { SectionGenerationContext, BriefSection, FormatCode, BusinessInfo, SectionFlowGuidance } from '../../../../../types';
+import { SectionGenerationContext, BriefSection, FormatCode, BusinessInfo, SectionFlowGuidance, ContextualBridgeLink, ContentBrief } from '../../../../../types';
 import type { ContentGenerationPriorities } from '../../../../../types/contentGeneration';
 import { BriefCodeParser } from '../briefCodeParser';
 import { PROHIBITED_PATTERNS } from '../validators/prohibitedLanguage';
 import { getLanguageAndRegionInstruction, getLanguageName } from '../../../../../utils/languageUtils';
+
+/**
+ * Extract contextual bridge links from a ContentBrief
+ * Handles both legacy array format and new section format
+ */
+function extractContextualBridgeLinks(brief: ContentBrief): ContextualBridgeLink[] {
+  const links: ContextualBridgeLink[] = [];
+
+  // Extract from contextualBridge
+  if (brief.contextualBridge) {
+    if (Array.isArray(brief.contextualBridge)) {
+      links.push(...brief.contextualBridge);
+    } else if (brief.contextualBridge.type === 'section' && brief.contextualBridge.links) {
+      links.push(...brief.contextualBridge.links);
+    }
+  }
+
+  // Extract from suggested_internal_links (newer format)
+  if (brief.suggested_internal_links && brief.suggested_internal_links.length > 0) {
+    for (const suggestion of brief.suggested_internal_links) {
+      const anchorText = suggestion.anchor_text || suggestion.anchor || '';
+      const isDuplicate = links.some(l =>
+        l.anchorText.toLowerCase() === anchorText.toLowerCase()
+      );
+
+      if (!isDuplicate && anchorText) {
+        links.push({
+          targetTopic: suggestion.url || suggestion.title || suggestion.anchor || '',
+          anchorText,
+          reasoning: suggestion.title ? `Related: ${suggestion.title}` : 'Related topic',
+          annotation_text_hint: undefined
+        });
+      }
+    }
+  }
+
+  return links;
+}
 
 // Extended BusinessInfo type that may include generation priorities
 type ExtendedBusinessInfo = BusinessInfo & { generationPriorities?: ContentGenerationPriorities };
@@ -131,8 +169,25 @@ ${parsedCodes.requiredPhrases.map(p => `- "${p}"`).join('\n')}
 `;
     }
 
-    // Add anchor texts for internal linking
-    if (parsedCodes.anchorTexts.length > 0) {
+    // Add contextual bridge links for internal linking (full context)
+    const bridgeLinks = extractContextualBridgeLinks(brief);
+    if (bridgeLinks.length > 0) {
+      prompt += `## Internal Links (with contextual guidance)
+Insert these internal links naturally within your content:
+
+${bridgeLinks.slice(0, 5).map(link => `- **Anchor text:** "${link.anchorText}"
+  **Links to:** ${link.targetTopic}
+  **Why link:** ${link.reasoning}${link.annotation_text_hint ? `\n  **Context hint:** ${link.annotation_text_hint}` : ''}`).join('\n\n')}
+
+### Link Placement Rules:
+1. Place links AFTER defining the concept, never in the first sentence
+2. The sentence BEFORE the link should establish relevance
+3. Use the exact anchor text provided
+4. Format: [anchor text](/topics/topic-slug)
+
+`;
+    } else if (parsedCodes.anchorTexts.length > 0) {
+      // Fallback to basic anchor texts from methodology_note codes
       prompt += `## Internal Links (use these as anchor text)
 ${parsedCodes.anchorTexts.map(a => `- [${a}]`).join('\n')}
 Place links AFTER defining the concept, never in the first sentence.
@@ -232,10 +287,21 @@ ${this.getFlowInstructions(fg)}
       section += `**ZONE TRANSITION**: Moving from MAIN content to SUPPLEMENTARY. Use bridging language to signal the shift.
 
 `;
+
+      // Add full contextual bridge content if available
+      if (fg.bridgeContent) {
+        section += `**CONTEXTUAL BRIDGE (include this transition):**
+${fg.bridgeContent}
+
+Use this bridge content to smoothly transition between topics. Integrate it naturally with your section.
+
+`;
+      }
     }
 
     // Add suggested opener if available
-    if (fg.suggestedOpener) {
+    if (fg.suggestedOpener && !fg.bridgeContent) {
+      // Only show suggested opener if we don't have full bridge content
       section += `**SUGGESTED OPENER**: "${fg.suggestedOpener}"
 
 `;

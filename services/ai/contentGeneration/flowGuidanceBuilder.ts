@@ -58,6 +58,9 @@ export function buildFlowGuidance(
     transitionPattern
   );
 
+  // Get full bridge content for zone transitions
+  const bridgeContent = isZoneTransition ? getFullBridgeContent(brief) : undefined;
+
   return {
     sectionIndex: index,
     totalSections: allSections.length,
@@ -73,6 +76,7 @@ export function buildFlowGuidance(
     attributeProgression: describeProgression(index, allSections, brief),
     transitionPattern,
     suggestedOpener,
+    bridgeContent,
     centralEntity: businessInfo.seedKeyword || brief.targetKeyword || '',
     articleTitle: brief.title,
   };
@@ -237,6 +241,25 @@ function extractBridgeOpener(
     if (typeof first === 'object' && 'anchor_text' in first) {
       return `Continuing with ${first.anchor_text}...`;
     }
+  }
+
+  return undefined;
+}
+
+/**
+ * Get the full contextual bridge content for zone transitions
+ * This includes the transition paragraphs that should be rendered in the content
+ */
+function getFullBridgeContent(brief: ContentBrief): string | undefined {
+  if (!brief.contextualBridge) return undefined;
+
+  // Check if it's the new ContextualBridgeSection format
+  if (typeof brief.contextualBridge === 'object' &&
+      !Array.isArray(brief.contextualBridge) &&
+      'type' in brief.contextualBridge &&
+      'content' in brief.contextualBridge) {
+    const bridgeSection = brief.contextualBridge as ContextualBridgeSection;
+    return bridgeSection.content || undefined;
   }
 
   return undefined;

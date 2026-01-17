@@ -41,7 +41,7 @@ const CompetitorManagerModal: React.FC<CompetitorManagerModalProps> = ({ isOpen,
       ...state.businessInfo,
       ...mapBusinessContext,
       domain: activeProject?.domain || state.businessInfo.domain,
-      projectName: activeProject?.name || state.businessInfo.projectName,
+      projectName: activeProject?.project_name || state.businessInfo.projectName,
       aiProvider: state.businessInfo.aiProvider,
       aiModel: state.businessInfo.aiModel,
     };
@@ -78,7 +78,7 @@ const CompetitorManagerModal: React.FC<CompetitorManagerModalProps> = ({ isOpen,
     }
 
     // Check if any discovery method is available
-    const hasDataForSeo = !!(effectiveBusinessInfo.dataForSeoLogin && effectiveBusinessInfo.dataForSeoPassword);
+    const hasDataForSeo = !!(effectiveBusinessInfo.dataforseoLogin && effectiveBusinessInfo.dataforseoPassword);
     const hasPerplexity = !!effectiveBusinessInfo.perplexityApiKey;
 
     if (!hasDataForSeo && !hasPerplexity) {

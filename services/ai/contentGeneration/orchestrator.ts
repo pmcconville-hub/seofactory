@@ -1,9 +1,89 @@
 // services/ai/contentGeneration/orchestrator.ts
 import { getSupabaseClient } from '../../supabaseClient';
-import { ContentGenerationJob, ContentGenerationSection, ContentBrief, PassesStatus, SectionDefinition, PASS_NAMES, ImagePlaceholder } from '../../../types';
+import { ContentGenerationJob, ContentGenerationSection, ContentBrief, PassesStatus, SectionDefinition, PASS_NAMES, ImagePlaceholder, ContextualBridgeLink, ContextualBridgeSection } from '../../../types';
 import { performanceLogger, setCurrentJobId } from '../../performanceLogger';
 import { Json } from '../../../database.types';
 import { deduplicateContent, stripH1FromMarkdown, validateContentForExport } from './contentValidator';
+import { slugify } from '../../../utils/helpers';
+
+/**
+ * Extract contextual bridge links from a ContentBrief
+ * Handles both legacy array format and new section format
+ */
+function extractContextualBridgeLinks(brief: ContentBrief): ContextualBridgeLink[] {
+  const links: ContextualBridgeLink[] = [];
+
+  // Extract from contextualBridge
+  if (brief.contextualBridge) {
+    if (Array.isArray(brief.contextualBridge)) {
+      links.push(...brief.contextualBridge);
+    } else if (brief.contextualBridge.type === 'section' && brief.contextualBridge.links) {
+      links.push(...brief.contextualBridge.links);
+    }
+  }
+
+  // Extract from suggested_internal_links (newer format)
+  if (brief.suggested_internal_links && brief.suggested_internal_links.length > 0) {
+    for (const suggestion of brief.suggested_internal_links) {
+      const anchorText = suggestion.anchor_text || suggestion.anchor || '';
+      const isDuplicate = links.some(l =>
+        l.anchorText.toLowerCase() === anchorText.toLowerCase()
+      );
+
+      if (!isDuplicate && anchorText) {
+        links.push({
+          targetTopic: suggestion.url || suggestion.title || suggestion.anchor || '',
+          anchorText,
+          reasoning: suggestion.title ? `Related: ${suggestion.title}` : 'Related topic',
+          annotation_text_hint: undefined
+        });
+      }
+    }
+  }
+
+  return links;
+}
+
+/**
+ * Generate a "Related Topics" section from contextual bridge links
+ * This ensures internal links are always present in the final content
+ */
+function generateRelatedTopicsSection(brief: ContentBrief, language?: string): string {
+  const links = extractContextualBridgeLinks(brief);
+  if (links.length === 0) return '';
+
+  // Limit to 5 links for the Related Topics section
+  const topLinks = links.slice(0, 5);
+
+  // Language-aware section header
+  const headers: Record<string, string> = {
+    'nl': 'Gerelateerde Onderwerpen',
+    'de': 'Verwandte Themen',
+    'fr': 'Sujets Connexes',
+    'es': 'Temas Relacionados',
+    'it': 'Argomenti Correlati',
+    'pt': 'Tópicos Relacionados',
+    'en': 'Related Topics'
+  };
+  const header = headers[language || 'en'] || headers['en'];
+
+  let section = `\n\n## ${header}\n\n`;
+
+  for (const link of topLinks) {
+    // Generate a URL-safe slug for the topic
+    const slug = slugify(link.targetTopic);
+    const url = `/topics/${slug}`;
+
+    // Add the link with its reasoning as context
+    section += `- [${link.anchorText}](${url})`;
+    if (link.reasoning && !link.reasoning.startsWith('Related')) {
+      section += ` — ${link.reasoning}`;
+    }
+    section += '\n';
+  }
+
+  return section;
+}
 
 export interface OrchestratorCallbacks {
   onPassStart: (passNumber: number, passName: string) => void;
@@ -542,17 +622,26 @@ export class ContentGenerationOrchestrator {
     const event = performanceLogger.startEvent('ASSEMBLY', 'assembleDraft');
 
     try {
-      // Get job and brief to include H1 title
+      // Get job and full brief to include H1 title and contextual bridge links
       const job = await this.getJob(jobId);
       let articleTitle: string | null = null;
+      let fullBrief: ContentBrief | null = null;
+      let briefLanguage: string | undefined;
 
       if (job?.brief_id) {
         const { data: brief } = await this.supabase
           .from('content_briefs')
-          .select('title')
+          .select('*')
           .eq('id', job.brief_id)
           .single();
-        articleTitle = brief?.title || null;
+
+        if (brief) {
+          articleTitle = brief.title || null;
+          // Cast through unknown since DB schema may differ slightly from ContentBrief interface
+          fullBrief = brief as unknown as ContentBrief;
+          // Language field may exist on DB record
+          briefLanguage = (brief as Record<string, unknown>).language as string | undefined;
+        }
       }
 
       const sections = await this.getSections(jobId);
@@ -629,6 +718,15 @@ export class ContentGenerationOrchestrator {
       // Add section content
       if (sectionContent) {
         parts.push(sectionContent);
+      }
+
+      // Add Related Topics section from contextual bridge links
+      // This ensures internal links are always present in the final content
+      if (fullBrief) {
+        const relatedTopicsSection = generateRelatedTopicsSection(fullBrief, briefLanguage);
+        if (relatedTopicsSection) {
+          parts.push(relatedTopicsSection);
+        }
       }
 
       let result = parts.join('\n\n');

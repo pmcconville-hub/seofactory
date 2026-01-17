@@ -10,6 +10,7 @@ import * as openRouterService from '../../../openRouterService';
 import { dispatchToProvider } from '../../providerDispatcher';
 import { getAuditPatterns } from './auditPatternsMultilingual';
 import { EAVDensityValidator } from '../rulesEngine/validators/eavDensity';
+import { validateLinkInsertion, extractContextualBridgeLinks } from '../rulesEngine/validators/linkInsertionValidator';
 
 // No-op dispatch for standalone calls
 const noOpDispatch = () => {};
@@ -153,6 +154,9 @@ export function runAlgorithmicAudit(
 
   // 26. EAV Density (Semantic SEO Requirement)
   results.push(checkEavDensity(draft, eavs, language));
+
+  // 27. Internal Link Insertion (Contextual Bridge Links)
+  results.push(checkInternalLinkInsertion(draft, brief));
 
   return results;
 }
@@ -1480,6 +1484,57 @@ function checkEavDensity(text: string, eavs: SemanticTriple[] | undefined, langu
     isPassing: true,
     details: `EAV density is ${combinedScore}% - good factual content. Pattern density: ${patternDensity}%, Term density: ${termDensity}%.`,
     score: combinedScore,
+  };
+}
+
+/**
+ * Check 27: Internal Link Insertion
+ * Verifies that contextual bridge links from the brief were inserted into the content.
+ * Critical for SEO - internal links build topical authority and PageRank flow.
+ */
+function checkInternalLinkInsertion(draft: string, brief: ContentBrief): AuditRuleResult {
+  const result = validateLinkInsertion(draft, brief);
+
+  // No expected links - pass by default
+  if (result.expectedCount === 0) {
+    return {
+      ruleName: 'Internal Link Insertion',
+      isPassing: true,
+      details: 'No contextual bridge links specified in brief.',
+      score: 100,
+    };
+  }
+
+  // All links inserted - excellent
+  if (result.insertionRate === 100) {
+    return {
+      ruleName: 'Internal Link Insertion',
+      isPassing: true,
+      details: `All ${result.expectedCount} internal links successfully inserted.`,
+      score: 100,
+    };
+  }
+
+  // Partial insertion - check threshold
+  if (result.passed) {
+    // At least 50% inserted
+    return {
+      ruleName: 'Internal Link Insertion',
+      isPassing: true,
+      details: `${result.foundCount}/${result.expectedCount} internal links inserted (${result.insertionRate}%). Missing: ${result.missingLinks.map(l => l.anchorText).slice(0, 3).join(', ')}.`,
+      score: result.insertionRate,
+    };
+  }
+
+  // Below threshold - failing
+  const missingAnchors = result.missingLinks.map(l => `"${l.anchorText}"`).slice(0, 5).join(', ');
+  return {
+    ruleName: 'Internal Link Insertion',
+    isPassing: false,
+    details: `Only ${result.foundCount}/${result.expectedCount} internal links inserted (${result.insertionRate}%).`,
+    affectedTextSnippet: missingAnchors,
+    remediation: 'Add missing internal links inline or include a "Related Topics" section at the end.',
+    score: result.insertionRate,
   };
 }
 

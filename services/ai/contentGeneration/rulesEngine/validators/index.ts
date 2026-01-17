@@ -236,3 +236,5 @@ export { validateCrossPageEavConsistency } from './crossPageEavValidator';
 export type { EavContradiction, EavConsistencyWarning, EavConsistencyResult } from './crossPageEavValidator';
 export { EavPerSentenceValidator } from './eavPerSentenceValidator';
 export { AttributeOrderingValidator } from './attributeOrderingValidator';
+export { LinkInsertionValidator, validateLinkInsertion, extractContextualBridgeLinks, generateMissingLinksFallback } from './linkInsertionValidator';
+export type { LinkInsertionResult } from './linkInsertionValidator';
