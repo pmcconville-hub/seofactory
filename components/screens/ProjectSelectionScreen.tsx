@@ -16,30 +16,19 @@ interface ProjectSelectionScreenProps {
   onInitiateDeleteProject: (project: Project) => void;
 }
 
-type SortField = 'name' | 'domain' | 'maps' | 'created';
+type SortField = 'name' | 'domain' | 'maps' | 'created' | 'modified';
 type SortDirection = 'asc' | 'desc';
 
 const ProjectSelectionScreen: React.FC<ProjectSelectionScreenProps> = ({ onCreateProject, onLoadProject, onInitiateDeleteProject }) => {
   const { state, dispatch } = useAppState();
-  const { projects, topicalMaps, isLoading, user, businessInfo } = state;
+  const { projects, isLoading, user, businessInfo } = state;
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDomain, setNewProjectDomain] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortField, setSortField] = useState<SortField>('created');
+  const [sortField, setSortField] = useState<SortField>('modified');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const { isSuperAdmin } = useSuperAdmin();
-
-  // Count maps per project
-  const projectMapCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    topicalMaps.forEach(map => {
-      if (map.project_id) {
-        counts[map.project_id] = (counts[map.project_id] || 0) + 1;
-      }
-    });
-    return counts;
-  }, [topicalMaps]);
 
   // Filter and sort projects
   const filteredProjects = useMemo(() => {
@@ -62,17 +51,23 @@ const ProjectSelectionScreen: React.FC<ProjectSelectionScreenProps> = ({ onCreat
           comparison = a.domain.localeCompare(b.domain);
           break;
         case 'maps':
-          comparison = (projectMapCounts[a.id] || 0) - (projectMapCounts[b.id] || 0);
+          comparison = (a.map_count || 0) - (b.map_count || 0);
           break;
         case 'created':
           comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          break;
+        case 'modified':
+          // Use updated_at if available, fallback to created_at
+          const aDate = a.updated_at || a.created_at;
+          const bDate = b.updated_at || b.created_at;
+          comparison = new Date(aDate).getTime() - new Date(bDate).getTime();
           break;
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
 
     return filtered;
-  }, [projects, searchQuery, sortField, sortDirection, projectMapCounts]);
+  }, [projects, searchQuery, sortField, sortDirection]);
 
   const handleLogout = async () => {
     const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
@@ -273,6 +268,12 @@ const ProjectSelectionScreen: React.FC<ProjectSelectionScreenProps> = ({ onCreat
                   >
                     Created <SortIcon field="created" />
                   </th>
+                  <th
+                    className="text-left py-3 px-4 text-sm font-medium text-gray-400 cursor-pointer hover:text-white transition-colors"
+                    onClick={() => handleSort('modified')}
+                  >
+                    Modified <SortIcon field="modified" />
+                  </th>
                   <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">
                     Actions
                   </th>
@@ -303,15 +304,20 @@ const ProjectSelectionScreen: React.FC<ProjectSelectionScreenProps> = ({ onCreat
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span className={`inline-flex items-center justify-center min-w-[28px] h-7 px-2 rounded-full text-sm ${
-                        (projectMapCounts[project.id] || 0) > 0
+                        (project.map_count || 0) > 0
                           ? 'bg-cyan-900/30 text-cyan-400'
                           : 'bg-gray-800 text-gray-500'
                       }`}>
-                        {projectMapCounts[project.id] || 0}
+                        {project.map_count || 0}
                       </span>
                     </td>
                     <td className="py-3 px-4">
                       <span className="text-gray-400 text-sm">{formatDate(project.created_at)}</span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="text-gray-400 text-sm">
+                        {project.updated_at ? formatDate(project.updated_at) : '-'}
+                      </span>
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center justify-end gap-2">

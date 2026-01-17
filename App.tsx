@@ -349,12 +349,19 @@ const App: React.FC = () => {
                     // This returns all projects the user has access to:
                     // - Projects in organizations they're a member of (has_project_access)
                     // - Legacy projects they own directly (user_id = auth.uid())
+                    // Include map_count via Supabase relation count
                     const { data: projectsData, error: projectsError } = await supabase
                         .from('projects')
-                        .select('*')
-                        .order('created_at', { ascending: false });
+                        .select('*, topical_maps(count)')
+                        .order('updated_at', { ascending: false, nullsFirst: false });
                     if (projectsError) throw projectsError;
-                    dispatch({ type: 'SET_PROJECTS', payload: projectsData || [] });
+                    // Transform to include map_count at top level
+                    const projectsWithMapCount = (projectsData || []).map((p: any) => ({
+                        ...p,
+                        map_count: p.topical_maps?.[0]?.count ?? 0,
+                        topical_maps: undefined // Remove nested relation data
+                    }));
+                    dispatch({ type: 'SET_PROJECTS', payload: projectsWithMapCount });
 
                     // Fetch Settings (global credentials only)
                     const { data: settingsData, error: settingsError } = await supabase.functions.invoke('get-settings');
