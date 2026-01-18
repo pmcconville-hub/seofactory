@@ -61,3 +61,6 @@ export { ExportSettingsModal, type ExportSettings } from './ExportSettingsModal'
 export { default as ImprovementConfirmationModal } from './ImprovementConfirmationModal';
 export { default as ResponseCodeSelectionModal } from './ResponseCodeSelectionModal';
 export { default as PillarChangeConfirmationModal } from './PillarChangeConfirmationModal';
+
+// Conflict resolution modals
+export { default as ConflictResolutionModal } from './ConflictResolutionModal';
