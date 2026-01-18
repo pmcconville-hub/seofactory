@@ -67,14 +67,21 @@ function generateFallbackLinks(
 }
 
 /**
- * Generate a "Related Topics" section from contextual bridge links
- * This ensures internal links are always present in the final content
+ * Generate a semantically correct "Related Topics" section with proper Contextual Bridges
+ *
+ * Per Semantic SEO framework requirements:
+ * - Links must have annotation text explaining relevance
+ * - A Contextual Bridge must justify the transition
+ * - Surrounding text must semantically support the link
+ * - Target entity must be mentioned near the anchor
+ *
  * Falls back to map topics if brief doesn't have links
  */
 function generateRelatedTopicsSection(
   brief: ContentBrief,
   language?: string,
-  fallbackTopics?: Array<{ title: string; slug?: string }>
+  fallbackTopics?: Array<{ title: string; slug?: string }>,
+  centralEntity?: string
 ): string {
   let links = extractContextualBridgeLinks(brief);
 
@@ -91,31 +98,79 @@ function generateRelatedTopicsSection(
   // Limit to 5 links for the Related Topics section
   const topLinks = links.slice(0, 5);
 
-  // Language-aware section header
-  const headers: Record<string, string> = {
-    'nl': 'Gerelateerde Onderwerpen',
-    'de': 'Verwandte Themen',
-    'fr': 'Sujets Connexes',
-    'es': 'Temas Relacionados',
-    'it': 'Argomenti Correlati',
-    'pt': 'Tópicos Relacionados',
-    'en': 'Related Topics'
+  // Language-aware section headers and bridge text
+  const i18n: Record<string, { header: string; bridge: string; learnMore: string }> = {
+    'nl': {
+      header: 'Verdiep Je Kennis',
+      bridge: 'Om je begrip te verdiepen, verken deze gerelateerde onderwerpen:',
+      learnMore: 'Meer over'
+    },
+    'de': {
+      header: 'Vertiefen Sie Ihr Wissen',
+      bridge: 'Um Ihr Verständnis zu vertiefen, erkunden Sie diese verwandten Themen:',
+      learnMore: 'Mehr über'
+    },
+    'fr': {
+      header: 'Approfondissez Vos Connaissances',
+      bridge: 'Pour approfondir votre compréhension, explorez ces sujets connexes:',
+      learnMore: 'En savoir plus sur'
+    },
+    'es': {
+      header: 'Profundice Su Conocimiento',
+      bridge: 'Para profundizar su comprensión, explore estos temas relacionados:',
+      learnMore: 'Más sobre'
+    },
+    'it': {
+      header: 'Approfondisci la Tua Conoscenza',
+      bridge: 'Per approfondire la tua comprensione, esplora questi argomenti correlati:',
+      learnMore: 'Scopri di più su'
+    },
+    'pt': {
+      header: 'Aprofunde Seu Conhecimento',
+      bridge: 'Para aprofundar sua compreensão, explore estes tópicos relacionados:',
+      learnMore: 'Saiba mais sobre'
+    },
+    'en': {
+      header: 'Expand Your Understanding',
+      bridge: 'To deepen your knowledge, explore these related topics:',
+      learnMore: 'Learn more about'
+    }
   };
-  const header = headers[language || 'en'] || headers['en'];
 
-  let section = `\n\n## ${header}\n\n`;
+  const lang = i18n[language || 'en'] || i18n['en'];
+  const articleTitle = brief.title || 'this topic';
+  const entity = centralEntity || articleTitle;
+
+  // Build Contextual Bridge section per Semantic SEO requirements:
+  // 1. Section heading that signals relationship
+  // 2. Bridge paragraph that justifies the transition (annotation text)
+  // 3. Links with proper context
+  let section = `\n\n## ${lang.header}\n\n`;
+
+  // Add contextual bridge paragraph (required per semantic SEO)
+  section += `The concepts discussed in ${articleTitle} connect to broader aspects of ${entity}. ${lang.bridge}\n\n`;
 
   for (const link of topLinks) {
     // Generate a URL-safe slug for the topic
     const slug = slugify(link.targetTopic);
     const url = `/topics/${slug}`;
 
-    // Add the link with its reasoning as context
-    section += `- [${link.anchorText}](${url})`;
-    if (link.reasoning && !link.reasoning.startsWith('Related')) {
-      section += ` — ${link.reasoning}`;
+    // Create annotation text that provides semantic context for the link
+    // Per semantic SEO: surrounding text must discuss target topic
+    const hasReasoning = link.reasoning &&
+                         !link.reasoning.startsWith('Related') &&
+                         link.reasoning.length > 10;
+
+    const annotationHint = link.annotation_text_hint || '';
+
+    if (hasReasoning || annotationHint) {
+      // Use the provided reasoning/annotation as contextual bridge
+      const context = annotationHint || link.reasoning;
+      section += `- **${link.targetTopic}**: ${context} [${lang.learnMore} ${link.anchorText}](${url}).\n`;
+    } else {
+      // Generate minimal but semantic annotation
+      section += `- **${link.targetTopic}**: Explore how this relates to ${entity}. [${lang.learnMore} ${link.anchorText}](${url}).\n`;
     }
-    section += '\n';
   }
 
   return section;
@@ -762,21 +817,41 @@ export class ContentGenerationOrchestrator {
         // Check if brief has links - if not, fetch fallback topics from the map
         const briefLinks = extractContextualBridgeLinks(fullBrief);
         let fallbackTopics: Array<{ title: string; slug?: string }> = [];
+        let centralEntity: string | undefined;
 
-        if (briefLinks.length === 0 && job?.map_id) {
-          // Fetch topics from the same map to use as fallbacks
-          const { data: mapTopics } = await this.supabase
-            .from('topics')
-            .select('title, slug')
-            .eq('map_id', job.map_id)
-            .limit(10);
+        if (job?.map_id) {
+          // Fetch central entity from the topical map for better contextual bridges
+          const { data: mapData } = await this.supabase
+            .from('topical_maps')
+            .select('pillars')
+            .eq('id', job.map_id)
+            .single();
 
-          if (mapTopics && mapTopics.length > 0) {
-            fallbackTopics = mapTopics;
+          if (mapData?.pillars) {
+            const pillars = mapData.pillars as Record<string, unknown>;
+            centralEntity = pillars.centralEntity as string | undefined;
+          }
+
+          // Fetch topics from the same map to use as fallbacks if no links in brief
+          if (briefLinks.length === 0) {
+            const { data: mapTopics } = await this.supabase
+              .from('topics')
+              .select('title, slug')
+              .eq('map_id', job.map_id)
+              .limit(10);
+
+            if (mapTopics && mapTopics.length > 0) {
+              fallbackTopics = mapTopics;
+            }
           }
         }
 
-        const relatedTopicsSection = generateRelatedTopicsSection(fullBrief, briefLanguage, fallbackTopics);
+        const relatedTopicsSection = generateRelatedTopicsSection(
+          fullBrief,
+          briefLanguage,
+          fallbackTopics,
+          centralEntity
+        );
         if (relatedTopicsSection) {
           parts.push(relatedTopicsSection);
         }
