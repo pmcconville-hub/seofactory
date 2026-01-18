@@ -1163,10 +1163,10 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
         return;
       }
 
-      // Fetch topics from the map
+      // Fetch topics from the map (with their IDs for brief lookup)
       const { data: mapTopics, error: topicsError } = await supabase
         .from('topics')
-        .select('title, slug')
+        .select('id, title, slug')
         .eq('map_id', mapId)
         .limit(10);
 
@@ -1181,21 +1181,57 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
         return;
       }
 
-      // Filter out the current topic and prepare links
-      const relatedTopics: RelatedTopicLink[] = mapTopics
+      // Filter out the current topic
+      const filteredTopics = mapTopics
         .filter(t => t.title.toLowerCase() !== brief.title.toLowerCase())
-        .slice(0, 5)
-        .map(t => ({
-          title: t.title,
-          slug: t.slug || undefined,
-          reasoning: undefined, // Will use default context
-          anchorText: t.title,
-        }));
+        .slice(0, 5);
 
-      if (relatedTopics.length === 0) {
+      if (filteredTopics.length === 0) {
         dispatch({ type: 'SET_NOTIFICATION', payload: 'No related topics available to add.' });
         return;
       }
+
+      // Fetch content briefs for these topics to get metaDescription for annotation text
+      // Per Semantic SEO: Annotation text must explain what the target page covers
+      const topicIds = filteredTopics.map(t => t.id);
+      const { data: topicBriefs } = await supabase
+        .from('content_briefs')
+        .select('topic_id, meta_description, key_takeaways')
+        .in('topic_id', topicIds);
+
+      // Create a map of topic_id to brief data
+      const briefsByTopicId = new Map<string, { metaDescription?: string; keyTakeaways?: string[] }>();
+      if (topicBriefs) {
+        for (const briefData of topicBriefs) {
+          briefsByTopicId.set(briefData.topic_id, {
+            metaDescription: briefData.meta_description,
+            keyTakeaways: briefData.key_takeaways as string[] | undefined,
+          });
+        }
+      }
+
+      console.log(`[handleAddRelatedTopics] Fetched ${briefsByTopicId.size} briefs for ${filteredTopics.length} topics`);
+
+      // Prepare links with annotation text from briefs
+      const relatedTopics: RelatedTopicLink[] = filteredTopics.map(t => {
+        const topicBrief = briefsByTopicId.get(t.id);
+        let annotationText: string | undefined;
+
+        // Use the brief's metaDescription as annotation text - it describes what that page covers
+        if (topicBrief?.metaDescription) {
+          annotationText = topicBrief.metaDescription;
+        } else if (topicBrief?.keyTakeaways && topicBrief.keyTakeaways.length > 0) {
+          annotationText = topicBrief.keyTakeaways[0];
+        }
+
+        return {
+          title: t.title,
+          slug: t.slug || undefined,
+          reasoning: annotationText, // Use metaDescription as the reasoning/annotation
+          anchorText: t.title,
+          annotation_text_hint: annotationText,
+        };
+      });
 
       // Get central entity from pillars
       const centralEntity = activeMap?.pillars?.centralEntity as string | undefined;
@@ -1220,7 +1256,7 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
       setDraftContent(updatedContent);
       setHasUnsavedChanges(true);
 
-      dispatch({ type: 'SET_NOTIFICATION', payload: `Added "Expand Your Understanding" section with ${relatedTopics.length} related topics. Don't forget to save!` });
+      dispatch({ type: 'SET_NOTIFICATION', payload: `Added Related Topics section with ${relatedTopics.length} contextual links. Don't forget to save!` });
     } catch (error) {
       console.error('[handleAddRelatedTopics] Error:', error);
       dispatch({ type: 'SET_ERROR', payload: 'Failed to add related topics section.' });

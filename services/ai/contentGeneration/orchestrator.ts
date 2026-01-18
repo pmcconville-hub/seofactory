@@ -45,12 +45,28 @@ function extractContextualBridgeLinks(brief: ContentBrief): ContextualBridgeLink
 }
 
 /**
+ * Topic data with optional brief information for annotation text
+ */
+interface TopicWithBrief {
+  title: string;
+  slug?: string;
+  brief?: {
+    metaDescription?: string;
+    keyTakeaways?: string[];
+  };
+}
+
+/**
  * Generate fallback links from topic titles when contextualBridge is empty
  * Uses the article title to find semantically related topics
+ *
+ * Per Semantic SEO: Annotation text must explain relevance to the reader.
+ * We use the target topic's brief metaDescription as the annotation text
+ * since it describes what that topic covers.
  */
 function generateFallbackLinks(
   articleTitle: string,
-  relatedTopics: Array<{ title: string; slug?: string }>
+  relatedTopics: Array<TopicWithBrief>
 ): ContextualBridgeLink[] {
   if (!relatedTopics || relatedTopics.length === 0) return [];
 
@@ -58,12 +74,26 @@ function generateFallbackLinks(
   return relatedTopics
     .filter(t => t.title.toLowerCase() !== articleTitle.toLowerCase())
     .slice(0, 5)
-    .map(t => ({
-      targetTopic: t.title,
-      anchorText: t.title.length > 40 ? t.title.substring(0, 37) + '...' : t.title,
-      reasoning: 'Related topic',
-      annotation_text_hint: undefined
-    }));
+    .map(t => {
+      // Use the brief's metaDescription as annotation text if available
+      // This provides semantic context about what the target page covers
+      let annotationText: string | undefined;
+
+      if (t.brief?.metaDescription) {
+        // Use meta description - it's written to describe the page
+        annotationText = t.brief.metaDescription;
+      } else if (t.brief?.keyTakeaways && t.brief.keyTakeaways.length > 0) {
+        // Fallback to first key takeaway
+        annotationText = t.brief.keyTakeaways[0];
+      }
+
+      return {
+        targetTopic: t.title,
+        anchorText: t.title.length > 40 ? t.title.substring(0, 37) + '...' : t.title,
+        reasoning: annotationText || 'Related topic',
+        annotation_text_hint: annotationText
+      };
+    });
 }
 
 /**
@@ -75,12 +105,13 @@ function generateFallbackLinks(
  * - Surrounding text must semantically support the link
  * - Target entity must be mentioned near the anchor
  *
- * Falls back to map topics if brief doesn't have links
+ * Falls back to map topics if brief doesn't have links.
+ * When using fallback topics, we use their brief's metaDescription as annotation text.
  */
 function generateRelatedTopicsSection(
   brief: ContentBrief,
   language?: string,
-  fallbackTopics?: Array<{ title: string; slug?: string }>,
+  fallbackTopics?: Array<TopicWithBrief>,
   centralEntity?: string
 ): string {
   let links = extractContextualBridgeLinks(brief);
@@ -817,7 +848,7 @@ export class ContentGenerationOrchestrator {
       if (fullBrief) {
         // Check if brief has links - if not, fetch fallback topics from the map
         const briefLinks = extractContextualBridgeLinks(fullBrief);
-        let fallbackTopics: Array<{ title: string; slug?: string }> = [];
+        let fallbackTopics: Array<TopicWithBrief> = [];
         let centralEntity: string | undefined;
 
         if (job?.map_id) {
@@ -834,15 +865,41 @@ export class ContentGenerationOrchestrator {
           }
 
           // Fetch topics from the same map to use as fallbacks if no links in brief
+          // Also fetch their content briefs to get annotation text (metaDescription)
           if (briefLinks.length === 0) {
             const { data: mapTopics } = await this.supabase
               .from('topics')
-              .select('title, slug')
+              .select('id, title, slug')
               .eq('map_id', job.map_id)
               .limit(10);
 
             if (mapTopics && mapTopics.length > 0) {
-              fallbackTopics = mapTopics;
+              // Fetch content briefs for these topics to get metaDescription for annotation text
+              const topicIds = mapTopics.map(t => t.id);
+              const { data: topicBriefs } = await this.supabase
+                .from('content_briefs')
+                .select('topic_id, meta_description, key_takeaways')
+                .in('topic_id', topicIds);
+
+              // Create a map of topic_id to brief data
+              const briefsByTopicId = new Map<string, { metaDescription?: string; keyTakeaways?: string[] }>();
+              if (topicBriefs) {
+                for (const brief of topicBriefs) {
+                  briefsByTopicId.set(brief.topic_id, {
+                    metaDescription: brief.meta_description ?? undefined,
+                    keyTakeaways: (brief.key_takeaways as string[] | null) ?? undefined,
+                  });
+                }
+              }
+
+              // Merge topic data with brief data
+              fallbackTopics = mapTopics.map(t => ({
+                title: t.title,
+                slug: t.slug,
+                brief: briefsByTopicId.get(t.id)
+              }));
+
+              console.log(`[assembleDraft] Fetched ${briefsByTopicId.size} briefs for ${mapTopics.length} fallback topics`);
             }
           }
         }
