@@ -45,11 +45,47 @@ function extractContextualBridgeLinks(brief: ContentBrief): ContextualBridgeLink
 }
 
 /**
+ * Generate fallback links from topic titles when contextualBridge is empty
+ * Uses the article title to find semantically related topics
+ */
+function generateFallbackLinks(
+  articleTitle: string,
+  relatedTopics: Array<{ title: string; slug?: string }>
+): ContextualBridgeLink[] {
+  if (!relatedTopics || relatedTopics.length === 0) return [];
+
+  // Filter out the current article and create links
+  return relatedTopics
+    .filter(t => t.title.toLowerCase() !== articleTitle.toLowerCase())
+    .slice(0, 5)
+    .map(t => ({
+      targetTopic: t.title,
+      anchorText: t.title.length > 40 ? t.title.substring(0, 37) + '...' : t.title,
+      reasoning: 'Related topic',
+      annotation_text_hint: undefined
+    }));
+}
+
+/**
  * Generate a "Related Topics" section from contextual bridge links
  * This ensures internal links are always present in the final content
+ * Falls back to map topics if brief doesn't have links
  */
-function generateRelatedTopicsSection(brief: ContentBrief, language?: string): string {
-  const links = extractContextualBridgeLinks(brief);
+function generateRelatedTopicsSection(
+  brief: ContentBrief,
+  language?: string,
+  fallbackTopics?: Array<{ title: string; slug?: string }>
+): string {
+  let links = extractContextualBridgeLinks(brief);
+
+  // If no links from brief, try fallback topics from the map
+  if (links.length === 0 && fallbackTopics && fallbackTopics.length > 0) {
+    links = generateFallbackLinks(brief.title || '', fallbackTopics);
+    if (links.length > 0) {
+      console.log(`[assembleDraft] Using ${links.length} fallback links from map topics (brief had no contextualBridge)`);
+    }
+  }
+
   if (links.length === 0) return '';
 
   // Limit to 5 links for the Related Topics section
@@ -723,7 +759,24 @@ export class ContentGenerationOrchestrator {
       // Add Related Topics section from contextual bridge links
       // This ensures internal links are always present in the final content
       if (fullBrief) {
-        const relatedTopicsSection = generateRelatedTopicsSection(fullBrief, briefLanguage);
+        // Check if brief has links - if not, fetch fallback topics from the map
+        const briefLinks = extractContextualBridgeLinks(fullBrief);
+        let fallbackTopics: Array<{ title: string; slug?: string }> = [];
+
+        if (briefLinks.length === 0 && job?.map_id) {
+          // Fetch topics from the same map to use as fallbacks
+          const { data: mapTopics } = await this.supabase
+            .from('topics')
+            .select('title, slug')
+            .eq('map_id', job.map_id)
+            .limit(10);
+
+          if (mapTopics && mapTopics.length > 0) {
+            fallbackTopics = mapTopics;
+          }
+        }
+
+        const relatedTopicsSection = generateRelatedTopicsSection(fullBrief, briefLanguage, fallbackTopics);
         if (relatedTopicsSection) {
           parts.push(relatedTopicsSection);
         }
