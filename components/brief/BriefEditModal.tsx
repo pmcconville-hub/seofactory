@@ -27,6 +27,8 @@ import { AIPreviewModal } from './AIPreviewModal';
 import { AddSectionModal } from './AddSectionModal';
 import { RegenerateBriefPanel } from './RegenerateBriefPanel';
 import { BriefHealthOverview } from './BriefHealthOverview';
+import { TemplateSelectionPanel } from './TemplateSelectionPanel';
+import { TemplateName, DepthMode } from '../../types/contentTemplates';
 
 interface BriefEditModalProps {
     isOpen: boolean;
@@ -42,7 +44,7 @@ interface BriefEditModalProps {
     isRepairing?: boolean;
 }
 
-type TabType = 'sections' | 'meta' | 'strategy' | 'regenerate';
+type TabType = 'sections' | 'meta' | 'strategy' | 'templates' | 'regenerate';
 
 export const BriefEditModal: React.FC<BriefEditModalProps> = ({
     isOpen,
@@ -228,7 +230,7 @@ export const BriefEditModal: React.FC<BriefEditModalProps> = ({
 
                 {/* Tabs */}
                 <div className="flex border-b border-slate-700">
-                    {(['sections', 'meta', 'strategy', 'regenerate'] as TabType[]).map(tab => (
+                    {(['sections', 'meta', 'strategy', 'templates', 'regenerate'] as TabType[]).map(tab => (
                         <button
                             key={tab}
                             className={`px-4 py-2 text-sm font-medium capitalize ${
@@ -452,6 +454,20 @@ export const BriefEditModal: React.FC<BriefEditModalProps> = ({
                                 />
                             </div>
                         </div>
+                    )}
+
+                    {activeTab === 'templates' && editedBrief && (
+                        <TemplateSelectionPanel
+                            brief={editedBrief}
+                            businessInfo={businessInfo}
+                            onTemplateChange={(templateName: TemplateName, confidence: number) => {
+                                updateBriefField('selectedTemplate', templateName);
+                                updateBriefField('templateConfidence', confidence);
+                            }}
+                            onDepthChange={(depthMode: DepthMode) => {
+                                updateBriefField('depthMode', depthMode);
+                            }}
+                        />
                     )}
 
                     {activeTab === 'regenerate' && (

@@ -40,6 +40,9 @@ import type { PassDelta } from '../../services/ai/contentGeneration/tracking';
 import { useEnhancedBriefGeneration, EnhancedBriefGenerationOptions } from '../../hooks/useEnhancedBriefGeneration';
 import { AnalysisStatusPanel } from '../analysis/AnalysisStatusPanel';
 import { AnalysisDepth, DEPTH_CONFIG } from '../../types/competitiveIntelligence';
+import TemplateConfirmationFlow from '../generation/TemplateConfirmationFlow';
+import { syncBriefWithTemplate } from '../../services/briefTemplateSync';
+import { TemplateName, DepthMode } from '../../types/contentTemplates';
 
 interface ContentBriefModalProps {
   allTopics: EnrichedTopic[];
@@ -166,6 +169,9 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
 
     // Competitive intelligence state
     const [showCompetitiveAnalysis, setShowCompetitiveAnalysis] = useState(false);
+
+    // Template confirmation flow state (Phase 3 - Template Routing Integration)
+    const [showTemplateFlow, setShowTemplateFlow] = useState(false);
 
     // Analysis depth selector for enhanced brief generation
     const [analysisDepth, setAnalysisDepth] = useState<AnalysisDepth>(() => {
@@ -572,6 +578,12 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
     const handleGenerateDraft = async () => {
       if (brief) {
         if (useMultiPass) {
+          // If brief doesn't have a template selected, show template confirmation flow first
+          if (!brief.selectedTemplate) {
+            setShowTemplateFlow(true);
+            return;
+          }
+          // Template already selected, proceed with generation
           setIsStartingGeneration(true);
           setGenerationLogs([]);
           try {
@@ -584,6 +596,37 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
         }
       }
     };
+
+    // Handle template confirmation and start generation
+    const handleTemplateConfirmed = useCallback(async (templateName: TemplateName, depthMode: DepthMode) => {
+      if (!brief || !activeMapId) return;
+
+      setShowTemplateFlow(false);
+
+      // Sync brief with selected template
+      const updatedBrief = syncBriefWithTemplate(
+        brief,
+        templateName,
+        90, // Default confidence for user selection
+        depthMode
+      );
+
+      // Update local state with template selection
+      // Note: Database schema doesn't have template fields yet - store in local state only
+      // When analytics DB schema is added (Task 22), this will be persisted properly
+      dispatch({ type: 'ADD_BRIEF', payload: { mapId: activeMapId, topicId: brief.topic_id, brief: updatedBrief } });
+
+      console.log(`[ContentBriefModal] Template selected: ${templateName}, depth: ${depthMode}`);
+
+      // Start generation with updated brief
+      setIsStartingGeneration(true);
+      setGenerationLogs([]);
+      try {
+        await startGeneration();
+      } finally {
+        setIsStartingGeneration(false);
+      }
+    }, [brief, activeMapId, effectiveBusinessInfo, dispatch, startGeneration]);
 
     const handleViewDraft = () => {
         if (brief) {
@@ -928,6 +971,8 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                                     onCancel={cancelGeneration}
                                     onRetry={retryGeneration}
                                     error={error}
+                                    templateName={brief?.selectedTemplate}
+                                    templateConfidence={brief?.templateConfidence}
                                 />
                             )}
 
@@ -1338,6 +1383,17 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                 reportType="content-brief"
                 data={reportHook.data}
                 projectName={activeMap?.name || effectiveBusinessInfo?.projectName}
+            />
+        )}
+
+        {/* Template Confirmation Flow (Phase 3 - Template Routing Integration) */}
+        {showTemplateFlow && brief && (
+            <TemplateConfirmationFlow
+                isOpen={showTemplateFlow}
+                onClose={() => setShowTemplateFlow(false)}
+                onConfirm={handleTemplateConfirmed}
+                brief={brief}
+                businessInfo={effectiveBusinessInfo}
             />
         )}
     </>

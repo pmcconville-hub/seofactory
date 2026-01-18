@@ -15,6 +15,7 @@ import AIUsageReport from './AIUsageReport';
 import ProjectManagement from './ProjectManagement';
 import OrganizationManagement from './OrganizationManagement';
 import { QualityDemoPage } from '../pages/QualityDemoPage';
+import { TemplatePerformanceDashboard } from '../analytics/TemplatePerformanceDashboard';
 
 interface UserData {
     id: string;
@@ -400,7 +401,7 @@ const AdminDashboard: React.FC = () => {
     const [logs, setLogs] = useState<TelemetryLog[]>([]);
     const [isCheckingDB, setIsCheckingDB] = useState(false);
     const [dbStatus, setDbStatus] = useState<'ok' | 'error' | null>(null);
-    const [activeTab, setActiveTab] = useState<'overview' | 'usage' | 'config' | 'users' | 'orgs' | 'help' | 'projects' | 'quality'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'usage' | 'config' | 'users' | 'orgs' | 'help' | 'projects' | 'quality' | 'templates'>('overview');
 
     useEffect(() => {
         setLogs(getTelemetryLogs());
@@ -493,6 +494,12 @@ const AdminDashboard: React.FC = () => {
                             className={`w-full text-left px-4 py-2 rounded transition-colors ${activeTab === 'quality' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
                         >
                             ✓ Quality Demo (Dev)
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('templates')}
+                            className={`w-full text-left px-4 py-2 rounded transition-colors ${activeTab === 'templates' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+                        >
+                            📝 Template Analytics
                         </button>
                     </nav>
                     <div className="p-4 border-t border-gray-700">
@@ -612,6 +619,12 @@ const AdminDashboard: React.FC = () => {
                     {activeTab === 'quality' && (
                         <div className="bg-gray-800 rounded-lg">
                             <QualityDemoPage />
+                        </div>
+                    )}
+
+                    {activeTab === 'templates' && (
+                        <div className="bg-gray-800 rounded-lg p-6">
+                            <TemplatePerformanceDashboard />
                         </div>
                     )}
                 </main>

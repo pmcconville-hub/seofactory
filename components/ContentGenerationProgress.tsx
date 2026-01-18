@@ -57,6 +57,10 @@ interface ContentGenerationProgressProps {
   onCancel: () => void;
   onRetry?: () => void;
   error?: string | null;
+  /** Template name being used for generation (from brief.selectedTemplate) */
+  templateName?: string;
+  /** Template selection confidence score (0-100) */
+  templateConfidence?: number;
 }
 
 // Estimated average seconds per section per pass (based on historical data)
@@ -182,7 +186,9 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
   onResume,
   onCancel,
   onRetry,
-  error
+  error,
+  templateName,
+  templateConfidence
 }) => {
   const [showLivePreview, setShowLivePreview] = useState(false);
   const [activityMessageIndex, setActivityMessageIndex] = useState(0);
@@ -261,9 +267,32 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
     <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
       <div className="flex justify-between items-start mb-4">
         <div>
-          <h3 className="text-lg font-semibold text-white">
-            Generating Article Draft
-          </h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-semibold text-white">
+              Generating Article Draft
+            </h3>
+            {/* Template Badge - shows selected template with confidence indicator */}
+            {templateName && (
+              <span
+                className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${
+                  templateConfidence && templateConfidence >= 80
+                    ? 'bg-green-900/30 border-green-600/50 text-green-400'
+                    : templateConfidence && templateConfidence >= 60
+                    ? 'bg-yellow-900/30 border-yellow-600/50 text-yellow-400'
+                    : 'bg-gray-700/50 border-gray-600/50 text-gray-400'
+                }`}
+                title={`Template: ${templateName}${templateConfidence ? ` (${templateConfidence}% match)` : ''}`}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                </svg>
+                {templateName.replace(/_/g, ' ')}
+                {templateConfidence && (
+                  <span className="text-[10px] opacity-70">{templateConfidence}%</span>
+                )}
+              </span>
+            )}
+          </div>
           {timeRemainingText && job.status === 'in_progress' && (
             <p className="text-xs text-gray-400 mt-1">{timeRemainingText}</p>
           )}
