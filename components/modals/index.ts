@@ -12,6 +12,7 @@ export { default as AddTopicModal } from './AddTopicModal';
 export { default as BusinessInfoModal } from './BusinessInfoModal';
 export { default as DraftingModal } from './DraftingModal';
 export { default as TemplateSelectionModal } from './TemplateSelectionModal';
+export { default as DepthSelectionModal } from './DepthSelectionModal';
 
 // Content modals
 export { default as ContentBriefModal } from './ContentBriefModal';
