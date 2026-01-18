@@ -35,6 +35,8 @@ import {
   buildFullHtmlDocument,
   validateForExport,
   cleanForExport,
+  appendRelatedTopicsToContent,
+  RelatedTopicLink,
 } from '../../services/contentAssemblyService';
 import { useFeatureGate } from '../../hooks/usePermissions';
 import { QualityRulePanel, ArticleQualityReport } from '../quality';
@@ -1143,6 +1145,86 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
       } else {
           onClose();
       }
+  };
+
+  // Add Related Topics section to existing content
+  const handleAddRelatedTopics = async () => {
+    if (!brief || !draftContent) return;
+
+    const supabase = getSupabaseClient();
+
+    try {
+      // Fetch topics from the same map
+      const activeMap = state.topicalMaps.find(m => m.id === state.activeMapId);
+      const mapId = activeMap?.id;
+
+      if (!mapId) {
+        dispatch({ type: 'SET_ERROR', payload: 'No active topical map found. Cannot fetch related topics.' });
+        return;
+      }
+
+      // Fetch topics from the map
+      const { data: mapTopics, error: topicsError } = await supabase
+        .from('topics')
+        .select('title, slug')
+        .eq('map_id', mapId)
+        .limit(10);
+
+      if (topicsError) {
+        console.error('[handleAddRelatedTopics] Failed to fetch topics:', topicsError);
+        dispatch({ type: 'SET_ERROR', payload: 'Failed to fetch related topics from the map.' });
+        return;
+      }
+
+      if (!mapTopics || mapTopics.length === 0) {
+        dispatch({ type: 'SET_NOTIFICATION', payload: 'No other topics found in this map to link to.' });
+        return;
+      }
+
+      // Filter out the current topic and prepare links
+      const relatedTopics: RelatedTopicLink[] = mapTopics
+        .filter(t => t.title.toLowerCase() !== brief.title.toLowerCase())
+        .slice(0, 5)
+        .map(t => ({
+          title: t.title,
+          slug: t.slug || undefined,
+          reasoning: undefined, // Will use default context
+          anchorText: t.title,
+        }));
+
+      if (relatedTopics.length === 0) {
+        dispatch({ type: 'SET_NOTIFICATION', payload: 'No related topics available to add.' });
+        return;
+      }
+
+      // Get central entity from pillars
+      const centralEntity = activeMap?.pillars?.centralEntity as string | undefined;
+
+      // Detect language from content or brief
+      const language = (brief as any).language || 'en';
+
+      // Append Related Topics section
+      const updatedContent = appendRelatedTopicsToContent(draftContent, {
+        articleTitle: brief.title,
+        centralEntity,
+        language,
+        topics: relatedTopics,
+      });
+
+      if (updatedContent === draftContent) {
+        dispatch({ type: 'SET_NOTIFICATION', payload: 'Content already has a Related Topics section.' });
+        return;
+      }
+
+      // Update the draft content
+      setDraftContent(updatedContent);
+      setHasUnsavedChanges(true);
+
+      dispatch({ type: 'SET_NOTIFICATION', payload: `Added "Expand Your Understanding" section with ${relatedTopics.length} related topics. Don't forget to save!` });
+    } catch (error) {
+      console.error('[handleAddRelatedTopics] Error:', error);
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to add related topics section.' });
+    }
   };
 
   // Download complete article package
@@ -2848,6 +2930,15 @@ ${schemaScript}`;
                         title="View all generated resources"
                     >
                         📦
+                    </Button>
+                    <Button
+                        onClick={handleAddRelatedTopics}
+                        disabled={!draftContent}
+                        variant="secondary"
+                        className="text-xs py-0.5 px-2 bg-purple-600/20 !text-purple-400 hover:bg-purple-600/40 hover:!text-purple-300 border border-purple-500/30"
+                        title="Add Related Topics section with contextual bridges (SEO internal linking)"
+                    >
+                        🔗 Add Links
                     </Button>
                     <Button
                         onClick={handleCopyHtml}

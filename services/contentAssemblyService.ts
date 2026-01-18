@@ -750,6 +750,138 @@ export function cleanForExport(markdown: string): string {
 }
 
 // =============================================================================
+// Related Topics Section Generation
+// =============================================================================
+
+export interface RelatedTopicLink {
+  title: string;
+  slug?: string;
+  reasoning?: string;
+  anchorText?: string;
+  annotation_text_hint?: string;
+}
+
+export interface AppendRelatedTopicsOptions {
+  /** Article title for context */
+  articleTitle: string;
+  /** Central entity from topical map for semantic context */
+  centralEntity?: string;
+  /** Language code for i18n headers */
+  language?: string;
+  /** Related topics to link to */
+  topics: RelatedTopicLink[];
+}
+
+/**
+ * Generates a semantically correct "Related Topics" section with proper Contextual Bridges.
+ *
+ * Per Semantic SEO framework requirements:
+ * - Links must have annotation text explaining relevance
+ * - A Contextual Bridge must justify the transition
+ * - Surrounding text must semantically support the link
+ * - Target entity must be mentioned near the anchor
+ */
+export function generateRelatedTopicsMarkdown(options: AppendRelatedTopicsOptions): string {
+  const { articleTitle, centralEntity, language = 'en', topics } = options;
+
+  if (!topics || topics.length === 0) return '';
+
+  // Limit to 5 links
+  const topLinks = topics.slice(0, 5);
+
+  // Language-aware section headers and bridge text
+  const i18n: Record<string, { header: string; bridge: string; learnMore: string }> = {
+    'nl': {
+      header: 'Verdiep Je Kennis',
+      bridge: 'Om je begrip te verdiepen, verken deze gerelateerde onderwerpen:',
+      learnMore: 'Meer over'
+    },
+    'de': {
+      header: 'Vertiefen Sie Ihr Wissen',
+      bridge: 'Um Ihr Verständnis zu vertiefen, erkunden Sie diese verwandten Themen:',
+      learnMore: 'Mehr über'
+    },
+    'fr': {
+      header: 'Approfondissez Vos Connaissances',
+      bridge: 'Pour approfondir votre compréhension, explorez ces sujets connexes:',
+      learnMore: 'En savoir plus sur'
+    },
+    'es': {
+      header: 'Profundice Su Conocimiento',
+      bridge: 'Para profundizar su comprensión, explore estos temas relacionados:',
+      learnMore: 'Más sobre'
+    },
+    'it': {
+      header: 'Approfondisci la Tua Conoscenza',
+      bridge: 'Per approfondire la tua comprensione, esplora questi argomenti correlati:',
+      learnMore: 'Scopri di più su'
+    },
+    'pt': {
+      header: 'Aprofunde Seu Conhecimento',
+      bridge: 'Para aprofundar sua compreensão, explore estes tópicos relacionados:',
+      learnMore: 'Saiba mais sobre'
+    },
+    'en': {
+      header: 'Expand Your Understanding',
+      bridge: 'To deepen your knowledge, explore these related topics:',
+      learnMore: 'Learn more about'
+    }
+  };
+
+  const lang = i18n[language] || i18n['en'];
+  const entity = centralEntity || articleTitle;
+
+  // Build Contextual Bridge section per Semantic SEO requirements
+  let section = `\n\n## ${lang.header}\n\n`;
+  section += `The concepts discussed in ${articleTitle} connect to broader aspects of ${entity}. ${lang.bridge}\n\n`;
+
+  for (const topic of topLinks) {
+    const slug = topic.slug || generateSlug(topic.title);
+    const url = `/topics/${slug}`;
+    const anchorText = topic.anchorText || topic.title;
+
+    const hasReasoning = topic.reasoning &&
+                         !topic.reasoning.startsWith('Related') &&
+                         topic.reasoning.length > 10;
+
+    const annotationHint = topic.annotation_text_hint || '';
+
+    if (hasReasoning || annotationHint) {
+      const context = annotationHint || topic.reasoning;
+      section += `- **${topic.title}**: ${context} [${lang.learnMore} ${anchorText}](${url}).\n`;
+    } else {
+      section += `- **${topic.title}**: Explore how this relates to ${entity}. [${lang.learnMore} ${anchorText}](${url}).\n`;
+    }
+  }
+
+  return section;
+}
+
+/**
+ * Appends a Related Topics section to existing markdown content if not already present.
+ * Returns the updated markdown.
+ */
+export function appendRelatedTopicsToContent(
+  markdown: string,
+  options: AppendRelatedTopicsOptions
+): string {
+  // Check if content already has a Related Topics section
+  const hasRelatedSection = /##\s*(Expand Your Understanding|Related Topics|Verdiep Je Kennis|Verwandte Themen|Approfondissez|Profundice|Approfondisci|Aprofunde)/i.test(markdown);
+
+  if (hasRelatedSection) {
+    console.log('[appendRelatedTopicsToContent] Content already has Related Topics section, skipping');
+    return markdown;
+  }
+
+  const relatedSection = generateRelatedTopicsMarkdown(options);
+  if (!relatedSection) {
+    return markdown;
+  }
+
+  return markdown.trimEnd() + relatedSection;
+}
+
+// =============================================================================
 // Export Default
 // =============================================================================
 
@@ -763,4 +895,6 @@ export default {
   calculateWordCount,
   validateForExport,
   cleanForExport,
+  generateRelatedTopicsMarkdown,
+  appendRelatedTopicsToContent,
 };
