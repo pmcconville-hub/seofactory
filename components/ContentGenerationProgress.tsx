@@ -1,7 +1,37 @@
 // components/ContentGenerationProgress.tsx
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, memo, useCallback } from 'react';
 import { ContentGenerationJob, ContentGenerationSection, PASS_NAMES, PassesStatus } from '../types';
 import { SimpleMarkdown } from './ui/SimpleMarkdown';
+
+// Memoized section preview to prevent unnecessary re-renders
+const SectionPreview = memo(({ section, index }: { section: ContentGenerationSection; index: number }) => {
+  // Truncate very long content to prevent performance issues
+  const truncatedContent = useMemo(() => {
+    const content = section.current_content || '';
+    if (content.length > 2000) {
+      return content.substring(0, 2000) + '\n\n*[Content truncated in preview...]*';
+    }
+    return content;
+  }, [section.current_content]);
+
+  return (
+    <div className="mb-4 pb-4 border-b border-gray-800 last:border-b-0">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded">
+          {section.section_order + 1}
+        </span>
+        <span className="text-xs text-gray-500">
+          {section.section_heading}
+        </span>
+      </div>
+      <SimpleMarkdown content={truncatedContent} />
+    </div>
+  );
+}, (prevProps, nextProps) => {
+  // Only re-render if section content actually changed
+  return prevProps.section.current_content === nextProps.section.current_content &&
+         prevProps.section.section_key === nextProps.section.section_key;
+});
 
 // Activity messages for each pass to show what's happening
 const PASS_ACTIVITY_MESSAGES: Record<number, string[]> = {
@@ -439,7 +469,7 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
         )}
       </div>
 
-      {/* Live Preview Panel */}
+      {/* Live Preview Panel - Limited to 5 sections during generation for performance */}
       {showLivePreview && completedSections.length > 0 && (
         <div className="mt-4 border-t border-gray-700 pt-4">
           <div className="flex items-center justify-between mb-3">
@@ -447,24 +477,24 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
               Live Preview ({completedSections.length} sections generated)
             </h4>
             <span className="text-xs text-gray-500">
-              Content will be refined in subsequent passes
+              {job.status === 'in_progress' ? 'Showing first 5 sections' : 'Content will be refined in subsequent passes'}
             </span>
           </div>
           <div className="max-h-[400px] overflow-y-auto bg-gray-900/50 rounded-lg p-4 border border-gray-700">
             <div className="prose prose-invert prose-sm max-w-none">
-              {completedSections.map((section, idx) => (
-                <div key={`preview-${section.section_key}-${idx}`} className="mb-4 pb-4 border-b border-gray-800 last:border-b-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded">
-                      {section.section_order + 1}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {section.section_heading}
-                    </span>
-                  </div>
-                  <SimpleMarkdown content={section.current_content || ''} />
-                </div>
+              {/* Limit to 5 sections during generation to prevent performance issues */}
+              {(job.status === 'in_progress' ? completedSections.slice(0, 5) : completedSections).map((section, idx) => (
+                <SectionPreview
+                  key={`preview-${section.section_key}-${section.id || idx}`}
+                  section={section}
+                  index={idx}
+                />
               ))}
+              {job.status === 'in_progress' && completedSections.length > 5 && (
+                <p className="text-gray-500 text-sm text-center py-2">
+                  +{completedSections.length - 5} more sections (full preview after completion)
+                </p>
+              )}
             </div>
           </div>
           <p className="text-xs text-amber-400/70 mt-2 italic">
