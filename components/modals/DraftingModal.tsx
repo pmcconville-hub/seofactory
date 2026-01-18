@@ -1151,7 +1151,7 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
   const handleAddRelatedTopics = async () => {
     if (!brief || !draftContent) return;
 
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
 
     try {
       // Fetch topics from the same map
