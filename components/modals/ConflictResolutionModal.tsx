@@ -48,17 +48,23 @@ const RESOLUTION_OPTIONS = [
   },
 ];
 
+/** Map AI action values to user choice values */
+const mapActionToChoice = (action: 'use-template' | 'use-brief' | 'merge'): 'template' | 'brief' | 'merge' => {
+  switch (action) {
+    case 'use-template': return 'template';
+    case 'use-brief': return 'brief';
+    default: return 'merge';
+  }
+};
+
 const ConflictResolutionModal: React.FC<ConflictResolutionModalProps> = ({
   isOpen,
   onClose,
   onResolve,
   detection,
 }) => {
-  const [chosen, setChosen] = useState<'template' | 'brief' | 'merge'>(
-    detection.aiRecommendation.action === 'use-template' ? 'template'
-      : detection.aiRecommendation.action === 'use-brief' ? 'brief'
-      : 'merge'
-  );
+  const recommendedChoice = mapActionToChoice(detection.aiRecommendation.action);
+  const [chosen, setChosen] = useState<'template' | 'brief' | 'merge'>(recommendedChoice);
 
   const handleApply = () => {
     onResolve(chosen);
@@ -157,7 +163,7 @@ const ConflictResolutionModal: React.FC<ConflictResolutionModalProps> = ({
                   <span className="text-xl">{option.icon}</span>
                   <div>
                     <span className="text-white font-medium">{option.label}</span>
-                    {detection.aiRecommendation.action === option.choice && (
+                    {recommendedChoice === option.choice && (
                       <span className="ml-2 text-xs bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded">
                         Recommended
                       </span>
