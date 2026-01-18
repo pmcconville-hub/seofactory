@@ -7,6 +7,8 @@ import { calculateBriefCompliance, COMPLIANCE_THRESHOLD } from '../../compliance
 import { validateCrossPageEavConsistency } from '../rulesEngine/validators/crossPageEavValidator';
 import { useSupabase } from '../../../supabaseClient';
 import { createLogger } from '../../../../utils/debugLogger';
+import { getTemplateByName } from '../../../../config/contentTemplates';
+import { TemplateName } from '../../../../types/contentTemplates';
 
 const log = createLogger('Pass8Audit');
 
@@ -52,8 +54,17 @@ export async function executePass8(
   // Get all EAVs from the brief (or empty array) - also used for algorithmic audit
   const allEavs: SemanticTriple[] = brief.eavs || [];
 
-  // Run all algorithmic checks (pass language and EAVs for proper EAV density validation)
-  const algorithmicResults = runAlgorithmicAudit(draft, brief, businessInfo, businessInfo.language, allEavs);
+  // Resolve template for template compliance checks
+  const template = brief.selectedTemplate
+    ? getTemplateByName(brief.selectedTemplate as TemplateName)
+    : undefined;
+
+  if (template) {
+    log.log(` Using template: ${template.label} (${template.templateName})`);
+  }
+
+  // Run all algorithmic checks (pass language, EAVs, and template for proper validation)
+  const algorithmicResults = runAlgorithmicAudit(draft, brief, businessInfo, businessInfo.language, allEavs, template);
 
   // Calculate algorithmic score
   const passingRules = algorithmicResults.filter(r => r.isPassing).length;
