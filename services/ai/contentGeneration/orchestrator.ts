@@ -657,10 +657,11 @@ export class ContentGenerationOrchestrator {
    * @param brief - The content brief
    * @param options - Optional configuration for section parsing
    * @param options.maxSections - Maximum total sections (including intro/conclusion)
+   * @param options.language - Language code for i18n (e.g., 'nl', 'en', 'de')
    */
   parseSectionsFromBrief(
     brief: ContentBrief,
-    options?: { maxSections?: number }
+    options?: { maxSections?: number; language?: string }
   ): SectionDefinition[] {
     const sections: SectionDefinition[] = [];
 
@@ -740,10 +741,25 @@ export class ContentGenerationOrchestrator {
     // Extract core topic from targetKeyword or first few words of title
     const coreTopic = brief.targetKeyword
       || (brief.title?.split(/[:|–-]/)[0]?.trim().substring(0, 50))
-      || 'dit onderwerp';
+      || 'this topic';
+
+    // Language-aware conclusion heading prefixes
+    const conclusionI18n: Record<string, { prefix: string; fallbackTopic: string }> = {
+      'nl': { prefix: 'Volgende Stappen voor', fallbackTopic: 'dit onderwerp' },
+      'de': { prefix: 'Nächste Schritte für', fallbackTopic: 'dieses Thema' },
+      'fr': { prefix: 'Prochaines Étapes pour', fallbackTopic: 'ce sujet' },
+      'es': { prefix: 'Próximos Pasos para', fallbackTopic: 'este tema' },
+      'it': { prefix: 'Prossimi Passi per', fallbackTopic: 'questo argomento' },
+      'pt': { prefix: 'Próximos Passos para', fallbackTopic: 'este tema' },
+      'en': { prefix: 'Next Steps for', fallbackTopic: 'this topic' }
+    };
+
+    const lang = options?.language || 'en';
+    const conclusionLang = conclusionI18n[lang] || conclusionI18n['en'];
+    const displayTopic = coreTopic || conclusionLang.fallbackTopic;
 
     // Create action-oriented heading, NOT a summary heading
-    const conclusionHeading = `Volgende Stappen voor ${coreTopic}`;
+    const conclusionHeading = `${conclusionLang.prefix} ${displayTopic}`;
 
     sections.push({
       key: 'conclusion',
@@ -778,6 +794,23 @@ export class ContentGenerationOrchestrator {
           fullBrief = brief as unknown as ContentBrief;
           // Language field may exist on DB record
           briefLanguage = (brief as Record<string, unknown>).language as string | undefined;
+        }
+      }
+
+      // Fallback: Get language from map's business_info if not in brief
+      if (!briefLanguage && job?.map_id) {
+        const { data: map } = await this.supabase
+          .from('topical_maps')
+          .select('business_info')
+          .eq('id', job.map_id)
+          .single();
+
+        if (map?.business_info) {
+          const businessInfo = map.business_info as Record<string, unknown>;
+          briefLanguage = (businessInfo.language as string) || undefined;
+          if (briefLanguage) {
+            console.log(`[assembleDraft] Language from map business_info: ${briefLanguage}`);
+          }
         }
       }
 

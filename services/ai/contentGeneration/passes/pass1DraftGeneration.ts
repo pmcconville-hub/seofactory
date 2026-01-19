@@ -69,25 +69,33 @@ export async function executePass1(
 
   const lengthSettings = options?.settings?.contentLength ?? DEFAULT_CONTENT_LENGTH_SETTINGS;
 
-  // Calculate effective max sections - BRIEF COMPLEXITY OVERRIDES TOPIC TYPE
+  // Calculate effective max sections
+  // PRIORITY: User explicit choice > Topic type for outer/short > Brief complexity > Preset default
   let effectiveMaxSections: number | undefined;
   let decisionReason: string;
 
   if (lengthSettings.maxSections !== undefined) {
-    // User override takes precedence
+    // User override takes absolute precedence
     effectiveMaxSections = lengthSettings.maxSections;
     decisionReason = 'User specified maxSections override';
+  } else if (lengthSettings.respectTopicType && options?.topicType === 'outer') {
+    // RESPECT USER'S CHOICE: When user explicitly selects "outer" (short) topic type,
+    // honor that choice even if brief has detailed structure.
+    // User expectation: "outer" = shorter, quicker article
+    effectiveMaxSections = LENGTH_PRESETS['short'].maxSections;
+    decisionReason = `User selected outer topic - generating short article (${effectiveMaxSections} sections max)`;
+    if (isComprehensiveBrief) {
+      log.info(`[USER CHOICE] Brief has ${briefSectionCount} sections, but user selected 'outer' topic → limiting to ${effectiveMaxSections} sections`);
+    }
+  } else if (lengthSettings.respectTopicType && options?.topicType === 'core') {
+    // Core topics get comprehensive treatment
+    effectiveMaxSections = LENGTH_PRESETS['comprehensive'].maxSections;
+    decisionReason = `User selected core topic - generating comprehensive article`;
   } else if (isComprehensiveBrief) {
-    // SMART: Brief has detailed structure - respect it regardless of topic type
+    // SMART: Brief has detailed structure AND user didn't specify a topic type preference
     effectiveMaxSections = briefSectionCount > 0 ? briefSectionCount + 2 : undefined; // +2 for intro/conclusion
     decisionReason = `Brief defines ${briefSectionCount} sections with ${briefImageCount} images - generating all content`;
-    log.info(`[SMART] Brief complexity detected: ignoring topic type '${options?.topicType}', using full brief structure`);
-  } else if (lengthSettings.respectTopicType && options?.topicType && options.topicType !== 'unknown') {
-    // Only use topic type for simple briefs without detailed structure
-    const topicTypePreset = options.topicType === 'core' ? 'comprehensive' :
-                            options.topicType === 'outer' ? 'short' : 'standard';
-    effectiveMaxSections = LENGTH_PRESETS[topicTypePreset].maxSections;
-    decisionReason = `Simple brief, using ${options.topicType} topic preset`;
+    log.info(`[SMART] Brief complexity detected, using full brief structure`);
   } else {
     // Use preset default
     effectiveMaxSections = LENGTH_PRESETS[lengthSettings.preset].maxSections;
@@ -133,8 +141,11 @@ export async function executePass1(
     log.log(`[Pass1] Alternative templates: ${templateSelection.alternatives.map(a => a.templateName).join(', ')}`);
   }
 
-  // 2. Parse sections from brief with maxSections limit
-  let sections = orchestrator.parseSectionsFromBrief(brief, { maxSections: effectiveMaxSections });
+  // 2. Parse sections from brief with maxSections limit and language for i18n
+  let sections = orchestrator.parseSectionsFromBrief(brief, {
+    maxSections: effectiveMaxSections,
+    language: businessInfo.language
+  });
 
   // 3. Order sections using AttributeRanker (ROOT → UNIQUE → RARE → COMMON)
   // Convert to BriefSection for ordering, then convert back
