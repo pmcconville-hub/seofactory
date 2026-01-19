@@ -57,31 +57,19 @@ import {
  * PERFORMANCE: Yield to main thread between passes
  * This prevents the browser from becoming unresponsive during long-running generation
  * by allowing the event loop to process pending tasks (UI updates, user input, etc.)
+ *
+ * NOTE: We use setTimeout instead of requestIdleCallback because:
+ * 1. requestIdleCallback is deprioritized/disabled in background tabs
+ * 2. This would cause generation to hang when user switches tabs
+ * 3. setTimeout(0) works reliably in both foreground and background
  */
 const yieldToMainThread = (): Promise<void> => {
   return new Promise(resolve => {
-    // Use requestIdleCallback if available, otherwise setTimeout
-    if (typeof requestIdleCallback === 'function') {
-      requestIdleCallback(() => resolve(), { timeout: 100 });
-    } else {
-      setTimeout(resolve, 50);
-    }
+    // Use setTimeout(0) for reliable behavior in all tab states
+    // This yields to the event loop without the unpredictable behavior
+    // of requestIdleCallback in background tabs
+    setTimeout(resolve, 0);
   });
-};
-
-/**
- * PERFORMANCE: Clear unnecessary references to help garbage collection
- * Called between passes to reduce memory pressure
- */
-const performMemoryCleanup = (): void => {
-  // Hint to garbage collector (browsers may or may not honor this)
-  if (typeof gc === 'function') {
-    try {
-      gc();
-    } catch (e) {
-      // gc() only available with --expose-gc flag, ignore errors
-    }
-  }
 };
 
 // Helper functions for building quality report
@@ -1002,7 +990,7 @@ export function useContentGeneration({
 
         // PERFORMANCE: Yield to main thread and cleanup between passes
         await yieldToMainThread();
-        performMemoryCleanup();
+
       }
 
       // Helper for section progress callbacks
@@ -1039,7 +1027,7 @@ export function useContentGeneration({
 
         // PERFORMANCE: Yield to main thread between passes
         await yieldToMainThread();
-        performMemoryCleanup();
+
       }
 
       // Pass 3: Lists & Tables (section-by-section with holistic context)
@@ -1068,7 +1056,7 @@ export function useContentGeneration({
 
         // PERFORMANCE: Yield to main thread between passes
         await yieldToMainThread();
-        performMemoryCleanup();
+
       }
 
       // Pass 4: Discourse Integration (section-by-section with holistic context)
@@ -1095,7 +1083,7 @@ export function useContentGeneration({
 
         // PERFORMANCE: Yield to main thread between passes
         await yieldToMainThread();
-        performMemoryCleanup();
+
       }
 
       // Pass 5: Micro Semantics (section-by-section with holistic context)
@@ -1124,7 +1112,7 @@ export function useContentGeneration({
 
         // PERFORMANCE: Yield to main thread between passes
         await yieldToMainThread();
-        performMemoryCleanup();
+
       }
 
       // Pass 6: Visual Semantics (section-by-section with holistic context)
@@ -1165,7 +1153,7 @@ export function useContentGeneration({
 
         // PERFORMANCE: Yield to main thread between passes
         await yieldToMainThread();
-        performMemoryCleanup();
+
       }
 
       // Pass 7: Introduction Synthesis (AFTER body is fully polished)
@@ -1194,7 +1182,7 @@ export function useContentGeneration({
 
         // PERFORMANCE: Yield to main thread between passes
         await yieldToMainThread();
-        performMemoryCleanup();
+
       }
 
       // Pass 8: Final Polish
