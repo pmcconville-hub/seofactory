@@ -20,6 +20,14 @@ import { createLogger } from '../../../../utils/debugLogger';
 // Create namespaced logger - will respect verbose logging setting
 const createPassLogger = (passNumber: number) => createLogger(`Pass${passNumber}`);
 
+/**
+ * PERFORMANCE: Yield to main thread to keep UI responsive during section processing.
+ * This allows the browser to handle user interactions, scrolling, and re-renders.
+ */
+const yieldToMainThread = (): Promise<void> => {
+  return new Promise(resolve => setTimeout(resolve, 0));
+};
+
 // Checkpoint interval - save progress after every N sections
 const CHECKPOINT_INTERVAL = 3;
 
@@ -450,9 +458,14 @@ async function processSectionsIndividually(
         });
       }
 
+      // PERFORMANCE: Yield to main thread after each section to keep UI responsive
+      await yieldToMainThread();
+
     } catch (error) {
       log.error(`Error optimizing section ${section.section_key}:`, error);
       // Continue to next section - don't fail entire pass for one section
+      // Still yield on error to prevent UI freeze
+      await yieldToMainThread();
     }
   }
 }

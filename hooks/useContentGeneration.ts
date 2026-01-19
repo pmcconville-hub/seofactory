@@ -680,16 +680,48 @@ export function useContentGeneration({
     const collectedDeltas: PassDelta[] = [];
     let violationsBeforePass: ValidationViolation[] = [];
 
-    // Helper to capture violations for delta tracking (async because runAlgorithmicAudit yields)
-    const captureViolations = async (): Promise<ValidationViolation[]> => {
-      return getViolationsFromContent(
-        updatedJob.draft_content || '',
-        activeBrief,
-        safeBusinessInfo
-      );
+    // PERFORMANCE: Cache audit results to avoid running expensive audit twice per pass
+    // Both quality gate and violation tracking need audit results, so we run once and share
+    let cachedAuditResults: AuditRuleResult[] | null = null;
+    let cachedAuditDraft: string = '';
+
+    // Helper to get audit results (cached to avoid double computation)
+    const getAuditResults = async (): Promise<AuditRuleResult[]> => {
+      const currentDraft = updatedJob.draft_content || '';
+      // Return cached results if draft hasn't changed
+      if (cachedAuditResults !== null && cachedAuditDraft === currentDraft) {
+        return cachedAuditResults;
+      }
+      // Run audit and cache results
+      if (!currentDraft || currentDraft.length < 100) {
+        cachedAuditResults = [];
+      } else {
+        cachedAuditResults = await runAlgorithmicAudit(currentDraft, activeBrief, safeBusinessInfo);
+      }
+      cachedAuditDraft = currentDraft;
+      return cachedAuditResults;
     };
 
-    // Helper to track pass completion and calculate delta (async because captureViolations is async)
+    // Helper to capture violations for delta tracking (uses cached audit results)
+    const captureViolations = async (): Promise<ValidationViolation[]> => {
+      try {
+        const auditResults = await getAuditResults();
+        return auditResults
+          .filter(r => !r.isPassing)
+          .map(r => ({
+            rule: r.ruleName || 'UNKNOWN',
+            text: r.details || '',
+            position: 0,
+            severity: 'warning' as const,
+            suggestion: r.remediation || ''
+          }));
+      } catch (err) {
+        console.warn('[PassTracker] Failed to get violations:', err);
+        return [];
+      }
+    };
+
+    // Helper to track pass completion and calculate delta
     const trackPassCompletion = async (passNumber: number) => {
       try {
         const violationsAfterPass = await captureViolations();
@@ -704,6 +736,8 @@ export function useContentGeneration({
 
         // Update violationsBeforePass for next pass
         violationsBeforePass = violationsAfterPass;
+        // Clear cache after tracking so next pass gets fresh results
+        cachedAuditResults = null;
       } catch (err) {
         console.warn(`[PassTracker] Failed to track pass ${passNumber}:`, err);
       }
@@ -788,17 +822,39 @@ export function useContentGeneration({
     };
 
     // Helper to check quality gate and store results
+    // PERFORMANCE: Uses cached audit results to avoid running expensive audit twice per pass
     const checkAndStoreQualityGate = async (passNumber: number) => {
       try {
-        const draftContent = updatedJob.draft_content || '';
-        const result = await checkQualityGate(
-          draftContent,
-          activeBrief,
-          safeBusinessInfo,
-          passNumber,
-          lastQualityScore,
-          onLog
-        );
+        // Use cached audit results instead of running audit again
+        const auditResults = await getAuditResults();
+        const scoreAfter = calculateQualityScore(auditResults);
+        const scoreBefore = lastQualityScore ?? scoreAfter;
+        const delta = scoreAfter - scoreBefore;
+
+        const hasRegression = delta < -5;
+        const hasSevereRegression = delta < -15;
+
+        // Log quality changes
+        if (hasSevereRegression) {
+          console.warn(`[QualityGate] Pass ${passNumber}: SEVERE quality regression! Score dropped from ${scoreBefore}% to ${scoreAfter}% (${delta})`);
+          onLog(`Pass ${passNumber}: Quality dropped significantly (${scoreBefore}% → ${scoreAfter}%)`, 'warning');
+        } else if (hasRegression) {
+          console.warn(`[QualityGate] Pass ${passNumber}: Quality regression. Score changed from ${scoreBefore}% to ${scoreAfter}% (${delta})`);
+          onLog(`Pass ${passNumber}: Quality slightly decreased (${scoreBefore}% → ${scoreAfter}%)`, 'warning');
+        } else if (delta > 5) {
+          console.log(`[QualityGate] Pass ${passNumber}: Quality improved! Score: ${scoreBefore}% → ${scoreAfter}% (+${delta})`);
+          onLog(`Pass ${passNumber}: Quality improved (${scoreBefore}% → ${scoreAfter}%)`, 'success');
+        } else {
+          console.log(`[QualityGate] Pass ${passNumber}: Quality stable. Score: ${scoreAfter}%`);
+        }
+
+        const result: QualityGateResult = {
+          scoreBefore,
+          scoreAfter,
+          delta,
+          hasRegression,
+          hasSevereRegression
+        };
 
         qualityScores[passNumber] = result;
         lastQualityScore = result.scoreAfter;
