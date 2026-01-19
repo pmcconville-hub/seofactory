@@ -1036,7 +1036,8 @@ export function useContentGeneration({
           shouldAbort
         );
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
+        // CRITICAL: Use refreshJobState to update React state for UI sync
+        updatedJob = await refreshJobState(2);
         // Capture structural snapshot
         await captureAndLogStructuralChanges(2);
         // Check quality gate
@@ -1063,7 +1064,8 @@ export function useContentGeneration({
           shouldAbort
         );
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
+        // CRITICAL: Use refreshJobState to update React state for UI sync
+        updatedJob = await refreshJobState(3);
         // Collect progressive schema data from Pass 3 (lists/tables)
         await collectProgressiveData(3, updatedJob.draft_content || '');
         // Capture structural snapshot (critical - lists/tables added here)
@@ -1092,7 +1094,8 @@ export function useContentGeneration({
           shouldAbort
         );
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
+        // CRITICAL: Use refreshJobState to update React state for UI sync
+        updatedJob = await refreshJobState(4);
         // Capture structural snapshot
         await captureAndLogStructuralChanges(4);
         // Check quality gate
@@ -1119,7 +1122,8 @@ export function useContentGeneration({
           shouldAbort
         );
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
+        // CRITICAL: Use refreshJobState to update React state for UI sync
+        updatedJob = await refreshJobState(5);
         // Collect progressive schema data from Pass 5 (keywords, entities)
         await collectProgressiveData(5, updatedJob.draft_content || '');
         // Capture structural snapshot
@@ -1149,7 +1153,8 @@ export function useContentGeneration({
           shouldAbort
         );
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
+        // CRITICAL: Use refreshJobState to update React state for UI sync
+        updatedJob = await refreshJobState(6);
         // Collect progressive schema data from Pass 6 (images)
         await collectProgressiveData(6, updatedJob.draft_content || '');
 
@@ -1189,7 +1194,8 @@ export function useContentGeneration({
           shouldAbort
         );
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
+        // CRITICAL: Use refreshJobState to update React state for UI sync
+        updatedJob = await refreshJobState(7);
         // Collect progressive schema data from Pass 7 (abstract from intro)
         await collectProgressiveData(7, updatedJob.draft_content || '');
         // Capture structural snapshot
