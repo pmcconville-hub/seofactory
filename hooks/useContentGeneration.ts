@@ -441,6 +441,52 @@ export function useContentGeneration({
     };
   }, [job?.id, supabase]);
 
+  // Handle browser tab visibility changes - refetch state when tab becomes visible
+  // This handles stale state after browser throttles background tabs
+  useEffect(() => {
+    if (!job?.id || !orchestratorRef.current) return;
+
+    let lastVisibleTime = Date.now();
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        const timeSinceLastVisible = Date.now() - lastVisibleTime;
+
+        // If tab was hidden for more than 5 seconds, refresh job state
+        if (timeSinceLastVisible > 5000) {
+          console.log(`[useContentGeneration] Tab became visible after ${Math.round(timeSinceLastVisible / 1000)}s - refreshing job state`);
+
+          try {
+            // Refetch job state from database
+            const freshJob = await orchestratorRef.current!.getJobWithDraft(job.id);
+            if (freshJob) {
+              setJob(freshJob);
+
+              // Also refetch sections
+              const freshSections = await orchestratorRef.current!.getSections(job.id);
+              setSections(freshSections.sort((a, b) => a.section_order - b.section_order));
+
+              console.log(`[useContentGeneration] Refreshed: pass=${freshJob.current_pass}, status=${freshJob.status}`);
+            }
+          } catch (err) {
+            console.warn('[useContentGeneration] Failed to refresh job state on visibility change:', err);
+          }
+        }
+
+        lastVisibleTime = Date.now();
+      } else {
+        // Tab is being hidden - record the time
+        lastVisibleTime = Date.now();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [job?.id]);
+
   // Track external refresh requests (e.g., from DraftingModal after re-run configuration)
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 

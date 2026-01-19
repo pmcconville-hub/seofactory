@@ -168,7 +168,7 @@ const BriefDisplayView: React.FC<BriefDisplayViewProps> = ({ brief }) => {
             )}
 
                 {/* Internal Links */}
-            {bridgeLinks.length > 0 && (
+            {bridgeLinks.length > 0 ? (
                 <Card className="p-4 bg-gray-900/50">
                     <h3 className="font-semibold text-lg text-blue-300 mb-2">Internal Linking Plan</h3>
                     { !Array.isArray(brief.contextualBridge) && brief.contextualBridge?.content && (
@@ -193,6 +193,22 @@ const BriefDisplayView: React.FC<BriefDisplayViewProps> = ({ brief }) => {
                             </li>
                         ))}
                     </ul>
+                </Card>
+            ) : (
+                <Card className="p-4 bg-yellow-900/20 border border-yellow-600/30">
+                    <h3 className="font-semibold text-lg text-yellow-400 mb-2">Internal Linking Plan Missing</h3>
+                    <p className="text-sm text-yellow-200/80 mb-2">
+                        This brief has no contextual bridge links. Internal links help:
+                    </p>
+                    <ul className="text-sm text-gray-400 list-disc list-inside space-y-1 mb-3">
+                        <li>Pass authority between related articles</li>
+                        <li>Create semantic connections in your topical map</li>
+                        <li>Improve crawlability and indexation</li>
+                        <li>Guide readers through related content</li>
+                    </ul>
+                    <p className="text-xs text-yellow-300/70">
+                        Tip: Use "Regenerate Brief" or "Edit Brief" to add internal linking suggestions. During draft generation, fallback links from related topics will be used instead.
+                    </p>
                 </Card>
             )}
         </div>
