@@ -372,9 +372,32 @@ export function useContentGeneration({
     );
   }, [businessInfo.supabaseUrl, businessInfo.supabaseAnonKey, onLog]);
 
-  // Subscribe to realtime updates
+  // Subscribe to realtime updates with throttling to prevent browser hang
   useEffect(() => {
     if (!job?.id) return;
+
+    // Throttle section updates to prevent excessive re-renders
+    // Batch updates and apply every 500ms
+    let pendingSectionUpdates: Map<string, ContentGenerationSection> = new Map();
+    let sectionUpdateTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const flushSectionUpdates = () => {
+      if (pendingSectionUpdates.size === 0) return;
+
+      setSections(prev => {
+        const updated = [...prev];
+        for (const [key, newSection] of pendingSectionUpdates) {
+          const idx = updated.findIndex(s => s.section_key === key);
+          if (idx >= 0) {
+            updated[idx] = newSection;
+          } else {
+            updated.push(newSection);
+          }
+        }
+        pendingSectionUpdates.clear();
+        return updated.sort((a, b) => a.section_order - b.section_order);
+      });
+    };
 
     const jobChannel = supabase
       .channel(`job-${job.id}`)
@@ -396,24 +419,25 @@ export function useContentGeneration({
         table: 'content_generation_sections',
         filter: `job_id=eq.${job.id}`
       }, (payload) => {
-        setSections(prev => {
-          const updated = [...prev];
-          const newSection = payload.new as ContentGenerationSection;
-          // Use section_key for deduplication, not id (sections are unique by job_id + section_key)
-          const idx = updated.findIndex(s => s.section_key === newSection.section_key);
-          if (idx >= 0) {
-            updated[idx] = newSection;
-          } else {
-            updated.push(newSection);
-          }
-          return updated.sort((a, b) => a.section_order - b.section_order);
-        });
+        const newSection = payload.new as ContentGenerationSection;
+        pendingSectionUpdates.set(newSection.section_key, newSection);
+
+        // Throttle: only flush every 500ms
+        if (!sectionUpdateTimer) {
+          sectionUpdateTimer = setTimeout(() => {
+            flushSectionUpdates();
+            sectionUpdateTimer = null;
+          }, 500);
+        }
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(jobChannel);
       supabase.removeChannel(sectionsChannel);
+      if (sectionUpdateTimer) clearTimeout(sectionUpdateTimer);
+      // Flush any pending updates on unmount
+      flushSectionUpdates();
     };
   }, [job?.id, supabase]);
 

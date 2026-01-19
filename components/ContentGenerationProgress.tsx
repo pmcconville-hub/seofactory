@@ -205,7 +205,7 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
     return () => clearInterval(messageInterval);
   }, [job.status]);
 
-  // Track elapsed time for current operation
+  // Track elapsed time for current operation - update every 5 seconds to reduce re-renders
   useEffect(() => {
     if (job.status !== 'in_progress') {
       setElapsedSeconds(0);
@@ -213,8 +213,8 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
     }
 
     const timer = setInterval(() => {
-      setElapsedSeconds(prev => prev + 1);
-    }, 1000);
+      setElapsedSeconds(prev => prev + 5);
+    }, 5000);
 
     return () => clearInterval(timer);
   }, [job.status, job.current_pass, job.current_section_key]);
@@ -347,46 +347,37 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
         </div>
       )}
 
-      {/* Section Progress - Show for ALL passes now, not just Pass 1 */}
+      {/* Section Progress - Simplified to prevent browser hang */}
+      {/* Only show detailed section list for Pass 1; show simple counter for other passes */}
       {job.status === 'in_progress' && sections.length > 0 && (
-        <div className="space-y-2 mb-4 max-h-48 overflow-y-auto border border-gray-700/50 rounded-lg p-3 bg-gray-900/30">
-          <div className="flex justify-between items-center mb-2">
+        <div className="mb-4 border border-gray-700/50 rounded-lg p-3 bg-gray-900/30">
+          <div className="flex justify-between items-center">
             <p className="text-sm text-gray-400">
               {job.current_pass === 1
                 ? `Section ${job.completed_sections || 0} of ${job.total_sections || sections.length}`
-                : `Processing ${sections.length} sections`
+                : `Optimizing ${sections.length} sections`
               }
             </p>
-            {job.current_pass > 1 && (
-              <span className="text-xs text-gray-500">Pass {job.current_pass} optimization</span>
-            )}
+            <span className="text-xs text-gray-500">Pass {job.current_pass}</span>
           </div>
-          {sections.map((section, idx) => {
-            // For Pass 1, use section.status
-            // For later passes, check if section.current_pass >= job.current_pass
-            const isCompleted = job.current_pass === 1
-              ? section.status === 'completed'
-              : section.current_pass >= job.current_pass;
-            const isProcessing = section.section_key === job.current_section_key;
-
-            return (
-              <div key={`${section.section_key}-${section.id || idx}`} className="flex items-center gap-2 text-sm">
-                {isCompleted ? (
-                  <CheckIcon />
-                ) : isProcessing ? (
-                  <SpinnerIcon />
-                ) : (
-                  <CircleIcon />
-                )}
-                <span className={`flex-1 truncate ${isCompleted ? 'text-gray-500' : isProcessing ? 'text-blue-300' : 'text-gray-400'}`}>
-                  {section.section_heading || section.section_key}
-                </span>
-                {isProcessing && (
-                  <span className="text-xs text-blue-400 animate-pulse">processing</span>
-                )}
+          {/* Simple progress bar instead of detailed section list to prevent re-render lag */}
+          {job.current_pass === 1 && (
+            <div className="mt-2">
+              <div className="w-full bg-gray-700 rounded-full h-1.5">
+                <div
+                  className="bg-green-500 h-1.5 rounded-full transition-all duration-500"
+                  style={{ width: `${((job.completed_sections || 0) / (job.total_sections || sections.length)) * 100}%` }}
+                />
               </div>
-            );
-          })}
+              {/* Only show current section being processed */}
+              {currentProcessingSection && (
+                <div className="flex items-center gap-2 mt-2">
+                  <SpinnerIcon />
+                  <span className="text-xs text-blue-300 truncate">{currentProcessingSection}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
