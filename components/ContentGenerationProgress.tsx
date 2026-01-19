@@ -177,6 +177,59 @@ const PulsingDot = () => (
   </span>
 );
 
+// Memoized pass list item to prevent unnecessary re-renders
+const PassListItem = memo(({ num, name, status }: { num: string; name: string; status: 'completed' | 'in_progress' | 'pending' | 'failed' }) => (
+  <div className="flex items-center gap-2 text-sm">
+    {status === 'completed' ? (
+      <CheckIcon />
+    ) : status === 'in_progress' ? (
+      <SpinnerIcon />
+    ) : (
+      <CircleIcon />
+    )}
+    <span className={status === 'completed' ? 'text-gray-400' : 'text-gray-200'}>
+      Pass {num}: {name}
+    </span>
+  </div>
+));
+
+// Memoized pass list to prevent re-renders when job changes but pass statuses haven't
+const MemoizedPassList = memo(({ passesStatus, currentPass }: { passesStatus: PassesStatus | null; currentPass: number }) => {
+  // Create a stable key based on actual pass statuses
+  const passStatusKey = useMemo(() => {
+    if (!passesStatus) return 'none';
+    return Object.entries(passesStatus)
+      .map(([k, v]) => `${k}:${v}`)
+      .join(',');
+  }, [passesStatus]);
+
+  return (
+    <div className="space-y-1 mb-4">
+      {Object.entries(PASS_NAMES).map(([num, name]) => {
+        const passNum = parseInt(num);
+        const passKeys: (keyof PassesStatus)[] = [
+          'pass_1_draft', 'pass_2_headers', 'pass_3_lists', 'pass_4_discourse',
+          'pass_5_microsemantics', 'pass_6_visuals', 'pass_7_intro', 'pass_8_polish',
+          'pass_9_audit', 'pass_10_schema'
+        ];
+        const key = passKeys[passNum - 1];
+        const status = passesStatus?.[key] || 'pending';
+        return (
+          <PassListItem key={num} num={num} name={name} status={status} />
+        );
+      })}
+    </div>
+  );
+}, (prev, next) => {
+  // Only re-render if pass statuses or current pass changed
+  if (prev.currentPass !== next.currentPass) return false;
+  if (!prev.passesStatus && !next.passesStatus) return true;
+  if (!prev.passesStatus || !next.passesStatus) return false;
+  // Compare actual pass status values
+  const keys = Object.keys(prev.passesStatus) as (keyof PassesStatus)[];
+  return keys.every(k => prev.passesStatus![k] === next.passesStatus![k]);
+});
+
 export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps> = ({
   job,
   sections,
@@ -381,27 +434,8 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
         </div>
       )}
 
-      {/* Pass List */}
-      <div className="space-y-1 mb-4">
-        {Object.entries(PASS_NAMES).map(([num, name]) => {
-          const passNum = parseInt(num);
-          const status = getPassStatus(job, passNum);
-          return (
-            <div key={num} className="flex items-center gap-2 text-sm">
-              {status === 'completed' ? (
-                <CheckIcon />
-              ) : status === 'in_progress' ? (
-                <SpinnerIcon />
-              ) : (
-                <CircleIcon />
-              )}
-              <span className={status === 'completed' ? 'text-gray-400' : 'text-gray-200'}>
-                Pass {num}: {name}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+      {/* Pass List - Memoized to prevent excessive re-renders */}
+      <MemoizedPassList passesStatus={job.passes_status} currentPass={job.current_pass} />
 
       {/* Stall Warning - Show if processing for too long */}
       {job.status === 'in_progress' && elapsedSeconds > 90 && (

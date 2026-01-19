@@ -64,6 +64,10 @@ export interface ContentGenerationWithQualityProps {
   onRegenerate?: () => void;
   /** Additional CSS classes */
   className?: string;
+  /** Template name being used for generation (from brief.selectedTemplate) */
+  templateName?: string;
+  /** Template selection confidence score (0-100) */
+  templateConfidence?: number;
 }
 
 type ViewMode = 'progress' | 'quality' | 'report';
@@ -161,6 +165,8 @@ export const ContentGenerationWithQuality: React.FC<ContentGenerationWithQuality
   onEdit,
   onRegenerate,
   className = '',
+  templateName,
+  templateConfidence,
 }) => {
   const [showQualityPanel, setShowQualityPanel] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('progress');
@@ -277,20 +283,25 @@ export const ContentGenerationWithQuality: React.FC<ContentGenerationWithQuality
                 onCancel={onCancel}
                 onRetry={onRetry}
                 error={error}
+                templateName={templateName}
+                templateConfidence={templateConfidence}
               />
 
-              {/* Live Generation Monitor */}
-              <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                <LiveGenerationMonitor
-                  jobId={job.id}
-                  currentPass={job.current_pass}
-                  totalPasses={10}
-                  passDeltas={passDeltas}
-                  isGenerating={isGenerating}
-                  onPauseGeneration={onPause}
-                  onResumeGeneration={onResume}
-                />
-              </div>
+              {/* Live Generation Monitor - DISABLED DURING GENERATION to prevent browser hang */}
+              {/* Only show after generation completes to avoid duplicate pass lists and excessive re-renders */}
+              {!isGenerating && (
+                <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                  <LiveGenerationMonitor
+                    jobId={job.id}
+                    currentPass={job.current_pass}
+                    totalPasses={10}
+                    passDeltas={passDeltas}
+                    isGenerating={isGenerating}
+                    onPauseGeneration={onPause}
+                    onResumeGeneration={onResume}
+                  />
+                </div>
+              )}
             </div>
           )}
 
