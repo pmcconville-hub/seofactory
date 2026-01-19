@@ -2099,11 +2099,12 @@ ${schemaScript}`;
   };
 
   // Handle running the algorithmic audit and showing issues
-  const handleRunAudit = useCallback(() => {
+  // NOTE: Now async because runAlgorithmicAudit yields to main thread to prevent browser freeze
+  const handleRunAudit = useCallback(async () => {
     if (!brief || !draftContent) return;
     setIsRunningAudit(true);
     try {
-      const auditResults = runAlgorithmicAudit(draftContent, brief, businessInfo);
+      const auditResults = await runAlgorithmicAudit(draftContent, brief, businessInfo);
       const issues = convertToAuditIssues(auditResults);
       setAuditIssues(issues);
       setShowAuditPanel(true);

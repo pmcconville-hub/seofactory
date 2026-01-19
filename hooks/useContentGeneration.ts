@@ -171,16 +171,17 @@ function buildSystemicChecks(job: ContentGenerationJob): QualityReport['systemic
 /**
  * Get violations from draft content using algorithmic audit
  * Converts AuditRuleResult[] to ValidationViolation[] for PassTracker
+ * NOTE: Now async because runAlgorithmicAudit yields to main thread to prevent browser freeze
  */
-function getViolationsFromContent(
+async function getViolationsFromContent(
   draft: string,
   brief: ContentBrief,
   businessInfo: BusinessInfo
-): ValidationViolation[] {
+): Promise<ValidationViolation[]> {
   if (!draft || draft.length < 100) return []; // Skip for minimal content
 
   try {
-    const auditResults = runAlgorithmicAudit(draft, brief, businessInfo);
+    const auditResults = await runAlgorithmicAudit(draft, brief, businessInfo);
     return auditResults
       .filter(r => !r.isPassing)
       .map(r => ({
@@ -272,18 +273,19 @@ interface QualityGateResult {
 /**
  * Check quality gate between passes
  * Warns if quality decreases significantly
+ * NOTE: Now async because runAlgorithmicAudit yields to main thread to prevent browser freeze
  */
-function checkQualityGate(
+async function checkQualityGate(
   draft: string,
   brief: ContentBrief,
   businessInfo: BusinessInfo,
   passNumber: number,
   previousScore: number | null,
   onLog: (message: string, type: 'info' | 'success' | 'warning' | 'failure') => void
-): QualityGateResult {
+): Promise<QualityGateResult> {
   // Run audit on current content
   const auditResults = draft && draft.length > 100
-    ? runAlgorithmicAudit(draft, brief, businessInfo)
+    ? await runAlgorithmicAudit(draft, brief, businessInfo)
     : [];
 
   const scoreAfter = calculateQualityScore(auditResults);
@@ -678,8 +680,8 @@ export function useContentGeneration({
     const collectedDeltas: PassDelta[] = [];
     let violationsBeforePass: ValidationViolation[] = [];
 
-    // Helper to capture violations for delta tracking
-    const captureViolations = () => {
+    // Helper to capture violations for delta tracking (async because runAlgorithmicAudit yields)
+    const captureViolations = async (): Promise<ValidationViolation[]> => {
       return getViolationsFromContent(
         updatedJob.draft_content || '',
         activeBrief,
@@ -687,10 +689,10 @@ export function useContentGeneration({
       );
     };
 
-    // Helper to track pass completion and calculate delta
-    const trackPassCompletion = (passNumber: number) => {
+    // Helper to track pass completion and calculate delta (async because captureViolations is async)
+    const trackPassCompletion = async (passNumber: number) => {
       try {
-        const violationsAfterPass = captureViolations();
+        const violationsAfterPass = await captureViolations();
         const delta = calculatePassDelta(passNumber, violationsBeforePass, violationsAfterPass);
         collectedDeltas.push(delta);
 
@@ -789,7 +791,7 @@ export function useContentGeneration({
     const checkAndStoreQualityGate = async (passNumber: number) => {
       try {
         const draftContent = updatedJob.draft_content || '';
-        const result = checkQualityGate(
+        const result = await checkQualityGate(
           draftContent,
           activeBrief,
           safeBusinessInfo,
@@ -972,7 +974,7 @@ export function useContentGeneration({
         // Check quality gate (baseline for future comparisons)
         await checkAndStoreQualityGate(1);
         // Initialize violation tracking after draft generation
-        violationsBeforePass = captureViolations();
+        violationsBeforePass = await captureViolations();
 
         // STRATEGY VALIDATION: Check if draft meets basic requirements before proceeding
         try {
@@ -1025,7 +1027,7 @@ export function useContentGeneration({
       if (updatedJob.current_pass === 2) {
         // Capture violations before pass for delta tracking
         if (violationsBeforePass.length === 0) {
-          violationsBeforePass = captureViolations();
+          violationsBeforePass = await captureViolations();
         }
         onLog('Pass 2: Optimizing headers section-by-section...', 'info');
         await executePass2(
@@ -1040,7 +1042,7 @@ export function useContentGeneration({
         // Check quality gate
         await checkAndStoreQualityGate(2);
         // Track pass completion
-        trackPassCompletion(2);
+        await trackPassCompletion(2);
         // Store debug snapshot and run validation gate
         await storeDebugSnapshot(2, 'Headers');
         const canProceed2 = await runInterPassValidation(2);
@@ -1069,7 +1071,7 @@ export function useContentGeneration({
         // Check quality gate
         await checkAndStoreQualityGate(3);
         // Track pass completion
-        trackPassCompletion(3);
+        await trackPassCompletion(3);
         // Store debug snapshot and run validation gate
         await storeDebugSnapshot(3, 'Lists & Tables');
         const canProceed3 = await runInterPassValidation(3);
@@ -1096,7 +1098,7 @@ export function useContentGeneration({
         // Check quality gate
         await checkAndStoreQualityGate(4);
         // Track pass completion
-        trackPassCompletion(4);
+        await trackPassCompletion(4);
         // Store debug snapshot and run validation gate
         await storeDebugSnapshot(4, 'Discourse Integration');
         const canProceed4 = await runInterPassValidation(4);
@@ -1125,7 +1127,7 @@ export function useContentGeneration({
         // Check quality gate
         await checkAndStoreQualityGate(5);
         // Track pass completion
-        trackPassCompletion(5);
+        await trackPassCompletion(5);
         // Store debug snapshot and run validation gate
         await storeDebugSnapshot(5, 'Micro Semantics');
         const canProceed5 = await runInterPassValidation(5);
@@ -1166,7 +1168,7 @@ export function useContentGeneration({
         // Check quality gate
         await checkAndStoreQualityGate(6);
         // Track pass completion
-        trackPassCompletion(6);
+        await trackPassCompletion(6);
         // Store debug snapshot and run validation gate
         await storeDebugSnapshot(6, 'Visual Semantics');
         const canProceed6 = await runInterPassValidation(6);
@@ -1195,7 +1197,7 @@ export function useContentGeneration({
         // Check quality gate
         await checkAndStoreQualityGate(7);
         // Track pass completion
-        trackPassCompletion(7);
+        await trackPassCompletion(7);
         // Store debug snapshot and run validation gate
         await storeDebugSnapshot(7, 'Introduction Synthesis');
         const canProceed7 = await runInterPassValidation(7);
@@ -1227,7 +1229,7 @@ export function useContentGeneration({
         // Check quality gate (critical - verify polish didn't degrade quality)
         await checkAndStoreQualityGate(8);
         // Track pass completion
-        trackPassCompletion(8);
+        await trackPassCompletion(8);
         // Store debug snapshot (validation already runs below via strategy check)
         await storeDebugSnapshot(8, 'Final Polish');
 

@@ -32,12 +32,12 @@ const createMockBusinessInfo = (overrides: Partial<BusinessInfo> = {}): Business
 } as BusinessInfo);
 
 describe('runAlgorithmicAudit', () => {
-  it('returns array of audit results', () => {
+  it('returns array of audit results', async () => {
     const draft = '## Introduction\n\nTest keyword is a concept that means something specific.';
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
 
     expect(Array.isArray(results)).toBe(true);
     expect(results.length).toBeGreaterThan(0);
@@ -50,7 +50,7 @@ describe('runAlgorithmicAudit', () => {
 });
 
 describe('checkLLMSignaturePhrases', () => {
-  it('fails when draft contains LLM signature phrases', () => {
+  it('fails when draft contains LLM signature phrases', async () => {
     const draft = `## Introduction
 
 Overall, test keyword is important. It's important to note that this concept delves into many areas.
@@ -58,7 +58,7 @@ In conclusion, we have explored the world of test keywords.`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const llmCheck = results.find(r => r.ruleName === 'LLM Phrase Detection');
 
     expect(llmCheck).toBeDefined();
@@ -66,7 +66,7 @@ In conclusion, we have explored the world of test keywords.`;
     expect(llmCheck?.details).toContain('overall');
   });
 
-  it('passes when draft has no LLM signature phrases', () => {
+  it('passes when draft has no LLM signature phrases', async () => {
     const draft = `## Introduction
 
 Test keyword represents a specific methodology. This approach provides measurable benefits.
@@ -74,7 +74,7 @@ The framework enables efficient implementation.`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const llmCheck = results.find(r => r.ruleName === 'LLM Phrase Detection');
 
     expect(llmCheck).toBeDefined();
@@ -83,7 +83,7 @@ The framework enables efficient implementation.`;
 });
 
 describe('checkPredicateConsistency', () => {
-  it('fails when H1 uses negative predicates but H2s use positive', () => {
+  it('fails when H1 uses negative predicates but H2s use positive', async () => {
     const draft = `## Risks of Test Keyword
 
 Test keyword has some concerns.
@@ -98,14 +98,14 @@ More positive aspects.`;
     const brief = createMockBrief({ title: 'Risks of Test Keyword' });
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const predicateCheck = results.find(r => r.ruleName === 'Predicate Consistency');
 
     expect(predicateCheck).toBeDefined();
     expect(predicateCheck?.isPassing).toBe(false);
   });
 
-  it('passes when heading predicates are consistent', () => {
+  it('passes when heading predicates are consistent', async () => {
     const draft = `## Benefits of Test Keyword
 
 Test keyword provides many advantages.
@@ -120,14 +120,14 @@ Enhanced outcomes.`;
     const brief = createMockBrief({ title: 'Benefits of Test Keyword' });
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const predicateCheck = results.find(r => r.ruleName === 'Predicate Consistency');
 
     expect(predicateCheck).toBeDefined();
     expect(predicateCheck?.isPassing).toBe(true);
   });
 
-  it('passes for instructional content with how-to headings', () => {
+  it('passes for instructional content with how-to headings', async () => {
     const draft = `## How to Use Test Keyword
 
 Follow these steps.
@@ -142,7 +142,7 @@ Implementation details.`;
     const brief = createMockBrief({ title: 'How to Use Test Keyword' });
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const predicateCheck = results.find(r => r.ruleName === 'Predicate Consistency');
 
     expect(predicateCheck).toBeDefined();
@@ -151,7 +151,7 @@ Implementation details.`;
 });
 
 describe('checkCoverageWeight', () => {
-  it('fails when minor section exceeds 50% of content', () => {
+  it('fails when minor section exceeds 50% of content', async () => {
     const draft = `## Introduction
 
 Short intro about test keyword.
@@ -168,14 +168,14 @@ ${'Additional appendix text filling up space. '.repeat(30)}`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const coverageCheck = results.find(r => r.ruleName === 'Content Coverage Weight');
 
     expect(coverageCheck).toBeDefined();
     expect(coverageCheck?.isPassing).toBe(false);
   });
 
-  it('passes when content is well-balanced', () => {
+  it('passes when content is well-balanced', async () => {
     const draft = `## Introduction
 
 ${'Introduction content with good detail about test keyword. '.repeat(10)}
@@ -194,7 +194,7 @@ ${'Conclusion wrapping up the main points effectively. '.repeat(8)}`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const coverageCheck = results.find(r => r.ruleName === 'Content Coverage Weight');
 
     expect(coverageCheck).toBeDefined();
@@ -203,7 +203,7 @@ ${'Conclusion wrapping up the main points effectively. '.repeat(8)}`;
 });
 
 describe('checkVocabularyRichness', () => {
-  it('fails when vocabulary diversity is too low', () => {
+  it('fails when vocabulary diversity is too low', async () => {
     // Highly repetitive text with same words (many repetitions of "thing")
     const draft = `## Introduction
 
@@ -220,7 +220,7 @@ The thing supports thing using thing. The thing creates thing from thing.`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const vocabCheck = results.find(r => r.ruleName === 'Vocabulary Richness');
 
     expect(vocabCheck).toBeDefined();
@@ -228,7 +228,7 @@ The thing supports thing using thing. The thing creates thing from thing.`;
     expect(vocabCheck?.details).toContain('TTR');
   });
 
-  it('passes when vocabulary is diverse', () => {
+  it('passes when vocabulary is diverse', async () => {
     const draft = `## Introduction
 
 Test keyword represents a sophisticated methodology for achieving optimal results.
@@ -240,7 +240,7 @@ Success depends on commitment, resources, and continuous improvement.`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const vocabCheck = results.find(r => r.ruleName === 'Vocabulary Richness');
 
     expect(vocabCheck).toBeDefined();
@@ -253,7 +253,7 @@ Success depends on commitment, resources, and continuous improvement.`;
 // =====================================================
 
 describe('checkMacroMicroBorder', () => {
-  it('should pass when content has supplementary section for related links', () => {
+  it('should pass when content has supplementary section for related links', async () => {
     const draft = `## Introduction
 
 Water is essential for life. This article covers hydration benefits.
@@ -270,14 +270,14 @@ Also check out [Water Quality](/water-quality) for more information.`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const borderCheck = results.find(r => r.ruleName === 'Macro/Micro Border');
 
     expect(borderCheck).toBeDefined();
     expect(borderCheck?.isPassing).toBe(true);
   });
 
-  it('should fail when many links appear in main content without supplementary section', () => {
+  it('should fail when many links appear in main content without supplementary section', async () => {
     const draft = `## Introduction
 
 Water is essential. Learn about [Dehydration](/dehydration) and [Hydration Tips](/tips).
@@ -291,7 +291,7 @@ Hydration improves health significantly.`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const borderCheck = results.find(r => r.ruleName === 'Macro/Micro Border');
 
     expect(borderCheck).toBeDefined();
@@ -301,7 +301,7 @@ Hydration improves health significantly.`;
 });
 
 describe('checkExtractiveSummaryAlignment', () => {
-  it('should pass when intro mentions all H2 topics', () => {
+  it('should pass when intro mentions all H2 topics', async () => {
     const draft = `## Introduction
 
 This article covers hydration benefits, dehydration risks, and daily intake guidelines for optimal health.
@@ -321,14 +321,14 @@ Adults need 2-3 liters of water daily for optimal function.`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const summaryCheck = results.find(r => r.ruleName === 'Extractive Summary Alignment');
 
     expect(summaryCheck).toBeDefined();
     expect(summaryCheck?.isPassing).toBe(true);
   });
 
-  it('should fail when intro does not preview H2 topics', () => {
+  it('should fail when intro does not preview H2 topics', async () => {
     const draft = `## Introduction
 
 Water is important for health. Everyone should drink water.
@@ -348,7 +348,7 @@ Water treatment involves multiple filtration steps.`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const summaryCheck = results.find(r => r.ruleName === 'Extractive Summary Alignment');
 
     expect(summaryCheck).toBeDefined();
@@ -358,7 +358,7 @@ Water treatment involves multiple filtration steps.`;
 });
 
 describe('checkQueryFormatAlignment', () => {
-  it('should pass when "types of" query has list format', () => {
+  it('should pass when "types of" query has list format', async () => {
     const draft = `## Types of Water Filters
 
 There are 5 main types of water filters available:
@@ -372,14 +372,14 @@ There are 5 main types of water filters available:
     const brief = createMockBrief({ title: 'Types of Water Filters' });
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const formatCheck = results.find(r => r.ruleName === 'Query-Format Alignment');
 
     expect(formatCheck).toBeDefined();
     expect(formatCheck?.isPassing).toBe(true);
   });
 
-  it('should fail when "how to" query lacks ordered list', () => {
+  it('should fail when "how to" query lacks ordered list', async () => {
     const draft = `## How to Install a Water Filter
 
 Installing a water filter requires careful preparation. First, you need tools.
@@ -389,7 +389,7 @@ The process takes about an hour to complete properly.`;
     const brief = createMockBrief({ title: 'How to Install a Water Filter' });
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const formatCheck = results.find(r => r.ruleName === 'Query-Format Alignment');
 
     expect(formatCheck).toBeDefined();
@@ -397,7 +397,7 @@ The process takes about an hour to complete properly.`;
     expect(formatCheck?.details).toContain('numbered');
   });
 
-  it('should pass when "how to" query has numbered steps', () => {
+  it('should pass when "how to" query has numbered steps', async () => {
     const draft = `## How to Install a Water Filter
 
 Installing a water filter is straightforward:
@@ -411,7 +411,7 @@ Installing a water filter is straightforward:
     const brief = createMockBrief({ title: 'How to Install a Water Filter' });
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const formatCheck = results.find(r => r.ruleName === 'Query-Format Alignment');
 
     expect(formatCheck).toBeDefined();
@@ -424,7 +424,7 @@ Installing a water filter is straightforward:
 // =====================================================
 
 describe('checkAnchorTextVariety', () => {
-  it('should pass when anchor text is used 3 times or less', () => {
+  it('should pass when anchor text is used 3 times or less', async () => {
     const draft = `
 See [water filters](/filters) for options.
 Learn about [water filters](/filters) here.
@@ -434,14 +434,14 @@ More on [water filters](/filters) in this guide.
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const anchorCheck = results.find(r => r.ruleName === 'Anchor Text Variety');
 
     expect(anchorCheck).toBeDefined();
     expect(anchorCheck?.isPassing).toBe(true);
   });
 
-  it('should fail when same anchor text used more than 3 times', () => {
+  it('should fail when same anchor text used more than 3 times', async () => {
     const draft = `
 See [water filters](/filters) for options.
 Learn about [water filters](/filters) here.
@@ -453,7 +453,7 @@ Also see [water filters](/filters) for reference.
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const anchorCheck = results.find(r => r.ruleName === 'Anchor Text Variety');
 
     expect(anchorCheck).toBeDefined();
@@ -463,7 +463,7 @@ Also see [water filters](/filters) for reference.
 });
 
 describe('checkAnnotationTextQuality', () => {
-  it('should pass when links have descriptive surrounding text', () => {
+  it('should pass when links have descriptive surrounding text', async () => {
     const draft = `
 For proper hydration, you should drink adequate amounts of water daily. Learn more about the
 [benefits of hydration](/hydration-benefits) and how it affects your overall health and wellbeing.
@@ -472,14 +472,14 @@ For proper hydration, you should drink adequate amounts of water daily. Learn mo
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const annotationCheck = results.find(r => r.ruleName === 'Annotation Text Quality');
 
     expect(annotationCheck).toBeDefined();
     expect(annotationCheck?.isPassing).toBe(true);
   });
 
-  it('should fail when links have generic anchors', () => {
+  it('should fail when links have generic anchors', async () => {
     const draft = `
 For more information, [click here](/page).
 
@@ -491,7 +491,7 @@ See [here](/another) for details.
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const annotationCheck = results.find(r => r.ruleName === 'Annotation Text Quality');
 
     expect(annotationCheck).toBeDefined();
@@ -501,7 +501,7 @@ See [here](/another) for details.
 });
 
 describe('checkSupplementaryLinkPlacement', () => {
-  it('should pass when related links are at the end', () => {
+  it('should pass when related links are at the end', async () => {
     const draft = `## Introduction
 
 Main content about the topic without any links in the introduction.
@@ -518,14 +518,14 @@ See [Related Article](/related) for more information.
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const placementCheck = results.find(r => r.ruleName === 'Supplementary Link Placement');
 
     expect(placementCheck).toBeDefined();
     expect(placementCheck?.isPassing).toBe(true);
   });
 
-  it('should fail when many links appear in introduction', () => {
+  it('should fail when many links appear in introduction', async () => {
     const draft = `## Introduction
 
 Check out [this guide](/a), [that resource](/b), and [another article](/c) for context before we begin.
@@ -538,7 +538,7 @@ The main topic is discussed here without distractions.
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(draft, brief, info);
+    const results = await runAlgorithmicAudit(draft, brief, info);
     const placementCheck = results.find(r => r.ruleName === 'Supplementary Link Placement');
 
     expect(placementCheck).toBeDefined();
@@ -552,7 +552,7 @@ The main topic is discussed here without distractions.
 // =====================================================
 
 describe('checkSentenceLength', () => {
-  it('passes when sentences are short', () => {
+  it('passes when sentences are short', async () => {
     const text = `## Introduction
 
 This is short. This is also short. Good content here.
@@ -563,7 +563,7 @@ Test keyword is a concept. It has specific meaning. The approach works well.`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(text, brief, info);
+    const results = await runAlgorithmicAudit(text, brief, info);
     const rule = results.find(r => r.ruleName === 'Sentence Length');
 
     expect(rule).toBeDefined();
@@ -571,7 +571,7 @@ Test keyword is a concept. It has specific meaning. The approach works well.`;
     expect(rule?.score).toBe(100);
   });
 
-  it('warns when some sentences are long', () => {
+  it('warns when some sentences are long', async () => {
     const longSentence = 'This is a very long sentence that goes on and on and on and on and on and on and on and on and on and on and on and on and on and on and on to exceed thirty words easily.';
     const text = `## Introduction
 
@@ -583,7 +583,7 @@ More short content.`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(text, brief, info);
+    const results = await runAlgorithmicAudit(text, brief, info);
     const rule = results.find(r => r.ruleName === 'Sentence Length');
 
     expect(rule).toBeDefined();
@@ -591,7 +591,7 @@ More short content.`;
     expect(rule?.score).toBeLessThan(100);
   });
 
-  it('fails when too many sentences are long', () => {
+  it('fails when too many sentences are long', async () => {
     const longSentence = 'This is a very long sentence that goes on and on and on and on and on and on and on and on and on and on and on and on and on and on and on to exceed thirty words easily.';
     const text = `## Introduction
 
@@ -603,7 +603,7 @@ Additional content here.`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(text, brief, info);
+    const results = await runAlgorithmicAudit(text, brief, info);
     const rule = results.find(r => r.ruleName === 'Sentence Length');
 
     expect(rule).toBeDefined();
@@ -617,7 +617,7 @@ Additional content here.`;
 // =====================================================
 
 describe('checkEavDensity', () => {
-  it('passes with high pattern density when EAVs are not provided', () => {
+  it('passes with high pattern density when EAVs are not provided', async () => {
     // Content with lots of "X is Y" patterns (EAV-like structures)
     const text = `## Introduction
 
@@ -633,7 +633,7 @@ Blood pressure is regulated by proper fluid balance. Kidney function is optimize
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(text, brief, info);
+    const results = await runAlgorithmicAudit(text, brief, info);
     const rule = results.find(r => r.ruleName === 'EAV Density');
 
     expect(rule).toBeDefined();
@@ -641,7 +641,7 @@ Blood pressure is regulated by proper fluid balance. Kidney function is optimize
     expect(rule?.score).toBeGreaterThanOrEqual(50);
   });
 
-  it('warns when EAV density is moderate', () => {
+  it('warns when EAV density is moderate', async () => {
     // Content with some EAV patterns but also fluff
     const text = `## Introduction
 
@@ -656,7 +656,7 @@ Various factors play a role. Drinking water has many implications.`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(text, brief, info);
+    const results = await runAlgorithmicAudit(text, brief, info);
     const rule = results.find(r => r.ruleName === 'EAV Density');
 
     expect(rule).toBeDefined();
@@ -664,7 +664,7 @@ Various factors play a role. Drinking water has many implications.`;
     expect(rule?.details).toContain('%');
   });
 
-  it('fails when content lacks EAV patterns', () => {
+  it('fails when content lacks EAV patterns', async () => {
     // Vague content with no "X is Y" structures
     const text = `## Introduction
 
@@ -679,7 +679,7 @@ Vague statements continue. Abstract concepts prevail.`;
     const brief = createMockBrief();
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(text, brief, info);
+    const results = await runAlgorithmicAudit(text, brief, info);
     const rule = results.find(r => r.ruleName === 'EAV Density');
 
     expect(rule).toBeDefined();
@@ -688,7 +688,7 @@ Vague statements continue. Abstract concepts prevail.`;
     expect(rule?.score).toBeLessThan(30);
   });
 
-  it('uses term density when EAVs are provided', () => {
+  it('uses term density when EAVs are provided', async () => {
     const eavs = [
       {
         subject: { label: 'Water Filter', type: 'Product' },
@@ -716,7 +716,7 @@ The reverse osmosis process uses a semipermeable membrane.`;
     const brief = createMockBrief({ eavs });
     const info = createMockBusinessInfo();
 
-    const results = runAlgorithmicAudit(text, brief, info, 'en', eavs);
+    const results = await runAlgorithmicAudit(text, brief, info, 'en', eavs);
     const rule = results.find(r => r.ruleName === 'EAV Density');
 
     expect(rule).toBeDefined();
