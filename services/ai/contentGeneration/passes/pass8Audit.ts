@@ -48,11 +48,9 @@ export async function executePass8(
   log.log(` Auditing ${draft.length} chars from ${sections.length} sections`);
 
   // Build holistic context for enhanced audit metrics
-  const holisticContext = buildHolisticSummary(sections, brief, businessInfo);
+  // NOTE: buildHolisticSummary is now async and yields internally to prevent browser freeze
+  const holisticContext = await buildHolisticSummary(sections, brief, businessInfo);
   log.log(` Holistic context: TTR=${(holisticContext.vocabularyMetrics.typeTokenRatio * 100).toFixed(1)}%, ${holisticContext.articleStructure.totalWordCount} words`);
-
-  // YIELD: Allow UI to update after heavy holistic analysis
-  await new Promise(resolve => setTimeout(resolve, 0));
 
   // Get all EAVs from the brief (or empty array) - also used for algorithmic audit
   const allEavs: SemanticTriple[] = brief.eavs || [];

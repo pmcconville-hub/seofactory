@@ -48,7 +48,8 @@ export async function executePass7(
 
   // Build holistic summary (once for both intro and conclusion)
   log.log(' Building holistic summary from', sortedSections.length, 'sections...');
-  const holisticContext = buildHolisticSummary(sortedSections, brief, businessInfo);
+  // NOTE: buildHolisticSummary is now async and yields to prevent browser freeze
+  const holisticContext = await buildHolisticSummary(sortedSections, brief, businessInfo);
 
   // Find intro and conclusion sections
   const introSection = sortedSections.find(s =>

@@ -129,15 +129,24 @@ function extractWords(text: string): string[] {
 }
 
 /**
+ * Yield to main thread to prevent browser freeze during heavy analysis.
+ */
+const yieldToMainThread = (): Promise<void> => {
+  return new Promise(resolve => setTimeout(resolve, 0));
+};
+
+/**
  * Builds a compact holistic summary context from the full article sections.
  * This is computed ONCE per pass and passed to each section during optimization.
  * The resulting context is ~2-4KB instead of the full 150-200KB article.
+ *
+ * NOTE: This function is now async and yields periodically to prevent browser freeze.
  */
-export function buildHolisticSummary(
+export async function buildHolisticSummary(
   sections: ContentGenerationSection[],
   brief: ContentBrief,
   businessInfo: BusinessInfo
-): HolisticSummaryContext {
+): Promise<HolisticSummaryContext> {
   // Defensive guard: ensure sections is always an array
   const safeSections = Array.isArray(sections) ? sections : [];
 
@@ -152,13 +161,29 @@ export function buildHolisticSummary(
   // Get language for multilingual processing
   const language = businessInfo.language;
 
+  // Build each component with yields to prevent browser freeze
+  const articleStructure = buildArticleStructure(sortedSections, brief);
+  await yieldToMainThread();
+
+  const vocabularyMetrics = calculateVocabularyMetrics(fullText, language);
+  await yieldToMainThread();
+
+  const coverageDistribution = buildCoverageDistribution(sortedSections);
+  const anchorTextsUsed = extractAnchorTexts(sortedSections);
+  await yieldToMainThread();
+
+  const sectionKeyTerms = extractSectionKeyTerms(sortedSections, language);
+  await yieldToMainThread();
+
+  const introductionSummary = buildIntroductionSummary(sortedSections, language);
+
   return {
-    articleStructure: buildArticleStructure(sortedSections, brief),
-    vocabularyMetrics: calculateVocabularyMetrics(fullText, language),
-    coverageDistribution: buildCoverageDistribution(sortedSections),
-    anchorTextsUsed: extractAnchorTexts(sortedSections),
-    sectionKeyTerms: extractSectionKeyTerms(sortedSections, language),
-    introductionSummary: buildIntroductionSummary(sortedSections, language),
+    articleStructure,
+    vocabularyMetrics,
+    coverageDistribution,
+    anchorTextsUsed,
+    sectionKeyTerms,
+    introductionSummary,
     centralEntity: brief.title || businessInfo.seedKeyword,
     discourseAnchors: extractDiscourseAnchors(brief, businessInfo),
     featuredSnippetTarget: extractFeaturedSnippetTarget(brief, language)
