@@ -653,6 +653,27 @@ export function useContentGeneration({
       generationPriorities: generationSettings?.priorities,
     };
 
+    // Helper to refresh job state from database and update React state
+    // This ensures UI stays in sync and pass transitions work correctly
+    const refreshJobState = async (passNumber: number): Promise<ContentGenerationJob> => {
+      const refreshed = await orchestrator.getJobWithDraft(updatedJob.id);
+      if (refreshed) {
+        setJob(refreshed); // Update React state for UI
+        console.log(`[runPasses] After Pass ${passNumber}: current_pass=${refreshed.current_pass}, status=${refreshed.status}`);
+        return refreshed;
+      } else {
+        console.warn(`[runPasses] getJobWithDraft returned null after Pass ${passNumber}, using fallback`);
+        // Fallback to getJobStatus
+        const status = await orchestrator.getJobStatus(updatedJob.id);
+        if (status) {
+          setJob(status);
+          return status;
+        }
+        console.error(`[runPasses] CRITICAL: Could not refresh job state after Pass ${passNumber}`);
+        return updatedJob; // Return existing state as last resort
+      }
+    };
+
     // Real quality tracking: collect PassDeltas during pass execution
     const collectedDeltas: PassDelta[] = [];
     let violationsBeforePass: ValidationViolation[] = [];
@@ -942,8 +963,8 @@ export function useContentGeneration({
           }
         );
         if (shouldAbort()) return;
-        // Refresh job state
-        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
+        // Refresh job state and update React state for UI
+        updatedJob = await refreshJobState(1);
         // Collect progressive schema data from Pass 1
         await collectProgressiveData(1, updatedJob.draft_content || '');
         // Capture baseline structural snapshot
@@ -1195,7 +1216,10 @@ export function useContentGeneration({
           shouldAbort
         );
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
+
+        // CRITICAL: Refresh job state from database and update React state
+        // This ensures the UI reflects the current pass and that Pass 9 will execute
+        updatedJob = await refreshJobState(8);
         // Collect progressive schema data from Pass 8
         await collectProgressiveData(8, updatedJob.draft_content || '');
         // Capture structural snapshot (critical - verify preservation worked)
@@ -1241,6 +1265,10 @@ export function useContentGeneration({
         } catch (strategyError) {
           console.warn('[Strategy Check] Failed to run pre-audit validation:', strategyError);
         }
+
+        // PERFORMANCE: Yield to main thread between passes
+        // This was missing and may have contributed to UI freeze issues
+        await yieldToMainThread();
       }
 
       // Pass 9: Final Audit (includes auto-fix capability)
@@ -1249,7 +1277,9 @@ export function useContentGeneration({
         const result = await executePass9(orchestrator, updatedJob, activeBrief, safeBusinessInfo);
         onLog(`Audit score: ${result.score}%`, 'success');
         if (shouldAbort()) return;
-        updatedJob = await orchestrator.getJobWithDraft(updatedJob.id) || updatedJob;
+
+        // Refresh job state from database and update React state
+        updatedJob = await refreshJobState(9);
 
         // Collect progressive schema data from Pass 9 (audit scores)
         // CRITICAL: Pass final draft content to update wordCount (was stale from Pass 1)
