@@ -1,0 +1,292 @@
+/**
+ * Facebook Platform Adapter
+ *
+ * Transforms content for Facebook with OG-optimized formatting
+ * and engagement-focused content structure.
+ */
+
+import type {
+  SocialPost,
+  SocialPostInput,
+  ArticleTransformationSource,
+  ImageInstructions,
+  PostEAVTriple
+} from '../../../../types/social';
+import { hashtagGenerator, type ResolvedEntity } from '../hashtagGenerator';
+
+/**
+ * Facebook-specific configuration
+ */
+export const FACEBOOK_CONFIG = {
+  character_limit: 63206,
+  optimal_length: 80,  // Posts under 80 chars get highest engagement
+  preview_length: 500,  // Approximate preview before "See more"
+  hashtag_count: 3,
+  image_specs: {
+    link_preview: { width: 1200, height: 628 },
+    post: { width: 1200, height: 630 },
+    square: { width: 1080, height: 1080 }
+  }
+};
+
+/**
+ * Facebook content adapter
+ */
+export class FacebookAdapter {
+  /**
+   * Transform article to Facebook post
+   */
+  transformFromArticle(
+    source: ArticleTransformationSource,
+    options: {
+      template_type: 'hub_announcement' | 'key_takeaway' | 'entity_spotlight' | 'question_hook';
+      eav?: PostEAVTriple;
+      brandedHashtags?: string[];
+    }
+  ): SocialPostInput {
+    // Generate hashtags
+    const entities: ResolvedEntity[] = source.schema_entities.map(e => ({
+      name: e.name,
+      type: e.type,
+      wikidata_id: e.wikidata_id
+    }));
+
+    const hashtagResult = hashtagGenerator.generateFromEntities(
+      'facebook',
+      entities,
+      options.brandedHashtags
+    );
+
+    let content: string;
+
+    switch (options.template_type) {
+      case 'hub_announcement':
+        content = this.createHubPost(source);
+        break;
+      case 'key_takeaway':
+        content = this.createTakeawayPost(source);
+        break;
+      case 'entity_spotlight':
+        content = this.createEntityPost(source, options.eav);
+        break;
+      case 'question_hook':
+        content = this.createQuestionPost(source);
+        break;
+      default:
+        content = this.createHubPost(source);
+    }
+
+    // Add hashtags
+    content = this.formatWithHashtags(content, hashtagResult.hashtags);
+
+    // Extract mentioned entities
+    const entitiesMentioned = this.extractMentionedEntities(
+      content,
+      source.schema_entities.map(e => e.name)
+    );
+
+    // Image instructions
+    const imageInstructions = this.createImageInstructions(source);
+
+    return {
+      topic_id: source.topic_id,
+      job_id: source.job_id,
+      platform: 'facebook',
+      post_type: 'single',
+      content_text: content,
+      hashtags: hashtagResult.hashtags,
+      image_instructions: imageInstructions,
+      link_url: source.link_url,
+      eav_triple: options.eav,
+      entities_mentioned: entitiesMentioned
+    };
+  }
+
+  /**
+   * Create hub announcement post
+   */
+  private createHubPost(source: ArticleTransformationSource): string {
+    const entity = source.schema_entities[0]?.name;
+    const takeaways = source.key_takeaways.slice(0, 3);
+
+    // Facebook favors conversational, question-based content
+    let content = entity
+      ? `Ever wondered about the truth behind ${entity}? 🤔\n\n`
+      : `Here's something worth knowing:\n\n`;
+
+    // Add key points
+    if (takeaways.length > 0) {
+      content += takeaways.map(t => `✓ ${t}`).join('\n');
+      content += '\n\n';
+    }
+
+    content += `Read the full story 👉 ${source.link_url}`;
+
+    return content;
+  }
+
+  /**
+   * Create key takeaway post
+   */
+  private createTakeawayPost(source: ArticleTransformationSource): string {
+    const takeaway = source.key_takeaways[0] || source.meta_description;
+    const entity = source.schema_entities[0]?.name;
+
+    let content = '';
+
+    if (entity) {
+      content = `${entity} insight:\n\n`;
+    }
+
+    content += `"${takeaway}"\n\n`;
+    content += `Get the details: ${source.link_url}`;
+
+    return content;
+  }
+
+  /**
+   * Create entity spotlight post
+   */
+  private createEntityPost(
+    source: ArticleTransformationSource,
+    eav?: PostEAVTriple
+  ): string {
+    if (eav) {
+      return `Did you know?\n\n${eav.entity} ${this.formatAttribute(eav.attribute)} ${eav.value}.\n\nThis is one of the ${eav.category?.toLowerCase() || 'key'} facts that many people miss.\n\nLearn more: ${source.link_url}`;
+    }
+
+    const entity = source.schema_entities[0];
+    if (entity) {
+      return `Let's talk about ${entity.name}.\n\n${source.key_takeaways[0] || source.meta_description}\n\nFull breakdown: ${source.link_url}`;
+    }
+
+    return this.createHubPost(source);
+  }
+
+  /**
+   * Create question hook post
+   */
+  private createQuestionPost(source: ArticleTransformationSource): string {
+    const entity = source.schema_entities[0]?.name;
+
+    const question = entity
+      ? `What's the most surprising thing about ${entity}?`
+      : `What if you've been thinking about this all wrong?`;
+
+    return `${question}\n\nDrop your thoughts in the comments! 👇\n\nThen check out what we found: ${source.link_url}`;
+  }
+
+  /**
+   * Format attribute for natural reading
+   */
+  private formatAttribute(attribute: string): string {
+    return attribute
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .trim();
+  }
+
+  /**
+   * Create image instructions
+   */
+  private createImageInstructions(
+    source: ArticleTransformationSource
+  ): ImageInstructions | undefined {
+    const placeholder = source.image_placeholders[0];
+
+    if (!placeholder) {
+      return {
+        description: `Create an engaging image for "${source.title}"`,
+        alt_text: source.title,
+        dimensions: {
+          width: FACEBOOK_CONFIG.image_specs.link_preview.width,
+          height: FACEBOOK_CONFIG.image_specs.link_preview.height,
+          aspect_ratio: '1.91:1'
+        }
+      };
+    }
+
+    return {
+      description: placeholder.caption || placeholder.alt_text,
+      alt_text: placeholder.alt_text,
+      dimensions: {
+        width: FACEBOOK_CONFIG.image_specs.link_preview.width,
+        height: FACEBOOK_CONFIG.image_specs.link_preview.height,
+        aspect_ratio: '1.91:1'
+      },
+      source_placeholder_id: placeholder.id
+    };
+  }
+
+  /**
+   * Format content with hashtags
+   */
+  private formatWithHashtags(content: string, hashtags: string[]): string {
+    if (hashtags.length === 0) return content;
+
+    const hashtagText = hashtags.map(h => `#${h}`).join(' ');
+    return `${content}\n\n${hashtagText}`;
+  }
+
+  /**
+   * Extract mentioned entities
+   */
+  private extractMentionedEntities(content: string, entityNames: string[]): string[] {
+    const mentioned: string[] = [];
+    const contentLower = content.toLowerCase();
+
+    for (const name of entityNames) {
+      if (contentLower.includes(name.toLowerCase())) {
+        mentioned.push(name);
+      }
+    }
+
+    return mentioned;
+  }
+
+  /**
+   * Validate post meets Facebook requirements
+   */
+  validatePost(post: SocialPost): { valid: boolean; issues: string[] } {
+    const issues: string[] = [];
+
+    if (post.content_text.length > FACEBOOK_CONFIG.character_limit) {
+      issues.push(`Content exceeds ${FACEBOOK_CONFIG.character_limit} character limit`);
+    }
+
+    if ((post.hashtags?.length || 0) > FACEBOOK_CONFIG.hashtag_count) {
+      issues.push(`Too many hashtags (max ${FACEBOOK_CONFIG.hashtag_count} recommended)`);
+    }
+
+    // Engagement warning for long posts
+    if (post.content_text.length > FACEBOOK_CONFIG.optimal_length * 2) {
+      issues.push('Consider shortening - posts under 80 chars get 66% more engagement');
+    }
+
+    return {
+      valid: issues.length === 0,
+      issues
+    };
+  }
+
+  /**
+   * Get character count info
+   */
+  getCharacterInfo(content: string): {
+    total: number;
+    remaining: number;
+    engagement_optimal: boolean;
+    preview_cutoff: boolean;
+  } {
+    return {
+      total: content.length,
+      remaining: Math.max(0, FACEBOOK_CONFIG.character_limit - content.length),
+      engagement_optimal: content.length <= FACEBOOK_CONFIG.optimal_length,
+      preview_cutoff: content.length > FACEBOOK_CONFIG.preview_length
+    };
+  }
+}
+
+// Export singleton instance
+export const facebookAdapter = new FacebookAdapter();

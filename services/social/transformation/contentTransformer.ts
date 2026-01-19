@@ -1,0 +1,471 @@
+/**
+ * Content Transformer Service
+ *
+ * Main orchestrator for transforming article content into
+ * platform-optimized social media posts.
+ */
+
+import { SupabaseClient } from '@supabase/supabase-js';
+import type {
+  SocialMediaPlatform,
+  SocialCampaign,
+  SocialCampaignInput,
+  SocialPost,
+  SocialPostInput,
+  ArticleTransformationSource,
+  TransformationConfig,
+  TransformationResult,
+  PlatformPostingGuide,
+  EntityHashtagMapping
+} from '../../../types/social';
+import { hubSpokeOrchestrator, type HubSpokePlan } from './hubSpokeOrchestrator';
+import { utmGenerator } from './utmGenerator';
+import { hashtagGenerator } from './hashtagGenerator';
+import { instructionGenerator } from './instructionGenerator';
+import { linkedinAdapter } from './platformAdapters/linkedinAdapter';
+import { twitterAdapter } from './platformAdapters/twitterAdapter';
+import { facebookAdapter } from './platformAdapters/facebookAdapter';
+import { instagramAdapter } from './platformAdapters/instagramAdapter';
+import { pinterestAdapter } from './platformAdapters/pinterestAdapter';
+import { verifiedInsert } from '../../verifiedDatabaseService';
+
+/**
+ * Content transformer for social media posts
+ */
+export class ContentTransformer {
+  private supabase: SupabaseClient;
+  private userId: string;
+
+  constructor(supabase: SupabaseClient, userId: string) {
+    this.supabase = supabase;
+    this.userId = userId;
+  }
+
+  /**
+   * Transform article content into a social media campaign
+   */
+  async transform(
+    source: ArticleTransformationSource,
+    config: TransformationConfig
+  ): Promise<TransformationResult> {
+    try {
+      // Load platform guides and hashtag mappings
+      await this.loadResources(source);
+
+      // Create hub-spoke plan
+      const plan = hubSpokeOrchestrator.createPlan(source, config);
+
+      // Validate plan
+      const validation = hubSpokeOrchestrator.validatePlan(plan);
+      if (!validation.valid) {
+        console.warn('[ContentTransformer] Plan validation warnings:', validation.issues);
+      }
+
+      // Create campaign record
+      const campaign = await this.createCampaign(source, config, plan);
+
+      // Generate posts
+      const posts = await this.generatePosts(source, config, plan, campaign);
+
+      return {
+        success: true,
+        campaign,
+        posts
+      };
+    } catch (error) {
+      console.error('[ContentTransformer] Transformation failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Transformation failed'
+      };
+    }
+  }
+
+  /**
+   * Load platform guides and hashtag mappings
+   */
+  private async loadResources(source: ArticleTransformationSource): Promise<void> {
+    // Load platform guides
+    const { data: guides } = await this.supabase
+      .from('platform_posting_guides')
+      .select('*');
+
+    if (guides) {
+      instructionGenerator.loadGuides(guides as PlatformPostingGuide[]);
+    }
+
+    // Load hashtag mappings for this topic's map
+    const { data: topic } = await this.supabase
+      .from('topics')
+      .select('map_id')
+      .eq('id', source.topic_id)
+      .single();
+
+    if (topic?.map_id) {
+      const { data: mappings } = await this.supabase
+        .from('entity_hashtag_mappings')
+        .select('*')
+        .eq('map_id', topic.map_id);
+
+      if (mappings) {
+        hashtagGenerator.loadMappings(mappings as EntityHashtagMapping[]);
+      }
+    }
+  }
+
+  /**
+   * Create campaign record in database
+   */
+  private async createCampaign(
+    source: ArticleTransformationSource,
+    config: TransformationConfig,
+    plan: HubSpokePlan
+  ): Promise<SocialCampaign> {
+    const campaignName = utmGenerator.generateCampaignName(source.title);
+
+    const campaignInput: SocialCampaignInput = {
+      topic_id: source.topic_id,
+      job_id: source.job_id,
+      campaign_name: campaignName,
+      hub_platform: config.hub_platform,
+      utm_source: config.utm_source,
+      utm_medium: 'organic-social',
+      utm_campaign: config.utm_campaign || campaignName
+    };
+
+    const insertResult = await verifiedInsert(
+      this.supabase,
+      { table: 'social_campaigns', operationDescription: 'create social campaign' },
+      {
+        user_id: this.userId,
+        ...campaignInput
+      },
+      '*'
+    );
+
+    if (!insertResult.success || !insertResult.data) {
+      throw new Error(`Failed to create campaign: ${insertResult.error}`);
+    }
+
+    return insertResult.data as unknown as SocialCampaign;
+  }
+
+  /**
+   * Generate all posts according to plan
+   */
+  private async generatePosts(
+    source: ArticleTransformationSource,
+    config: TransformationConfig,
+    plan: HubSpokePlan,
+    campaign: SocialCampaign
+  ): Promise<SocialPost[]> {
+    const posts: SocialPost[] = [];
+
+    // Generate hub post
+    const hubPostInput = this.generatePostInput(source, config, plan.hub, campaign);
+    const hubPost = await this.savePost(hubPostInput, campaign.id);
+    posts.push(hubPost);
+
+    // Generate spoke posts
+    for (const spokePlan of plan.spokes) {
+      const spokePostInput = this.generatePostInput(source, config, spokePlan, campaign);
+      const spokePost = await this.savePost(spokePostInput, campaign.id);
+      posts.push(spokePost);
+    }
+
+    return posts;
+  }
+
+  /**
+   * Generate post input using appropriate platform adapter
+   */
+  private generatePostInput(
+    source: ArticleTransformationSource,
+    config: TransformationConfig,
+    plannedPost: {
+      platform: SocialMediaPlatform;
+      template_type: string;
+      is_hub: boolean;
+      spoke_position?: number;
+      assigned_eav?: {
+        entity: string;
+        attribute: string;
+        value: string;
+        category?: 'UNIQUE' | 'RARE' | 'ROOT' | 'COMMON';
+      };
+      use_thread?: boolean;
+      use_carousel?: boolean;
+    },
+    campaign: SocialCampaign
+  ): SocialPostInput {
+    // Get branded hashtags from config or map
+    const brandedHashtags: string[] = [];
+
+    // Generate UTM parameters
+    const utmParams = utmGenerator.generateFromCampaign(
+      campaign,
+      plannedPost.platform,
+      plannedPost.is_hub,
+      plannedPost.spoke_position
+    );
+
+    // Build link with UTM
+    const linkWithUTM = utmGenerator.buildUrlWithUTM(source.link_url, utmParams);
+
+    // Update source with UTM link
+    const sourceWithUTM = {
+      ...source,
+      link_url: linkWithUTM
+    };
+
+    // Generate post using appropriate adapter
+    let postInput: SocialPostInput;
+
+    switch (plannedPost.platform) {
+      case 'linkedin':
+        postInput = linkedinAdapter.transformFromArticle(sourceWithUTM, {
+          template_type: plannedPost.template_type as 'hub_announcement' | 'key_takeaway' | 'entity_spotlight' | 'question_hook',
+          eav: plannedPost.assigned_eav,
+          brandedHashtags
+        });
+        break;
+
+      case 'twitter':
+        postInput = twitterAdapter.transformFromArticle(sourceWithUTM, {
+          template_type: plannedPost.template_type as 'hub_announcement' | 'key_takeaway' | 'entity_spotlight' | 'question_hook',
+          use_thread: plannedPost.use_thread || false,
+          eav: plannedPost.assigned_eav,
+          brandedHashtags
+        });
+        break;
+
+      case 'facebook':
+        postInput = facebookAdapter.transformFromArticle(sourceWithUTM, {
+          template_type: plannedPost.template_type as 'hub_announcement' | 'key_takeaway' | 'entity_spotlight' | 'question_hook',
+          eav: plannedPost.assigned_eav,
+          brandedHashtags
+        });
+        break;
+
+      case 'instagram':
+        postInput = instagramAdapter.transformFromArticle(sourceWithUTM, {
+          template_type: plannedPost.template_type as 'hub_announcement' | 'key_takeaway' | 'entity_spotlight' | 'question_hook' | 'listicle',
+          use_carousel: plannedPost.use_carousel || false,
+          eav: plannedPost.assigned_eav,
+          brandedHashtags
+        });
+        break;
+
+      case 'pinterest':
+        postInput = pinterestAdapter.transformFromArticle(sourceWithUTM, {
+          template_type: plannedPost.template_type as 'hub_announcement' | 'key_takeaway' | 'entity_spotlight' | 'tip_series',
+          eav: plannedPost.assigned_eav
+        });
+        break;
+
+      default:
+        throw new Error(`Unsupported platform: ${plannedPost.platform}`);
+    }
+
+    // Add hub/spoke info
+    postInput.is_hub = plannedPost.is_hub;
+    postInput.spoke_position = plannedPost.spoke_position;
+    postInput.utm_parameters = utmParams;
+
+    // Generate posting instructions
+    const instructions = instructionGenerator.generateForPost(
+      {
+        ...postInput,
+        id: '',
+        user_id: this.userId,
+        status: 'draft',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      } as SocialPost,
+      linkWithUTM
+    );
+
+    postInput.link_url = linkWithUTM;
+
+    return postInput;
+  }
+
+  /**
+   * Save post to database
+   */
+  private async savePost(
+    postInput: SocialPostInput,
+    campaignId: string
+  ): Promise<SocialPost> {
+    // Generate posting instructions
+    const linkWithUTM = postInput.link_url || '';
+    const tempPost: SocialPost = {
+      ...postInput,
+      id: '',
+      user_id: this.userId,
+      campaign_id: campaignId,
+      status: 'draft',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const instructions = instructionGenerator.generateForPost(tempPost, linkWithUTM);
+
+    const insertResult = await verifiedInsert(
+      this.supabase,
+      { table: 'social_posts', operationDescription: 'create social post' },
+      {
+        user_id: this.userId,
+        campaign_id: campaignId,
+        topic_id: postInput.topic_id,
+        job_id: postInput.job_id,
+        is_hub: postInput.is_hub || false,
+        spoke_position: postInput.spoke_position,
+        platform: postInput.platform,
+        post_type: postInput.post_type,
+        content_text: postInput.content_text,
+        content_thread: postInput.content_thread,
+        hashtags: postInput.hashtags,
+        mentions: postInput.mentions,
+        image_instructions: postInput.image_instructions,
+        link_url: postInput.link_url,
+        utm_parameters: postInput.utm_parameters,
+        posting_instructions: instructions.full_instructions,
+        optimal_posting_time: instructions.optimal_time,
+        eav_triple: postInput.eav_triple,
+        entities_mentioned: postInput.entities_mentioned,
+        status: 'draft'
+      },
+      '*'
+    );
+
+    if (!insertResult.success || !insertResult.data) {
+      throw new Error(`Failed to save post: ${insertResult.error}`);
+    }
+
+    return insertResult.data as unknown as SocialPost;
+  }
+
+  /**
+   * Extract transformation source from content generation job
+   */
+  static async extractSourceFromJob(
+    supabase: SupabaseClient,
+    jobId: string,
+    linkUrl: string
+  ): Promise<ArticleTransformationSource | null> {
+    // Get job with schema data
+    const { data: job, error: jobError } = await supabase
+      .from('content_generation_jobs')
+      .select(`
+        id,
+        topic_id,
+        title,
+        key_takeaways,
+        schema_data,
+        image_placeholders,
+        topics!inner(id, title, map_id, content_briefs(meta_description, contextual_vectors))
+      `)
+      .eq('id', jobId)
+      .single();
+
+    if (jobError || !job) {
+      console.error('[ContentTransformer] Failed to load job:', jobError);
+      return null;
+    }
+
+    const topic = job.topics as { id: string; title: string; map_id: string; content_briefs: Array<{ meta_description: string; contextual_vectors: unknown }> };
+    const brief = topic.content_briefs?.[0];
+
+    // Extract entities from schema data
+    const schemaEntities: Array<{ name: string; type: string; wikidata_id?: string }> = [];
+
+    if (job.schema_data) {
+      const schemaData = job.schema_data as { entities?: Array<{ name: string; type: string; wikidataId?: string }> };
+      if (schemaData.entities) {
+        for (const entity of schemaData.entities) {
+          schemaEntities.push({
+            name: entity.name,
+            type: entity.type,
+            wikidata_id: entity.wikidataId
+          });
+        }
+      }
+    }
+
+    // Extract contextual vectors (EAVs)
+    const contextualVectors: Array<{
+      entity: string;
+      attribute: string;
+      value: string;
+      category: 'UNIQUE' | 'RARE' | 'ROOT' | 'COMMON';
+    }> = [];
+
+    if (brief?.contextual_vectors) {
+      const vectors = brief.contextual_vectors as Array<{
+        entity: string;
+        attribute: string;
+        value: string;
+        category?: string;
+      }>;
+
+      for (const vector of vectors) {
+        contextualVectors.push({
+          entity: vector.entity,
+          attribute: vector.attribute,
+          value: vector.value,
+          category: (vector.category as 'UNIQUE' | 'RARE' | 'ROOT' | 'COMMON') || 'COMMON'
+        });
+      }
+    }
+
+    // Extract image placeholders
+    const imagePlaceholders: Array<{
+      id: string;
+      type: string;
+      alt_text: string;
+      caption?: string;
+    }> = [];
+
+    if (job.image_placeholders) {
+      const placeholders = job.image_placeholders as Array<{
+        id: string;
+        imageType: string;
+        altText: string;
+        caption?: string;
+      }>;
+
+      for (const ph of placeholders) {
+        imagePlaceholders.push({
+          id: ph.id,
+          type: ph.imageType,
+          alt_text: ph.altText,
+          caption: ph.caption
+        });
+      }
+    }
+
+    // Extract key takeaways
+    const keyTakeaways = job.key_takeaways as string[] || [];
+
+    return {
+      job_id: job.id,
+      topic_id: job.topic_id,
+      title: job.title || topic.title,
+      meta_description: brief?.meta_description || '',
+      link_url: linkUrl,
+      key_takeaways: keyTakeaways,
+      schema_entities: schemaEntities,
+      contextual_vectors: contextualVectors,
+      image_placeholders: imagePlaceholders
+    };
+  }
+}
+
+// Factory function
+export function createContentTransformer(
+  supabase: SupabaseClient,
+  userId: string
+): ContentTransformer {
+  return new ContentTransformer(supabase, userId);
+}

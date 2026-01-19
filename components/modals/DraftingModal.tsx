@@ -44,6 +44,9 @@ import { PassDiffViewer } from '../drafting/PassDiffViewer';
 import type { StructuralSnapshot } from '../../services/ai/contentGeneration/structuralValidator';
 import { ContentAnalysisPanel } from '../analysis/ContentAnalysisPanel';
 import { exportDebugData, formatForClaudeAnalysis, getPassSnapshots, clearDebugData } from '../../services/contentGenerationDebugger';
+import { TransformToSocialModal } from '../social/transformation/TransformToSocialModal';
+import type { ArticleTransformationSource, TransformationConfig, SocialCampaign, SocialPost, CampaignComplianceReport } from '../../types/social';
+import { transformArticleToSocialPosts } from '../../services/social/transformation/contentTransformer';
 
 interface DraftingModalProps {
   isOpen: boolean;
@@ -131,6 +134,9 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
   // WordPress Publish State
   const [showPublishModal, setShowPublishModal] = useState(false);
 
+  // Social Media Posts State
+  const [showSocialModal, setShowSocialModal] = useState(false);
+
   // Audit Panel State
   const [showAuditPanel, setShowAuditPanel] = useState(false);
   const [auditIssues, setAuditIssues] = useState<AuditIssue[]>([]);
@@ -177,6 +183,74 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
     if (!draftContent) return [];
     return extractPlaceholdersFromDraft(draftContent, { heroTitle: brief?.title });
   }, [draftContent, brief?.title]);
+
+  // Build source data for social media transformation
+  const socialTransformSource: ArticleTransformationSource | null = useMemo(() => {
+    if (!brief || !databaseJobInfo?.jobId || !activeBriefTopic?.id) return null;
+
+    // Extract key takeaways from brief
+    const keyTakeaways = brief.keyTakeaways || [];
+
+    // Extract schema entities from job data if available
+    const schemaEntities = databaseJobInfo.schemaData?.entities?.map((e: any) => ({
+      name: e.name || e.label || '',
+      type: e.type || 'Thing',
+      wikidata_id: e.wikidataId || e.wikidata_id
+    })) || [];
+
+    // Extract EAVs from brief contextualVectors
+    const contextualVectors = (brief.contextualVectors || []).map((cv: any) => ({
+      entity: cv.entity || '',
+      attribute: cv.attribute || '',
+      value: cv.value || '',
+      category: cv.category || 'COMMON'
+    }));
+
+    // Build the article URL - using the slug from brief or topic
+    const slug = slugify(brief.title || activeBriefTopic.topic || 'article');
+    const baseUrl = businessInfo.website || 'https://example.com';
+    const linkUrl = `${baseUrl.replace(/\/$/, '')}/${slug}`;
+
+    return {
+      job_id: databaseJobInfo.jobId,
+      topic_id: activeBriefTopic.id,
+      title: brief.title || activeBriefTopic.topic || 'Untitled',
+      meta_description: brief.metaDescription || '',
+      link_url: linkUrl,
+      key_takeaways: keyTakeaways,
+      schema_entities: schemaEntities,
+      contextual_vectors: contextualVectors,
+      image_placeholders: imagePlaceholders.map(p => ({
+        id: p.id,
+        description: p.description,
+        alt_text: p.altText || ''
+      }))
+    };
+  }, [brief, databaseJobInfo, activeBriefTopic, businessInfo.website, imagePlaceholders]);
+
+  // Handler for social media transformation
+  const handleSocialTransform = useCallback(async (config: TransformationConfig): Promise<{
+    campaign: SocialCampaign;
+    posts: SocialPost[];
+    complianceReport: CampaignComplianceReport;
+  }> => {
+    if (!socialTransformSource) {
+      throw new Error('No source data available for transformation');
+    }
+
+    // Use the content transformer service
+    const result = await transformArticleToSocialPosts(
+      socialTransformSource,
+      config,
+      {
+        supabaseUrl: businessInfo.supabaseUrl,
+        supabaseAnonKey: businessInfo.supabaseAnonKey,
+        userId: state.user?.id || ''
+      }
+    );
+
+    return result;
+  }, [socialTransformSource, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey, state.user?.id]);
 
   // Track which brief/draft we've loaded to avoid re-fetching
   const loadedBriefIdRef = useRef<string | null>(null);
@@ -3077,6 +3151,15 @@ ${schemaScript}`;
                     >
                         Publish to WP
                     </Button>
+                    <Button
+                        onClick={() => setShowSocialModal(true)}
+                        disabled={isLoading || !draftContent || isPolishing || !socialTransformSource}
+                        variant="secondary"
+                        className="text-xs py-1 px-2 bg-purple-700 hover:bg-purple-600"
+                        title="Create social media posts from this article"
+                    >
+                        Social Posts
+                    </Button>
                     {reportHook.canGenerate && (
                         <ReportExportButton
                             reportType="article-draft"
@@ -3354,6 +3437,23 @@ ${schemaScript}`;
           onPublishSuccess={() => {
             setShowPublishModal(false);
             // Could refresh publication status here if needed
+          }}
+        />
+      )}
+
+      {/* Social Media Posts Modal */}
+      {showSocialModal && socialTransformSource && (
+        <TransformToSocialModal
+          isOpen={showSocialModal}
+          onClose={() => setShowSocialModal(false)}
+          source={socialTransformSource}
+          onTransform={handleSocialTransform}
+          onComplete={(campaign, posts) => {
+            dispatch({
+              type: 'SET_NOTIFICATION',
+              payload: `Created social campaign with ${posts.length} posts across ${new Set(posts.map(p => p.platform)).size} platforms`
+            });
+            setShowSocialModal(false);
           }}
         />
       )}
