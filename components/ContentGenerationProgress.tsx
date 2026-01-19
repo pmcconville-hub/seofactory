@@ -247,18 +247,20 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
   const [activityMessageIndex, setActivityMessageIndex] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-  // Cycle through activity messages every 3 seconds
+  // PERFORMANCE: Cycle activity messages less frequently (every 10 seconds instead of 3)
+  // This reduces re-renders during long-running generation
   useEffect(() => {
     if (job.status !== 'in_progress') return;
 
     const messageInterval = setInterval(() => {
       setActivityMessageIndex(prev => prev + 1);
-    }, 3000);
+    }, 10000); // Reduced from 3000ms to 10000ms
 
     return () => clearInterval(messageInterval);
   }, [job.status]);
 
-  // Track elapsed time for current operation - update every 5 seconds to reduce re-renders
+  // PERFORMANCE: Track elapsed time less frequently (every 30 seconds instead of 5)
+  // This significantly reduces re-renders during generation
   useEffect(() => {
     if (job.status !== 'in_progress') {
       setElapsedSeconds(0);
@@ -266,11 +268,11 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
     }
 
     const timer = setInterval(() => {
-      setElapsedSeconds(prev => prev + 5);
-    }, 5000);
+      setElapsedSeconds(prev => prev + 30);
+    }, 30000); // Reduced from 5000ms to 30000ms
 
     return () => clearInterval(timer);
-  }, [job.status, job.current_pass, job.current_section_key]);
+  }, [job.status, job.current_pass]); // Removed job.current_section_key to reduce re-mount frequency
 
   // Reset elapsed time when pass or section changes
   useEffect(() => {
@@ -437,8 +439,8 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
       {/* Pass List - Memoized to prevent excessive re-renders */}
       <MemoizedPassList passesStatus={job.passes_status} currentPass={job.current_pass} />
 
-      {/* Stall Warning - Show if processing for too long */}
-      {job.status === 'in_progress' && elapsedSeconds > 90 && (
+      {/* Stall Warning - Show if processing for too long (adjusted for 30s timer intervals) */}
+      {job.status === 'in_progress' && elapsedSeconds >= 120 && (
         <div className="mb-4 p-3 bg-amber-900/30 border border-amber-700/50 rounded">
           <div className="flex items-start gap-2">
             <svg className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

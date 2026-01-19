@@ -7,6 +7,10 @@ import * as openAiService from '../../openAiService';
 import * as anthropicService from '../../anthropicService';
 import * as perplexityService from '../../perplexityService';
 import * as openRouterService from '../../openRouterService';
+import { createLogger } from '../../../utils/debugLogger';
+
+// Create namespaced logger - respects verbose logging setting
+const log = createLogger('ContentGen');
 
 // No-op dispatch for standalone calls
 const noOpDispatch = () => {};
@@ -130,7 +134,7 @@ export async function callProviderWithFallback(
   timeoutMs: number = AI_CALL_TIMEOUT_MS
 ): Promise<string> {
   const primaryProvider = info.aiProvider || 'gemini';
-  console.log(`[ContentGen] Using AI provider: ${primaryProvider} (from businessInfo.aiProvider: ${info.aiProvider})`);
+  log.log(`Using provider: ${primaryProvider}`);
   let lastError: Error | null = null;
 
   // Get fallback providers (exclude primary, it will be tried first)
@@ -139,7 +143,6 @@ export async function callProviderWithFallback(
   // Try primary provider first with retries
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`[ContentGen] Attempt ${attempt}/${maxRetries} with ${primaryProvider} (prompt: ${prompt.length} chars)`);
       // Wrap the AI call with timeout to prevent hanging
       const response = await withTimeout(
         callProvider(info, prompt, primaryProvider),
@@ -152,11 +155,11 @@ export async function callProviderWithFallback(
       throw new Error('AI returned non-string response');
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      console.error(`[ContentGen] Attempt ${attempt} failed:`, lastError.message);
+      log.warn(`Attempt ${attempt} failed: ${lastError.message}`);
 
       // If error warrants fallback on last attempt, try fallback providers
       if (attempt === maxRetries && shouldFallbackToAnotherProvider(lastError)) {
-        console.warn(`[ContentGen] Primary provider ${primaryProvider} failed after ${maxRetries} attempts, trying fallbacks...`);
+        log.warn(`Primary provider ${primaryProvider} failed, trying fallbacks...`);
         break; // Exit retry loop to try fallbacks
       }
 
@@ -164,7 +167,6 @@ export async function callProviderWithFallback(
         // Exponential backoff - longer delays for network errors
         const baseDelay = isRetryableError(lastError) ? 2000 : 1000;
         const delayMs = baseDelay * Math.pow(2, attempt - 1);
-        console.log(`[ContentGen] Waiting ${delayMs}ms before retry...`);
         await delay(delayMs);
       }
     }
@@ -172,20 +174,16 @@ export async function callProviderWithFallback(
 
   // Try fallback providers if primary failed with an error that warrants fallback
   if (lastError && shouldFallbackToAnotherProvider(lastError)) {
-    console.log(`[ContentGen] Primary provider failed, checking fallbacks...`);
-    console.log(`[ContentGen] Available fallback providers: ${fallbackProviders.join(', ')}`);
-
     let triedFallbacks = 0;
     for (const fallbackProvider of fallbackProviders) {
       // Check if we have API key for this provider
       const hasKey = checkProviderApiKey(info, fallbackProvider);
       if (!hasKey) {
-        console.log(`[ContentGen] Skipping ${fallbackProvider} - no API key configured`);
         continue;
       }
 
       triedFallbacks++;
-      console.log(`[ContentGen] Attempting fallback to ${fallbackProvider}...`);
+      log.log(`Attempting fallback to ${fallbackProvider}...`);
       try {
         // Wrap fallback call with timeout too
         const response = await withTimeout(
@@ -194,21 +192,19 @@ export async function callProviderWithFallback(
           `${fallbackProvider} fallback`
         );
         if (typeof response === 'string') {
-          console.log(`[ContentGen] Fallback to ${fallbackProvider} succeeded!`);
+          log.log(`Fallback to ${fallbackProvider} succeeded`);
           return response.trim();
         }
       } catch (fallbackError) {
         const fallbackErrMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-        console.warn(`[ContentGen] Fallback ${fallbackProvider} also failed:`, fallbackErrMsg);
+        log.warn(`Fallback ${fallbackProvider} failed: ${fallbackErrMsg}`);
         // Continue to next fallback
       }
     }
 
     if (triedFallbacks === 0) {
-      console.error(`[ContentGen] No fallback providers available! Configure API keys for: ${fallbackProviders.join(', ')}`);
+      log.error(`No fallback providers available! Configure API keys for: ${fallbackProviders.join(', ')}`);
     }
-  } else if (lastError) {
-    console.log(`[ContentGen] Error does not warrant fallback. Error: ${lastError.message}`);
   }
 
   throw lastError || new Error('All providers failed');

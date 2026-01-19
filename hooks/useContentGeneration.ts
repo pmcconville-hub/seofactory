@@ -53,6 +53,37 @@ import {
   type PassSnapshot
 } from '../services/contentGenerationDebugger';
 
+/**
+ * PERFORMANCE: Yield to main thread between passes
+ * This prevents the browser from becoming unresponsive during long-running generation
+ * by allowing the event loop to process pending tasks (UI updates, user input, etc.)
+ */
+const yieldToMainThread = (): Promise<void> => {
+  return new Promise(resolve => {
+    // Use requestIdleCallback if available, otherwise setTimeout
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(() => resolve(), { timeout: 100 });
+    } else {
+      setTimeout(resolve, 50);
+    }
+  });
+};
+
+/**
+ * PERFORMANCE: Clear unnecessary references to help garbage collection
+ * Called between passes to reduce memory pressure
+ */
+const performMemoryCleanup = (): void => {
+  // Hint to garbage collector (browsers may or may not honor this)
+  if (typeof gc === 'function') {
+    try {
+      gc();
+    } catch (e) {
+      // gc() only available with --expose-gc flag, ignore errors
+    }
+  }
+};
+
 // Helper functions for building quality report
 function buildCategoryScores(auditDetails: AuditDetails | null): Record<string, number> {
   if (!auditDetails?.algorithmicResults) return {};
@@ -372,32 +403,17 @@ export function useContentGeneration({
     );
   }, [businessInfo.supabaseUrl, businessInfo.supabaseAnonKey, onLog]);
 
-  // Subscribe to realtime updates with throttling to prevent browser hang
+  // PERFORMANCE FIX: Completely disable realtime subscriptions during active generation
+  // Realtime updates were causing browser freezes due to constant state updates
+  // Instead, the UI updates are driven by the generation loop itself
+  // Only subscribe to realtime when generation is NOT running (for viewing completed jobs)
   useEffect(() => {
-    if (!job?.id) return;
+    // Skip realtime subscriptions entirely during active generation
+    // The generation loop handles all state updates directly
+    if (!job?.id || isGenerating) return;
 
-    // Throttle section updates to prevent excessive re-renders
-    // Batch updates and apply every 500ms
-    let pendingSectionUpdates: Map<string, ContentGenerationSection> = new Map();
-    let sectionUpdateTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const flushSectionUpdates = () => {
-      if (pendingSectionUpdates.size === 0) return;
-
-      setSections(prev => {
-        const updated = [...prev];
-        for (const [key, newSection] of pendingSectionUpdates) {
-          const idx = updated.findIndex(s => s.section_key === key);
-          if (idx >= 0) {
-            updated[idx] = newSection;
-          } else {
-            updated.push(newSection);
-          }
-        }
-        pendingSectionUpdates.clear();
-        return updated.sort((a, b) => a.section_order - b.section_order);
-      });
-    };
+    // Only set up realtime for viewing completed/paused jobs
+    if (job.status === 'in_progress') return;
 
     const jobChannel = supabase
       .channel(`job-${job.id}`)
@@ -411,35 +427,10 @@ export function useContentGeneration({
       })
       .subscribe();
 
-    const sectionsChannel = supabase
-      .channel(`sections-${job.id}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'content_generation_sections',
-        filter: `job_id=eq.${job.id}`
-      }, (payload) => {
-        const newSection = payload.new as ContentGenerationSection;
-        pendingSectionUpdates.set(newSection.section_key, newSection);
-
-        // Throttle: only flush every 500ms
-        if (!sectionUpdateTimer) {
-          sectionUpdateTimer = setTimeout(() => {
-            flushSectionUpdates();
-            sectionUpdateTimer = null;
-          }, 500);
-        }
-      })
-      .subscribe();
-
     return () => {
       supabase.removeChannel(jobChannel);
-      supabase.removeChannel(sectionsChannel);
-      if (sectionUpdateTimer) clearTimeout(sectionUpdateTimer);
-      // Flush any pending updates on unmount
-      flushSectionUpdates();
     };
-  }, [job?.id, supabase]);
+  }, [job?.id, job?.status, isGenerating, supabase]);
 
   // Handle browser tab visibility changes - refetch state when tab becomes visible
   // This handles stale state after browser throttles background tabs
@@ -1010,6 +1001,10 @@ export function useContentGeneration({
         await storeDebugSnapshot(1, 'Draft Generation');
         const canProceed = await runInterPassValidation(1);
         if (!canProceed) return; // Stop if validation gate fails
+
+        // PERFORMANCE: Yield to main thread and cleanup between passes
+        await yieldToMainThread();
+        performMemoryCleanup();
       }
 
       // Helper for section progress callbacks
@@ -1043,6 +1038,10 @@ export function useContentGeneration({
         await storeDebugSnapshot(2, 'Headers');
         const canProceed2 = await runInterPassValidation(2);
         if (!canProceed2) return;
+
+        // PERFORMANCE: Yield to main thread between passes
+        await yieldToMainThread();
+        performMemoryCleanup();
       }
 
       // Pass 3: Lists & Tables (section-by-section with holistic context)
@@ -1068,6 +1067,10 @@ export function useContentGeneration({
         await storeDebugSnapshot(3, 'Lists & Tables');
         const canProceed3 = await runInterPassValidation(3);
         if (!canProceed3) return;
+
+        // PERFORMANCE: Yield to main thread between passes
+        await yieldToMainThread();
+        performMemoryCleanup();
       }
 
       // Pass 4: Discourse Integration (section-by-section with holistic context)
@@ -1091,6 +1094,10 @@ export function useContentGeneration({
         await storeDebugSnapshot(4, 'Discourse Integration');
         const canProceed4 = await runInterPassValidation(4);
         if (!canProceed4) return;
+
+        // PERFORMANCE: Yield to main thread between passes
+        await yieldToMainThread();
+        performMemoryCleanup();
       }
 
       // Pass 5: Micro Semantics (section-by-section with holistic context)
@@ -1116,6 +1123,10 @@ export function useContentGeneration({
         await storeDebugSnapshot(5, 'Micro Semantics');
         const canProceed5 = await runInterPassValidation(5);
         if (!canProceed5) return;
+
+        // PERFORMANCE: Yield to main thread between passes
+        await yieldToMainThread();
+        performMemoryCleanup();
       }
 
       // Pass 6: Visual Semantics (section-by-section with holistic context)
@@ -1153,6 +1164,10 @@ export function useContentGeneration({
         await storeDebugSnapshot(6, 'Visual Semantics');
         const canProceed6 = await runInterPassValidation(6);
         if (!canProceed6) return;
+
+        // PERFORMANCE: Yield to main thread between passes
+        await yieldToMainThread();
+        performMemoryCleanup();
       }
 
       // Pass 7: Introduction Synthesis (AFTER body is fully polished)
@@ -1178,6 +1193,10 @@ export function useContentGeneration({
         await storeDebugSnapshot(7, 'Introduction Synthesis');
         const canProceed7 = await runInterPassValidation(7);
         if (!canProceed7) return;
+
+        // PERFORMANCE: Yield to main thread between passes
+        await yieldToMainThread();
+        performMemoryCleanup();
       }
 
       // Pass 8: Final Polish
