@@ -22,7 +22,10 @@ export const InlineDiff: React.FC<InlineDiffProps> = ({
   const { originalText, rewrittenText, changesDescription, complianceScore } = result;
 
   return (
-    <div className="bg-slate-800 border border-slate-600 rounded-lg p-4 shadow-xl">
+    <div
+      data-contextual-editor="diff"
+      className="bg-slate-800 border border-slate-600 rounded-lg p-4 shadow-xl"
+    >
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-slate-300">

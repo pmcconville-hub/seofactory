@@ -75,7 +75,10 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   };
 
   return (
-    <div className="fixed right-0 top-0 h-full w-96 bg-slate-800 border-l border-slate-600 shadow-2xl z-50 flex flex-col">
+    <div
+      data-contextual-editor="panel"
+      className="fixed right-0 top-0 h-full w-96 bg-slate-800 border-l border-slate-600 shadow-2xl z-50 flex flex-col"
+    >
       {/* Header */}
       <div className="p-4 border-b border-slate-600 flex items-center justify-between">
         <h3 className="text-lg font-semibold text-white">Edit Content</h3>

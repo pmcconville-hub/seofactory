@@ -17,11 +17,11 @@ interface ContextMenuProps {
 }
 
 const QUICK_ACTIONS: { action: QuickAction; icon: string; label: string; tooltip: string }[] = [
-  { action: 'fix_accuracy', icon: '✓', label: 'Fix', tooltip: 'Fix accuracy' },
-  { action: 'fix_grammar', icon: 'Aa', label: 'Grammar', tooltip: 'Fix grammar' },
-  { action: 'improve_flow', icon: '↝', label: 'Flow', tooltip: 'Improve flow' },
-  { action: 'simplify', icon: '−', label: 'Simplify', tooltip: 'Simplify' },
-  { action: 'seo_optimize', icon: '◎', label: 'SEO', tooltip: 'SEO optimize' },
+  { action: 'fix_accuracy', icon: '✓', label: 'Fix Facts', tooltip: 'Fix factual inaccuracies' },
+  { action: 'fix_grammar', icon: 'Aa', label: 'Grammar', tooltip: 'Fix grammar and spelling' },
+  { action: 'improve_flow', icon: '↝', label: 'Improve', tooltip: 'Improve readability and flow' },
+  { action: 'simplify', icon: '−', label: 'Simplify', tooltip: 'Simplify complex text' },
+  { action: 'seo_optimize', icon: '◎', label: 'SEO', tooltip: 'Optimize for search engines' },
 ];
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -95,6 +95,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   return (
     <div
       ref={menuRef}
+      data-contextual-editor="menu"
       className="fixed z-50 bg-slate-800 border border-slate-600 rounded-lg shadow-xl p-1 flex items-center gap-1"
       style={{
         top: `${position.top}px`,

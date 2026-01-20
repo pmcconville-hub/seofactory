@@ -104,9 +104,21 @@ export function useTextSelection(options: UseTextSelectionOptions): UseTextSelec
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       const container = containerRef.current;
-      if (container && !container.contains(e.target as Node)) {
-        clearSelection();
+      const target = e.target as HTMLElement;
+
+      // Don't clear selection if clicking inside the content container
+      if (container && container.contains(target)) {
+        return;
       }
+
+      // Don't clear selection if clicking inside contextual editor UI
+      // (EditorPanel, ImageGenerationPanel, ContextMenu, InlineDiff)
+      const isContextualEditorUI = target.closest('[data-contextual-editor]') !== null;
+      if (isContextualEditorUI) {
+        return;
+      }
+
+      clearSelection();
     };
 
     document.addEventListener('click', handleClick);

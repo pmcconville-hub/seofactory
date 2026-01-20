@@ -3150,6 +3150,7 @@ ${schemaScript}`;
                                       <ImageGenerationPanel
                                         promptResult={contextualEditor.state.imagePromptResult}
                                         isGenerating={isGeneratingContextualImage}
+                                        isLoadingPrompt={contextualEditor.state.isProcessing}
                                         onGenerate={handleContextualImageGenerate}
                                         onAccept={handleContextualImageAccept}
                                         onReject={handleContextualImageReject}

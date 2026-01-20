@@ -10,6 +10,7 @@ import { Button } from '../ui/Button';
 interface ImageGenerationPanelProps {
   promptResult: ImagePromptResult | null;
   isGenerating: boolean;
+  isLoadingPrompt?: boolean;
   onGenerate: (prompt: string, style: ImageStyle, aspectRatio: AspectRatio) => void;
   onAccept: (imageUrl: string, altText: string) => void;
   onReject: () => void;
@@ -34,6 +35,7 @@ const ASPECT_OPTIONS: { value: AspectRatio; label: string }[] = [
 export const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({
   promptResult,
   isGenerating,
+  isLoadingPrompt = false,
   onGenerate,
   onAccept,
   onReject,
@@ -56,7 +58,10 @@ export const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({
   }, [promptResult]);
 
   return (
-    <div className="fixed right-0 top-0 h-full w-96 bg-slate-800 border-l border-slate-600 shadow-2xl z-50 flex flex-col">
+    <div
+      data-contextual-editor="image-panel"
+      className="fixed right-0 top-0 h-full w-96 bg-slate-800 border-l border-slate-600 shadow-2xl z-50 flex flex-col"
+    >
       {/* Header */}
       <div className="p-4 border-b border-slate-600 flex items-center justify-between">
         <h3 className="text-lg font-semibold text-white">Generate Image</h3>
@@ -69,16 +74,28 @@ export const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Loading prompt indicator */}
+        {isLoadingPrompt && !promptResult && (
+          <div className="flex items-center gap-2 p-3 bg-blue-500/10 border border-blue-500/30 rounded text-sm text-blue-300">
+            <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+            <span>AI is analyzing your selection and generating a prompt...</span>
+          </div>
+        )}
+
         {/* Prompt editor */}
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-1">
             Image Prompt
+            {!editedPrompt && !isLoadingPrompt && (
+              <span className="text-slate-500 font-normal ml-2">(type your own or wait for AI suggestion)</span>
+            )}
           </label>
           <textarea
             value={editedPrompt}
             onChange={(e) => setEditedPrompt(e.target.value)}
-            placeholder="Describe the image..."
-            className="w-full h-32 bg-slate-700 border border-slate-600 text-slate-200 text-sm rounded p-2 resize-none focus:outline-none focus:border-blue-500"
+            placeholder={isLoadingPrompt ? "Generating prompt..." : "Describe the image you want to generate..."}
+            disabled={isLoadingPrompt}
+            className="w-full h-32 bg-slate-700 border border-slate-600 text-slate-200 text-sm rounded p-2 resize-none focus:outline-none focus:border-blue-500 disabled:opacity-50"
           />
         </div>
 
