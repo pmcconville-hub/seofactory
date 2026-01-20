@@ -3,6 +3,8 @@
  *
  * Transforms content for Facebook with OG-optimized formatting
  * and engagement-focused content structure.
+ *
+ * Fully localized - no hardcoded phrases.
  */
 
 import type {
@@ -13,6 +15,7 @@ import type {
   PostEAVTriple
 } from '../../../../types/social';
 import { hashtagGenerator, type ResolvedEntity } from '../hashtagGenerator';
+import { socialLocalization } from '../socialLocalization';
 
 /**
  * Facebook-specific configuration
@@ -44,6 +47,8 @@ export class FacebookAdapter {
       brandedHashtags?: string[];
     }
   ): SocialPostInput {
+    const lang = source.language;
+
     // Generate hashtags
     const entities: ResolvedEntity[] = source.schema_entities.map(e => ({
       name: e.name,
@@ -61,19 +66,19 @@ export class FacebookAdapter {
 
     switch (options.template_type) {
       case 'hub_announcement':
-        content = this.createHubPost(source);
+        content = this.createHubPost(source, lang);
         break;
       case 'key_takeaway':
-        content = this.createTakeawayPost(source);
+        content = this.createTakeawayPost(source, lang);
         break;
       case 'entity_spotlight':
-        content = this.createEntityPost(source, options.eav);
+        content = this.createEntityPost(source, options.eav, lang);
         break;
       case 'question_hook':
-        content = this.createQuestionPost(source);
+        content = this.createQuestionPost(source, lang);
         break;
       default:
-        content = this.createHubPost(source);
+        content = this.createHubPost(source, lang);
     }
 
     // Add hashtags
@@ -105,14 +110,15 @@ export class FacebookAdapter {
   /**
    * Create hub announcement post
    */
-  private createHubPost(source: ArticleTransformationSource): string {
+  private createHubPost(source: ArticleTransformationSource, lang?: string): string {
     const entity = source.schema_entities[0]?.name;
     const takeaways = source.key_takeaways.slice(0, 3);
+    const phrases = socialLocalization.getPhrases(lang);
 
-    // Facebook favors conversational, question-based content
+    // Hook line
     let content = entity
-      ? `Ever wondered about the truth behind ${entity}? 🤔\n\n`
-      : `Here's something worth knowing:\n\n`;
+      ? `${socialLocalization.getPhrase('hub_hook_with_entity', lang, { entity })}\n\n`
+      : `${phrases.hub_hook_generic}\n\n`;
 
     // Add key points
     if (takeaways.length > 0) {
@@ -120,7 +126,7 @@ export class FacebookAdapter {
       content += '\n\n';
     }
 
-    content += `Read the full story 👉 ${source.link_url}`;
+    content += `${phrases.connector_read_full} 👉 ${source.link_url}`;
 
     return content;
   }
@@ -128,18 +134,19 @@ export class FacebookAdapter {
   /**
    * Create key takeaway post
    */
-  private createTakeawayPost(source: ArticleTransformationSource): string {
+  private createTakeawayPost(source: ArticleTransformationSource, lang?: string): string {
     const takeaway = source.key_takeaways[0] || source.meta_description;
     const entity = source.schema_entities[0]?.name;
+    const phrases = socialLocalization.getPhrases(lang);
 
     let content = '';
 
     if (entity) {
-      content = `${entity} insight:\n\n`;
+      content = `${socialLocalization.getPhrase('takeaway_intro_with_entity', lang, { entity })}\n\n`;
     }
 
     content += `"${takeaway}"\n\n`;
-    content += `Get the details: ${source.link_url}`;
+    content += `${phrases.connector_get_details}: ${source.link_url}`;
 
     return content;
   }
@@ -149,31 +156,36 @@ export class FacebookAdapter {
    */
   private createEntityPost(
     source: ArticleTransformationSource,
-    eav?: PostEAVTriple
+    eav?: PostEAVTriple,
+    lang?: string
   ): string {
+    const phrases = socialLocalization.getPhrases(lang);
+
     if (eav) {
-      return `Did you know?\n\n${eav.entity} ${this.formatAttribute(eav.attribute)} ${eav.value}.\n\nThis is one of the ${eav.category?.toLowerCase() || 'key'} facts that many people miss.\n\nLearn more: ${source.link_url}`;
+      const categoryText = socialLocalization.getCategory(eav.category, lang);
+      return `${phrases.question_did_you_know}\n\n${eav.entity} ${this.formatAttribute(eav.attribute)} ${eav.value}.\n\n${socialLocalization.getPhrase('spotlight_category_fact', lang, { category: categoryText, entity: eav.entity })}\n\n${phrases.hub_cta_learn_more}: ${source.link_url}`;
     }
 
     const entity = source.schema_entities[0];
     if (entity) {
-      return `Let's talk about ${entity.name}.\n\n${source.key_takeaways[0] || source.meta_description}\n\nFull breakdown: ${source.link_url}`;
+      return `${socialLocalization.getPhrase('spotlight_intro', lang, { entity: entity.name })}\n\n${source.key_takeaways[0] || source.meta_description}\n\n${phrases.hub_cta_full_analysis}: ${source.link_url}`;
     }
 
-    return this.createHubPost(source);
+    return this.createHubPost(source, lang);
   }
 
   /**
    * Create question hook post
    */
-  private createQuestionPost(source: ArticleTransformationSource): string {
+  private createQuestionPost(source: ArticleTransformationSource, lang?: string): string {
     const entity = source.schema_entities[0]?.name;
+    const phrases = socialLocalization.getPhrases(lang);
 
     const question = entity
-      ? `What's the most surprising thing about ${entity}?`
-      : `What if you've been thinking about this all wrong?`;
+      ? socialLocalization.getPhrase('question_common_misconception', lang, { entity })
+      : phrases.question_what_if;
 
-    return `${question}\n\nDrop your thoughts in the comments! 👇\n\nThen check out what we found: ${source.link_url}`;
+    return `${question}\n\n${phrases.engagement_comment} 👇\n\n${phrases.connector_get_details}: ${source.link_url}`;
   }
 
   /**
@@ -197,7 +209,7 @@ export class FacebookAdapter {
 
     if (!placeholder) {
       return {
-        description: `Create an engaging image for "${source.title}"`,
+        description: `${source.title}`,
         alt_text: source.title,
         dimensions: {
           width: FACEBOOK_CONFIG.image_specs.link_preview.width,

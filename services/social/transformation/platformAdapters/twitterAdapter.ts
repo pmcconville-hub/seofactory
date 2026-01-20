@@ -3,6 +3,8 @@
  *
  * Transforms content for X (Twitter) with thread support,
  * character limits, and platform-specific formatting.
+ *
+ * Fully localized - no hardcoded phrases.
  */
 
 import type {
@@ -14,6 +16,7 @@ import type {
   PostEAVTriple
 } from '../../../../types/social';
 import { hashtagGenerator, type ResolvedEntity } from '../hashtagGenerator';
+import { socialLocalization } from '../socialLocalization';
 
 /**
  * Twitter-specific configuration
@@ -46,6 +49,8 @@ export class TwitterAdapter {
       brandedHashtags?: string[];
     }
   ): SocialPostInput {
+    const lang = source.language;
+
     // Generate hashtags (1-2 for Twitter)
     const entities: ResolvedEntity[] = source.schema_entities.map(e => ({
       name: e.name,
@@ -63,10 +68,10 @@ export class TwitterAdapter {
     let thread: ThreadSegment[] | undefined;
 
     if (options.use_thread) {
-      thread = this.createThread(source, options.template_type, hashtagResult.hashtags);
+      thread = this.createThread(source, options.template_type, hashtagResult.hashtags, lang);
       content = thread[0]?.text || '';
     } else {
-      content = this.createSingleTweet(source, options.template_type, options.eav, hashtagResult.hashtags);
+      content = this.createSingleTweet(source, options.template_type, options.eav, hashtagResult.hashtags, lang);
     }
 
     // Extract entities mentioned
@@ -101,13 +106,15 @@ export class TwitterAdapter {
   private createThread(
     source: ArticleTransformationSource,
     templateType: string,
-    hashtags: string[]
+    hashtags: string[],
+    lang?: string
   ): ThreadSegment[] {
     const thread: ThreadSegment[] = [];
     const hashtagText = hashtags.map(h => `#${h}`).join(' ');
+    const phrases = socialLocalization.getPhrases(lang);
 
     // Tweet 1: Hook with hashtags
-    const hook = this.createHook(source);
+    const hook = this.createHook(source, lang);
     thread.push({
       index: 0,
       text: this.fitToLimit(`${hook}\n\n${hashtagText}\n\n🧵`)
@@ -116,7 +123,6 @@ export class TwitterAdapter {
     // Middle tweets: Key takeaways (one per tweet)
     const takeaways = source.key_takeaways.slice(0, 5);
     takeaways.forEach((takeaway, i) => {
-      const tweetNumber = `${i + 2}/${takeaways.length + 2}`;
       thread.push({
         index: i + 1,
         text: this.fitToLimit(`${takeaway}`)
@@ -126,7 +132,7 @@ export class TwitterAdapter {
     // Final tweet: CTA with link
     thread.push({
       index: thread.length,
-      text: this.fitToLimit(`Full breakdown 👇\n\n${source.link_url}`)
+      text: this.fitToLimit(`${phrases.thread_cta} 👇\n\n${source.link_url}`)
     });
 
     return thread;
@@ -139,7 +145,8 @@ export class TwitterAdapter {
     source: ArticleTransformationSource,
     templateType: string,
     eav?: PostEAVTriple,
-    hashtags: string[] = []
+    hashtags: string[] = [],
+    lang?: string
   ): string {
     const hashtagText = hashtags.length > 0
       ? ' ' + hashtags.map(h => `#${h}`).join(' ')
@@ -149,19 +156,19 @@ export class TwitterAdapter {
 
     switch (templateType) {
       case 'hub_announcement':
-        content = this.createHubTweet(source);
+        content = this.createHubTweet(source, lang);
         break;
       case 'key_takeaway':
-        content = this.createTakeawayTweet(source);
+        content = this.createTakeawayTweet(source, lang);
         break;
       case 'entity_spotlight':
-        content = this.createEntityTweet(source, eav);
+        content = this.createEntityTweet(source, eav, lang);
         break;
       case 'question_hook':
-        content = this.createQuestionTweet(source);
+        content = this.createQuestionTweet(source, lang);
         break;
       default:
-        content = this.createHubTweet(source);
+        content = this.createHubTweet(source, lang);
     }
 
     // Add hashtags and fit to limit
@@ -171,7 +178,7 @@ export class TwitterAdapter {
   /**
    * Create hub announcement tweet
    */
-  private createHubTweet(source: ArticleTransformationSource): string {
+  private createHubTweet(source: ArticleTransformationSource, lang?: string): string {
     const entity = source.schema_entities[0]?.name;
     const takeaway = source.key_takeaways[0] || source.meta_description;
 
@@ -190,7 +197,7 @@ export class TwitterAdapter {
   /**
    * Create key takeaway tweet
    */
-  private createTakeawayTweet(source: ArticleTransformationSource): string {
+  private createTakeawayTweet(source: ArticleTransformationSource, lang?: string): string {
     const takeaway = source.key_takeaways[0] || source.meta_description;
     const shortTakeaway = takeaway.length > 200
       ? takeaway.substring(0, 197) + '...'
@@ -204,10 +211,13 @@ export class TwitterAdapter {
    */
   private createEntityTweet(
     source: ArticleTransformationSource,
-    eav?: PostEAVTriple
+    eav?: PostEAVTriple,
+    lang?: string
   ): string {
+    const phrases = socialLocalization.getPhrases(lang);
+
     if (eav) {
-      return `${eav.entity} ${this.formatAttribute(eav.attribute)} ${eav.value}.\n\nMore: ${source.link_url}`;
+      return `${eav.entity} ${this.formatAttribute(eav.attribute)} ${eav.value}.\n\n${phrases.connector_more_details}: ${source.link_url}`;
     }
 
     const entity = source.schema_entities[0];
@@ -217,36 +227,42 @@ export class TwitterAdapter {
         ? takeaway.substring(0, 147) + '...'
         : takeaway;
 
-      return `${entity.name}: ${shortTakeaway || 'Read more'}\n\n${source.link_url}`;
+      return `${entity.name}: ${shortTakeaway || phrases.hub_cta_learn_more}\n\n${source.link_url}`;
     }
 
-    return this.createHubTweet(source);
+    return this.createHubTweet(source, lang);
   }
 
   /**
    * Create question hook tweet
    */
-  private createQuestionTweet(source: ArticleTransformationSource): string {
-    const entity = source.schema_entities[0]?.name || 'this';
+  private createQuestionTweet(source: ArticleTransformationSource, lang?: string): string {
+    const entity = source.schema_entities[0]?.name;
+    const phrases = socialLocalization.getPhrases(lang);
 
-    return `What's the biggest misconception about ${entity}?\n\nThe answer might surprise you 👇\n\n${source.link_url}`;
+    const question = entity
+      ? socialLocalization.getPhrase('question_biggest_question', lang, { entity })
+      : phrases.question_did_you_know;
+
+    return `${question}\n\n${phrases.question_surprise} 👇\n\n${source.link_url}`;
   }
 
   /**
    * Create hook for thread
    */
-  private createHook(source: ArticleTransformationSource): string {
+  private createHook(source: ArticleTransformationSource, lang?: string): string {
     const entity = source.schema_entities[0]?.name;
+    const phrases = socialLocalization.getPhrases(lang);
 
     if (entity) {
-      return `Everything you need to know about ${entity}:`;
+      return socialLocalization.getPhrase('thread_hook_with_entity', lang, { entity });
     }
 
     if (source.title.length < 200) {
       return source.title;
     }
 
-    return `Here's something important you should know:`;
+    return phrases.thread_hook_generic;
   }
 
   /**
@@ -270,7 +286,7 @@ export class TwitterAdapter {
 
     if (!placeholder) {
       return {
-        description: `Create an engaging image for "${source.title}"`,
+        description: `${source.title}`,
         alt_text: source.title,
         dimensions: {
           width: TWITTER_CONFIG.image_specs.card.width,

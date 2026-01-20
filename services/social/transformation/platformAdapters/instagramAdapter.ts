@@ -3,6 +3,8 @@
  *
  * Transforms content for Instagram with carousel support,
  * visual-first approach, and optimal hashtag strategy.
+ *
+ * Fully localized - no hardcoded phrases.
  */
 
 import type {
@@ -13,6 +15,7 @@ import type {
   PostEAVTriple
 } from '../../../../types/social';
 import { hashtagGenerator, type ResolvedEntity } from '../hashtagGenerator';
+import { socialLocalization } from '../socialLocalization';
 
 /**
  * Instagram-specific configuration
@@ -59,6 +62,8 @@ export class InstagramAdapter {
       brandedHashtags?: string[];
     }
   ): SocialPostInput {
+    const lang = source.language;
+
     // Generate hashtags
     const entities: ResolvedEntity[] = source.schema_entities.map(e => ({
       name: e.name,
@@ -76,27 +81,27 @@ export class InstagramAdapter {
     let carouselSlides: CarouselSlide[] | undefined;
 
     if (options.use_carousel) {
-      carouselSlides = this.createCarouselSlides(source);
-      content = this.createCarouselCaption(source);
+      carouselSlides = this.createCarouselSlides(source, lang);
+      content = this.createCarouselCaption(source, lang);
     } else {
       switch (options.template_type) {
         case 'hub_announcement':
-          content = this.createHubCaption(source);
+          content = this.createHubCaption(source, lang);
           break;
         case 'key_takeaway':
-          content = this.createTakeawayCaption(source);
+          content = this.createTakeawayCaption(source, lang);
           break;
         case 'entity_spotlight':
-          content = this.createEntityCaption(source, options.eav);
+          content = this.createEntityCaption(source, options.eav, lang);
           break;
         case 'question_hook':
-          content = this.createQuestionCaption(source);
+          content = this.createQuestionCaption(source, lang);
           break;
         case 'listicle':
-          content = this.createListicleCaption(source);
+          content = this.createListicleCaption(source, lang);
           break;
         default:
-          content = this.createHubCaption(source);
+          content = this.createHubCaption(source, lang);
       }
     }
 
@@ -129,19 +134,20 @@ export class InstagramAdapter {
   /**
    * Create carousel slides from article content
    */
-  createCarouselSlides(source: ArticleTransformationSource): CarouselSlide[] {
+  createCarouselSlides(source: ArticleTransformationSource, lang?: string): CarouselSlide[] {
     const slides: CarouselSlide[] = [];
     const entity = source.schema_entities[0]?.name;
+    const phrases = socialLocalization.getPhrases(lang);
 
     // Slide 1: Title/Hook
     slides.push({
       index: 0,
       type: 'text_on_image',
       headline: entity
-        ? `${entity}: What You Need to Know`
-        : source.title.length < 60 ? source.title : 'What You Need to Know',
-      body_text: 'Swipe to learn more →',
-      image_description: `Cover slide with bold title about ${entity || 'the topic'}`
+        ? socialLocalization.getPhrase('carousel_cover_with_entity', lang, { entity })
+        : (source.title.length < 60 ? source.title : phrases.carousel_cover_generic),
+      body_text: phrases.carousel_swipe_cta + ' →',
+      image_description: `Cover slide: ${entity || source.title}`
     });
 
     // Middle slides: Key takeaways (one per slide)
@@ -152,7 +158,7 @@ export class InstagramAdapter {
         type: 'text_on_image',
         headline: `${i + 1}.`,
         body_text: takeaway,
-        image_description: `Slide with key point: ${takeaway.substring(0, 50)}...`
+        image_description: `Slide ${i + 1}: ${takeaway.substring(0, 50)}...`
       });
     });
 
@@ -160,9 +166,9 @@ export class InstagramAdapter {
     slides.push({
       index: slides.length,
       type: 'text_on_image',
-      headline: 'Want More?',
-      body_text: 'Link in bio for the full guide 📱',
-      image_description: 'Call-to-action slide directing to link in bio'
+      headline: phrases.carousel_final_cta,
+      body_text: phrases.engagement_link_in_bio + ' 📱',
+      image_description: `CTA slide: ${phrases.engagement_link_in_bio}`
     });
 
     return slides.slice(0, INSTAGRAM_CONFIG.carousel_max_slides);
@@ -171,20 +177,21 @@ export class InstagramAdapter {
   /**
    * Create caption for carousel post
    */
-  private createCarouselCaption(source: ArticleTransformationSource): string {
+  private createCarouselCaption(source: ArticleTransformationSource, lang?: string): string {
     const entity = source.schema_entities[0]?.name;
+    const phrases = socialLocalization.getPhrases(lang);
 
     let caption = entity
-      ? `${entity} explained in ${source.key_takeaways.length + 2} slides 📚\n\n`
-      : `Essential insights you need to see 📚\n\n`;
+      ? `${socialLocalization.getPhrase('carousel_slides_explained', lang, { entity, count: source.key_takeaways.length + 2 })} 📚\n\n`
+      : `${phrases.hub_hook_generic} 📚\n\n`;
 
-    caption += 'Swipe through to learn:\n';
+    caption += `${phrases.carousel_swipe_cta}:\n`;
     source.key_takeaways.slice(0, 5).forEach((_, i) => {
-      caption += `📍 Key insight ${i + 1}\n`;
+      caption += `📍 ${phrases.takeaway_intro_generic.replace(':', '')} ${i + 1}\n`;
     });
 
-    caption += '\n💡 Save this post for later!\n';
-    caption += '🔗 Full guide linked in bio';
+    caption += `\n💡 ${phrases.engagement_save_post}\n`;
+    caption += `🔗 ${phrases.engagement_link_in_bio}`;
 
     return caption;
   }
@@ -192,19 +199,20 @@ export class InstagramAdapter {
   /**
    * Create hub announcement caption
    */
-  private createHubCaption(source: ArticleTransformationSource): string {
+  private createHubCaption(source: ArticleTransformationSource, lang?: string): string {
     const entity = source.schema_entities[0]?.name;
     const takeaway = source.key_takeaways[0] || source.meta_description;
+    const phrases = socialLocalization.getPhrases(lang);
 
     let caption = '';
 
     if (entity) {
-      caption = `Everything you need to know about ${entity} ⬇️\n\n`;
+      caption = `${socialLocalization.getPhrase('hub_hook_with_entity', lang, { entity })} ⬇️\n\n`;
     }
 
     caption += `${takeaway}\n\n`;
-    caption += '💡 Save this post!\n';
-    caption += '🔗 Link in bio for the complete guide';
+    caption += `💡 ${phrases.engagement_save_post}\n`;
+    caption += `🔗 ${phrases.engagement_link_in_bio}`;
 
     return caption;
   }
@@ -212,10 +220,11 @@ export class InstagramAdapter {
   /**
    * Create key takeaway caption
    */
-  private createTakeawayCaption(source: ArticleTransformationSource): string {
+  private createTakeawayCaption(source: ArticleTransformationSource, lang?: string): string {
     const takeaway = source.key_takeaways[0] || source.meta_description;
+    const phrases = socialLocalization.getPhrases(lang);
 
-    return `📌 ${takeaway}\n\nDouble tap if you found this helpful!\n\n🔗 More insights in bio`;
+    return `📌 ${takeaway}\n\n${phrases.engagement_double_tap}\n\n🔗 ${phrases.engagement_link_in_bio}`;
   }
 
   /**
@@ -223,49 +232,55 @@ export class InstagramAdapter {
    */
   private createEntityCaption(
     source: ArticleTransformationSource,
-    eav?: PostEAVTriple
+    eav?: PostEAVTriple,
+    lang?: string
   ): string {
+    const phrases = socialLocalization.getPhrases(lang);
+
     if (eav) {
-      return `✨ ${eav.entity}\n\n${this.formatAttribute(eav.attribute)}: ${eav.value}\n\nThis is one of the ${eav.category?.toLowerCase() || 'key'} facts that sets this apart.\n\n💡 Save for later\n🔗 Deep dive in bio`;
+      const categoryText = socialLocalization.getCategory(eav.category, lang);
+      return `✨ ${eav.entity}\n\n${this.formatAttribute(eav.attribute)}: ${eav.value}\n\n${socialLocalization.getPhrase('spotlight_category_fact', lang, { category: categoryText, entity: eav.entity })}\n\n💡 ${phrases.engagement_save_post}\n🔗 ${phrases.engagement_link_in_bio}`;
     }
 
     const entity = source.schema_entities[0];
     if (entity) {
-      return `Let's talk about ${entity.name} ✨\n\n${source.key_takeaways[0] || source.meta_description}\n\n💡 Save this!\n🔗 Full guide in bio`;
+      return `${socialLocalization.getPhrase('spotlight_intro', lang, { entity: entity.name })} ✨\n\n${source.key_takeaways[0] || source.meta_description}\n\n💡 ${phrases.engagement_save_post}\n🔗 ${phrases.engagement_link_in_bio}`;
     }
 
-    return this.createHubCaption(source);
+    return this.createHubCaption(source, lang);
   }
 
   /**
    * Create question hook caption
    */
-  private createQuestionCaption(source: ArticleTransformationSource): string {
+  private createQuestionCaption(source: ArticleTransformationSource, lang?: string): string {
     const entity = source.schema_entities[0]?.name;
+    const phrases = socialLocalization.getPhrases(lang);
 
     const question = entity
-      ? `What's your biggest question about ${entity}? 🤔`
-      : `What's one thing you wish you knew? 🤔`;
+      ? socialLocalization.getPhrase('question_biggest_question', lang, { entity })
+      : phrases.question_did_you_know;
 
-    return `${question}\n\nDrop it in the comments! ⬇️\n\nMeanwhile, check out what we've learned:\n${source.key_takeaways[0] || ''}\n\n🔗 More in bio`;
+    return `${question} 🤔\n\n${phrases.engagement_comment} ⬇️\n\n${source.key_takeaways[0] || ''}\n\n🔗 ${phrases.engagement_link_in_bio}`;
   }
 
   /**
    * Create listicle caption
    */
-  private createListicleCaption(source: ArticleTransformationSource): string {
+  private createListicleCaption(source: ArticleTransformationSource, lang?: string): string {
     const entity = source.schema_entities[0]?.name;
     const takeaways = source.key_takeaways.slice(0, 5);
+    const phrases = socialLocalization.getPhrases(lang);
 
     let caption = entity
-      ? `${takeaways.length} things to know about ${entity}:\n\n`
-      : `${takeaways.length} insights you need:\n\n`;
+      ? socialLocalization.getPhrase('listicle_intro_with_entity', lang, { count: takeaways.length, entity }) + '\n\n'
+      : socialLocalization.getPhrase('listicle_intro_generic', lang, { count: takeaways.length }) + '\n\n';
 
     takeaways.forEach((t, i) => {
       caption += `${i + 1}. ${t}\n`;
     });
 
-    caption += '\n💡 Save for later\n🔗 Full breakdown in bio';
+    caption += `\n💡 ${phrases.engagement_save_post}\n🔗 ${phrases.engagement_link_in_bio}`;
 
     return caption;
   }
@@ -295,8 +310,8 @@ export class InstagramAdapter {
 
     return {
       description: isCarousel
-        ? `Create ${source.key_takeaways.length + 2} carousel slides: Cover, ${source.key_takeaways.length} key points, CTA`
-        : `Create an engaging visual for: ${baseDescription}`,
+        ? `${source.key_takeaways.length + 2} carousel slides: Cover, ${source.key_takeaways.length} key points, CTA`
+        : `${baseDescription}`,
       alt_text: placeholder?.alt_text || source.title,
       dimensions: {
         width: specs.width,

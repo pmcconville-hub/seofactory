@@ -3,16 +3,19 @@
  *
  * Transforms content for LinkedIn with platform-specific
  * formatting, character limits, and best practices.
+ *
+ * Fully localized - no hardcoded phrases.
  */
 
 import type {
-  SocialPost,
   SocialPostInput,
   ArticleTransformationSource,
   ImageInstructions,
-  PostEAVTriple
+  PostEAVTriple,
+  SocialPost
 } from '../../../../types/social';
 import { hashtagGenerator, type ResolvedEntity } from '../hashtagGenerator';
+import { socialLocalization } from '../socialLocalization';
 
 /**
  * LinkedIn-specific configuration
@@ -43,23 +46,24 @@ export class LinkedInAdapter {
       brandedHashtags?: string[];
     }
   ): SocialPostInput {
+    const lang = source.language;
     let content: string;
 
     switch (options.template_type) {
       case 'hub_announcement':
-        content = this.createHubAnnouncement(source);
+        content = this.createHubAnnouncement(source, lang);
         break;
       case 'key_takeaway':
-        content = this.createKeyTakeaway(source);
+        content = this.createKeyTakeaway(source, lang);
         break;
       case 'entity_spotlight':
-        content = this.createEntitySpotlight(source, options.eav);
+        content = this.createEntitySpotlight(source, options.eav, lang);
         break;
       case 'question_hook':
-        content = this.createQuestionHook(source);
+        content = this.createQuestionHook(source, lang);
         break;
       default:
-        content = this.createHubAnnouncement(source);
+        content = this.createHubAnnouncement(source, lang);
     }
 
     // Generate hashtags from entities
@@ -101,10 +105,20 @@ export class LinkedInAdapter {
   /**
    * Create hub announcement post
    */
-  private createHubAnnouncement(source: ArticleTransformationSource): string {
-    const hookLine = this.createHookLine(source);
+  private createHubAnnouncement(source: ArticleTransformationSource, lang?: string): string {
+    const entity = source.schema_entities[0]?.name;
+    const phrases = socialLocalization.getPhrases(lang);
+
+    // Hook line with entity if available
+    const hookLine = entity
+      ? socialLocalization.getPhrase('hub_hook_with_entity', lang, { entity })
+      : (source.title.length < 100 ? source.title : phrases.hub_hook_generic);
+
+    // Key points as bullet points
     const keyPoints = this.formatKeyTakeaways(source.key_takeaways.slice(0, 3));
-    const cta = this.createCTA(source);
+
+    // CTA
+    const cta = phrases.hub_cta_read_more;
 
     return `${hookLine}
 
@@ -118,17 +132,20 @@ ${source.link_url}`;
   /**
    * Create key takeaway post (spoke)
    */
-  private createKeyTakeaway(source: ArticleTransformationSource): string {
+  private createKeyTakeaway(source: ArticleTransformationSource, lang?: string): string {
     const takeaway = source.key_takeaways[0] || source.meta_description;
-    const mainEntity = source.schema_entities[0]?.name || '';
+    const mainEntity = source.schema_entities[0]?.name;
+    const phrases = socialLocalization.getPhrases(lang);
 
-    return `${mainEntity ? `When it comes to ${mainEntity}, ` : ''}here's what you need to know:
+    const intro = mainEntity
+      ? socialLocalization.getPhrase('takeaway_intro_with_entity', lang, { entity: mainEntity })
+      : phrases.takeaway_intro_generic;
+
+    return `${intro}
 
 ${takeaway}
 
-This matters because understanding this can transform how you approach your work.
-
-Read the full breakdown: ${source.link_url}`;
+${phrases.connector_read_full}: ${source.link_url}`;
   }
 
   /**
@@ -136,81 +153,52 @@ Read the full breakdown: ${source.link_url}`;
    */
   private createEntitySpotlight(
     source: ArticleTransformationSource,
-    eav?: PostEAVTriple
+    eav?: PostEAVTriple,
+    lang?: string
   ): string {
+    const phrases = socialLocalization.getPhrases(lang);
+
     if (!eav) {
       // Fallback to first entity
       const entity = source.schema_entities[0];
       if (entity) {
-        return `Let's talk about ${entity.name}.
+        return `${socialLocalization.getPhrase('spotlight_intro', lang, { entity: entity.name })}
 
 ${source.key_takeaways[0] || source.meta_description}
 
-Learn more: ${source.link_url}`;
+${phrases.hub_cta_learn_more}: ${source.link_url}`;
       }
-      return this.createKeyTakeaway(source);
+      return this.createKeyTakeaway(source, lang);
     }
 
-    return `${eav.entity} ${this.formatAttribute(eav.attribute)} ${eav.value}.
+    const categoryText = socialLocalization.getCategory(eav.category, lang);
 
-This is a ${eav.category?.toLowerCase() || 'key'} fact that can change how you think about ${eav.entity}.
+    return `${socialLocalization.getPhrase('spotlight_fact_intro', lang, { entity: eav.entity })} ${this.formatAttribute(eav.attribute)} ${eav.value}.
 
-Deep dive: ${source.link_url}`;
+${socialLocalization.getPhrase('spotlight_category_fact', lang, { category: categoryText, entity: eav.entity })}
+
+${phrases.hub_cta_deep_dive}: ${source.link_url}`;
   }
 
   /**
    * Create question hook post (spoke)
    */
-  private createQuestionHook(source: ArticleTransformationSource): string {
-    const entity = source.schema_entities[0]?.name || 'this topic';
-    const question = this.generateQuestion(source);
+  private createQuestionHook(source: ArticleTransformationSource, lang?: string): string {
+    const entity = source.schema_entities[0]?.name;
+    const phrases = socialLocalization.getPhrases(lang);
+    const takeaway = source.key_takeaways[0] || source.meta_description;
+
+    const question = entity
+      ? socialLocalization.getPhrase('question_common_misconception', lang, { entity })
+      : phrases.question_what_if;
 
     return `${question}
 
-Most people get this wrong about ${entity}.
+${phrases.question_surprise}
 
-Here's what the data actually shows:
+${takeaway}
 
-${source.key_takeaways[0] || source.meta_description}
-
-Full analysis: ${source.link_url}`;
-  }
-
-  /**
-   * Generate a compelling question from source
-   */
-  private generateQuestion(source: ArticleTransformationSource): string {
-    const entity = source.schema_entities[0]?.name;
-    const title = source.title;
-
-    // Try to create a question from the title
-    if (title.toLowerCase().includes('how')) {
-      return title.endsWith('?') ? title : `${title}?`;
-    }
-
-    if (entity) {
-      return `What's the most misunderstood thing about ${entity}?`;
-    }
-
-    return `What if everything you knew about this was wrong?`;
-  }
-
-  /**
-   * Create compelling hook line
-   */
-  private createHookLine(source: ArticleTransformationSource): string {
-    const entity = source.schema_entities[0]?.name;
-
-    if (entity) {
-      return `${entity}: What nobody tells you (but everyone should know)`;
-    }
-
-    // Use title if it's compelling, otherwise create one
-    if (source.title.length < 100) {
-      return source.title;
-    }
-
-    return `New insights you don't want to miss`;
+${phrases.hub_cta_full_analysis}: ${source.link_url}`;
   }
 
   /**
@@ -237,20 +225,6 @@ Full analysis: ${source.link_url}`;
   }
 
   /**
-   * Create call-to-action
-   */
-  private createCTA(source: ArticleTransformationSource): string {
-    const options = [
-      'Read the full guide below ↓',
-      'Dive deeper into the details ↓',
-      'Get the complete breakdown ↓',
-      'See the full analysis ↓'
-    ];
-
-    return options[Math.floor(Math.random() * options.length)];
-  }
-
-  /**
    * Create image instructions from source
    */
   private createImageInstructions(
@@ -260,7 +234,7 @@ Full analysis: ${source.link_url}`;
 
     if (!placeholder) {
       return {
-        description: `Create a professional image representing "${source.title}"`,
+        description: `${source.title}`,
         alt_text: source.title,
         dimensions: {
           width: LINKEDIN_CONFIG.image_specs.landscape.width,

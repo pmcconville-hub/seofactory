@@ -377,6 +377,21 @@ export class ContentTransformer {
     const topic = job.topics as { id: string; title: string; map_id: string; content_briefs: Array<{ meta_description: string; contextual_vectors: unknown }> };
     const brief = topic.content_briefs?.[0];
 
+    // Fetch language from map's business_info
+    let language: string | undefined;
+    if (topic.map_id) {
+      const { data: map } = await supabase
+        .from('topical_maps')
+        .select('business_info')
+        .eq('id', topic.map_id)
+        .single();
+
+      if (map?.business_info) {
+        const businessInfo = map.business_info as Record<string, unknown>;
+        language = (businessInfo.language as string) || undefined;
+      }
+    }
+
     // Extract entities from schema data
     const schemaEntities: Array<{ name: string; type: string; wikidata_id?: string }> = [];
 
@@ -454,6 +469,7 @@ export class ContentTransformer {
       title: job.title || topic.title,
       meta_description: brief?.meta_description || '',
       link_url: linkUrl,
+      language,  // Pass language for localized social post generation
       key_takeaways: keyTakeaways,
       schema_entities: schemaEntities,
       contextual_vectors: contextualVectors,

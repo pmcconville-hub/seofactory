@@ -3,6 +3,15 @@
  *
  * Transforms content for Pinterest with keyword-focused
  * descriptions, Rich Pin optimization, and vertical image specs.
+ *
+ * Fully localized - no hardcoded phrases.
+ *
+ * Note: Pinterest is fundamentally different from other social platforms.
+ * It's a visual search engine, not a social feed. Content strategy:
+ * - Keywords > Hashtags (Pinterest indexes keywords, not hashtags)
+ * - Evergreen > Timely (Pins live for months/years)
+ * - Descriptive > Conversational (for search discovery)
+ * - Vertical images > Horizontal (2:3 ratio performs best)
  */
 
 import type {
@@ -12,6 +21,7 @@ import type {
   ImageInstructions,
   PostEAVTriple
 } from '../../../../types/social';
+import { socialLocalization } from '../socialLocalization';
 
 /**
  * Pinterest-specific configuration
@@ -29,13 +39,6 @@ export const PINTEREST_CONFIG = {
 
 /**
  * Pinterest content adapter
- *
- * Note: Pinterest is fundamentally different from other social platforms.
- * It's a visual search engine, not a social feed. Content strategy:
- * - Keywords > Hashtags (Pinterest indexes keywords, not hashtags)
- * - Evergreen > Timely (Pins live for months/years)
- * - Descriptive > Conversational (for search discovery)
- * - Vertical images > Horizontal (2:3 ratio performs best)
  */
 export class PinterestAdapter {
   /**
@@ -48,24 +51,25 @@ export class PinterestAdapter {
       eav?: PostEAVTriple;
     }
   ): SocialPostInput {
+    const lang = source.language;
     let title: string;
     let description: string;
 
     switch (options.template_type) {
       case 'hub_announcement':
-        ({ title, description } = this.createHubPin(source));
+        ({ title, description } = this.createHubPin(source, lang));
         break;
       case 'key_takeaway':
-        ({ title, description } = this.createTakeawayPin(source));
+        ({ title, description } = this.createTakeawayPin(source, lang));
         break;
       case 'entity_spotlight':
-        ({ title, description } = this.createEntityPin(source, options.eav));
+        ({ title, description } = this.createEntityPin(source, options.eav, lang));
         break;
       case 'tip_series':
-        ({ title, description } = this.createTipPin(source));
+        ({ title, description } = this.createTipPin(source, lang));
         break;
       default:
-        ({ title, description } = this.createHubPin(source));
+        ({ title, description } = this.createHubPin(source, lang));
     }
 
     // Combine title and description for content_text
@@ -102,9 +106,10 @@ export class PinterestAdapter {
   /**
    * Create hub/main Pin
    */
-  private createHubPin(source: ArticleTransformationSource): { title: string; description: string } {
+  private createHubPin(source: ArticleTransformationSource, lang?: string): { title: string; description: string } {
     const entity = source.schema_entities[0]?.name;
     const keywords = this.extractKeywords(source);
+    const phrases = socialLocalization.getPhrases(lang);
 
     // Title: Keyword-rich, benefit-focused
     let title = source.title;
@@ -116,13 +121,13 @@ export class PinterestAdapter {
     let description = '';
 
     if (entity) {
-      description += `Learn everything you need to know about ${entity}. `;
+      description += `${socialLocalization.getPhrase('pin_learn_about', lang, { entity })}. `;
     }
 
     // Add key takeaways as benefits
     const takeaways = source.key_takeaways.slice(0, 3);
     if (takeaways.length > 0) {
-      description += 'Discover: ';
+      description += `${phrases.pin_discover}: `;
       description += takeaways.map(t => this.shortenTakeaway(t)).join(' | ');
       description += '. ';
     }
@@ -139,22 +144,23 @@ export class PinterestAdapter {
   /**
    * Create key takeaway Pin
    */
-  private createTakeawayPin(source: ArticleTransformationSource): { title: string; description: string } {
+  private createTakeawayPin(source: ArticleTransformationSource, lang?: string): { title: string; description: string } {
     const takeaway = source.key_takeaways[0] || source.meta_description;
     const entity = source.schema_entities[0]?.name;
     const keywords = this.extractKeywords(source);
+    const phrases = socialLocalization.getPhrases(lang);
 
     // Title: The takeaway itself (if short enough) or a benefit statement
     let title = takeaway.length <= PINTEREST_CONFIG.title_limit
       ? takeaway
       : entity
-        ? `${entity}: Key Insight You Need to Know`
-        : 'Key Insight You Need to Know';
+        ? `${entity}: ${phrases.pin_key_insight}`
+        : phrases.pin_key_insight;
 
     // Description: Expand on the takeaway with keywords
     let description = takeaway;
     if (entity) {
-      description += `\n\nLearn more about ${entity} and related insights.`;
+      description += `\n\n${socialLocalization.getPhrase('pin_learn_about', lang, { entity })}.`;
     }
     description += `\n\n${keywords.join(' | ')}`;
 
@@ -169,13 +175,16 @@ export class PinterestAdapter {
    */
   private createEntityPin(
     source: ArticleTransformationSource,
-    eav?: PostEAVTriple
+    eav?: PostEAVTriple,
+    lang?: string
   ): { title: string; description: string } {
     const keywords = this.extractKeywords(source);
+    const phrases = socialLocalization.getPhrases(lang);
 
     if (eav) {
+      const categoryText = socialLocalization.getCategory(eav.category, lang);
       const title = `${eav.entity}: ${this.formatAttribute(eav.attribute)}`;
-      const description = `${eav.entity} ${this.formatAttribute(eav.attribute)} ${eav.value}.\n\nThis is a ${eav.category?.toLowerCase() || 'key'} fact for anyone interested in ${eav.entity}.\n\n${keywords.join(' | ')}`;
+      const description = `${eav.entity} ${this.formatAttribute(eav.attribute)} ${eav.value}.\n\n${socialLocalization.getPhrase('spotlight_category_fact', lang, { category: categoryText, entity: eav.entity })}\n\n${keywords.join(' | ')}`;
 
       return {
         title: this.optimizeTitle(title),
@@ -185,8 +194,8 @@ export class PinterestAdapter {
 
     const entity = source.schema_entities[0];
     if (entity) {
-      const title = `${entity.name} Guide`;
-      const description = `Complete guide to ${entity.name}. ${source.key_takeaways[0] || source.meta_description}\n\n${keywords.join(' | ')}`;
+      const title = socialLocalization.getPhrase('pin_complete_guide', lang, { entity: entity.name });
+      const description = `${socialLocalization.getPhrase('pin_complete_guide', lang, { entity: entity.name })}. ${source.key_takeaways[0] || source.meta_description}\n\n${keywords.join(' | ')}`;
 
       return {
         title: this.optimizeTitle(title),
@@ -194,21 +203,21 @@ export class PinterestAdapter {
       };
     }
 
-    return this.createHubPin(source);
+    return this.createHubPin(source, lang);
   }
 
   /**
    * Create tip Pin
    */
-  private createTipPin(source: ArticleTransformationSource): { title: string; description: string } {
+  private createTipPin(source: ArticleTransformationSource, lang?: string): { title: string; description: string } {
     const entity = source.schema_entities[0]?.name;
     const takeaways = source.key_takeaways.slice(0, 5);
     const keywords = this.extractKeywords(source);
 
     // Title
     const title = entity
-      ? `${takeaways.length} ${entity} Tips You Need to Know`
-      : `${takeaways.length} Essential Tips`;
+      ? socialLocalization.getPhrase('pin_tips_title', lang, { count: takeaways.length, entity })
+      : socialLocalization.getPhrase('listicle_intro_generic', lang, { count: takeaways.length }).replace(':', '');
 
     // Description: List format with keywords
     let description = '';
@@ -314,10 +323,10 @@ export class PinterestAdapter {
 
     return {
       description: placeholder?.caption
-        ? `Create vertical Pin image: ${placeholder.caption}`
+        ? `${placeholder.caption} (vertical Pin)`
         : entity
-          ? `Create vertical Pin image about ${entity} with text overlay`
-          : `Create vertical Pin image: ${source.title}`,
+          ? `${entity} - vertical Pin image`
+          : `${source.title} (vertical Pin)`,
       alt_text: placeholder?.alt_text || source.title,
       dimensions: {
         width: specs.width,

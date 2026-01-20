@@ -546,6 +546,10 @@ export interface ArticleTransformationSource {
   meta_description: string;
   link_url: string;
 
+  // Language/Region for localized content generation
+  // ISO 639-1 language code (e.g., 'en', 'nl', 'de', 'fr', 'es')
+  language?: string;
+
   // Extracted from content generation
   key_takeaways: string[];
   schema_entities: Array<{
