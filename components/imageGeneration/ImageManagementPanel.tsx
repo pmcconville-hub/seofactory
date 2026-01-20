@@ -275,6 +275,11 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
 
   const hasProviders = availableProviders.length > 0;
 
+  // Check if persistent storage is available
+  const hasCloudinary = !!(businessInfo.cloudinaryCloudName && businessInfo.cloudinaryApiKey);
+  const hasSupabaseStorage = !!supabase; // Supabase Storage bucket may exist
+  const hasPersistentStorage = hasCloudinary || hasSupabaseStorage;
+
   // Stats
   const pendingCount = placeholders.filter(p =>
     p.status === 'placeholder' && !generatedImages.has(p.id) && !errors.has(p.id) && !insertedIds.has(p.id)
@@ -420,6 +425,8 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
           newErrors.delete(placeholder.id);
           return newErrors;
         });
+        // Persist to database so it's not lost on navigation
+        persistGeneratedImage(placeholder.id, result);
       } else if (result.status === 'error') {
         setErrors(e => new Map(e).set(placeholder.id, result.errorMessage || 'Upload failed'));
       }
@@ -429,7 +436,7 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
       setCurrentlyGenerating(null);
       setProgress(null);
     }
-  }, [businessInfo]);
+  }, [businessInfo, persistGeneratedImage]);
 
   const handleSkipSingle = useCallback((placeholder: ImagePlaceholder) => {
     const newDraft = removePlaceholder(draftRef.current, placeholder);
@@ -680,6 +687,14 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
             >
               {showOptions ? '▼' : '▶'} Generation Options
             </button>
+          </div>
+        )}
+
+        {/* Warning: No persistent storage */}
+        {hasProviders && !hasPersistentStorage && (
+          <div className="mt-3 p-3 bg-orange-900/30 border border-orange-700 rounded text-sm text-orange-300">
+            <strong>⚠️ No persistent storage:</strong> Generated images will be lost on page reload.
+            To fix: Configure Cloudinary in Settings, or create a public bucket named "generated-images" in Supabase.
           </div>
         )}
 

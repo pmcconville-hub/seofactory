@@ -10,12 +10,78 @@ import { SupabaseClient } from '@supabase/supabase-js';
 
 export type { ImageGenerationOptions } from './providers/types';
 
+// Storage bucket for generated images
+const IMAGE_STORAGE_BUCKET = 'generated-images';
+
+// Store Supabase client reference for storage uploads
+let supabaseClientRef: SupabaseClient | null = null;
+
 /**
  * Initialize image generation with Supabase client for proxy support
  * Must be called before generating images to enable CORS-free generation
  */
 export function initImageGeneration(supabase: SupabaseClient | null) {
+  supabaseClientRef = supabase;
   setSupabaseClientForImageGen(supabase);
+}
+
+/**
+ * Upload a blob to Supabase Storage and return a public URL
+ * This provides persistent image storage without requiring Cloudinary
+ */
+async function uploadToSupabaseStorage(
+  blob: Blob,
+  placeholder: ImagePlaceholder,
+  businessInfo: BusinessInfo
+): Promise<string | null> {
+  if (!supabaseClientRef) {
+    console.warn('[ImageOrchestrator] No Supabase client available for storage upload');
+    return null;
+  }
+
+  try {
+    // Generate a unique filename
+    const timestamp = Date.now();
+    const entity = (businessInfo.seedKeyword || 'image').toLowerCase().replace(/[^a-z0-9]/gi, '-');
+    const type = placeholder.type.toLowerCase();
+    const ext = blob.type.includes('png') ? 'png' : 'jpg';
+    const filename = `${entity}/${type}-${timestamp}.${ext}`;
+
+    // Upload to Supabase Storage
+    const { data, error } = await supabaseClientRef.storage
+      .from(IMAGE_STORAGE_BUCKET)
+      .upload(filename, blob, {
+        contentType: blob.type,
+        upsert: false,
+        cacheControl: '31536000' // 1 year cache
+      });
+
+    if (error) {
+      // Check if bucket doesn't exist
+      if (error.message.includes('Bucket not found')) {
+        console.warn('[ImageOrchestrator] Storage bucket not found. Images will use temporary URLs.');
+        console.info('[ImageOrchestrator] To enable persistent images, create a public bucket named "generated-images" in Supabase.');
+        return null;
+      }
+      console.error('[ImageOrchestrator] Supabase Storage upload failed:', error.message);
+      return null;
+    }
+
+    // Get the public URL
+    const { data: urlData } = supabaseClientRef.storage
+      .from(IMAGE_STORAGE_BUCKET)
+      .getPublicUrl(filename);
+
+    if (urlData?.publicUrl) {
+      console.log('[ImageOrchestrator] Image uploaded to Supabase Storage:', filename);
+      return urlData.publicUrl;
+    }
+
+    return null;
+  } catch (err) {
+    console.error('[ImageOrchestrator] Supabase Storage upload error:', err);
+    return null;
+  }
 }
 
 // Alias for backwards compatibility
@@ -108,6 +174,7 @@ export async function generateImage(
 
         try {
           if (businessInfo.cloudinaryCloudName && businessInfo.cloudinaryApiKey) {
+            // Priority 1: Cloudinary (if configured)
             const uploadResult = await uploadToCloudinary(
               result.blob,
               businessInfo,
@@ -118,24 +185,38 @@ export async function generateImage(
             );
             finalUrl = uploadResult.secure_url;
           } else {
-            // No Cloudinary - create object URL for preview
-            finalUrl = URL.createObjectURL(result.blob);
+            // Priority 2: Supabase Storage (if available)
+            const supabaseUrl = await uploadToSupabaseStorage(result.blob, placeholder, businessInfo);
+            if (supabaseUrl) {
+              finalUrl = supabaseUrl;
+            } else {
+              // Fallback: Object URL (temporary, won't persist on reload)
+              console.warn('[ImageOrchestrator] No persistent storage available. Image will be lost on page reload.');
+              console.warn('[ImageOrchestrator] Configure Cloudinary or create a "generated-images" bucket in Supabase.');
+              finalUrl = URL.createObjectURL(result.blob);
+            }
           }
         } catch (uploadError) {
-          // Cloudinary upload failed - fall back to object URL for preview
-          // The image was still generated successfully, so don't treat this as a fatal error
+          // Cloud upload failed - try Supabase Storage as fallback
           const uploadErrorMsg = uploadError instanceof Error ? uploadError.message : 'Upload failed';
-          console.warn(`[ImageOrchestrator] Cloudinary upload failed, using object URL instead: ${uploadErrorMsg}`);
+          console.warn(`[ImageOrchestrator] Cloud upload failed: ${uploadErrorMsg}`);
 
           onProgress?.({
             phase: 'uploading',
             provider: provider.name,
             progress: 80,
-            message: 'Using local preview (Cloudinary upload failed)',
+            message: 'Trying backup storage...',
           });
 
-          // Fall back to object URL - the image was generated successfully
-          finalUrl = URL.createObjectURL(result.blob);
+          // Try Supabase Storage as backup
+          const supabaseUrl = await uploadToSupabaseStorage(result.blob, placeholder, businessInfo);
+          if (supabaseUrl) {
+            finalUrl = supabaseUrl;
+          } else {
+            // Final fallback: Object URL (temporary)
+            console.warn('[ImageOrchestrator] All storage options failed, using temporary URL');
+            finalUrl = URL.createObjectURL(result.blob);
+          }
         }
       } else {
         // Shouldn't happen - success but no image data
@@ -219,6 +300,7 @@ export async function uploadImage(
     let height = placeholder.specs.height;
 
     if (businessInfo.cloudinaryCloudName && businessInfo.cloudinaryApiKey) {
+      // Priority 1: Cloudinary
       const uploadResult = await uploadToCloudinary(
         file,
         businessInfo,
@@ -231,8 +313,15 @@ export async function uploadImage(
       width = uploadResult.width;
       height = uploadResult.height;
     } else {
-      // No Cloudinary - use object URL
-      finalUrl = URL.createObjectURL(file);
+      // Priority 2: Supabase Storage
+      const supabaseUrl = await uploadToSupabaseStorage(file, placeholder, businessInfo);
+      if (supabaseUrl) {
+        finalUrl = supabaseUrl;
+      } else {
+        // Fallback: Object URL (temporary, won't persist)
+        console.warn('[ImageOrchestrator] No persistent storage for uploads. Image will be lost on reload.');
+        finalUrl = URL.createObjectURL(file);
+      }
     }
 
     onProgress?.({
