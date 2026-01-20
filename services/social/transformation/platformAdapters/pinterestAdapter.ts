@@ -22,6 +22,11 @@ import type {
   PostEAVTriple
 } from '../../../../types/social';
 import { socialLocalization } from '../socialLocalization';
+import {
+  selectImageForPlatform,
+  needsResizeForPlatform,
+  type ImagePlaceholderExtended
+} from '../imageSelector';
 
 /**
  * Pinterest-specific configuration
@@ -313,27 +318,64 @@ export class PinterestAdapter {
   }
 
   /**
-   * Create image instructions (vertical format)
+   * Create image instructions using optimal image selection (vertical format)
    */
-  private createImageInstructions(source: ArticleTransformationSource): ImageInstructions {
-    const placeholder = source.image_placeholders[0];
+  private createImageInstructions(
+    source: ArticleTransformationSource,
+    options?: { isHub?: boolean; postIndex?: number }
+  ): ImageInstructions {
     const specs = PINTEREST_CONFIG.image_specs.standard;
-
     const entity = source.schema_entities[0]?.name;
 
-    return {
-      description: placeholder?.caption
-        ? `${placeholder.caption} (vertical Pin)`
-        : entity
+    // Convert placeholders to extended format for image selection
+    const extendedPlaceholders: ImagePlaceholderExtended[] = source.image_placeholders.map(p => ({
+      id: p.id,
+      type: p.type || 'SECTION',
+      alt_text: p.alt_text,
+      caption: p.caption,
+      generated_url: p.generated_url,
+      user_upload_url: p.user_upload_url,
+      status: p.status,
+      specs: p.specs
+    }));
+
+    // Use image selector to find optimal image for Pinterest
+    const selected = selectImageForPlatform(extendedPlaceholders, 'pinterest', {
+      preferHub: options?.isHub ?? true,
+      postIndex: options?.postIndex ?? 0
+    });
+
+    if (!selected) {
+      return {
+        description: entity
           ? `${entity} - vertical Pin image`
           : `${source.title} (vertical Pin)`,
-      alt_text: placeholder?.alt_text || source.title,
+        alt_text: source.title,
+        dimensions: {
+          width: specs.width,
+          height: specs.height,
+          aspect_ratio: specs.ratio
+        }
+      };
+    }
+
+    // Check if selected image needs resizing
+    const originalPlaceholder = source.image_placeholders.find(p => p.id === selected.placeholder_id);
+    const needsResize = originalPlaceholder?.specs
+      ? needsResizeForPlatform(originalPlaceholder.specs, 'pinterest')
+      : true;
+
+    return {
+      description: `${selected.description} (vertical Pin)`,
+      alt_text: selected.alt_text,
       dimensions: {
         width: specs.width,
         height: specs.height,
         aspect_ratio: specs.ratio
       },
-      source_placeholder_id: placeholder?.id
+      source_placeholder_id: selected.placeholder_id,
+      image_url: selected.url,
+      needs_resize: needsResize
     };
   }
 

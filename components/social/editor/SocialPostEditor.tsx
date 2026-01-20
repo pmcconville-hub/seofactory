@@ -15,6 +15,8 @@ import { SOCIAL_PLATFORM_CONFIG } from '../../../types/social';
 import { CharacterCounter } from './CharacterCounter';
 import { HashtagEditor } from './HashtagEditor';
 import { ThreadEditor } from './ThreadEditor';
+import { ImageVariationPanel } from './ImageVariationPanel';
+import type { VariationResult } from '../../../services/social/transformation/imageVariationService';
 
 interface SocialPostEditorProps {
   post: SocialPost;
@@ -23,6 +25,7 @@ interface SocialPostEditorProps {
   hashtagSuggestions?: string[];
   onSave?: () => void;
   onCancel?: () => void;
+  onImageVariationGenerated?: (result: VariationResult) => void;
 }
 
 const PLATFORM_CHAR_LIMITS: Record<SocialMediaPlatform, number> = {
@@ -39,7 +42,8 @@ export const SocialPostEditor: React.FC<SocialPostEditorProps> = ({
   complianceReport,
   hashtagSuggestions = [],
   onSave,
-  onCancel
+  onCancel,
+  onImageVariationGenerated
 }) => {
   const [activeTab, setActiveTab] = useState<'content' | 'hashtags' | 'settings'>('content');
 
@@ -173,26 +177,12 @@ export const SocialPostEditor: React.FC<SocialPostEditorProps> = ({
               </div>
             )}
 
-            {/* Image instructions preview */}
-            {post.image_instructions && (
-              <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                <h4 className="text-sm font-medium text-gray-300 mb-2">Image Requirements</h4>
-                <p className="text-sm text-gray-400">{post.image_instructions.description}</p>
-                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                  <span>
-                    {post.image_instructions.dimensions.width} x {post.image_instructions.dimensions.height}
-                  </span>
-                  <span>
-                    {post.image_instructions.dimensions.aspect_ratio}
-                  </span>
-                </div>
-                {post.image_instructions.alt_text && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    <span className="font-medium">Alt text:</span> {post.image_instructions.alt_text}
-                  </p>
-                )}
-              </div>
-            )}
+            {/* Image variation panel */}
+            <ImageVariationPanel
+              platform={post.platform}
+              imageInstructions={post.image_instructions}
+              onVariationGenerated={onImageVariationGenerated}
+            />
 
             {/* Link preview */}
             {post.link_url && (

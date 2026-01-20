@@ -239,8 +239,19 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
       contextual_vectors: contextualVectors,
       image_placeholders: imagePlaceholders.map(p => ({
         id: p.id,
-        description: p.description,
-        alt_text: p.altText || ''
+        type: p.type,
+        alt_text: p.altTextSuggestion || p.description,
+        caption: p.description,
+        generated_url: p.generatedUrl,
+        user_upload_url: p.userUploadUrl,
+        status: p.status,
+        specs: p.specs ? {
+          width: p.specs.width,
+          height: p.specs.height,
+          aspect_ratio: p.specs.width && p.specs.height
+            ? `${p.specs.width}:${p.specs.height}`
+            : undefined
+        } : undefined
       }))
     };
   }, [brief, databaseJobInfo, activeBriefTopic, businessInfo.domain, businessInfo.language, imagePlaceholders]);

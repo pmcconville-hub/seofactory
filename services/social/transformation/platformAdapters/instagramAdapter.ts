@@ -16,6 +16,11 @@ import type {
 } from '../../../../types/social';
 import { hashtagGenerator, type ResolvedEntity } from '../hashtagGenerator';
 import { socialLocalization } from '../socialLocalization';
+import {
+  selectImageForPlatform,
+  needsResizeForPlatform,
+  type ImagePlaceholderExtended
+} from '../imageSelector';
 
 /**
  * Instagram-specific configuration
@@ -297,28 +302,66 @@ export class InstagramAdapter {
   }
 
   /**
-   * Create image instructions
+   * Create image instructions using optimal image selection
    */
   private createImageInstructions(
     source: ArticleTransformationSource,
-    isCarousel: boolean
+    isCarousel: boolean,
+    options?: { isHub?: boolean; postIndex?: number }
   ): ImageInstructions {
-    const placeholder = source.image_placeholders[0];
     const specs = INSTAGRAM_CONFIG.image_specs.portrait;
 
-    const baseDescription = placeholder?.alt_text || source.title;
+    // Convert placeholders to extended format for image selection
+    const extendedPlaceholders: ImagePlaceholderExtended[] = source.image_placeholders.map(p => ({
+      id: p.id,
+      type: p.type || 'SECTION',
+      alt_text: p.alt_text,
+      caption: p.caption,
+      generated_url: p.generated_url,
+      user_upload_url: p.user_upload_url,
+      status: p.status,
+      specs: p.specs
+    }));
+
+    // Use image selector to find optimal image for Instagram
+    const selected = selectImageForPlatform(extendedPlaceholders, 'instagram', {
+      preferHub: options?.isHub ?? true,
+      postIndex: options?.postIndex ?? 0
+    });
+
+    if (!selected) {
+      return {
+        description: isCarousel
+          ? `${source.key_takeaways.length + 2} carousel slides: Cover, ${source.key_takeaways.length} key points, CTA`
+          : source.title,
+        alt_text: source.title,
+        dimensions: {
+          width: specs.width,
+          height: specs.height,
+          aspect_ratio: specs.ratio
+        }
+      };
+    }
+
+    // Check if selected image needs resizing
+    const originalPlaceholder = source.image_placeholders.find(p => p.id === selected.placeholder_id);
+    const needsResize = originalPlaceholder?.specs
+      ? needsResizeForPlatform(originalPlaceholder.specs, 'instagram')
+      : true;
 
     return {
       description: isCarousel
         ? `${source.key_takeaways.length + 2} carousel slides: Cover, ${source.key_takeaways.length} key points, CTA`
-        : `${baseDescription}`,
-      alt_text: placeholder?.alt_text || source.title,
+        : selected.description,
+      alt_text: selected.alt_text,
       dimensions: {
         width: specs.width,
         height: specs.height,
         aspect_ratio: specs.ratio
       },
-      source_placeholder_id: placeholder?.id
+      source_placeholder_id: selected.placeholder_id,
+      image_url: selected.url,
+      needs_resize: needsResize
     };
   }
 

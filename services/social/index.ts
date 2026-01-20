@@ -94,3 +94,30 @@ export { PackageExporter } from './export/packageExporter';
 // Export template services
 export { TemplateService } from './templates/templateService';
 export { DEFAULT_TEMPLATES } from './templates/defaultTemplates';
+
+// Export image services
+export {
+  PLATFORM_IMAGE_REQUIREMENTS,
+  selectImageForPlatform,
+  selectImagesForCampaign,
+  needsResizeForPlatform,
+  getResizeRecommendations,
+  getImageInstructionsText
+} from './transformation/imageSelector';
+
+export {
+  generatePlatformVariation,
+  generateMultiplePlatformVariations,
+  analyzeImageForPlatform,
+  getPlatformImageSummary
+} from './transformation/imageVariationService';
+
+export type {
+  ImagePlaceholderExtended,
+  SelectedImage
+} from './transformation/imageSelector';
+
+export type {
+  VariationOptions,
+  VariationResult
+} from './transformation/imageVariationService';

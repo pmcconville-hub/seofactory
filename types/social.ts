@@ -117,6 +117,8 @@ export interface ImageInstructions {
     aspect_ratio: string;
   };
   source_placeholder_id?: string;
+  image_url?: string;  // Actual image URL if generated/uploaded
+  needs_resize?: boolean;  // True if image needs resizing for platform
 }
 
 /**
@@ -568,6 +570,16 @@ export interface ArticleTransformationSource {
     type: string;
     alt_text: string;
     caption?: string;
+    // Image URLs (when generated or uploaded)
+    generated_url?: string;
+    user_upload_url?: string;
+    status?: 'placeholder' | 'generating' | 'uploaded' | 'generated' | 'error';
+    // Image specifications
+    specs?: {
+      width: number;
+      height: number;
+      aspect_ratio?: string;
+    };
   }>;
 }
 

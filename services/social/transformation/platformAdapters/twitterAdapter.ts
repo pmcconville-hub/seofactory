@@ -17,6 +17,11 @@ import type {
 } from '../../../../types/social';
 import { hashtagGenerator, type ResolvedEntity } from '../hashtagGenerator';
 import { socialLocalization } from '../socialLocalization';
+import {
+  selectImageForPlatform,
+  needsResizeForPlatform,
+  type ImagePlaceholderExtended
+} from '../imageSelector';
 
 /**
  * Twitter-specific configuration
@@ -291,16 +296,33 @@ export class TwitterAdapter {
   }
 
   /**
-   * Create image instructions
+   * Create image instructions using optimal image selection
    */
   private createImageInstructions(
-    source: ArticleTransformationSource
+    source: ArticleTransformationSource,
+    options?: { isHub?: boolean; postIndex?: number }
   ): ImageInstructions | undefined {
-    const placeholder = source.image_placeholders[0];
+    // Convert placeholders to extended format for image selection
+    const extendedPlaceholders: ImagePlaceholderExtended[] = source.image_placeholders.map(p => ({
+      id: p.id,
+      type: p.type || 'SECTION',
+      alt_text: p.alt_text,
+      caption: p.caption,
+      generated_url: p.generated_url,
+      user_upload_url: p.user_upload_url,
+      status: p.status,
+      specs: p.specs
+    }));
 
-    if (!placeholder) {
+    // Use image selector to find optimal image for Twitter
+    const selected = selectImageForPlatform(extendedPlaceholders, 'twitter', {
+      preferHub: options?.isHub ?? true,
+      postIndex: options?.postIndex ?? 0
+    });
+
+    if (!selected) {
       return {
-        description: `${source.title}`,
+        description: source.title,
         alt_text: source.title,
         dimensions: {
           width: TWITTER_CONFIG.image_specs.card.width,
@@ -310,15 +332,23 @@ export class TwitterAdapter {
       };
     }
 
+    // Check if selected image needs resizing
+    const originalPlaceholder = source.image_placeholders.find(p => p.id === selected.placeholder_id);
+    const needsResize = originalPlaceholder?.specs
+      ? needsResizeForPlatform(originalPlaceholder.specs, 'twitter')
+      : true;
+
     return {
-      description: placeholder.caption || placeholder.alt_text,
-      alt_text: placeholder.alt_text,
+      description: selected.description,
+      alt_text: selected.alt_text,
       dimensions: {
-        width: TWITTER_CONFIG.image_specs.card.width,
-        height: TWITTER_CONFIG.image_specs.card.height,
-        aspect_ratio: '1.91:1'
+        width: selected.recommended_dimensions.width,
+        height: selected.recommended_dimensions.height,
+        aspect_ratio: selected.aspect_ratio
       },
-      source_placeholder_id: placeholder.id
+      source_placeholder_id: selected.placeholder_id,
+      image_url: selected.url,
+      needs_resize: needsResize
     };
   }
 
