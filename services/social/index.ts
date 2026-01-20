@@ -121,3 +121,22 @@ export type {
   VariationOptions,
   VariationResult
 } from './transformation/imageVariationService';
+
+// Export AI enhancement services
+export {
+  generateAIHashtags,
+  generateAIContent,
+  generateAIMentions,
+  generateAIPostingTime,
+  enhanceSocialPost,
+  applyEnhancementsToPost
+} from './ai/socialContentEnhancer';
+
+export type {
+  EnhancementOptions,
+  AIHashtagResult,
+  AIContentResult,
+  AIMentionsResult,
+  AIPostingTimeResult,
+  AIEnhancementResult
+} from './ai/socialContentEnhancer';

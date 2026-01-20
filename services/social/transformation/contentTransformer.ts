@@ -18,6 +18,7 @@ import type {
   PlatformPostingGuide,
   EntityHashtagMapping
 } from '../../../types/social';
+import type { BusinessInfo } from '../../../types';
 import { hubSpokeOrchestrator, type HubSpokePlan } from './hubSpokeOrchestrator';
 import { utmGenerator } from './utmGenerator';
 import { hashtagGenerator } from './hashtagGenerator';
@@ -28,6 +29,16 @@ import { facebookAdapter } from './platformAdapters/facebookAdapter';
 import { instagramAdapter } from './platformAdapters/instagramAdapter';
 import { pinterestAdapter } from './platformAdapters/pinterestAdapter';
 import { verifiedInsert } from '../../verifiedDatabaseService';
+import {
+  generateAIHashtags,
+  generateAIContent,
+  generateAIMentions,
+  generateAIPostingTime,
+  type AIHashtagResult,
+  type AIContentResult,
+  type AIMentionsResult,
+  type AIPostingTimeResult
+} from '../ai/socialContentEnhancer';
 
 /**
  * Content transformer for social media posts
@@ -35,6 +46,7 @@ import { verifiedInsert } from '../../verifiedDatabaseService';
 export class ContentTransformer {
   private supabase: SupabaseClient;
   private userId: string;
+  private businessInfo: BusinessInfo | null = null;
 
   constructor(supabase: SupabaseClient, userId: string) {
     this.supabase = supabase;
@@ -49,8 +61,8 @@ export class ContentTransformer {
     config: TransformationConfig
   ): Promise<TransformationResult> {
     try {
-      // Load platform guides and hashtag mappings
-      await this.loadResources(source);
+      // Load platform guides, hashtag mappings, and businessInfo
+      await this.loadResources(source, config.useAI);
 
       // Create hub-spoke plan
       const plan = hubSpokeOrchestrator.createPlan(source, config);
@@ -64,7 +76,7 @@ export class ContentTransformer {
       // Create campaign record
       const campaign = await this.createCampaign(source, config, plan);
 
-      // Generate posts
+      // Generate posts (with AI enhancement if enabled)
       const posts = await this.generatePosts(source, config, plan, campaign);
 
       return {
@@ -82,9 +94,9 @@ export class ContentTransformer {
   }
 
   /**
-   * Load platform guides and hashtag mappings
+   * Load platform guides, hashtag mappings, and optionally businessInfo for AI
    */
-  private async loadResources(source: ArticleTransformationSource): Promise<void> {
+  private async loadResources(source: ArticleTransformationSource, loadBusinessInfo?: boolean): Promise<void> {
     // Load platform guides
     const { data: guides } = await this.supabase
       .from('platform_posting_guides')
@@ -109,6 +121,19 @@ export class ContentTransformer {
 
       if (mappings) {
         hashtagGenerator.loadMappings(mappings as EntityHashtagMapping[]);
+      }
+
+      // Load businessInfo for AI if enabled
+      if (loadBusinessInfo) {
+        const { data: map } = await this.supabase
+          .from('topical_maps')
+          .select('business_info')
+          .eq('id', topic.map_id)
+          .single();
+
+        if (map?.business_info) {
+          this.businessInfo = map.business_info as BusinessInfo;
+        }
       }
     }
   }
@@ -160,20 +185,147 @@ export class ContentTransformer {
     campaign: SocialCampaign
   ): Promise<SocialPost[]> {
     const posts: SocialPost[] = [];
+    const useAI = config.useAI && this.businessInfo;
+    const aiEnhancements = config.aiEnhancements || {
+      generateHashtags: true,
+      generateContent: true,
+      suggestMentions: true,
+      suggestPostingTime: true
+    };
 
     // Generate hub post
-    const hubPostInput = this.generatePostInput(source, config, plan.hub, campaign);
+    let hubPostInput = this.generatePostInput(source, config, plan.hub, campaign);
+
+    // Apply AI enhancements if enabled
+    if (useAI) {
+      hubPostInput = await this.applyAIEnhancements(
+        hubPostInput,
+        source,
+        plan.hub.template_type,
+        true,
+        aiEnhancements
+      );
+    }
+
     const hubPost = await this.savePost(hubPostInput, campaign.id);
     posts.push(hubPost);
 
     // Generate spoke posts
     for (const spokePlan of plan.spokes) {
-      const spokePostInput = this.generatePostInput(source, config, spokePlan, campaign);
+      let spokePostInput = this.generatePostInput(source, config, spokePlan, campaign);
+
+      // Apply AI enhancements if enabled
+      if (useAI) {
+        spokePostInput = await this.applyAIEnhancements(
+          spokePostInput,
+          source,
+          spokePlan.template_type,
+          false,
+          aiEnhancements
+        );
+      }
+
       const spokePost = await this.savePost(spokePostInput, campaign.id);
       posts.push(spokePost);
     }
 
     return posts;
+  }
+
+  /**
+   * Apply AI enhancements to a post input
+   */
+  private async applyAIEnhancements(
+    postInput: SocialPostInput,
+    source: ArticleTransformationSource,
+    templateType: string,
+    isHub: boolean,
+    options: {
+      generateHashtags?: boolean;
+      generateContent?: boolean;
+      suggestMentions?: boolean;
+      suggestPostingTime?: boolean;
+    }
+  ): Promise<SocialPostInput> {
+    if (!this.businessInfo) {
+      console.warn('[ContentTransformer] No businessInfo available for AI enhancements');
+      return postInput;
+    }
+
+    const enhancementOptions = {
+      platform: postInput.platform,
+      source,
+      businessInfo: this.businessInfo,
+      existingContent: postInput.content_text,
+      templateType,
+      isHub
+    };
+
+    try {
+      // Run AI enhancements in parallel for efficiency
+      const promises: Promise<unknown>[] = [];
+      let hashtagsPromise: Promise<AIHashtagResult> | null = null;
+      let contentPromise: Promise<AIContentResult> | null = null;
+      let mentionsPromise: Promise<AIMentionsResult> | null = null;
+      let postingTimePromise: Promise<AIPostingTimeResult> | null = null;
+
+      if (options.generateHashtags) {
+        hashtagsPromise = generateAIHashtags(enhancementOptions);
+        promises.push(hashtagsPromise);
+      }
+
+      if (options.generateContent) {
+        contentPromise = generateAIContent(enhancementOptions);
+        promises.push(contentPromise);
+      }
+
+      if (options.suggestMentions) {
+        mentionsPromise = generateAIMentions(enhancementOptions);
+        promises.push(mentionsPromise);
+      }
+
+      if (options.suggestPostingTime) {
+        postingTimePromise = generateAIPostingTime(enhancementOptions);
+        promises.push(postingTimePromise);
+      }
+
+      // Wait for all AI calls
+      await Promise.all(promises);
+
+      // Apply results
+      let enhancedInput = { ...postInput };
+
+      if (hashtagsPromise) {
+        const hashtags = await hashtagsPromise;
+        enhancedInput.hashtags = [
+          ...hashtags.primary,
+          ...hashtags.trending,
+          ...hashtags.niche,
+          ...hashtags.branded
+        ];
+      }
+
+      if (contentPromise) {
+        const content = await contentPromise;
+        // Use AI-generated content, preserving hashtags at the end
+        const hashtagText = enhancedInput.hashtags?.map(h => `#${h}`).join(' ') || '';
+        enhancedInput.content_text = content.fullContent + (hashtagText ? `\n\n${hashtagText}` : '');
+      }
+
+      if (mentionsPromise) {
+        const mentions = await mentionsPromise;
+        enhancedInput.mentions = mentions.suggested.map(m => m.handle);
+      }
+
+      // Note: posting time is saved in the savePost method from instructionGenerator
+      // For AI-enhanced posting time, we'd need to update the savePost method
+
+      console.log(`[ContentTransformer] AI enhancements applied for ${postInput.platform} (hub: ${isHub})`);
+      return enhancedInput;
+    } catch (error) {
+      console.error('[ContentTransformer] AI enhancement failed, using original content:', error);
+      return postInput;
+    }
   }
 
   /**

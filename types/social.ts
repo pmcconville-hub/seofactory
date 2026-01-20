@@ -603,6 +603,18 @@ export interface TransformationConfig {
   utm_campaign?: string;
   include_hashtags: boolean;
   max_spoke_posts: number;  // Default 7
+
+  /**
+   * AI Enhancement Options
+   * When enabled, uses AI to generate smarter content, hashtags, and recommendations
+   */
+  useAI?: boolean;  // Enable AI-powered content generation (default: false for backward compatibility)
+  aiEnhancements?: {
+    generateHashtags?: boolean;   // AI-generate contextual hashtags
+    generateContent?: boolean;    // AI-generate engaging post content
+    suggestMentions?: boolean;    // AI-suggest relevant accounts to mention
+    suggestPostingTime?: boolean; // AI-recommend optimal posting times
+  };
 }
 
 /**

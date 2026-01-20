@@ -79,6 +79,13 @@ export const TransformToSocialModal: React.FC<TransformToSocialModalProps> = ({
   const [includeHashtags, setIncludeHashtags] = useState(true);
   const [maxSpokePosts, setMaxSpokePosts] = useState(7);
 
+  // AI Enhancement options
+  const [useAI, setUseAI] = useState(true);  // Enable AI by default
+  const [aiGenerateHashtags, setAiGenerateHashtags] = useState(true);
+  const [aiGenerateContent, setAiGenerateContent] = useState(true);
+  const [aiSuggestMentions, setAiSuggestMentions] = useState(true);
+  const [aiSuggestPostingTime, setAiSuggestPostingTime] = useState(true);
+
   const [generatedCampaign, setGeneratedCampaign] = useState<SocialCampaign | null>(null);
   const [generatedPosts, setGeneratedPosts] = useState<SocialPost[]>([]);
   const [complianceReport, setComplianceReport] = useState<CampaignComplianceReport | null>(null);
@@ -120,7 +127,14 @@ export const TransformToSocialModal: React.FC<TransformToSocialModalProps> = ({
             hub_platform: hubPlatform,
             utm_campaign: utmCampaign,
             include_hashtags: includeHashtags,
-            max_spoke_posts: maxSpokePosts
+            max_spoke_posts: maxSpokePosts,
+            useAI,
+            aiEnhancements: useAI ? {
+              generateHashtags: aiGenerateHashtags,
+              generateContent: aiGenerateContent,
+              suggestMentions: aiSuggestMentions,
+              suggestPostingTime: aiSuggestPostingTime
+            } : undefined
           };
 
           const result = await onTransform(config);
@@ -145,7 +159,7 @@ export const TransformToSocialModal: React.FC<TransformToSocialModalProps> = ({
         onClose();
         break;
     }
-  }, [step, selections, hubPlatform, utmCampaign, includeHashtags, maxSpokePosts, onTransform, onComplete, onClose]);
+  }, [step, selections, hubPlatform, utmCampaign, includeHashtags, maxSpokePosts, useAI, aiGenerateHashtags, aiGenerateContent, aiSuggestMentions, aiSuggestPostingTime, onTransform, onComplete, onClose]);
 
   const handleBack = useCallback(() => {
     switch (step) {
@@ -361,6 +375,74 @@ export const TransformToSocialModal: React.FC<TransformToSocialModalProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* AI Enhancement Options */}
+            <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 rounded-lg p-4 border border-purple-500/30 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
+                    <circle cx="7.5" cy="14.5" r="1" fill="currentColor" />
+                    <circle cx="16.5" cy="14.5" r="1" fill="currentColor" />
+                  </svg>
+                  <h4 className="text-sm font-semibold text-purple-300">AI Enhancement</h4>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useAI}
+                    onChange={(e) => setUseAI(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                </label>
+              </div>
+
+              <p className="text-xs text-gray-400">
+                Use AI to generate smarter, more engaging content with contextual hashtags and recommendations.
+              </p>
+
+              {useAI && (
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-purple-500/20">
+                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={aiGenerateContent}
+                      onChange={(e) => setAiGenerateContent(e.target.checked)}
+                      className="rounded border-gray-600 bg-gray-800 text-purple-500 focus:ring-purple-500"
+                    />
+                    Generate content
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={aiGenerateHashtags}
+                      onChange={(e) => setAiGenerateHashtags(e.target.checked)}
+                      className="rounded border-gray-600 bg-gray-800 text-purple-500 focus:ring-purple-500"
+                    />
+                    Generate hashtags
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={aiSuggestMentions}
+                      onChange={(e) => setAiSuggestMentions(e.target.checked)}
+                      className="rounded border-gray-600 bg-gray-800 text-purple-500 focus:ring-purple-500"
+                    />
+                    Suggest mentions
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={aiSuggestPostingTime}
+                      onChange={(e) => setAiSuggestPostingTime(e.target.checked)}
+                      className="rounded border-gray-600 bg-gray-800 text-purple-500 focus:ring-purple-500"
+                    />
+                    Suggest posting time
+                  </label>
+                </div>
+              )}
+            </div>
           </div>
         );
 
@@ -372,6 +454,14 @@ export const TransformToSocialModal: React.FC<TransformToSocialModalProps> = ({
             <p className="text-sm text-gray-400 mt-2">
               Creating {selections.reduce((sum, s) => sum + s.post_count, 0)} posts across {selections.length} platforms
             </p>
+            {useAI && (
+              <p className="text-xs text-purple-400 mt-3 flex items-center justify-center gap-1">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
+                </svg>
+                Using AI to enhance content and hashtags
+              </p>
+            )}
           </div>
         );
 
