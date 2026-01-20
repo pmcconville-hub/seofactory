@@ -123,10 +123,12 @@ export class FacebookAdapter {
     // Add key points
     if (takeaways.length > 0) {
       content += takeaways.map(t => `✓ ${t}`).join('\n');
-      content += '\n\n';
     }
 
-    content += `${phrases.connector_read_full} 👉 ${source.link_url}`;
+    // Add link if available
+    if (source.link_url) {
+      content += `\n\n${phrases.connector_read_full} 👉 ${source.link_url}`;
+    }
 
     return content;
   }
@@ -145,8 +147,11 @@ export class FacebookAdapter {
       content = `${socialLocalization.getPhrase('takeaway_intro_with_entity', lang, { entity })}\n\n`;
     }
 
-    content += `"${takeaway}"\n\n`;
-    content += `${phrases.connector_get_details}: ${source.link_url}`;
+    content += `"${takeaway}"`;
+
+    if (source.link_url) {
+      content += `\n\n${phrases.connector_get_details}: ${source.link_url}`;
+    }
 
     return content;
   }
@@ -163,12 +168,20 @@ export class FacebookAdapter {
 
     if (eav) {
       const categoryText = socialLocalization.getCategory(eav.category, lang);
-      return `${phrases.question_did_you_know}\n\n${eav.entity} ${this.formatAttribute(eav.attribute)} ${eav.value}.\n\n${socialLocalization.getPhrase('spotlight_category_fact', lang, { category: categoryText, entity: eav.entity })}\n\n${phrases.hub_cta_learn_more}: ${source.link_url}`;
+      let content = `${phrases.question_did_you_know}\n\n${eav.entity} ${this.formatAttribute(eav.attribute)} ${eav.value}.\n\n${socialLocalization.getPhrase('spotlight_category_fact', lang, { category: categoryText, entity: eav.entity })}`;
+      if (source.link_url) {
+        content += `\n\n${phrases.hub_cta_learn_more}: ${source.link_url}`;
+      }
+      return content;
     }
 
     const entity = source.schema_entities[0];
     if (entity) {
-      return `${socialLocalization.getPhrase('spotlight_intro', lang, { entity: entity.name })}\n\n${source.key_takeaways[0] || source.meta_description}\n\n${phrases.hub_cta_full_analysis}: ${source.link_url}`;
+      let content = `${socialLocalization.getPhrase('spotlight_intro', lang, { entity: entity.name })}\n\n${source.key_takeaways[0] || source.meta_description}`;
+      if (source.link_url) {
+        content += `\n\n${phrases.hub_cta_full_analysis}: ${source.link_url}`;
+      }
+      return content;
     }
 
     return this.createHubPost(source, lang);
@@ -185,7 +198,13 @@ export class FacebookAdapter {
       ? socialLocalization.getPhrase('question_common_misconception', lang, { entity })
       : phrases.question_what_if;
 
-    return `${question}\n\n${phrases.engagement_comment} 👇\n\n${phrases.connector_get_details}: ${source.link_url}`;
+    let content = `${question}\n\n${phrases.engagement_comment} 👇`;
+
+    if (source.link_url) {
+      content += `\n\n${phrases.connector_get_details}: ${source.link_url}`;
+    }
+
+    return content;
   }
 
   /**

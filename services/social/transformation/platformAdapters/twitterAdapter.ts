@@ -129,11 +129,13 @@ export class TwitterAdapter {
       });
     });
 
-    // Final tweet: CTA with link
-    thread.push({
-      index: thread.length,
-      text: this.fitToLimit(`${phrases.thread_cta} 👇\n\n${source.link_url}`)
-    });
+    // Final tweet: CTA with link (only if link provided)
+    if (source.link_url) {
+      thread.push({
+        index: thread.length,
+        text: this.fitToLimit(`${phrases.thread_cta} 👇\n\n${source.link_url}`)
+      });
+    }
 
     return thread;
   }
@@ -187,11 +189,11 @@ export class TwitterAdapter {
       ? takeaway.substring(0, 147) + '...'
       : takeaway;
 
-    if (entity) {
-      return `${entity}: ${shortTakeaway}\n\n👇 ${source.link_url}`;
-    }
+    const mainContent = entity ? `${entity}: ${shortTakeaway}` : shortTakeaway;
 
-    return `${shortTakeaway}\n\n👇 ${source.link_url}`;
+    return source.link_url
+      ? `${mainContent}\n\n👇 ${source.link_url}`
+      : mainContent;
   }
 
   /**
@@ -203,7 +205,9 @@ export class TwitterAdapter {
       ? takeaway.substring(0, 197) + '...'
       : takeaway;
 
-    return `${shortTakeaway}\n\n${source.link_url}`;
+    return source.link_url
+      ? `${shortTakeaway}\n\n${source.link_url}`
+      : shortTakeaway;
   }
 
   /**
@@ -217,7 +221,10 @@ export class TwitterAdapter {
     const phrases = socialLocalization.getPhrases(lang);
 
     if (eav) {
-      return `${eav.entity} ${this.formatAttribute(eav.attribute)} ${eav.value}.\n\n${phrases.connector_more_details}: ${source.link_url}`;
+      const mainContent = `${eav.entity} ${this.formatAttribute(eav.attribute)} ${eav.value}.`;
+      return source.link_url
+        ? `${mainContent}\n\n${phrases.connector_more_details}: ${source.link_url}`
+        : mainContent;
     }
 
     const entity = source.schema_entities[0];
@@ -227,7 +234,10 @@ export class TwitterAdapter {
         ? takeaway.substring(0, 147) + '...'
         : takeaway;
 
-      return `${entity.name}: ${shortTakeaway || phrases.hub_cta_learn_more}\n\n${source.link_url}`;
+      const mainContent = `${entity.name}: ${shortTakeaway || phrases.hub_cta_learn_more}`;
+      return source.link_url
+        ? `${mainContent}\n\n${source.link_url}`
+        : mainContent;
     }
 
     return this.createHubTweet(source, lang);
@@ -244,7 +254,11 @@ export class TwitterAdapter {
       ? socialLocalization.getPhrase('question_biggest_question', lang, { entity })
       : phrases.question_did_you_know;
 
-    return `${question}\n\n${phrases.question_surprise} 👇\n\n${source.link_url}`;
+    const mainContent = `${question}\n\n${phrases.question_surprise}`;
+
+    return source.link_url
+      ? `${mainContent} 👇\n\n${source.link_url}`
+      : mainContent;
   }
 
   /**

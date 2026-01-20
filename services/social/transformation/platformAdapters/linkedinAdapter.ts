@@ -36,6 +36,27 @@ export const LINKEDIN_CONFIG = {
  */
 export class LinkedInAdapter {
   /**
+   * Format CTA with link - only includes link if provided
+   */
+  private formatCtaWithLink(cta: string, linkUrl: string | undefined): string {
+    if (!linkUrl) {
+      // Return just the CTA without a link
+      return cta;
+    }
+    return `${cta}: ${linkUrl}`;
+  }
+
+  /**
+   * Append link section to content - only if link provided
+   */
+  private appendLinkSection(content: string, cta: string, linkUrl: string | undefined): string {
+    if (!linkUrl) {
+      return content;
+    }
+    return `${content}\n\n${cta}\n\n${linkUrl}`;
+  }
+
+  /**
    * Transform article to LinkedIn post
    */
   transformFromArticle(
@@ -117,16 +138,14 @@ export class LinkedInAdapter {
     // Key points as bullet points
     const keyPoints = this.formatKeyTakeaways(source.key_takeaways.slice(0, 3));
 
-    // CTA
+    // CTA with link (only if link provided)
     const cta = phrases.hub_cta_read_more;
 
-    return `${hookLine}
+    const mainContent = `${hookLine}
 
-${keyPoints}
+${keyPoints}`;
 
-${cta}
-
-${source.link_url}`;
+    return this.appendLinkSection(mainContent, cta, source.link_url);
   }
 
   /**
@@ -141,11 +160,13 @@ ${source.link_url}`;
       ? socialLocalization.getPhrase('takeaway_intro_with_entity', lang, { entity: mainEntity })
       : phrases.takeaway_intro_generic;
 
-    return `${intro}
+    const mainContent = `${intro}
 
-${takeaway}
+${takeaway}`;
 
-${phrases.connector_read_full}: ${source.link_url}`;
+    return source.link_url
+      ? `${mainContent}\n\n${phrases.connector_read_full}: ${source.link_url}`
+      : mainContent;
   }
 
   /**
@@ -162,22 +183,26 @@ ${phrases.connector_read_full}: ${source.link_url}`;
       // Fallback to first entity
       const entity = source.schema_entities[0];
       if (entity) {
-        return `${socialLocalization.getPhrase('spotlight_intro', lang, { entity: entity.name })}
+        const mainContent = `${socialLocalization.getPhrase('spotlight_intro', lang, { entity: entity.name })}
 
-${source.key_takeaways[0] || source.meta_description}
+${source.key_takeaways[0] || source.meta_description}`;
 
-${phrases.hub_cta_learn_more}: ${source.link_url}`;
+        return source.link_url
+          ? `${mainContent}\n\n${phrases.hub_cta_learn_more}: ${source.link_url}`
+          : mainContent;
       }
       return this.createKeyTakeaway(source, lang);
     }
 
     const categoryText = socialLocalization.getCategory(eav.category, lang);
 
-    return `${socialLocalization.getPhrase('spotlight_fact_intro', lang, { entity: eav.entity })} ${this.formatAttribute(eav.attribute)} ${eav.value}.
+    const mainContent = `${socialLocalization.getPhrase('spotlight_fact_intro', lang, { entity: eav.entity })} ${this.formatAttribute(eav.attribute)} ${eav.value}.
 
-${socialLocalization.getPhrase('spotlight_category_fact', lang, { category: categoryText, entity: eav.entity })}
+${socialLocalization.getPhrase('spotlight_category_fact', lang, { category: categoryText, entity: eav.entity })}`;
 
-${phrases.hub_cta_deep_dive}: ${source.link_url}`;
+    return source.link_url
+      ? `${mainContent}\n\n${phrases.hub_cta_deep_dive}: ${source.link_url}`
+      : mainContent;
   }
 
   /**
@@ -192,13 +217,15 @@ ${phrases.hub_cta_deep_dive}: ${source.link_url}`;
       ? socialLocalization.getPhrase('question_common_misconception', lang, { entity })
       : phrases.question_what_if;
 
-    return `${question}
+    const mainContent = `${question}
 
 ${phrases.question_surprise}
 
-${takeaway}
+${takeaway}`;
 
-${phrases.hub_cta_full_analysis}: ${source.link_url}`;
+    return source.link_url
+      ? `${mainContent}\n\n${phrases.hub_cta_full_analysis}: ${source.link_url}`
+      : mainContent;
   }
 
   /**

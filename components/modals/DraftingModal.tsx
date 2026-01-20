@@ -209,10 +209,23 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
       category: cv.category || 'COMMON'
     }));
 
-    // Build the article URL - using the slug from brief or topic
-    const slug = slugify(brief.title || activeBriefTopic.topic || 'article');
-    const baseUrl = businessInfo.website || 'https://example.com';
-    const linkUrl = `${baseUrl.replace(/\/$/, '')}/${slug}`;
+    // Build the article URL - prefer topic slug, then generate from title
+    // Use actual slug from topic if available, otherwise generate from title
+    const slug = activeBriefTopic.slug ||
+                 activeBriefTopic.url_slug_hint ||
+                 slugify(brief.title || activeBriefTopic.topic || '');
+
+    // Build URL from domain - domain should include protocol (e.g., "https://example.com")
+    // If domain doesn't include protocol, add https://
+    let baseUrl = '';
+    if (businessInfo.domain) {
+      baseUrl = businessInfo.domain.startsWith('http')
+        ? businessInfo.domain
+        : `https://${businessInfo.domain}`;
+    }
+
+    // Only create link_url if we have both domain and slug
+    const linkUrl = baseUrl && slug ? `${baseUrl.replace(/\/$/, '')}/${slug}` : '';
 
     return {
       job_id: databaseJobInfo.jobId,
@@ -220,6 +233,7 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
       title: brief.title || activeBriefTopic.topic || 'Untitled',
       meta_description: brief.metaDescription || '',
       link_url: linkUrl,
+      language: businessInfo.language || undefined,
       key_takeaways: keyTakeaways,
       schema_entities: schemaEntities,
       contextual_vectors: contextualVectors,
@@ -229,7 +243,7 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
         alt_text: p.altText || ''
       }))
     };
-  }, [brief, databaseJobInfo, activeBriefTopic, businessInfo.website, imagePlaceholders]);
+  }, [brief, databaseJobInfo, activeBriefTopic, businessInfo.domain, businessInfo.language, imagePlaceholders]);
 
   // Handler for social media transformation
   const handleSocialTransform = useCallback(async (config: TransformationConfig): Promise<{
