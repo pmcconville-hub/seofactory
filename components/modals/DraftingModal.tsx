@@ -225,52 +225,102 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
   // Report generation hook
   const reportHook = useArticleDraftReport(minimalJob, brief);
 
-  // Parse image placeholders from draft content and merge with database URLs
-  // Pass brief title to pre-fill HERO image text overlay
+  // Build comprehensive image list combining:
+  // 1. Pending placeholders from draft ([IMAGE:...] patterns)
+  // 2. Generated images from database (stored in job.image_placeholders)
+  // 3. Already-inserted images in draft (![alt](url) patterns)
+  // This ensures Images tab shows all article images as assets, not just pending placeholders
   const imagePlaceholders = useMemo(() => {
-    if (!draftContent) return [];
+    const result: ImagePlaceholder[] = [];
+    const seenIds = new Set<string>();
+    const seenUrls = new Set<string>();
 
-    // Parse placeholders from current draft content
-    const parsed = extractPlaceholdersFromDraft(draftContent, { heroTitle: brief?.title });
-
-    // Merge with database-stored URLs (from generated images)
+    // Source 1: Database-stored generated images (highest priority - these are assets)
     const dbPlaceholders = databaseJobInfo?.imagePlaceholders || [];
-    if (dbPlaceholders.length === 0) return parsed;
-
-    // Create a map for quick lookup by ID and by description prefix
-    const dbUrlMap = new Map<string, ImagePlaceholder>();
-    const dbDescMap = new Map<string, ImagePlaceholder>();
     for (const dbp of dbPlaceholders) {
-      if (dbp.generatedUrl || dbp.userUploadUrl) {
-        dbUrlMap.set(dbp.id, dbp);
-        // Also index by first 50 chars of description for fuzzy matching
-        if (dbp.description) {
-          dbDescMap.set(dbp.description.slice(0, 50).toLowerCase(), dbp);
+      if (dbp.id && !seenIds.has(dbp.id)) {
+        seenIds.add(dbp.id);
+        if (dbp.generatedUrl) seenUrls.add(dbp.generatedUrl);
+        if (dbp.userUploadUrl) seenUrls.add(dbp.userUploadUrl);
+        result.push({
+          ...dbp,
+          status: (dbp.generatedUrl || dbp.userUploadUrl) ? 'generated' as const : dbp.status,
+        });
+      }
+    }
+
+    // Source 2: Parse [IMAGE:...] placeholders from draft (pending images)
+    if (draftContent) {
+      const parsed = extractPlaceholdersFromDraft(draftContent, { heroTitle: brief?.title });
+      for (const p of parsed) {
+        if (!seenIds.has(p.id)) {
+          seenIds.add(p.id);
+          // Check if this placeholder has a matching DB entry by description
+          const descKey = p.description?.slice(0, 50).toLowerCase();
+          const dbMatch = dbPlaceholders.find(dbp =>
+            dbp.description?.slice(0, 50).toLowerCase() === descKey &&
+            (dbp.generatedUrl || dbp.userUploadUrl)
+          );
+          if (dbMatch) {
+            result.push({
+              ...p,
+              generatedUrl: dbMatch.generatedUrl,
+              userUploadUrl: dbMatch.userUploadUrl,
+              status: 'generated' as const,
+              metadata: dbMatch.metadata,
+            });
+          } else {
+            result.push(p);
+          }
         }
       }
     }
 
-    // Merge URLs into parsed placeholders
-    return parsed.map(p => {
-      // Try exact ID match first
-      let dbMatch = dbUrlMap.get(p.id);
+    // Source 3: Extract already-inserted markdown images from draft (![alt](url))
+    // These are images that were inserted and should remain as article assets
+    if (draftContent) {
+      const markdownImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+      let match;
+      let insertedIndex = 0;
+      while ((match = markdownImageRegex.exec(draftContent)) !== null) {
+        const altText = match[1];
+        const url = match[2];
+        // Skip blob/data URLs (temporary) and already-seen URLs
+        if (url.startsWith('blob:') || url.startsWith('data:') || seenUrls.has(url)) {
+          continue;
+        }
+        seenUrls.add(url);
 
-      // Fallback to description prefix match
-      if (!dbMatch && p.description) {
-        dbMatch = dbDescMap.get(p.description.slice(0, 50).toLowerCase());
-      }
+        // Create an image entry for this inserted image
+        const insertedId = `inserted_${insertedIndex++}`;
+        if (!seenIds.has(insertedId)) {
+          // Determine type based on position and alt text
+          const isFirst = insertedIndex === 1 && match.index < 500;
+          const type = isFirst ? 'HERO' : 'SECTION';
 
-      if (dbMatch) {
-        return {
-          ...p,
-          generatedUrl: dbMatch.generatedUrl || p.generatedUrl,
-          userUploadUrl: dbMatch.userUploadUrl || p.userUploadUrl,
-          status: (dbMatch.generatedUrl || dbMatch.userUploadUrl) ? 'generated' as const : p.status,
-          metadata: dbMatch.metadata || p.metadata,
-        };
+          result.push({
+            id: insertedId,
+            type: type as any,
+            position: match.index,
+            description: altText || 'Inserted image',
+            altTextSuggestion: altText,
+            status: 'generated',
+            generatedUrl: url,
+            specs: {
+              width: type === 'HERO' ? 1200 : 800,
+              height: type === 'HERO' ? 630 : 600,
+              format: 'webp',
+            },
+            metadata: {
+              altText,
+              filename: url.split('/').pop() || 'image',
+            },
+          });
+        }
       }
-      return p;
-    });
+    }
+
+    return result;
   }, [draftContent, brief?.title, databaseJobInfo?.imagePlaceholders]);
 
   // Build source data for social media transformation
@@ -2868,18 +2918,23 @@ ${schemaScript}`;
                                         )} />
                                     </div>
 
-                                    {/* All Image Placeholders Summary */}
+                                    {/* All Article Images Summary */}
                                     {imagePlaceholders.length > 0 && (
                                         <div className="mt-8 pt-6 border-t border-gray-700">
                                             <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                                 </svg>
-                                                Image Placeholders ({imagePlaceholders.length})
+                                                Article Images ({imagePlaceholders.length})
                                             </h3>
                                             <div className="space-y-2">
-                                                {imagePlaceholders.map((img, i) => (
-                                                    <div key={i} className="bg-gray-800/50 rounded p-3 text-sm">
+                                                {imagePlaceholders.map((img, i) => {
+                                                    const imageUrl = img.generatedUrl || img.userUploadUrl;
+                                                    const isInserted = img.id?.startsWith('inserted_');
+                                                    const statusText = imageUrl ? (isInserted ? 'In Article' : 'Generated') : 'Pending';
+                                                    const statusColor = imageUrl ? 'text-green-400' : 'text-yellow-400';
+                                                    return (
+                                                    <div key={img.id || i} className="bg-gray-800/50 rounded p-3 text-sm">
                                                         <div className="flex items-center gap-2">
                                                             <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                                                                 img.type === 'HERO' ? 'bg-purple-900/50 text-purple-300' :
@@ -2891,13 +2946,15 @@ ${schemaScript}`;
                                                                 {img.type}
                                                             </span>
                                                             <span className="text-gray-300 flex-1 truncate">{img.description}</span>
-                                                            {img.generatedUrl && (
-                                                                <span className="text-green-400 text-xs">Generated</span>
-                                                            )}
+                                                            <span className={`text-xs ${statusColor}`}>{statusText}</span>
                                                         </div>
                                                         <p className="text-gray-500 mt-1 text-xs">Alt: {img.altTextSuggestion}</p>
+                                                        {imageUrl && (
+                                                            <img src={imageUrl} alt={img.altTextSuggestion || ''} className="mt-2 rounded max-h-24 object-cover" />
+                                                        )}
                                                     </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     )}
