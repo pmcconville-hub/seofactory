@@ -50,13 +50,6 @@ const ASSESSMENT_CONFIG: Record<
   },
 };
 
-// Map item type to readable labels
-const ITEM_TYPE_LABELS: Record<DetectedItem['itemType'], string> = {
-  service_mention: 'Service Mention',
-  factual_claim: 'Factual Claim',
-  unverified_statement: 'Unverified Statement',
-};
-
 interface DetectedItemCardProps {
   item: DetectedItem;
   onDecisionChange: (
@@ -145,6 +138,7 @@ const DetectedItemCard: React.FC<DetectedItemCardProps> = ({
             value={item.userCorrection || ''}
             onChange={(e) => handleCorrectionChange(e.target.value)}
             placeholder="Enter the correct text..."
+            aria-label="Correction text"
             className="w-full bg-slate-700 border border-slate-600 text-slate-200 text-sm rounded px-3 py-2 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-colors"
           />
         </div>
@@ -189,11 +183,12 @@ export const AnalysisConfirmationPanel: React.FC<
       <div className="p-4 border-b border-slate-600 flex items-center justify-between">
         <h3 className="text-lg font-semibold text-white">{getPanelTitle()}</h3>
         <button
+          type="button"
           onClick={onCancel}
           className="text-slate-400 hover:text-white transition-colors p-1"
           aria-label="Close panel"
         >
-          &#10005;
+          ✕
         </button>
       </div>
 
@@ -254,6 +249,7 @@ export const AnalysisConfirmationPanel: React.FC<
       {/* Action buttons */}
       <div className="p-4 border-t border-slate-600 flex items-center justify-between gap-3">
         <button
+          type="button"
           onClick={onCancel}
           disabled={isProcessing}
           className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600 rounded transition-colors disabled:opacity-50"
