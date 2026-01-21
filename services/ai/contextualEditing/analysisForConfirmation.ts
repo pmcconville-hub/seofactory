@@ -70,13 +70,66 @@ Return ONLY the JSON array, no other text.`;
 }
 
 /**
+ * Format EAVs into a readable list for the AI prompt
+ * Groups by subject and presents in a clear format
+ */
+function formatEavsForPrompt(eavs: SemanticTriple[]): string {
+  if (!eavs || eavs.length === 0) {
+    return 'No known facts provided.';
+  }
+
+  // Group EAVs by subject for better readability
+  const groupedBySubject = new Map<string, SemanticTriple[]>();
+  for (const eav of eavs) {
+    const subjectLabel = eav.subject?.label || 'Unknown';
+    if (!groupedBySubject.has(subjectLabel)) {
+      groupedBySubject.set(subjectLabel, []);
+    }
+    groupedBySubject.get(subjectLabel)!.push(eav);
+  }
+
+  const lines: string[] = [];
+  for (const [subject, triples] of groupedBySubject) {
+    lines.push(`**${subject}:**`);
+    for (const triple of triples) {
+      const relation = triple.predicate?.relation || 'has';
+      const value = triple.object?.value ?? '';
+      const unit = triple.object?.unit ? ` ${triple.object.unit}` : '';
+      lines.push(`  - ${relation}: ${value}${unit}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Build prompt for factual claim detection
  * Internal helper that asks AI to find factual claims that need verification
+ *
+ * @param selectedText - The text to analyze for factual claims
+ * @param eavs - Optional semantic triples representing known facts about the business
  */
-export function buildFactDetectionPrompt(selectedText: string): string {
+export function buildFactDetectionPrompt(
+  selectedText: string,
+  eavs?: SemanticTriple[]
+): string {
+  const knownFactsSection = eavs && eavs.length > 0
+    ? `## Known Facts (Entity-Attribute-Value Triples)
+The following facts are known to be true about the business/subject. Use these to verify claims in the text:
+
+${formatEavsForPrompt(eavs)}
+
+`
+    : '';
+
+  const verificationGuidance = eavs && eavs.length > 0
+    ? `6. Compare claims against the Known Facts above - flag any contradictions as "potentially_incorrect"
+7. Claims that align with Known Facts can still be flagged if additional verification is needed`
+    : '';
+
   return `You are analyzing text to detect factual claims that may need verification.
 
-## Text to Analyze
+${knownFactsSection}## Text to Analyze
 "${selectedText}"
 
 ## Task
@@ -86,6 +139,7 @@ Identify any factual claims in the text that:
 3. Assert scientific or technical facts
 4. Reference specific studies, sources, or authorities
 5. Make comparative claims (best, fastest, most, etc.)
+${verificationGuidance}
 
 For each claim, assess whether it appears verifiable or potentially problematic.
 
@@ -106,7 +160,7 @@ Return a JSON array of detected items. If no factual claims found, return an emp
 Rules:
 - "factual_claim": Specific fact with numbers, dates, or attributable claims
 - "unverified_statement": General assertion that could be verified but lacks specificity
-- "potentially_incorrect": Claim that seems suspicious or likely wrong
+- "potentially_incorrect": Claim that seems suspicious or likely wrong${eavs && eavs.length > 0 ? ', OR contradicts the Known Facts above' : ''}
 - "unverified": Claim that could be true but cannot be verified from context
 - "needs_review": Claim that the user should double-check
 
@@ -196,10 +250,10 @@ export async function analyzeForConfirmation(
         })
       : Promise.resolve('[]'),
 
-    // Fact detection (always run)
+    // Fact detection (always run, include EAVs for verification against known facts)
     callProviderWithFallback(
       businessInfo,
-      buildFactDetectionPrompt(selectedText)
+      buildFactDetectionPrompt(selectedText, eavs)
     ).catch((err) => {
       console.warn('Fact detection failed:', err);
       return '[]';
