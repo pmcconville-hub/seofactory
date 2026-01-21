@@ -129,7 +129,14 @@ export function useContextualEditor(options: UseContextualEditorOptions): UseCon
   }, [selection]);
 
   const closeMenu = useCallback(() => {
-    setState(prev => ({ ...prev, mode: 'idle', rewriteResult: null, imagePromptResult: null }));
+    setState(prev => ({
+      ...prev,
+      mode: 'idle',
+      rewriteResult: null,
+      imagePromptResult: null,
+      analysisForConfirmation: null,
+      customInstruction: '',
+    }));
     clearSelection();
   }, [clearSelection]);
 
@@ -243,6 +250,8 @@ export function useContextualEditor(options: UseContextualEditorOptions): UseCon
       ...prev,
       mode: selection ? 'menu' : 'idle',
       rewriteResult: null,
+      analysisForConfirmation: null,
+      customInstruction: '',
     }));
   }, [selection]);
 
@@ -261,6 +270,9 @@ export function useContextualEditor(options: UseContextualEditorOptions): UseCon
    */
   const executeConfirmedRewrite = useCallback(async () => {
     if (!selection || !state.analysisForConfirmation) return;
+
+    // Track the confirmed action for potential retry
+    lastActionRef.current = { action: 'custom', instruction: state.customInstruction || undefined };
 
     setState(prev => ({ ...prev, isProcessing: true, error: null }));
 
