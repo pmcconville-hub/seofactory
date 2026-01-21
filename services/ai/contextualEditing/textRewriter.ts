@@ -5,7 +5,7 @@
  * algorithmic authorship rules.
  */
 
-import { generateText } from '../../geminiService';
+import { callProviderWithFallback } from '../contentGeneration/providerUtils';
 import { BusinessInfo, ContentBrief, SemanticTriple } from '../../../types';
 import {
   RewriteRequest,
@@ -208,10 +208,9 @@ export async function rewriteText(params: {
     eavs,
   });
 
-  const rewrittenText = await generateText(
-    prompt,
+  const rewrittenText = await callProviderWithFallback(
     businessInfo,
-    dispatch
+    prompt
   );
 
   const originalWords = request.selectedText.split(/\s+/).length;

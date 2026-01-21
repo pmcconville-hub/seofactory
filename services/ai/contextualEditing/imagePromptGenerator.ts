@@ -5,7 +5,7 @@
  * following Visual Semantics rules for SEO.
  */
 
-import { generateText } from '../../geminiService';
+import { callProviderWithFallback } from '../contentGeneration/providerUtils';
 import { BusinessInfo } from '../../../types';
 import {
   ImagePromptRequest,
@@ -154,13 +154,8 @@ Generate a single, detailed prompt (50-100 words) for creating this ${style}.
 Focus on specific visual elements, composition, and style.
 Do not include any explanations, just the prompt.`;
 
-  // Use a specific Gemini model to avoid using non-Gemini models from user settings
-  const result = await generateText(
-    systemPrompt,
-    businessInfo,
-    dispatch,
-    'gemini-3-pro-preview'  // Explicit model to avoid Claude/other model warnings
-  );
+  // Use the user's preferred AI provider with fallback support
+  const result = await callProviderWithFallback(businessInfo, systemPrompt);
 
   return result.trim();
 }
