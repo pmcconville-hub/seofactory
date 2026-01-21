@@ -5,3 +5,5 @@ export { EditorPanel } from './EditorPanel';
 export { ImageGenerationPanel } from './ImageGenerationPanel';
 export { QuickInstructionInput } from './QuickInstructionInput';
 export type { QuickInstructionInputProps } from './QuickInstructionInput';
+export { AnalysisConfirmationPanel } from './AnalysisConfirmationPanel';
+export type { AnalysisConfirmationPanelProps } from './AnalysisConfirmationPanel';
