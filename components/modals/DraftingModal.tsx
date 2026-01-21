@@ -53,7 +53,7 @@ import { useSocialCampaigns } from '../../hooks/useSocialCampaigns';
 
 // Contextual Editor
 import { useContextualEditor } from '../../hooks/useContextualEditor';
-import { ContextMenu, EditorPanel, InlineDiff, ImageGenerationPanel } from '../contextualEditor';
+import { ContextMenu, EditorPanel, InlineDiff, ImageGenerationPanel, AnalysisConfirmationPanel } from '../contextualEditor';
 import { shouldUseInlineDiff } from '../../services/ai/contextualEditing';
 import { ImageStyle, AspectRatio } from '../../types/contextualEditor';
 
@@ -3162,6 +3162,23 @@ ${schemaScript}`;
                                         onReject={handleContextualImageReject}
                                         onClose={handleContextualImageClose}
                                         generatedImageUrl={contextualImageUrl}
+                                      />
+                                    )}
+
+                                    {/* Analysis Confirmation Panel for reviewing AI analysis before rewrite */}
+                                    {contextualEditor.state.mode === 'analysis' &&
+                                      contextualEditor.selection &&
+                                      contextualEditor.state.analysisForConfirmation && (
+                                      <AnalysisConfirmationPanel
+                                        selectedText={contextualEditor.selection.text}
+                                        analysis={contextualEditor.state.analysisForConfirmation}
+                                        businessInfo={businessInfo}
+                                        customInstruction={editorCustomInstruction}
+                                        isProcessing={contextualEditor.state.isProcessing}
+                                        onItemDecisionChange={contextualEditor.updateItemDecision}
+                                        onInstructionChange={setEditorCustomInstruction}
+                                        onApply={contextualEditor.executeConfirmedRewrite}
+                                        onCancel={contextualEditor.cancelAnalysis}
                                       />
                                     )}
 
