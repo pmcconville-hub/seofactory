@@ -187,9 +187,6 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
   const [contextualImageUrl, setContextualImageUrl] = useState<string | undefined>(undefined);
   const [isGeneratingContextualImage, setIsGeneratingContextualImage] = useState(false);
 
-  // Contextual Editor Custom Instruction State
-  const [editorCustomInstruction, setEditorCustomInstruction] = useState('');
-
   // Re-run Passes State
   const [showPassesModal, setShowPassesModal] = useState(false);
   const [selectedPasses, setSelectedPasses] = useState<number[]>([]);
@@ -3140,8 +3137,8 @@ ${schemaScript}`;
                                         activeTab={contextualEditor.state.activeTab}
                                         isProcessing={contextualEditor.state.isProcessing}
                                         businessInfo={businessInfo}
-                                        customInstruction={editorCustomInstruction}
-                                        onInstructionChange={setEditorCustomInstruction}
+                                        customInstruction={contextualEditor.state.customInstruction}
+                                        onInstructionChange={contextualEditor.setCustomInstruction}
                                         onTabChange={contextualEditor.setActiveTab}
                                         onQuickAction={contextualEditor.executeQuickAction}
                                         onAcceptRewrite={contextualEditor.acceptRewrite}
@@ -3173,10 +3170,10 @@ ${schemaScript}`;
                                         selectedText={contextualEditor.selection.text}
                                         analysis={contextualEditor.state.analysisForConfirmation}
                                         businessInfo={businessInfo}
-                                        customInstruction={editorCustomInstruction}
+                                        customInstruction={contextualEditor.state.customInstruction}
                                         isProcessing={contextualEditor.state.isProcessing}
                                         onItemDecisionChange={contextualEditor.updateItemDecision}
-                                        onInstructionChange={setEditorCustomInstruction}
+                                        onInstructionChange={contextualEditor.setCustomInstruction}
                                         onApply={contextualEditor.executeConfirmedRewrite}
                                         onCancel={contextualEditor.cancelAnalysis}
                                       />
