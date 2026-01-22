@@ -774,9 +774,10 @@ function finalizeOutput(
 
 /**
  * Wrap HTML content with root element and necessary wrappers
+ * Includes both .ctc-root and .ctc-styled for full CSS targeting
  */
 function wrapWithRootElement(html: string, personalityId: string): string {
-  return `<div class="ctc-root ctc-personality-${personalityId}" data-ctc-version="2.0">
+  return `<div class="ctc-root ctc-styled ctc-personality-${personalityId}" data-ctc-version="2.0">
   ${html}
 </div>`;
 }

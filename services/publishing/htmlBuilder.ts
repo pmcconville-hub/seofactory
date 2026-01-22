@@ -251,17 +251,21 @@ export class SemanticHtmlBuilder {
 
   /**
    * Build individual section with proper heading
+   * Converts markdown content to HTML
    */
   buildSection(section: ArticleSection): string {
     const headingTag = `h${Math.min(section.level, 6)}`;
+
+    // Convert markdown content to HTML
+    const htmlContent = this.markdownToHtml(section.content);
 
     return `
 <section class="ctc-section mb-8" aria-labelledby="${section.id}">
   <${headingTag} id="${section.id}" class="ctc-section-title text-2xl font-semibold mb-4" style="font-weight: var(--ctc-heading-weight)">
     ${this.escape(section.heading)}
   </${headingTag}>
-  <div class="ctc-section-content">
-    ${section.content}
+  <div class="ctc-section-content prose prose-lg max-w-none">
+    ${htmlContent}
   </div>
 </section>`;
   }
@@ -664,6 +668,81 @@ export class SemanticHtmlBuilder {
   // ==========================================================================
   // UTILITY METHODS
   // ==========================================================================
+
+  /**
+   * Convert markdown to HTML
+   * Handles: headings, bold, italic, links, images, lists, blockquotes, code
+   */
+  private markdownToHtml(markdown: string): string {
+    let html = markdown;
+
+    // Headings (process from h6 to h1 to avoid partial matches)
+    html = html.replace(/^######\s+(.+)$/gm, '<h6 class="ctc-h6">$1</h6>');
+    html = html.replace(/^#####\s+(.+)$/gm, '<h5 class="ctc-h5">$1</h5>');
+    html = html.replace(/^####\s+(.+)$/gm, '<h4 class="ctc-h4">$1</h4>');
+    html = html.replace(/^###\s+(.+)$/gm, '<h3 class="ctc-h3 text-xl font-semibold mt-6 mb-3">$1</h3>');
+    html = html.replace(/^##\s+(.+)$/gm, '<h2 class="ctc-h2 text-2xl font-semibold mt-8 mb-4">$1</h2>');
+    html = html.replace(/^#\s+(.+)$/gm, '<h1 class="ctc-h1 text-3xl font-bold mt-8 mb-4">$1</h1>');
+
+    // Bold and italic (order matters - process triple first)
+    html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    html = html.replace(/___(.+?)___/g, '<strong><em>$1</em></strong>');
+    html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+
+    // Links (before images to avoid conflicts)
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="ctc-link text-[var(--ctc-primary)] hover:underline">$1</a>');
+
+    // Images
+    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<figure class="ctc-figure my-6"><img src="$2" alt="$1" class="ctc-image rounded-lg max-w-full" loading="lazy"><figcaption class="ctc-figcaption text-sm text-[var(--ctc-text-muted)] mt-2 text-center">$1</figcaption></figure>');
+
+    // Code blocks (before inline code)
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="ctc-pre bg-[var(--ctc-surface)] p-4 rounded-lg overflow-x-auto my-4"><code class="ctc-code language-$1">$2</code></pre>');
+    html = html.replace(/`([^`]+)`/g, '<code class="ctc-inline-code bg-[var(--ctc-surface)] px-1.5 py-0.5 rounded text-sm">$1</code>');
+
+    // Blockquotes
+    html = html.replace(/^>\s+(.+)$/gm, '<blockquote class="ctc-blockquote border-l-4 border-[var(--ctc-primary)] pl-4 italic text-[var(--ctc-text-secondary)] my-4">$1</blockquote>');
+
+    // Horizontal rules
+    html = html.replace(/^---$/gm, '<hr class="ctc-divider border-t border-[var(--ctc-border)] my-8">');
+    html = html.replace(/^\*\*\*$/gm, '<hr class="ctc-divider border-t border-[var(--ctc-border)] my-8">');
+
+    // Process lists - unordered
+    html = html.replace(/^(\s*)[-*]\s+(.+)$/gm, '$1<li class="ctc-li mb-2">$2</li>');
+
+    // Process lists - ordered
+    html = html.replace(/^(\s*)\d+\.\s+(.+)$/gm, '$1<li class="ctc-li mb-2">$2</li>');
+
+    // Wrap consecutive list items in ul/ol
+    // Find groups of consecutive <li> tags and wrap them
+    html = html.replace(/((?:<li[^>]*>.*?<\/li>\s*)+)/g, (match) => {
+      // Check if it looks like an ordered list (has numbers in original)
+      const isOrdered = false; // simplified - treat as unordered
+      const tag = isOrdered ? 'ol' : 'ul';
+      return `<${tag} class="ctc-list list-disc pl-6 my-4 space-y-2">${match}</${tag}>`;
+    });
+
+    // Paragraphs - wrap remaining text lines that aren't already in HTML tags
+    const lines = html.split('\n');
+    const processedLines = lines.map(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return '';
+      // Skip if already wrapped in a tag
+      if (trimmed.startsWith('<')) return line;
+      // Skip if it's just whitespace inside a list
+      if (trimmed.match(/^\s*$/)) return line;
+      return `<p class="ctc-p mb-4 leading-relaxed">${line}</p>`;
+    });
+    html = processedLines.join('\n');
+
+    // Clean up empty paragraphs and fix nested issues
+    html = html.replace(/<p class="ctc-p[^"]*">\s*<\/p>/g, '');
+    html = html.replace(/\n\n+/g, '\n');
+
+    return html;
+  }
 
   /**
    * Escape HTML special characters
