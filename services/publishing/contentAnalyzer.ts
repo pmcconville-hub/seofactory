@@ -164,11 +164,12 @@ function extractSections(content: string, headings: HeadingItem[], isHtml: boole
   const parts = content.split(h2Pattern);
 
   // First part is intro (before first H2)
+  // We don't add a heading for intro - it's content that leads into the article
   if (parts[0].trim()) {
     sections.push({
       id: 'intro',
-      level: 1,
-      heading: 'Introduction',
+      level: 0, // Special marker: level 0 means no heading
+      heading: '', // Empty heading - won't be rendered
       content: parts[0].trim(),
     });
   }

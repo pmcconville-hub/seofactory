@@ -193,15 +193,21 @@ export class SemanticHtmlBuilder {
     author?: { name: string; url?: string };
     sections: ArticleSection[];
     readTime?: number;
+    skipHeadline?: boolean; // Skip h1 if hero already has one
   }): string {
-    const { headline, datePublished, dateModified, author, sections, readTime } = options;
+    const { headline, datePublished, dateModified, author, sections, readTime, skipHeadline = false } = options;
 
+    // When skipHeadline is true, we don't render the h1 (it's already in the hero)
+    // but we keep the meta info visible and include headline in schema
     const html = `
 <article class="ctc-article" itemscope itemtype="https://schema.org/Article">
+  ${!skipHeadline ? `
   <header class="ctc-article-header mb-8">
     <h1 class="ctc-article-title text-3xl md:text-4xl font-bold mb-4" itemprop="headline" style="font-weight: var(--ctc-heading-weight); letter-spacing: var(--ctc-heading-letter-spacing)">
       ${this.escape(headline)}
-    </h1>
+    </h1>` : `
+  <header class="ctc-article-header mb-8">
+    <meta itemprop="headline" content="${this.escape(headline)}">`}
     <div class="ctc-article-meta flex flex-wrap gap-4 text-sm text-[var(--ctc-text-muted)]">
       ${datePublished ? `
       <time itemprop="datePublished" datetime="${datePublished}" class="flex items-center gap-1">
@@ -252,12 +258,23 @@ export class SemanticHtmlBuilder {
   /**
    * Build individual section with proper heading
    * Converts markdown content to HTML
+   * Level 0 means intro content without a heading
    */
   buildSection(section: ArticleSection): string {
-    const headingTag = `h${Math.min(section.level, 6)}`;
-
     // Convert markdown content to HTML
     const htmlContent = this.markdownToHtml(section.content);
+
+    // Level 0 is intro content - no heading needed
+    if (section.level === 0 || !section.heading) {
+      return `
+<div class="ctc-intro-section mb-8">
+  <div class="ctc-section-content prose prose-lg max-w-none">
+    ${htmlContent}
+  </div>
+</div>`;
+    }
+
+    const headingTag = `h${Math.min(section.level, 6)}`;
 
     return `
 <section class="ctc-section mb-8" aria-labelledby="${section.id}">

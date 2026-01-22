@@ -269,12 +269,13 @@ function assembleLandingPage(
     componentsUsed.push('benefits-grid');
   }
 
-  // 4. Main content sections
+  // 4. Main content sections (skipHeadline since hero has h1)
   builder.buildArticle({
     headline: seoConfig.title,
     datePublished: seoConfig.datePublished || new Date().toISOString(),
     author: seoConfig.author,
     sections: analysis.structure.sections,
+    skipHeadline: true, // Hero already has the h1
   });
   componentsUsed.push('article');
 
@@ -348,12 +349,13 @@ function assembleServicePage(
     componentsUsed.push('benefits-grid');
   }
 
-  // 3. Main content
+  // 3. Main content (skipHeadline since hero has h1)
   builder.buildArticle({
     headline: seoConfig.title,
     datePublished: seoConfig.datePublished || new Date().toISOString(),
     author: seoConfig.author,
     sections: analysis.structure.sections,
+    skipHeadline: true, // Hero already has the h1
   });
   componentsUsed.push('article');
 
@@ -444,12 +446,13 @@ function assembleBlogArticle(
     componentsUsed.push('toc');
   }
 
-  // 4. Main article content
+  // 4. Main article content (skipHeadline since hero has h1)
   builder.buildArticle({
     headline: seoConfig.title,
     datePublished: seoConfig.datePublished || new Date().toISOString(),
     author: seoConfig.author,
     sections: analysis.structure.sections,
+    skipHeadline: true, // Hero already has the h1
   });
   componentsUsed.push('article');
 
@@ -534,11 +537,12 @@ function assembleProductPage(
     componentsUsed.push('benefits-grid');
   }
 
-  // 3. Product content
+  // 3. Product content (skipHeadline since hero has h1)
   builder.buildArticle({
     headline: seoConfig.title,
     datePublished: seoConfig.datePublished || new Date().toISOString(),
     sections: analysis.structure.sections,
+    skipHeadline: true, // Hero already has the h1
   });
   componentsUsed.push('article');
 
@@ -609,12 +613,13 @@ function assembleComparisonPage(
     componentsUsed.push('toc');
   }
 
-  // 4. Comparison content
+  // 4. Comparison content (skipHeadline since hero has h1)
   builder.buildArticle({
     headline: seoConfig.title,
     datePublished: seoConfig.datePublished || new Date().toISOString(),
     author: seoConfig.author,
     sections: analysis.structure.sections,
+    skipHeadline: true, // Hero already has the h1
   });
   componentsUsed.push('article');
 

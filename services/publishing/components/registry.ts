@@ -228,7 +228,7 @@ export const ctaSectionComponent: ComponentDefinition<{
       outlined: 'ctc-cta--outlined border-2 border-[var(--ctc-primary)] text-[var(--ctc-text)] py-12 px-8',
       'bold-contrast': 'ctc-cta--bold-contrast bg-[var(--ctc-text)] text-[var(--ctc-background)] py-16 px-8',
       'gradient-glow': 'ctc-cta--gradient-glow bg-[var(--ctc-gradient-hero)] text-white py-12 px-8 shadow-[0_0_60px_var(--ctc-primary)]',
-      'warm-gradient': 'ctc-cta--warm-gradient bg-gradient-to-r from-[var(--ctc-primary)] via-[var(--ctc-accent)] to-[var(--ctc-secondary)] text-white py-12 px-8',
+      'warm-gradient': 'ctc-cta--warm-gradient bg-gradient-to-br from-[var(--ctc-primary)] to-[var(--ctc-primary-dark)] text-white py-12 px-8',
     },
   },
   defaultVariants: { variant: 'gradient' },

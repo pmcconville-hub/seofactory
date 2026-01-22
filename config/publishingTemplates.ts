@@ -54,6 +54,8 @@ export const blogArticleComponents: ComponentConfig = {
     intensity: 'low',
     positions: ['end'],
     style: 'box',
+    primaryText: 'Meer Informatie',
+    secondaryText: 'Contact',
   },
   faq: {
     enabled: true,
@@ -112,6 +114,8 @@ export const landingPageComponents: ComponentConfig = {
     intensity: 'high',
     positions: ['after-intro', 'mid-content', 'end'],
     style: 'full-width',
+    primaryText: 'Start Nu',
+    secondaryText: 'Meer Weten',
   },
   faq: {
     enabled: true,

@@ -741,8 +741,44 @@ function generateComponentStyles(): string {
 }
 
 .ctc-cta--warm-gradient {
-  background: linear-gradient(90deg, var(--ctc-primary) 0%, var(--ctc-accent) 50%, var(--ctc-secondary) 100%);
+  background: linear-gradient(135deg, var(--ctc-primary) 0%, var(--ctc-primary-dark) 100%);
   color: white;
+}
+
+/* CTA Title and Text Contrast */
+.ctc-cta-title {
+  color: inherit;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.ctc-cta-text {
+  color: inherit;
+  opacity: 0.95;
+}
+
+/* Buttons on gradient backgrounds */
+.ctc-cta-section .ctc-btn--white {
+  background: white;
+  color: var(--ctc-primary);
+  font-weight: 600;
+  box-shadow: var(--ctc-shadow-md);
+}
+
+.ctc-cta-section .ctc-btn--white:hover {
+  background: var(--ctc-surface);
+  box-shadow: var(--ctc-shadow-lg);
+  transform: translateY(-2px);
+}
+
+.ctc-cta-section .ctc-btn--outline {
+  color: white;
+  border-color: white;
+  background: transparent;
+}
+
+.ctc-cta-section .ctc-btn--outline:hover {
+  background: white;
+  color: var(--ctc-primary);
 }
 
 /* ========== AUTHOR BOX ========== */
