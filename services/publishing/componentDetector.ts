@@ -256,6 +256,9 @@ export function detectComponents(content: string): DetectedComponent[] {
     { type: 'content-section', patterns: componentPatterns.contentSection },
   ];
 
+  // Limit content size for regex processing (already filtered for >10KB above)
+  const limitedContent = content.slice(0, MAX_CONTENT_SIZE);
+
   for (const { type, patterns } of detectionOrder) {
     for (const pattern of patterns) {
       // Reset regex lastIndex
