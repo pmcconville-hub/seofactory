@@ -35,10 +35,23 @@ import {
   countEnabledComponents,
 } from '../../services/publishing/layoutConfigService';
 import {
-  generateStyledContent,
   calculateReadTime,
 } from '../../services/publishing/styledHtmlGenerator';
 import { suggestTemplate } from '../../config/publishingTemplates';
+import { assemblePage, type PageTemplate } from '../../services/publishing/pageAssembler';
+import type { DesignPersonalityId } from '../../config/designTokens/personalities';
+
+// Map ContentTypeTemplate to PageTemplate
+function mapTemplateToPageTemplate(template: ContentTypeTemplate): PageTemplate {
+  const mapping: Record<ContentTypeTemplate, PageTemplate> = {
+    'blog-article': 'blog-article',
+    'landing-page': 'landing-page',
+    'ecommerce-product': 'product-page',
+    'ecommerce-category': 'landing-page',
+    'service-page': 'service-page',
+  };
+  return mapping[template] || 'blog-article';
+}
 
 // ============================================================================
 // Types
@@ -95,6 +108,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   const [preview, setPreview] = useState<StyledContentOutput | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
+  const [personalityId, setPersonalityId] = useState<DesignPersonalityId>('corporate-professional');
 
   // Initialize style and layout on open
   useEffect(() => {
@@ -136,30 +150,63 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     setErrors([]);
 
     try {
-      const readTime = calculateReadTime(articleDraft);
-
-      const output = generateStyledContent(
-        articleDraft,
-        style,
-        layout,
-        {
+      // Use the new assemblePage from pageAssembler with design personalities
+      const output = assemblePage({
+        template: mapTemplateToPageTemplate(layout.template),
+        personalityId: personalityId,
+        content: articleDraft,
+        title: topic.title,
+        seoConfig: {
           title: topic.title,
-          authorName: brief?.author?.name,
-          authorBio: brief?.author?.bio,
-          publishDate: new Date().toISOString(),
-          readTime,
-          ctaText: layout.components.ctaBanners.primaryText || 'Learn More',
-          ctaUrl: '#',
-        }
-      );
+          metaDescription: brief?.metaDescription || '',
+          primaryKeyword: brief?.targetKeyword || topic.title,
+          secondaryKeywords: [],
+        },
+        ctaConfig: {
+          primaryCta: {
+            text: layout.components.ctaBanners.primaryText || 'Learn More',
+            url: '#contact',
+          },
+          secondaryCta: layout.components.ctaBanners.secondaryText ? {
+            text: layout.components.ctaBanners.secondaryText,
+            url: '#',
+          } : undefined,
+        },
+        brief,
+        topic,
+        darkMode: false,
+        minifyCss: false,
+      });
 
-      setPreview(output);
+      // Map the output to the expected StyledContentOutput format for the preview
+      setPreview({
+        html: output.html,
+        css: output.css,
+        cssVariables: {} as any, // Not used in new system
+        components: output.components as any,
+        seoValidation: {
+          isValid: output.seoValidation.isValid,
+          warnings: output.seoValidation.issues.map(i => ({
+            type: i.type === 'error' ? 'heading' : i.type === 'warning' ? 'schema' : 'meta',
+            severity: i.type,
+            message: i.message,
+          })) as any,
+          headingStructure: {
+            hasH1: output.html.includes('<h1'),
+            hierarchy: [],
+            issues: [],
+          },
+          schemaPreserved: output.jsonLd.length > 0,
+          metaPreserved: true,
+        },
+        template: layout.template,
+      });
 
       // Check for SEO warnings
       if (!output.seoValidation.isValid) {
-        const seoErrors = output.seoValidation.warnings
-          .filter(w => w.severity === 'error')
-          .map(w => w.message);
+        const seoErrors = output.seoValidation.issues
+          .filter(i => i.type === 'error')
+          .map(i => i.message);
         if (seoErrors.length > 0) {
           setErrors(seoErrors);
         }
@@ -170,7 +217,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     } finally {
       setIsGenerating(false);
     }
-  }, [style, layout, articleDraft, topic.title, brief]);
+  }, [style, layout, articleDraft, topic, brief, personalityId]);
 
   // Navigation handlers
   const handleNext = useCallback(async () => {
@@ -257,6 +304,8 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
             style={style}
             brandKit={brandKit}
             onChange={handleStyleChange}
+            personalityId={personalityId}
+            onPersonalityChange={setPersonalityId}
           />
         ) : null;
 

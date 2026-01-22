@@ -108,7 +108,7 @@ export const LayoutConfigStep: React.FC<LayoutConfigStepProps> = ({
     subKey: string,
     value: boolean
   ) => {
-    const current = layout.components[componentKey] as Record<string, unknown>;
+    const current = layout.components[componentKey] as unknown as Record<string, unknown>;
     updateComponents({
       [componentKey]: {
         ...current,

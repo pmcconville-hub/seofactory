@@ -16,6 +16,7 @@ import type { PublishingStyle, DesignTokens, StylePresetId } from '../../../type
 import type { BrandKit } from '../../../types/business';
 import { stylePresets, applyPresetToTokens, defaultDesignTokens } from '../../../config/publishingTemplates';
 import { brandKitToDesignTokens } from '../../../services/publishing/styleConfigService';
+import { designPersonalities, type DesignPersonalityId } from '../../../config/designTokens/personalities';
 
 // ============================================================================
 // Types
@@ -25,6 +26,8 @@ interface BrandStyleStepProps {
   style: PublishingStyle;
   brandKit?: BrandKit;
   onChange: (updates: Partial<PublishingStyle>) => void;
+  personalityId: DesignPersonalityId;
+  onPersonalityChange: (id: DesignPersonalityId) => void;
 }
 
 // ============================================================================
@@ -35,8 +38,10 @@ export const BrandStyleStep: React.FC<BrandStyleStepProps> = ({
   style,
   brandKit,
   onChange,
+  personalityId,
+  onPersonalityChange,
 }) => {
-  const [activeTab, setActiveTab] = useState<'presets' | 'colors' | 'typography' | 'spacing'>('presets');
+  const [activeTab, setActiveTab] = useState<'design-style' | 'colors' | 'typography' | 'spacing'>('design-style');
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
 
   // Update design tokens
@@ -104,102 +109,104 @@ export const BrandStyleStep: React.FC<BrandStyleStepProps> = ({
     <div className="space-y-6">
       {/* Tab navigation */}
       <div className="flex border-b border-gray-700">
-        {(['presets', 'colors', 'typography', 'spacing'] as const).map(tab => (
+        {(['design-style', 'colors', 'typography', 'spacing'] as const).map(tab => (
           <button
             key={tab}
             type="button"
             onClick={() => setActiveTab(tab)}
             className={`
-              px-4 py-2 text-sm font-medium capitalize transition-colors
+              px-4 py-2 text-sm font-medium transition-colors
               ${activeTab === tab
                 ? 'text-blue-400 border-b-2 border-blue-400'
                 : 'text-gray-400 hover:text-white'
               }
             `}
           >
-            {tab}
+            {tab === 'design-style' ? 'Design Style' : tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
       </div>
 
-      {/* Presets Tab */}
-      {activeTab === 'presets' && (
+      {/* Design Style Tab - NEW Design Personalities */}
+      {activeTab === 'design-style' && (
         <div className="space-y-4">
-          {/* BrandKit option */}
-          {brandKit && (
-            <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-medium text-white">Use Project Brand Kit</h4>
-                  <p className="text-sm text-gray-400">
-                    Apply colors and fonts from your project settings
-                  </p>
-                </div>
-                <Button variant="secondary" size="sm" onClick={useBrandKit}>
-                  Apply
-                </Button>
-              </div>
-              {/* Preview colors */}
-              <div className="flex gap-2 mt-3">
-                <div
-                  className="w-8 h-8 rounded"
-                  style={{ backgroundColor: brandKit.colors?.primary || '#3B82F6' }}
-                  title="Primary"
-                />
-                <div
-                  className="w-8 h-8 rounded"
-                  style={{ backgroundColor: brandKit.colors?.secondary || '#1E40AF' }}
-                  title="Secondary"
-                />
-              </div>
-            </div>
-          )}
+          <p className="text-sm text-gray-400">
+            Choose a design personality that matches your brand. Each style includes unique typography, colors, spacing, and component variants.
+          </p>
 
-          {/* Preset grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {stylePresets.map(preset => (
+          {/* Design Personality Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Object.values(designPersonalities).map(personality => (
               <button
-                key={preset.id}
+                key={personality.id}
                 type="button"
-                onClick={() => applyPreset(preset.id)}
+                onClick={() => onPersonalityChange(personality.id as DesignPersonalityId)}
                 className={`
-                  p-4 rounded-lg border text-left transition-all
-                  ${selectedPreset === preset.id
-                    ? 'border-blue-500 bg-blue-900/20'
-                    : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+                  p-4 rounded-xl border text-left transition-all
+                  ${personalityId === personality.id
+                    ? 'border-blue-500 bg-blue-900/30 ring-2 ring-blue-500/50'
+                    : 'border-gray-700 bg-gray-800 hover:border-gray-600 hover:bg-gray-750'
                   }
                 `}
               >
-                <div className="flex gap-1 mb-2">
-                  {preset.designTokens.colors && (
-                    <>
-                      <div
-                        className="w-5 h-5 rounded"
-                        style={{ backgroundColor: preset.designTokens.colors.primary }}
-                      />
-                      <div
-                        className="w-5 h-5 rounded"
-                        style={{ backgroundColor: preset.designTokens.colors.secondary }}
-                      />
-                      <div
-                        className="w-5 h-5 rounded"
-                        style={{ backgroundColor: preset.designTokens.colors.accent }}
-                      />
-                    </>
-                  )}
+                {/* Color preview */}
+                <div className="flex gap-1 mb-3">
+                  <div
+                    className="w-6 h-6 rounded-full"
+                    style={{ backgroundColor: personality.colors.primary }}
+                  />
+                  <div
+                    className="w-6 h-6 rounded-full"
+                    style={{ backgroundColor: personality.colors.accent }}
+                  />
+                  <div
+                    className="w-6 h-6 rounded-full"
+                    style={{ backgroundColor: personality.colors.background }}
+                  />
                 </div>
-                <h4 className="font-medium text-white text-sm">{preset.name}</h4>
-                <p className="text-xs text-gray-400 mt-1">{preset.description}</p>
+
+                {/* Name and description */}
+                <h4 className="font-semibold text-white mb-1">{personality.name}</h4>
+                <p className="text-xs text-gray-400 leading-relaxed">{personality.description}</p>
+
+                {/* Style indicators */}
+                <div className="flex flex-wrap gap-1 mt-3">
+                  <span className="px-2 py-0.5 bg-gray-700 rounded text-[10px] text-gray-300">
+                    {personality.typography.scaleRatio === 1.125 ? 'Subtle Scale' :
+                     personality.typography.scaleRatio === 1.333 ? 'Dramatic Scale' : 'Balanced Scale'}
+                  </span>
+                  <span className="px-2 py-0.5 bg-gray-700 rounded text-[10px] text-gray-300">
+                    {personality.layout.radiusScale.lg === '0' ? 'Sharp' :
+                     personality.layout.radiusScale.lg.includes('16') ? 'Rounded' : 'Subtle'}
+                  </span>
+                </div>
+
+                {/* Selected indicator */}
+                {personalityId === personality.id && (
+                  <div className="mt-3 flex items-center gap-1 text-blue-400 text-xs font-medium">
+                    <span>✓</span> Selected
+                  </div>
+                )}
               </button>
             ))}
           </div>
 
-          {/* Reset button */}
-          <div className="flex justify-end">
-            <Button variant="ghost" size="sm" onClick={resetToDefaults}>
-              Reset to Defaults
-            </Button>
-          </div>
+          {/* BrandKit option - secondary */}
+          {brandKit && (
+            <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700 mt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-medium text-white text-sm">Override with Brand Kit Colors</h4>
+                  <p className="text-xs text-gray-400">
+                    Use your project's brand colors while keeping the selected design style
+                  </p>
+                </div>
+                <Button variant="secondary" size="sm" onClick={useBrandKit}>
+                  Apply Colors
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
