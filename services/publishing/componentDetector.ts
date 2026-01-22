@@ -120,18 +120,94 @@ const componentPatterns = {
 };
 
 // ============================================================================
+// Fast String-Based Detection (for large content)
+// ============================================================================
+
+/**
+ * Fast component detection using indexOf instead of regex
+ * Used for content > 10KB to avoid performance issues
+ */
+function detectComponentsFast(content: string): DetectedComponent[] {
+  const components: DetectedComponent[] = [];
+  const lowerContent = content.toLowerCase();
+
+  // Simple string-based checks for component presence
+  const checks: Array<{ type: DetectedComponent['type']; markers: string[] }> = [
+    { type: 'faq', markers: ['faq', 'frequently asked', 'common questions'] },
+    { type: 'key-takeaways', markers: ['key takeaway', 'takeaways', 'tldr', 'tl;dr', 'summary'] },
+    { type: 'toc', markers: ['table of contents', 'in this article', 'contents'] },
+    { type: 'cta', markers: ['get started', 'sign up', 'subscribe', 'contact us', 'book a call'] },
+    { type: 'author-box', markers: ['about the author', 'written by', 'author bio'] },
+    { type: 'hero', markers: ['class="hero', 'class="banner', 'class="jumbotron'] },
+    { type: 'table', markers: ['<table', '| --- |', '|---|'] },
+    { type: 'image', markers: ['<img', '!['] },
+  ];
+
+  for (const { type, markers } of checks) {
+    for (const marker of markers) {
+      const index = lowerContent.indexOf(marker);
+      if (index !== -1) {
+        components.push({
+          type,
+          startIndex: index,
+          endIndex: index + marker.length,
+          content: content.slice(index, index + 100),
+        });
+        break; // Only need one match per type
+      }
+    }
+  }
+
+  // Count headings for content sections (simple line-based check)
+  const lines = content.split('\n');
+  let sectionCount = 0;
+  for (const line of lines) {
+    if (line.startsWith('## ') || line.startsWith('### ') || line.startsWith('<h2') || line.startsWith('<h3')) {
+      sectionCount++;
+      if (sectionCount <= 10) {
+        components.push({
+          type: 'content-section',
+          startIndex: 0,
+          endIndex: 0,
+          content: line.slice(0, 100),
+        });
+      }
+    }
+  }
+
+  // Count list items (simple check)
+  let listCount = 0;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.match(/^\d+\.\s/)) {
+      listCount++;
+    }
+  }
+  if (listCount > 0) {
+    components.push({
+      type: 'list',
+      startIndex: 0,
+      endIndex: 0,
+      content: `${listCount} list items`,
+    });
+  }
+
+  return components;
+}
+
+// ============================================================================
 // Component Detection Functions
 // ============================================================================
 
 /**
  * Detect all components in content
- * NOTE: Limited to first MAX_CONTENT_SIZE characters to prevent performance issues
+ * NOTE: For large content (>10KB), uses fast string-based detection instead of regex
  */
 export function detectComponents(content: string): DetectedComponent[] {
-  // Limit content size to prevent catastrophic backtracking
-  const limitedContent = content.length > MAX_CONTENT_SIZE
-    ? content.slice(0, MAX_CONTENT_SIZE)
-    : content;
+  // For large content, use fast string-based detection to avoid regex performance issues
+  if (content.length > 10000) {
+    return detectComponentsFast(content);
+  }
 
   const components: DetectedComponent[] = [];
   const usedRanges: Array<{ start: number; end: number }> = [];
