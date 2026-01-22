@@ -38,6 +38,7 @@ import {
   cleanForExport,
   appendRelatedTopicsToContent,
   RelatedTopicLink,
+  generateSlug,
 } from '../../services/contentAssemblyService';
 import { useFeatureGate } from '../../hooks/usePermissions';
 import { QualityRulePanel, ArticleQualityReport } from '../quality';
@@ -1593,7 +1594,8 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
   const handleDownloadPackage = async () => {
     if (!brief || !draftContent) return;
 
-    const slug = brief.slug || 'article';
+    // Generate slug from title for meaningful filenames
+    const slug = brief.slug || generateSlug(brief.title) || 'article';
     const wordCount = draftContent.split(/\s+/).length;
     // Calculate audit score from framework rules if available
     const frameworkRules = brief.contentAudit?.frameworkRules || [];
@@ -2056,7 +2058,8 @@ ${post.media_urls?.length ? `Media: ${post.media_urls.join(', ')}` : ''}
 
     dispatch({ type: 'SET_NOTIFICATION', payload: embedImages ? 'Preparing HTML with embedded images...' : 'Preparing HTML...' });
 
-    const slug = brief.slug || 'article';
+    // Generate slug from title for meaningful filenames
+    const slug = brief.slug || generateSlug(brief.title) || 'article';
     const wordCount = draftContent.split(/\s+/).length;
     const frameworkRules = brief.contentAudit?.frameworkRules || [];
     const passingRules = frameworkRules.filter(r => r.isPassing).length;
