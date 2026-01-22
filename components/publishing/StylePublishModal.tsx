@@ -104,11 +104,11 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
       setStyle(initialStyle);
 
       // Suggest template based on content
-      const suggestedTemplate = suggestTemplate(articleDraft, topic.topic);
+      const suggestedTemplate = suggestTemplate(articleDraft, topic.title);
       const initialLayout = createInMemoryLayout(suggestedTemplate);
       setLayout(initialLayout);
     }
-  }, [isOpen, style, brandKit, articleDraft, topic.topic]);
+  }, [isOpen, style, brandKit, articleDraft, topic.title]);
 
   // Reset on close
   useEffect(() => {
@@ -143,7 +143,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
         style,
         layout,
         {
-          title: topic.topic,
+          title: topic.title,
           authorName: brief?.author?.name,
           authorBio: brief?.author?.bio,
           publishDate: new Date().toISOString(),
@@ -170,7 +170,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     } finally {
       setIsGenerating(false);
     }
-  }, [style, layout, articleDraft, topic.topic, brief]);
+  }, [style, layout, articleDraft, topic.title, brief]);
 
   // Navigation handlers
   const handleNext = useCallback(async () => {

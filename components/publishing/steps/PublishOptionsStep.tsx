@@ -79,12 +79,12 @@ export const PublishOptionsStep: React.FC<PublishOptionsStepProps> = ({
     postType: 'post',
     status: 'draft',
     categoryId: '',
-    tags: topic.topic.toLowerCase().replace(/\s+/g, ', '),
-    focusKeyword: brief?.target_keyword || topic.topic,
+    tags: (topic.title || '').toLowerCase().replace(/\s+/g, ', '),
+    focusKeyword: brief?.target_keyword || topic.title || '',
     metaDescription: brief?.meta_description || '',
     injectionMethod: 'scoped-css',
-    includeProgressBar: layout.components.readingExperience.progressBar,
-    includeTocScript: layout.components.toc.enabled,
+    includeProgressBar: layout.components.readingExperience?.progressBar ?? true,
+    includeTocScript: layout.components.toc?.enabled ?? true,
   });
 
   const [isPublishing, setIsPublishing] = useState(false);
@@ -381,7 +381,7 @@ export const PublishOptionsStep: React.FC<PublishOptionsStepProps> = ({
       <div className="p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg">
         <h4 className="text-sm font-medium text-blue-400 mb-2">Ready to Publish</h4>
         <ul className="text-xs text-gray-300 space-y-1">
-          <li>• Title: <span className="text-white">{topic.topic}</span></li>
+          <li>• Title: <span className="text-white">{topic.title}</span></li>
           <li>• Template: <span className="text-white">{layout.template}</span></li>
           <li>• Style: <span className="text-white">{style.name}</span></li>
           <li>• Components: <span className="text-white">{styledContent.components.length} detected</span></li>
