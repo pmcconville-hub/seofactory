@@ -57,6 +57,7 @@ import { useContextualEditor } from '../../hooks/useContextualEditor';
 import { ContextMenu, EditorPanel, InlineDiff, ImageGenerationPanel, AnalysisConfirmationPanel } from '../contextualEditor';
 import { shouldUseInlineDiff } from '../../services/ai/contextualEditing';
 import { ImageStyle, AspectRatio } from '../../types/contextualEditor';
+import UpwardDropdownMenu, { DropdownMenuItem } from '../ui/UpwardDropdownMenu';
 
 /**
  * Replace IMAGE placeholders with actual markdown images if they have generated URLs.
@@ -199,9 +200,6 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
   // Social Media Posts State
   const [showSocialModal, setShowSocialModal] = useState(false);
   const [showCampaignsModal, setShowCampaignsModal] = useState(false);
-
-  // HTML Download Dropdown State
-  const [showHtmlDownloadMenu, setShowHtmlDownloadMenu] = useState(false);
 
   // Audit Panel State
   const [showAuditPanel, setShowAuditPanel] = useState(false);
@@ -3587,7 +3585,7 @@ ${schemaScript}`;
         <footer className="p-2 bg-gray-800 border-t border-gray-700 flex-shrink-0">
             <div className="flex justify-between items-center">
                 {/* Left: Stats and Resources */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-500">
                         {draftContent.length.toLocaleString()} chars
                     </span>
@@ -3599,130 +3597,115 @@ ${schemaScript}`;
                     >
                         📦
                     </Button>
-                    <Button
-                        onClick={handleAddRelatedTopics}
-                        disabled={!draftContent}
-                        variant="secondary"
-                        className="text-xs py-0.5 px-2 bg-purple-600/20 !text-purple-400 hover:bg-purple-600/40 hover:!text-purple-300 border border-purple-500/30"
-                        title="Add Related Topics section with contextual bridges (SEO internal linking)"
-                    >
-                        🔗 Contextual Links
-                    </Button>
-                    <Button
-                        onClick={handleCopyHtml}
-                        disabled={!draftContent}
-                        variant="secondary"
-                        className="text-xs py-0.5 px-2 bg-blue-600/20 !text-blue-400 hover:bg-blue-600/40 hover:!text-blue-300 border border-blue-500/30"
-                        title="Copy article HTML to clipboard (WordPress-ready, no document wrapper)"
-                    >
-                        📋 Copy HTML
-                    </Button>
-                    <div className="relative">
-                        <Button
-                            onClick={() => setShowHtmlDownloadMenu(!showHtmlDownloadMenu)}
-                            disabled={!draftContent}
-                            variant="secondary"
-                            className="text-xs py-0.5 px-2 bg-emerald-600/20 !text-emerald-400 hover:bg-emerald-600/40 hover:!text-emerald-300 border border-emerald-500/30"
-                            title="Download complete HTML document with schema markup, Open Graph tags, and all formatting"
-                        >
-                            ⬇ HTML ▾
-                        </Button>
-                        {showHtmlDownloadMenu && (
-                            <div
-                                className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-600 rounded shadow-lg z-50 min-w-[180px]"
-                                onMouseLeave={() => setShowHtmlDownloadMenu(false)}
-                            >
-                                <button
-                                    onClick={() => { handleDownloadHtml(true); setShowHtmlDownloadMenu(false); }}
-                                    className="w-full text-left px-3 py-2 text-xs text-gray-200 hover:bg-gray-700 flex items-center gap-2"
-                                >
-                                    <span>📦</span>
-                                    <span>With embedded images</span>
-                                </button>
-                                <button
-                                    onClick={() => { handleDownloadHtml(false); setShowHtmlDownloadMenu(false); }}
-                                    className="w-full text-left px-3 py-2 text-xs text-gray-200 hover:bg-gray-700 flex items-center gap-2 border-t border-gray-700"
-                                >
-                                    <span>🔗</span>
-                                    <span>With image URLs only</span>
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                    <Button
-                        onClick={handleDownloadPackage}
-                        disabled={!draftContent}
-                        variant="secondary"
-                        className="text-xs py-0.5 px-2 !bg-transparent !text-gray-400 hover:!text-white"
-                        title="Download full article package (HTML, Markdown, brief, links, audit report, images)"
-                    >
-                        📦 Export All
-                    </Button>
                 </div>
 
-                {/* Center: Main Actions */}
+                {/* Center: Main Action Groups */}
                 <div className="flex items-center gap-1">
-                    {/* Undo/Redo for contextual edits */}
+                    {/* Export Group (Emerald) */}
+                    <UpwardDropdownMenu
+                        trigger={{
+                            label: "Export",
+                            icon: "⬇",
+                            disabled: !draftContent,
+                            title: "Export article in various formats",
+                            className: "text-xs py-1 px-2 bg-emerald-600/20 !text-emerald-400 hover:bg-emerald-600/40 hover:!text-emerald-300 border border-emerald-500/30"
+                        }}
+                        items={[
+                            {
+                                id: 'copy-html',
+                                label: 'Copy HTML to clipboard',
+                                icon: '📋',
+                                onClick: handleCopyHtml
+                            },
+                            {
+                                id: 'download-embedded',
+                                label: 'HTML with embedded images',
+                                icon: '📦',
+                                onClick: () => handleDownloadHtml(true),
+                                divider: true
+                            },
+                            {
+                                id: 'download-urls',
+                                label: 'HTML with image URLs',
+                                icon: '🔗',
+                                onClick: () => handleDownloadHtml(false)
+                            },
+                            {
+                                id: 'export-all',
+                                label: 'Download full package',
+                                icon: '📁',
+                                onClick: handleDownloadPackage,
+                                divider: true
+                            }
+                        ]}
+                    />
+
+                    {/* Separator */}
+                    <div className="w-px h-6 bg-gray-600/50 mx-2" />
+
+                    {/* Enhancement Group (Teal) */}
                     {contextualEditor.editCount > 0 && (
-                      <div className="flex items-center gap-1 mr-4">
-                        <button
-                          onClick={contextualEditor.undo}
-                          disabled={!contextualEditor.canUndo}
-                          className="px-2 py-1 text-sm text-slate-400 hover:text-white disabled:opacity-30"
-                          title="Undo (Ctrl+Z)"
-                        >
-                          ↩
-                        </button>
-                        <button
-                          onClick={contextualEditor.redo}
-                          disabled={!contextualEditor.canRedo}
-                          className="px-2 py-1 text-sm text-slate-400 hover:text-white disabled:opacity-30"
-                          title="Redo (Ctrl+Y)"
-                        >
-                          ↪
-                        </button>
-                        <span className="text-xs text-slate-500">
-                          {contextualEditor.editCount} edit{contextualEditor.editCount !== 1 ? 's' : ''}
-                        </span>
-                      </div>
+                        <>
+                            <button
+                                onClick={contextualEditor.undo}
+                                disabled={!contextualEditor.canUndo}
+                                className="px-2 py-1 text-sm text-teal-400 hover:text-teal-300 disabled:opacity-30 disabled:text-gray-500"
+                                title="Undo (Ctrl+Z)"
+                            >
+                                ↩
+                            </button>
+                            <button
+                                onClick={contextualEditor.redo}
+                                disabled={!contextualEditor.canRedo}
+                                className="px-2 py-1 text-sm text-teal-400 hover:text-teal-300 disabled:opacity-30 disabled:text-gray-500"
+                                title="Redo (Ctrl+Y)"
+                            >
+                                ↪
+                            </button>
+                        </>
                     )}
                     <Button
                         onClick={handlePolishDraft}
                         disabled={isPolishing || !draftContent || activeTab === 'preview' || !canGenerateContent}
-                        className="text-xs py-1 px-3 bg-gray-600 hover:bg-gray-500 opacity-80"
-                        title={!canGenerateContent ? (featureReason || 'Content generation requires a subscription upgrade') : "Optional: Refines intro as abstractive summary, converts dense paragraphs to lists, applies stylometry for author voice. Note: Pass 7 already handles intro synthesis."}
+                        className="text-xs py-1 px-2 bg-teal-600/20 !text-teal-400 hover:bg-teal-600/40 hover:!text-teal-300 border border-teal-500/30"
+                        title={!canGenerateContent ? (featureReason || 'Content generation requires a subscription upgrade') : "Optional: Refines intro as abstractive summary, converts dense paragraphs to lists, applies stylometry for author voice."}
                     >
-                        {isPolishing ? <SmartLoader context="generating" size="sm" showText={false} /> : '⚡ Polish'}
+                        {isPolishing ? <SmartLoader context="generating" size="sm" showText={false} /> : 'Polish'}
                     </Button>
                     <Button
                         onClick={() => onAnalyzeFlow(draftContent)}
                         variant="secondary"
                         disabled={isLoading || !draftContent || activeTab === 'preview' || isPolishing}
-                        className="text-xs py-1 px-2 bg-emerald-700 hover:bg-emerald-600"
-                        title="Recommended: Analyzes contextual flow consistency around central entity, checks transition logic between sections, and validates semantic coherence with pillar topic."
+                        className="text-xs py-1 px-2 bg-teal-600/20 !text-teal-400 hover:bg-teal-600/40 hover:!text-teal-300 border border-teal-500/30"
+                        title="Analyzes contextual flow consistency around central entity and validates semantic coherence."
                     >
-                        ✓ Flow
+                        Flow
                     </Button>
                     <Button
                         onClick={handleRunAudit}
                         variant="secondary"
                         disabled={isLoading || !draftContent || activeTab === 'preview' || isPolishing || isRunningAudit}
-                        className={`text-xs py-1 px-2 ${showAuditPanel ? 'bg-emerald-600' : 'bg-emerald-700 hover:bg-emerald-600'}`}
+                        className={`text-xs py-1 px-2 ${showAuditPanel ? 'bg-teal-600' : 'bg-teal-600/20'} !text-teal-400 hover:bg-teal-600/40 hover:!text-teal-300 border border-teal-500/30`}
                         title="Run algorithmic audit and show issues with auto-fix suggestions"
                     >
-                        {isRunningAudit ? <SmartLoader context="auditing" size="sm" showText={false} /> : showAuditPanel ? '◉ Audit' : '✓ Audit'}
+                        {isRunningAudit ? <SmartLoader context="auditing" size="sm" showText={false} /> : 'Audit'}
                         {auditIssues.filter(i => !i.fixApplied).length > 0 && (
                             <span className="ml-1 px-1 py-0.5 text-[10px] bg-red-600 rounded-full">
                                 {auditIssues.filter(i => !i.fixApplied).length}
                             </span>
                         )}
                     </Button>
+
+                    {/* Separator */}
+                    <div className="w-px h-6 bg-gray-600/50 mx-2" />
+
+                    {/* Content Additions Group (Amber) */}
                     <Button
                         onClick={() => onGenerateSchema(brief)}
                         disabled={isLoading || !draftContent || activeTab === 'preview' || isPolishing}
                         variant="secondary"
-                        className="text-xs py-1 px-2"
-                        title="Generate JSON-LD structured data with entity resolution (Wikidata), page type detection (Article, HowTo, FAQ, Product), and automatic validation."
+                        className="text-xs py-1 px-2 bg-amber-600/20 !text-amber-400 hover:bg-amber-600/40 hover:!text-amber-300 border border-amber-500/30"
+                        title="Generate JSON-LD structured data with entity resolution (Wikidata), page type detection, and validation."
                     >
                         Schema
                     </Button>
@@ -3730,58 +3713,77 @@ ${schemaScript}`;
                         onClick={() => setActiveTab('images')}
                         disabled={isLoading || !draftContent || isPolishing}
                         variant="secondary"
-                        className={`text-xs py-1 px-2 ${activeTab === 'images' ? 'bg-amber-600' : 'bg-amber-700 hover:bg-amber-600'}`}
+                        className={`text-xs py-1 px-2 ${activeTab === 'images' ? 'bg-amber-600' : 'bg-amber-600/20'} !text-amber-400 hover:bg-amber-600/40 hover:!text-amber-300 border border-amber-500/30`}
                         title={imagePlaceholders.length > 0 ? `Manage ${imagePlaceholders.length} image(s)` : 'No image placeholders found'}
                     >
-                        Images {imagePlaceholders.length > 0 && `(${imagePlaceholders.length})`}
+                        Images{imagePlaceholders.length > 0 && ` (${imagePlaceholders.length})`}
+                    </Button>
+                    <Button
+                        onClick={handleAddRelatedTopics}
+                        disabled={!draftContent}
+                        variant="secondary"
+                        className="text-xs py-1 px-2 bg-amber-600/20 !text-amber-400 hover:bg-amber-600/40 hover:!text-amber-300 border border-amber-500/30"
+                        title="Add Related Topics section with contextual bridges (SEO internal linking)"
+                    >
+                        🔗
                     </Button>
                     {databaseJobInfo && (
                         <Button
                             onClick={() => setShowPassesModal(true)}
                             disabled={isLoading || !draftContent || activeTab === 'preview' || isPolishing}
                             variant="secondary"
-                            className="text-xs py-1 px-2 bg-teal-700 hover:bg-teal-600"
+                            className="text-xs py-1 px-2 bg-amber-600/20 !text-amber-400 hover:bg-amber-600/40 hover:!text-amber-300 border border-amber-500/30"
                             title="Re-run specific optimization passes"
                         >
-                            Re-run Passes
+                            Re-run
                         </Button>
                     )}
-                    <Button
-                        onClick={() => setShowPublishModal(true)}
-                        disabled={isLoading || !draftContent || isPolishing}
-                        variant="secondary"
-                        className="text-xs py-1 px-2 bg-blue-700 hover:bg-blue-600"
-                        title="Publish to WordPress"
-                    >
-                        Publish to WP
-                    </Button>
-                    <Button
-                        onClick={() => setShowSocialModal(true)}
-                        disabled={isLoading || !draftContent || isPolishing || !socialTransformSource}
-                        variant="secondary"
-                        className="text-xs py-1 px-2 bg-purple-700 hover:bg-purple-600"
-                        title="Create social media posts from this article"
-                    >
-                        Social Posts
-                    </Button>
-                    <Button
-                        onClick={() => setShowCampaignsModal(true)}
-                        disabled={!activeBriefTopic?.id}
-                        variant="secondary"
-                        className="text-xs py-1 px-2 bg-purple-600 hover:bg-purple-500"
-                        title="View saved social media campaigns"
-                    >
-                        Campaigns{socialCampaigns.campaigns.length > 0 ? ` (${socialCampaigns.campaigns.length})` : ''}
-                    </Button>
-                    {reportHook.canGenerate && (
-                        <ReportExportButton
-                            reportType="article-draft"
-                            onClick={reportHook.open}
-                            variant="secondary"
-                            size="sm"
-                            className="text-xs py-1 px-2 bg-indigo-700 hover:bg-indigo-600"
-                        />
-                    )}
+
+                    {/* Separator */}
+                    <div className="w-px h-6 bg-gray-600/50 mx-2" />
+
+                    {/* Publish Group (Purple) */}
+                    <UpwardDropdownMenu
+                        trigger={{
+                            label: "Publish",
+                            icon: "🚀",
+                            disabled: isLoading || !draftContent || isPolishing,
+                            title: "Publish and distribute content",
+                            className: "text-xs py-1 px-2 bg-purple-600/20 !text-purple-400 hover:bg-purple-600/40 hover:!text-purple-300 border border-purple-500/30"
+                        }}
+                        items={[
+                            {
+                                id: 'publish-wp',
+                                label: 'Publish to WordPress',
+                                icon: '📝',
+                                onClick: () => setShowPublishModal(true)
+                            },
+                            {
+                                id: 'social-posts',
+                                label: 'Create Social Posts',
+                                icon: '📱',
+                                onClick: () => setShowSocialModal(true),
+                                disabled: !socialTransformSource,
+                                divider: true
+                            },
+                            {
+                                id: 'campaigns',
+                                label: 'View Campaigns',
+                                icon: '📊',
+                                onClick: () => setShowCampaignsModal(true),
+                                disabled: !activeBriefTopic?.id,
+                                badge: socialCampaigns.campaigns.length > 0 ? socialCampaigns.campaigns.length : undefined
+                            },
+                            ...(reportHook.canGenerate ? [{
+                                id: 'export-report',
+                                label: 'Export Quality Report',
+                                icon: '📈',
+                                onClick: reportHook.open,
+                                divider: true
+                            }] : [])
+                        ] as DropdownMenuItem[]}
+                        align="right"
+                    />
                 </div>
 
                 {/* Right: Close */}
