@@ -230,37 +230,57 @@ function detectBenefits(content: string, isHtml: boolean): BenefitItem[] | null 
 
 /**
  * Detect process/step sections
+ *
+ * Only detects content as timeline when:
+ * 1. Header explicitly indicates a process/steps (not just features or benefits)
+ * 2. List items contain sequential/action verbs (minimum 30% of items)
+ * 3. Has 3-8 items (too few = not a process, too many = not suitable for timeline)
+ *
+ * Regular numbered lists render as <ol> instead.
  */
 function detectProcessSteps(content: string, isHtml: boolean): TimelineStep[] | null {
-  // Pattern 1: Numbered list after step-indicating heading
-  const processPatterns = [
-    /(?:hoe\s+(?:werkt|wij\s+werken)|process|stappen|steps|werkwijze)[^\n]*\n((?:\d+\.\s+[^\n]+\n?)+)/gi,
-    /(?:stap\s+)?(\d+)[.:]\s*\*\*([^*]+)\*\*\s*[-–:]\s*([^\n]+)/gi,
-  ];
+  // Sequential/process indicators that suggest this is actually a step-by-step process
+  const sequentialIndicators = /(?:eerst|daarna|vervolgens|dan|tot\s+slot|tenslotte|first|then|next|finally|step\s+\d|stap\s+\d|begin|start|complete|finish|eind)/i;
 
-  // Try numbered list pattern
-  const match = processPatterns[0].exec(content);
+  // Action verbs that suggest process steps (Dutch + English)
+  const actionVerbs = /(?:installeer|installeren|maak|maken|voeg|toevoegen|kies|kiezen|selecteer|configureer|download|upload|verzend|verzenden|controleer|controleren|verifieer|plan|boek|bestel|betaal|ontvang|install|create|add|select|configure|choose|submit|verify|check|complete|download|upload|send|receive|book|order|pay)/i;
+
+  // Only match EXPLICIT process-indicating headers (strict patterns)
+  // Excluded: generic terms that might just be section headings
+  const processHeaderPattern = /(?:^|\n)#{2,3}\s*(?:Hoe\s+(?:werkt|wij\s+werken|het\s+werkt)|Stap(?:pen)?(?:\s+voor\s+stap)?|(?:Ons\s+)?(?:Proces|Process|Werkwijze)|Procedure|Aanpak|How\s+(?:it\s+works|we\s+work|to))\s*[^\n]*\n((?:\d+\.\s+[^\n]+\n?)+)/gi;
+
+  const match = processHeaderPattern.exec(content);
   if (match) {
     const listContent = match[1];
     const items = listContent.match(/\d+\.\s+([^\n]+)/g);
 
-    if (items && items.length >= 3) {
-      return items.slice(0, 8).map((item, index) => {
-        const text = item.replace(/^\d+\.\s+/, '').trim();
-        const parts = text.split(/[:\-–]/).map(p => p.trim());
+    // Must have 3-8 items for timeline treatment
+    if (items && items.length >= 3 && items.length <= 8) {
+      const itemTexts = items.map(item => item.replace(/^\d+\.\s+/, '').trim());
 
-        return {
-          title: parts[0] || `Stap ${index + 1}`,
-          description: parts[1] || text,
-        };
-      });
+      // Check if this looks like a process (has sequential indicators or action verbs)
+      const processIndicatorCount = itemTexts.filter(
+        text => sequentialIndicators.test(text) || actionVerbs.test(text)
+      ).length;
+
+      // At least 30% of items should indicate process/sequential nature
+      if (processIndicatorCount / items.length >= 0.3) {
+        return itemTexts.map((text, index) => {
+          const parts = text.split(/[:\-–]/).map(p => p.trim());
+          return {
+            title: parts[0] || `Stap ${index + 1}`,
+            description: parts[1] || text,
+          };
+        });
+      }
     }
   }
 
-  // Try bold step pattern
+  // Try bold step pattern (Stap 1: **Title** - Description)
   const steps: TimelineStep[] = [];
   let stepMatch;
-  const boldPattern = /(?:stap\s+)?(\d+)[.:]\s*\*\*([^*]+)\*\*\s*[-–:]\s*([^\n]+)/gi;
+  // Only match explicit "Stap X" or "Step X" patterns
+  const boldPattern = /(?:stap|step)\s+(\d+)[.:]\s*\*\*([^*]+)\*\*\s*[-–:]\s*([^\n]+)/gi;
 
   while ((stepMatch = boldPattern.exec(content)) !== null) {
     steps.push({
@@ -269,8 +289,8 @@ function detectProcessSteps(content: string, isHtml: boolean): TimelineStep[] | 
     });
   }
 
-  if (steps.length >= 3) {
-    return steps.slice(0, 8);
+  if (steps.length >= 3 && steps.length <= 8) {
+    return steps;
   }
 
   return null;

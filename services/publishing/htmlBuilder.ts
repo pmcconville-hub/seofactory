@@ -709,19 +709,23 @@ export class SemanticHtmlBuilder {
     html = html.replace(/^---$/gm, '<hr class="ctc-divider border-t border-[var(--ctc-border)] my-8">');
     html = html.replace(/^\*\*\*$/gm, '<hr class="ctc-divider border-t border-[var(--ctc-border)] my-8">');
 
-    // Process lists - unordered
-    html = html.replace(/^(\s*)[-*]\s+(.+)$/gm, '$1<li class="ctc-li mb-2">$2</li>');
+    // Process lists - mark with data attribute to preserve type info
+    // Unordered lists (- or *)
+    html = html.replace(/^(\s*)[-*]\s+(.+)$/gm, '$1<li class="ctc-li mb-2" data-list-type="ul">$2</li>');
 
-    // Process lists - ordered
-    html = html.replace(/^(\s*)\d+\.\s+(.+)$/gm, '$1<li class="ctc-li mb-2">$2</li>');
+    // Ordered lists (1. 2. etc)
+    html = html.replace(/^(\s*)\d+\.\s+(.+)$/gm, '$1<li class="ctc-li mb-2" data-list-type="ol">$2</li>');
 
-    // Wrap consecutive list items in ul/ol
-    // Find groups of consecutive <li> tags and wrap them
-    html = html.replace(/((?:<li[^>]*>.*?<\/li>\s*)+)/g, (match) => {
-      // Check if it looks like an ordered list (has numbers in original)
-      const isOrdered = false; // simplified - treat as unordered
+    // Wrap consecutive list items in ul/ol based on their type
+    // Process groups of list items that share the same type
+    html = html.replace(/((?:<li[^>]*data-list-type="(ul|ol)"[^>]*>.*?<\/li>\s*)+)/g, (match, _fullMatch, firstType) => {
+      // Determine list type from the first item's marker
+      const isOrdered = match.includes('data-list-type="ol"');
       const tag = isOrdered ? 'ol' : 'ul';
-      return `<${tag} class="ctc-list list-disc pl-6 my-4 space-y-2">${match}</${tag}>`;
+      const listClass = isOrdered ? 'ctc-list list-decimal pl-6 my-4 space-y-2' : 'ctc-list list-disc pl-6 my-4 space-y-2';
+      // Clean up the data attributes from the final HTML
+      const cleanedMatch = match.replace(/\s*data-list-type="(?:ul|ol)"/g, '');
+      return `<${tag} class="${listClass}">${cleanedMatch}</${tag}>`;
     });
 
     // Paragraphs - wrap remaining text lines that aren't already in HTML tags

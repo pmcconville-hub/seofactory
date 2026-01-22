@@ -81,22 +81,25 @@ const DeviceFrame: React.FC<DeviceFrameProps> = ({ device, children }) => {
           </div>
         )}
 
-        {/* Content iframe */}
+        {/* Content area with scaled content */}
         <div
           className="overflow-auto bg-white"
           style={{
             height: device === 'mobile'
               ? size.height * scale - 20 - 16
               : size.height * scale - 24 - 8,
-            transform: `scale(${scale})`,
-            transformOrigin: 'top left',
-            width: size.width,
-            maxHeight: device === 'mobile'
-              ? (size.height - 36) / scale
-              : (size.height - 32) / scale,
           }}
         >
-          {children}
+          <div
+            style={{
+              transform: `scale(${scale})`,
+              transformOrigin: 'top left',
+              width: size.width,
+              minHeight: size.height - (device === 'mobile' ? 36 : 32),
+            }}
+          >
+            {children}
+          </div>
         </div>
       </div>
     </div>
@@ -240,13 +243,13 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
       )}
 
       {/* Preview / HTML View */}
-      <div className="bg-gray-900 rounded-lg p-4 overflow-hidden" style={{ minHeight: '500px' }}>
+      <div className="bg-gray-900 rounded-lg p-4 overflow-auto" style={{ minHeight: '500px', maxHeight: '70vh' }}>
         {showRawHtml ? (
           <div className="space-y-4">
             {/* HTML Code */}
             <div>
               <h4 className="text-sm font-medium text-gray-300 mb-2">HTML</h4>
-              <pre className="bg-gray-950 p-4 rounded-lg overflow-x-auto text-xs text-gray-300 max-h-60">
+              <pre className="bg-gray-950 p-4 rounded-lg overflow-auto text-xs text-gray-300 max-h-[50vh]">
                 <code>{preview.html}</code>
               </pre>
             </div>
@@ -254,7 +257,7 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
             {/* CSS Code */}
             <div>
               <h4 className="text-sm font-medium text-gray-300 mb-2">CSS</h4>
-              <pre className="bg-gray-950 p-4 rounded-lg overflow-x-auto text-xs text-gray-300 max-h-60">
+              <pre className="bg-gray-950 p-4 rounded-lg overflow-auto text-xs text-gray-300 max-h-[50vh]">
                 <code>{preview.css}</code>
               </pre>
             </div>
@@ -262,7 +265,7 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
             {/* CSS Variables */}
             <div>
               <h4 className="text-sm font-medium text-gray-300 mb-2">CSS Variables</h4>
-              <pre className="bg-gray-950 p-4 rounded-lg overflow-x-auto text-xs text-gray-300 max-h-40">
+              <pre className="bg-gray-950 p-4 rounded-lg overflow-auto text-xs text-gray-300 max-h-[50vh]">
                 <code>{JSON.stringify(preview.cssVariables, null, 2)}</code>
               </pre>
             </div>
