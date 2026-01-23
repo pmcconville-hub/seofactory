@@ -83,11 +83,12 @@ const DeviceFrame: React.FC<DeviceFrameProps> = ({ device, children }) => {
 
         {/* Content area with scaled content */}
         <div
-          className="overflow-auto bg-white"
+          className="overflow-auto"
           style={{
             height: device === 'mobile'
               ? size.height * scale - 20 - 16
               : size.height * scale - 24 - 8,
+            backgroundColor: '#fafafa',
           }}
         >
           <div

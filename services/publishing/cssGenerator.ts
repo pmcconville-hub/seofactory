@@ -137,6 +137,8 @@ function generateScopedReset(): string {
   line-height: var(--ctc-line-height-body, 1.6);
   font-family: var(--ctc-font-body);
   color: var(--ctc-text);
+  background-color: var(--ctc-background);
+  min-height: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -314,6 +316,68 @@ function generateTypographyStyles(): string {
   height: 1px;
   background: var(--ctc-border);
   margin: 2em 0;
+}
+
+/* Main content area */
+.ctc-styled .ctc-main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--ctc-space-8) var(--ctc-space-6);
+}
+
+.ctc-styled .ctc-article {
+  background: var(--ctc-background);
+}
+
+/* Section styling */
+.ctc-styled .ctc-section,
+.ctc-styled [class^="ctc-prose"],
+.ctc-styled [class^="ctc-bullet-list"],
+.ctc-styled [class^="ctc-numbered-list"],
+.ctc-styled [class^="ctc-checklist"],
+.ctc-styled [class^="ctc-icon-list"],
+.ctc-styled [class^="ctc-card-grid"],
+.ctc-styled [class^="ctc-feature-list"],
+.ctc-styled [class^="ctc-stat-cards"],
+.ctc-styled [class^="ctc-timeline"],
+.ctc-styled [class^="ctc-steps"],
+.ctc-styled [class^="ctc-faq"],
+.ctc-styled [class^="ctc-key-takeaways"],
+.ctc-styled [class^="ctc-summary-box"],
+.ctc-styled [class^="ctc-callout"],
+.ctc-styled [class^="ctc-highlight-box"],
+.ctc-styled [class^="ctc-sources-section"],
+.ctc-styled [class^="ctc-cta"],
+.ctc-styled [class^="ctc-author-box"] {
+  margin-bottom: var(--ctc-space-10);
+}
+
+/* Prose content improvements */
+.ctc-styled .ctc-prose-content {
+  font-size: var(--ctc-text-lg);
+  line-height: 1.8;
+}
+
+.ctc-styled .ctc-prose-content p {
+  margin-bottom: 1.5em;
+}
+
+/* Better section headings */
+.ctc-styled .ctc-section-heading {
+  position: relative;
+  padding-bottom: var(--ctc-space-4);
+  margin-bottom: var(--ctc-space-6);
+}
+
+.ctc-styled .ctc-section-heading::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 60px;
+  height: 3px;
+  background: var(--ctc-primary);
+  border-radius: var(--ctc-radius-full);
 }`;
 }
 

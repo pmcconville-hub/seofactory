@@ -241,28 +241,34 @@ function renderHero(
   ctaConfig?: BlueprintRenderOptions['ctaConfig'],
   ctaIntensity?: string
 ): string {
-  const bgClass = strategy.visualStyle === 'marketing' || strategy.visualStyle === 'bold'
-    ? 'bg-gradient-to-br from-[var(--ctc-primary)] to-[var(--ctc-primary-light)] text-white'
+  const isGradient = strategy.visualStyle === 'marketing' || strategy.visualStyle === 'bold' || strategy.visualStyle === 'warm-modern';
+  const bgClass = isGradient
+    ? 'ctc-hero--gradient'
     : 'bg-[var(--ctc-surface)]';
 
   const showCta = ctaIntensity === 'prominent' || strategy.primaryGoal === 'convert';
 
   return `
-<header class="ctc-hero ${bgClass} py-16 md:py-24 px-4" role="banner">
-  <div class="ctc-hero-content max-w-4xl mx-auto text-center">
-    <h1 class="ctc-hero-title text-4xl md:text-5xl lg:text-6xl font-bold mb-6" style="font-weight: var(--ctc-heading-weight)">
+<header class="ctc-hero ${bgClass} relative overflow-hidden" role="banner">
+  ${isGradient ? `
+  <div class="ctc-hero-bg-effects absolute inset-0 pointer-events-none">
+    <div class="ctc-hero-orb ctc-hero-orb--1"></div>
+    <div class="ctc-hero-orb ctc-hero-orb--2"></div>
+  </div>` : ''}
+  <div class="ctc-hero-content relative z-10 max-w-4xl mx-auto text-center py-20 md:py-28 px-6">
+    <h1 class="ctc-hero-title text-4xl md:text-5xl lg:text-6xl mb-8" style="font-weight: var(--ctc-heading-weight); font-family: var(--ctc-font-display); line-height: 1.1; letter-spacing: var(--ctc-heading-letter-spacing)">
       ${escapeHtml(title)}
     </h1>
-    <p class="ctc-hero-subtitle text-lg md:text-xl opacity-90 max-w-2xl mx-auto">
+    <p class="ctc-hero-subtitle text-lg md:text-xl max-w-2xl mx-auto leading-relaxed" style="opacity: 0.9">
       ${extractFirstParagraph(introContent)}
     </p>
     ${showCta && ctaConfig?.primaryText ? `
-    <div class="ctc-hero-actions mt-8 flex gap-4 justify-center flex-wrap">
-      <a href="${escapeHtml(ctaConfig.primaryUrl || '#contact')}" class="ctc-btn ctc-btn-white px-8 py-3 rounded-[var(--ctc-radius-full)] font-semibold bg-white text-[var(--ctc-primary)] hover:opacity-90 transition-opacity">
+    <div class="ctc-hero-actions mt-10 flex gap-4 justify-center flex-wrap">
+      <a href="${escapeHtml(ctaConfig.primaryUrl || '#contact')}" class="ctc-btn ctc-btn--white px-8 py-4 rounded-[var(--ctc-radius-full)] font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200">
         ${escapeHtml(ctaConfig.primaryText)}
       </a>
       ${ctaConfig.secondaryText ? `
-      <a href="${escapeHtml(ctaConfig.secondaryUrl || '#')}" class="ctc-btn ctc-btn-outline px-8 py-3 rounded-[var(--ctc-radius-full)] font-semibold border-2 border-white text-white hover:bg-white/10 transition-colors">
+      <a href="${escapeHtml(ctaConfig.secondaryUrl || '#')}" class="ctc-btn ctc-btn--outline px-8 py-4 rounded-[var(--ctc-radius-full)] font-semibold border-2 hover:bg-white/10 transition-colors">
         ${escapeHtml(ctaConfig.secondaryText)}
       </a>` : ''}
     </div>` : ''}
@@ -393,11 +399,11 @@ function renderAuthorBox(
  */
 function mapVisualStyleToPersonality(style: VisualStyle): string {
   const mapping: Record<VisualStyle, string> = {
-    'editorial': 'corporate-professional',
-    'marketing': 'modern-energetic',
-    'minimal': 'corporate-professional',
-    'bold': 'modern-energetic',
-    'warm-modern': 'warm-approachable',
+    'editorial': 'bold-editorial',
+    'marketing': 'warm-friendly',
+    'minimal': 'modern-minimal',
+    'bold': 'tech-clean',
+    'warm-modern': 'warm-friendly',
   };
   return mapping[style] || 'corporate-professional';
 }

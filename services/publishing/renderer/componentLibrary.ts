@@ -239,15 +239,18 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
 
   'prose': (ctx) => {
     const htmlContent = markdownToHtml(ctx.content);
+    const bgStyles = ctx.hasBackground
+      ? 'rounded-[var(--ctc-radius-lg)] p-8 bg-[var(--ctc-surface)]'
+      : '';
     return {
       html: `
-<div id="${ctx.sectionId}" class="ctc-prose ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)} ${ctx.hasBackground ? 'rounded-[var(--ctc-radius-lg)] px-6' : ''}">
-  ${ctx.heading ? `<h${ctx.headingLevel} id="${slugify(ctx.heading)}" class="ctc-section-heading text-2xl font-semibold mb-4" style="font-weight: var(--ctc-heading-weight)">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
-  <div class="ctc-prose-content prose prose-lg max-w-none">
+<section id="${ctx.sectionId}" class="ctc-prose ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)} ${bgStyles}">
+  ${ctx.heading ? `<h${ctx.headingLevel} id="${slugify(ctx.heading)}" class="ctc-section-heading" style="font-weight: var(--ctc-heading-weight); font-family: var(--ctc-font-display); font-size: var(--ctc-text-2xl); color: var(--ctc-text)">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
+  <div class="ctc-prose-content">
     ${htmlContent}
   </div>
-  ${ctx.hasDivider ? '<hr class="ctc-divider border-t border-[var(--ctc-border)] mt-8">' : ''}
-</div>`,
+  ${ctx.hasDivider ? '<hr class="ctc-divider" style="border: 0; height: 1px; background: var(--ctc-border); margin-top: var(--ctc-space-10)">' : ''}
+</section>`,
     };
   },
 
@@ -322,16 +325,20 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
 
   'bullet-list': (ctx) => {
     const items = extractListItems(ctx.content);
+    const bgStyles = ctx.hasBackground
+      ? 'padding: var(--ctc-space-8); border-radius: var(--ctc-radius-lg); background: var(--ctc-surface); border: 1px solid var(--ctc-border-subtle)'
+      : '';
+
     const htmlContent = items.length > 0
-      ? `<ul class="ctc-list list-disc pl-6 space-y-2">${items.map(item => `<li class="ctc-li">${markdownToHtml(item)}</li>`).join('')}</ul>`
+      ? `<ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--ctc-space-4)">${items.map(item => `<li style="display: flex; align-items: flex-start; gap: var(--ctc-space-3); color: var(--ctc-text-secondary); line-height: 1.6"><span style="width: 8px; height: 8px; min-width: 8px; background: var(--ctc-primary); border-radius: 50%; margin-top: 8px"></span><span>${markdownToHtml(item)}</span></li>`).join('')}</ul>`
       : markdownToHtml(ctx.content);
 
     return {
       html: `
-<div id="${ctx.sectionId}" class="ctc-bullet-list ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)} ${ctx.hasBackground ? 'p-6 rounded-[var(--ctc-radius-lg)] bg-[var(--ctc-surface)]' : ''}">
-  ${ctx.heading ? `<h${ctx.headingLevel} id="${slugify(ctx.heading || '')}" class="text-xl font-semibold mb-4">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
+<section id="${ctx.sectionId}" class="ctc-bullet-list ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}" style="${bgStyles}">
+  ${ctx.heading ? `<h${ctx.headingLevel} id="${slugify(ctx.heading || '')}" style="font-family: var(--ctc-font-display); font-weight: var(--ctc-heading-weight); font-size: var(--ctc-text-xl); margin-bottom: var(--ctc-space-6); color: var(--ctc-text)">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
   ${htmlContent}
-</div>`,
+</section>`,
     };
   },
 
@@ -355,16 +362,16 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
 
     return {
       html: `
-<div id="${ctx.sectionId}" class="ctc-checklist ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}">
-  ${ctx.heading ? `<h${ctx.headingLevel} class="text-xl font-semibold mb-4">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
-  <ul class="space-y-3">
+<section id="${ctx.sectionId}" class="ctc-checklist ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}" style="background: var(--ctc-surface); padding: var(--ctc-space-8); border-radius: var(--ctc-radius-xl); border: 1px solid var(--ctc-border-subtle)">
+  ${ctx.heading ? `<h${ctx.headingLevel} style="font-family: var(--ctc-font-display); font-weight: var(--ctc-heading-weight); font-size: var(--ctc-text-xl); margin-bottom: var(--ctc-space-6); color: var(--ctc-text)">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
+  <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--ctc-space-4)">
     ${items.map(item => `
-    <li class="ctc-checklist-item flex items-start gap-3">
-      <span class="ctc-check w-5 h-5 rounded bg-[var(--ctc-primary)] text-white flex items-center justify-center flex-shrink-0 mt-0.5">✓</span>
-      <span>${markdownToHtml(item)}</span>
+    <li style="display: flex; align-items: flex-start; gap: var(--ctc-space-4)">
+      <span style="width: 24px; height: 24px; min-width: 24px; border-radius: var(--ctc-radius-md); background: linear-gradient(135deg, var(--ctc-primary), var(--ctc-primary-light)); color: white; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; margin-top: 2px">✓</span>
+      <span style="color: var(--ctc-text-secondary); line-height: 1.6">${markdownToHtml(item)}</span>
     </li>`).join('')}
   </ul>
-</div>`,
+</section>`,
     };
   },
 
@@ -390,25 +397,26 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   'card-grid': (ctx) => {
     const items = extractListItems(ctx.content);
     const columns = ctx.styleHints?.columns || 3;
+    const icons = ['✨', '🎯', '🚀', '💡', '⭐', '🔥', '💪', '🎨', '📈', '🎁'];
 
     return {
       html: `
-<div id="${ctx.sectionId}" class="ctc-card-grid ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}">
-  ${ctx.heading ? `<h${ctx.headingLevel} class="text-2xl font-semibold text-center mb-8">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
-  <div class="grid grid-cols-1 md:grid-cols-${columns} gap-6">
+<section id="${ctx.sectionId}" class="ctc-card-grid ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}">
+  ${ctx.heading ? `<h${ctx.headingLevel} style="font-family: var(--ctc-font-display); font-weight: var(--ctc-heading-weight); font-size: var(--ctc-text-2xl); text-align: center; margin-bottom: var(--ctc-space-10); color: var(--ctc-text)">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--ctc-space-6)">
     ${items.map((item, i) => {
       const parts = item.split(/[:\-–]/).map(p => p.trim());
       const title = parts[0];
       const desc = parts[1] || '';
       return `
-    <div class="ctc-card p-6 rounded-[var(--ctc-radius-lg)] bg-[var(--ctc-surface)] shadow-sm hover:shadow-md transition-shadow">
-      <div class="ctc-card-icon w-10 h-10 rounded-full bg-[var(--ctc-primary)] text-white flex items-center justify-center mb-4 font-bold">${i + 1}</div>
-      <h3 class="ctc-card-title font-semibold mb-2">${markdownToHtml(title)}</h3>
-      ${desc ? `<p class="ctc-card-desc text-sm text-[var(--ctc-text-secondary)]">${markdownToHtml(desc)}</p>` : ''}
+    <div class="ctc-card" style="padding: var(--ctc-space-8); border-radius: var(--ctc-radius-xl); background: var(--ctc-surface); box-shadow: var(--ctc-shadow-md); transition: all 0.2s ease; border: 1px solid var(--ctc-border-subtle)">
+      <div style="width: 48px; height: 48px; border-radius: var(--ctc-radius-lg); background: linear-gradient(135deg, var(--ctc-primary), var(--ctc-primary-light)); display: flex; align-items: center; justify-content: center; margin-bottom: var(--ctc-space-5); font-size: 1.5rem">${icons[i % icons.length]}</div>
+      <h3 style="font-weight: 600; font-size: var(--ctc-text-lg); margin-bottom: var(--ctc-space-2); color: var(--ctc-text)">${markdownToHtml(title)}</h3>
+      ${desc ? `<p style="font-size: var(--ctc-text-sm); color: var(--ctc-text-secondary); line-height: 1.6">${markdownToHtml(desc)}</p>` : ''}
     </div>`;
     }).join('')}
   </div>
-</div>`,
+</section>`,
     };
   },
 
@@ -470,14 +478,17 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
     return {
       html: `
 <section id="${ctx.sectionId}" class="ctc-timeline-vertical ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}" itemscope itemtype="https://schema.org/HowTo">
-  ${ctx.heading ? `<h${ctx.headingLevel} class="text-2xl font-semibold text-center mb-8" itemprop="name">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
-  <div class="ctc-timeline-track relative pl-8 border-l-2 border-[var(--ctc-primary)]">
+  ${ctx.heading ? `<h${ctx.headingLevel} style="font-family: var(--ctc-font-display); font-weight: var(--ctc-heading-weight); font-size: var(--ctc-text-2xl); text-align: center; margin-bottom: var(--ctc-space-10); color: var(--ctc-text)" itemprop="name">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
+  <div style="position: relative; padding-left: var(--ctc-space-12); max-width: 700px; margin: 0 auto">
+    <div style="position: absolute; left: 16px; top: 8px; bottom: 8px; width: 3px; background: linear-gradient(to bottom, var(--ctc-primary), var(--ctc-primary-light)); border-radius: 2px"></div>
     ${steps.map((step, i) => `
-    <div class="ctc-timeline-step relative pb-8 last:pb-0" itemscope itemprop="step" itemtype="https://schema.org/HowToStep">
+    <div style="position: relative; padding-bottom: var(--ctc-space-8)${i === steps.length - 1 ? '; padding-bottom: 0' : ''}" itemscope itemprop="step" itemtype="https://schema.org/HowToStep">
       <meta itemprop="position" content="${i + 1}">
-      <div class="ctc-step-marker absolute -left-[calc(1rem+1px)] w-8 h-8 rounded-full bg-[var(--ctc-primary)] text-white flex items-center justify-center font-bold">${i + 1}</div>
-      <h3 class="ctc-step-title font-semibold mb-1" itemprop="name">${markdownToHtml(step.title)}</h3>
-      <p class="ctc-step-desc text-[var(--ctc-text-secondary)]" itemprop="text">${markdownToHtml(step.description)}</p>
+      <div style="position: absolute; left: calc(-1 * var(--ctc-space-12) + 4px); width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--ctc-primary), var(--ctc-primary-light)); color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.875rem; box-shadow: 0 2px 8px rgba(0,0,0,0.15)">${i + 1}</div>
+      <div style="background: var(--ctc-surface); padding: var(--ctc-space-5); border-radius: var(--ctc-radius-lg); border: 1px solid var(--ctc-border-subtle)">
+        <h3 style="font-weight: 600; font-size: var(--ctc-text-lg); margin-bottom: var(--ctc-space-2); color: var(--ctc-text)" itemprop="name">${markdownToHtml(step.title)}</h3>
+        <p style="color: var(--ctc-text-secondary); line-height: 1.6; margin: 0" itemprop="text">${markdownToHtml(step.description)}</p>
+      </div>
     </div>`).join('')}
   </div>
 </section>`,
@@ -588,18 +599,18 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
     return {
       html: `
 <section id="${ctx.sectionId}" class="ctc-faq-accordion ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}" itemscope itemtype="https://schema.org/FAQPage">
-  ${ctx.heading ? `<h${ctx.headingLevel} class="text-2xl font-semibold text-center mb-8">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
-  <div class="ctc-faq-list max-w-3xl mx-auto divide-y divide-[var(--ctc-border)]">
+  ${ctx.heading ? `<h${ctx.headingLevel} style="font-family: var(--ctc-font-display); font-weight: var(--ctc-heading-weight); font-size: var(--ctc-text-2xl); text-align: center; margin-bottom: var(--ctc-space-10); color: var(--ctc-text)">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
+  <div style="max-width: 800px; margin: 0 auto; background: var(--ctc-surface); border-radius: var(--ctc-radius-xl); overflow: hidden; border: 1px solid var(--ctc-border-subtle)">
     ${faqs.map((faq, i) => `
-    <div class="ctc-faq-item py-4" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
-      <h3 class="ctc-faq-question">
-        <button type="button" aria-expanded="false" aria-controls="faq-answer-${ctx.sectionId}-${i}" class="ctc-faq-trigger w-full flex justify-between items-center text-left font-semibold text-lg hover:text-[var(--ctc-primary)] transition-colors">
+    <div style="border-bottom: 1px solid var(--ctc-border-subtle)${i === faqs.length - 1 ? '; border-bottom: none' : ''}" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+      <h3 style="margin: 0">
+        <button type="button" aria-expanded="false" aria-controls="faq-answer-${ctx.sectionId}-${i}" class="ctc-faq-trigger" style="width: 100%; display: flex; justify-content: space-between; align-items: center; text-align: left; padding: var(--ctc-space-6); background: transparent; border: none; cursor: pointer; font-size: var(--ctc-text-lg); font-weight: 600; color: var(--ctc-text); transition: color 0.2s ease">
           <span itemprop="name">${markdownToHtml(faq.question)}</span>
-          <span class="ctc-faq-icon text-2xl text-[var(--ctc-primary)]" aria-hidden="true">+</span>
+          <span class="ctc-faq-icon" style="font-size: 1.5rem; color: var(--ctc-primary); transition: transform 0.2s ease; flex-shrink: 0; margin-left: var(--ctc-space-4)" aria-hidden="true">+</span>
         </button>
       </h3>
       <div id="faq-answer-${ctx.sectionId}-${i}" class="ctc-faq-answer" itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer" hidden>
-        <div class="pt-3 text-[var(--ctc-text-secondary)]" itemprop="text">${markdownToHtml(faq.answer)}</div>
+        <div style="padding: 0 var(--ctc-space-6) var(--ctc-space-6); color: var(--ctc-text-secondary); line-height: 1.7" itemprop="text">${markdownToHtml(faq.answer)}</div>
       </div>
     </div>`).join('')}
   </div>
@@ -703,16 +714,18 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
 
     return {
       html: `
-<aside id="${ctx.sectionId}" class="ctc-key-takeaways bg-gradient-to-br from-[var(--ctc-primary)] to-[var(--ctc-primary-light)] text-white p-6 md:p-8 rounded-[var(--ctc-radius-xl)] my-8">
-  <h2 class="ctc-takeaways-title text-xl font-semibold mb-4 flex items-center gap-2">
-    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+<aside id="${ctx.sectionId}" class="ctc-key-takeaways" style="background: linear-gradient(135deg, var(--ctc-primary) 0%, var(--ctc-primary-dark) 100%); color: white; padding: var(--ctc-space-10); border-radius: var(--ctc-radius-2xl); margin: var(--ctc-space-12) 0; position: relative; overflow: hidden">
+  <div style="position: absolute; top: -50px; right: -50px; width: 200px; height: 200px; background: white; opacity: 0.05; border-radius: 50%"></div>
+  <div style="position: absolute; bottom: -30px; left: 10%; width: 100px; height: 100px; background: white; opacity: 0.05; border-radius: 50%"></div>
+  <h2 style="font-family: var(--ctc-font-display); font-size: var(--ctc-text-2xl); font-weight: 700; margin-bottom: var(--ctc-space-6); display: flex; align-items: center; gap: var(--ctc-space-3); position: relative; z-index: 1">
+    <span style="width: 40px; height: 40px; background: white; color: var(--ctc-primary); border-radius: var(--ctc-radius-lg); display: flex; align-items: center; justify-content: center; font-size: 1.25rem">💡</span>
     ${escapeHtml(ctx.heading || 'Belangrijkste Punten')}
   </h2>
-  <div class="grid md:grid-cols-2 gap-4">
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--ctc-space-4); position: relative; z-index: 1">
     ${items.map(item => `
-    <div class="ctc-takeaway-item flex items-start gap-3 bg-white/15 backdrop-blur-sm p-4 rounded-lg">
-      <span class="ctc-takeaway-check w-6 h-6 rounded-full bg-white text-[var(--ctc-primary)] flex items-center justify-center font-bold flex-shrink-0">✓</span>
-      <span class="text-white/90">${markdownToHtml(item)}</span>
+    <div style="display: flex; align-items: flex-start; gap: var(--ctc-space-4); background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); padding: var(--ctc-space-5); border-radius: var(--ctc-radius-lg); border: 1px solid rgba(255, 255, 255, 0.2)">
+      <span style="width: 28px; height: 28px; min-width: 28px; border-radius: 50%; background: white; color: var(--ctc-primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.875rem">✓</span>
+      <span style="color: rgba(255, 255, 255, 0.95); line-height: 1.6">${markdownToHtml(item)}</span>
     </div>`).join('')}
   </div>
 </aside>`,
