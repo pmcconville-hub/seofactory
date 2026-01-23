@@ -421,54 +421,105 @@ function SectionCard({
       {/* Expanded Content */}
       {isExpanded && (
         <div className="px-3 pb-3 space-y-3">
-          {/* Presentation Details */}
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="bg-gray-900 p-2 rounded">
-              <span className="text-gray-400 block">Emphasis</span>
+          {/* Presentation Details with Visual Previews */}
+          <div className="space-y-3">
+            {/* Emphasis Selection */}
+            <div className="bg-gray-900 p-3 rounded">
+              <span className="text-gray-400 text-xs block mb-2">Emphasis - How prominent is this section?</span>
               {!isReadOnly && onEmphasisChange ? (
-                <select
-                  value={section.presentation.emphasis}
-                  onChange={(e) => onEmphasisChange(e.target.value as any)}
-                  className="mt-1 w-full text-xs border border-gray-600 rounded bg-gray-800 text-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="background" className="bg-gray-800 text-white">Background</option>
-                  <option value="normal" className="bg-gray-800 text-white">Normal</option>
-                  <option value="featured" className="bg-gray-800 text-white">Featured</option>
-                  <option value="hero-moment" className="bg-gray-800 text-white">Hero Moment</option>
-                </select>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { value: 'background', label: 'Background', preview: 'opacity-40', desc: 'Subtle, supporting' },
+                    { value: 'normal', label: 'Normal', preview: 'opacity-70', desc: 'Standard content' },
+                    { value: 'featured', label: 'Featured', preview: 'opacity-100 ring-2 ring-blue-500', desc: 'Highlighted' },
+                    { value: 'hero-moment', label: 'Hero', preview: 'opacity-100 ring-2 ring-purple-500 scale-105', desc: 'Key moment' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => onEmphasisChange(opt.value as any)}
+                      className={`p-2 rounded-lg border text-center transition-all ${
+                        section.presentation.emphasis === opt.value
+                          ? 'border-blue-500 bg-blue-900/30'
+                          : 'border-gray-700 hover:border-gray-600'
+                      }`}
+                    >
+                      {/* Visual preview */}
+                      <div className={`h-6 bg-gradient-to-r from-gray-600 to-gray-500 rounded mb-1 ${opt.preview}`} />
+                      <span className="text-[10px] text-white block">{opt.label}</span>
+                      <span className="text-[8px] text-gray-500 block">{opt.desc}</span>
+                    </button>
+                  ))}
+                </div>
               ) : (
                 <span className="text-white capitalize">{section.presentation.emphasis}</span>
               )}
             </div>
-            <div className="bg-gray-900 p-2 rounded">
-              <span className="text-gray-400 block">Spacing</span>
+
+            {/* Spacing Selection */}
+            <div className="bg-gray-900 p-3 rounded">
+              <span className="text-gray-400 text-xs block mb-2">Spacing - Room around this section</span>
               {!isReadOnly && onSpacingChange ? (
-                <select
-                  value={section.presentation.spacing}
-                  onChange={(e) => onSpacingChange(e.target.value as any)}
-                  className="mt-1 w-full text-xs border border-gray-600 rounded bg-gray-800 text-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="tight" className="bg-gray-800 text-white">Tight</option>
-                  <option value="normal" className="bg-gray-800 text-white">Normal</option>
-                  <option value="breathe" className="bg-gray-800 text-white">Breathe</option>
-                </select>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 'tight', label: 'Tight', bars: [1, 1], desc: 'Compact' },
+                    { value: 'normal', label: 'Normal', bars: [2, 2], desc: 'Balanced' },
+                    { value: 'breathe', label: 'Breathe', bars: [4, 4], desc: 'Spacious' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => onSpacingChange(opt.value as any)}
+                      className={`p-2 rounded-lg border text-center transition-all ${
+                        section.presentation.spacing === opt.value
+                          ? 'border-blue-500 bg-blue-900/30'
+                          : 'border-gray-700 hover:border-gray-600'
+                      }`}
+                    >
+                      {/* Visual preview - spacing bars */}
+                      <div className="flex flex-col items-center gap-0.5 h-8 justify-center">
+                        <div className={`h-${opt.bars[0]} w-full bg-gray-700 rounded`} style={{ height: opt.bars[0] * 2 }} />
+                        <div className="h-3 w-full bg-blue-600/60 rounded" />
+                        <div className={`h-${opt.bars[1]} w-full bg-gray-700 rounded`} style={{ height: opt.bars[1] * 2 }} />
+                      </div>
+                      <span className="text-[10px] text-white block mt-1">{opt.label}</span>
+                      <span className="text-[8px] text-gray-500 block">{opt.desc}</span>
+                    </button>
+                  ))}
+                </div>
               ) : (
                 <span className="text-white capitalize">{section.presentation.spacing}</span>
               )}
             </div>
-            <div className="bg-gray-900 p-2 rounded">
-              <span className="text-gray-400 block">Background</span>
+
+            {/* Background Toggle */}
+            <div className="bg-gray-900 p-3 rounded">
+              <span className="text-gray-400 text-xs block mb-2">Background - Add colored background?</span>
               {!isReadOnly && onToggleBackground ? (
-                <button
-                  onClick={onToggleBackground}
-                  className={`mt-1 text-xs px-2 py-0.5 rounded ${
-                    section.presentation.hasBackground
-                      ? 'bg-green-900/30 text-green-400'
-                      : 'bg-gray-700 text-gray-400'
-                  }`}
-                >
-                  {section.presentation.hasBackground ? 'On' : 'Off'}
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => section.presentation.hasBackground && onToggleBackground()}
+                    className={`p-2 rounded-lg border text-center transition-all ${
+                      !section.presentation.hasBackground
+                        ? 'border-blue-500 bg-blue-900/30'
+                        : 'border-gray-700 hover:border-gray-600'
+                    }`}
+                  >
+                    <div className="h-6 border border-dashed border-gray-600 rounded mb-1" />
+                    <span className="text-[10px] text-white block">Off</span>
+                    <span className="text-[8px] text-gray-500 block">Transparent</span>
+                  </button>
+                  <button
+                    onClick={() => !section.presentation.hasBackground && onToggleBackground()}
+                    className={`p-2 rounded-lg border text-center transition-all ${
+                      section.presentation.hasBackground
+                        ? 'border-blue-500 bg-blue-900/30'
+                        : 'border-gray-700 hover:border-gray-600'
+                    }`}
+                  >
+                    <div className="h-6 bg-gradient-to-r from-blue-900/40 to-purple-900/40 rounded mb-1" />
+                    <span className="text-[10px] text-white block">On</span>
+                    <span className="text-[8px] text-gray-500 block">Colored fill</span>
+                  </button>
+                </div>
               ) : (
                 <span className="text-white">{section.presentation.hasBackground ? 'Yes' : 'No'}</span>
               )}
