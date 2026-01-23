@@ -194,23 +194,31 @@ export function BlueprintEditorPanel({
   }, [level, onProjectChange, projectBlueprint]);
 
   const handleCtaIntensityChange = useCallback((value: 'subtle' | 'moderate' | 'prominent') => {
+    // Default CTA strategy if none exists
+    const defaultCtaStrategy = {
+      positions: ['end'] as ('after-intro' | 'mid' | 'end')[],
+      intensity: 'moderate' as const,
+      style: 'banner' as const,
+    };
+
     if (level === 'project' && onProjectChange && projectBlueprint) {
+      const currentCta = projectBlueprint.defaults?.ctaStrategy || defaultCtaStrategy;
       onProjectChange({
         defaults: {
           ...projectBlueprint.defaults,
-          ctaStrategy: { ...projectBlueprint.defaults.ctaStrategy, intensity: value },
+          ctaStrategy: { ...currentCta, intensity: value },
         },
       });
     } else if (level === 'topical_map' && onTopicalMapChange && topicalMapBlueprint) {
-      const currentCta = topicalMapBlueprint.defaults?.ctaStrategy || projectBlueprint?.defaults?.ctaStrategy;
-      if (currentCta) {
-        onTopicalMapChange({
-          defaults: {
-            ...topicalMapBlueprint.defaults,
-            ctaStrategy: { ...currentCta, intensity: value },
-          },
-        });
-      }
+      const currentCta = topicalMapBlueprint.defaults?.ctaStrategy
+        || projectBlueprint?.defaults?.ctaStrategy
+        || defaultCtaStrategy;
+      onTopicalMapChange({
+        defaults: {
+          ...topicalMapBlueprint.defaults,
+          ctaStrategy: { ...currentCta, intensity: value },
+        },
+      });
     }
   }, [level, onProjectChange, onTopicalMapChange, projectBlueprint, topicalMapBlueprint]);
 
