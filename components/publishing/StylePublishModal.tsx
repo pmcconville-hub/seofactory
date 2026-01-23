@@ -49,9 +49,16 @@ import {
   getLearnedPreferences,
   initPatternLearningClient,
   renderBlueprint,
+  initBlueprintSupabase,
+  upsertProjectBlueprint,
+  upsertTopicalMapBlueprint,
+  getProjectBlueprint as fetchProjectBlueprint,
+  getTopicalMapBlueprint as fetchTopicalMapBlueprint,
   type LayoutBlueprint,
   type ProjectBlueprint,
   type TopicalMapBlueprint,
+  type TopicalMapBlueprintRow,
+  type ProjectBlueprintRow,
   type LearnedPreferences,
 } from '../../services/publishing';
 
@@ -176,6 +183,76 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     }
   }, [isOpen]);
 
+  // Initialize blueprint storage and fetch existing blueprints
+  useEffect(() => {
+    if (!isOpen || !topic.map_id) return;
+
+    const initAndFetch = async () => {
+      try {
+        // Initialize the blueprint storage client
+        initBlueprintSupabase(supabaseUrl, supabaseAnonKey);
+
+        // Fetch existing blueprints in parallel
+        const [projectBpRow, topicalMapBpRow] = await Promise.all([
+          fetchProjectBlueprint(topic.map_id!).catch(() => null),
+          fetchTopicalMapBlueprint(topic.map_id!).catch(() => null),
+        ]);
+
+        // Convert row data to blueprint objects if they exist
+        if (projectBpRow) {
+          setProjectBlueprint({
+            projectId: projectBpRow.project_id,
+            defaults: {
+              visualStyle: projectBpRow.visual_style,
+              pacing: projectBpRow.pacing,
+              colorIntensity: projectBpRow.color_intensity,
+              ctaStrategy: {
+                positions: projectBpRow.cta_positions as ('after-intro' | 'mid' | 'end')[],
+                intensity: projectBpRow.cta_intensity as 'subtle' | 'moderate' | 'prominent',
+                style: projectBpRow.cta_style as 'banner' | 'inline' | 'floating',
+              },
+            },
+            componentPreferences: projectBpRow.component_preferences as Record<string, string>,
+            avoidComponents: projectBpRow.avoid_components as string[],
+            reasoning: projectBpRow.ai_reasoning || '',
+            generatedAt: projectBpRow.updated_at,
+          });
+        }
+
+        if (topicalMapBpRow) {
+          setTopicalMapBlueprint({
+            topicalMapId: topicalMapBpRow.topical_map_id,
+            projectId: topicalMapBpRow.project_id,
+            defaults: {
+              visualStyle: topicalMapBpRow.visual_style || undefined,
+              pacing: topicalMapBpRow.pacing || undefined,
+              colorIntensity: topicalMapBpRow.color_intensity || undefined,
+              ctaStrategy: topicalMapBpRow.cta_positions ? {
+                positions: topicalMapBpRow.cta_positions as ('after-intro' | 'mid' | 'end')[],
+                intensity: (topicalMapBpRow.cta_intensity || 'moderate') as 'subtle' | 'moderate' | 'prominent',
+                style: (topicalMapBpRow.cta_style || 'banner') as 'banner' | 'inline' | 'floating',
+              } : undefined,
+            },
+            componentPreferences: (topicalMapBpRow.component_preferences as Record<string, string>) || {},
+            clusterSpecificRules: (topicalMapBpRow.cluster_rules as unknown[]) || [],
+            reasoning: topicalMapBpRow.ai_reasoning || '',
+            generatedAt: topicalMapBpRow.updated_at,
+          });
+        }
+
+        console.log('[Style & Publish] Fetched blueprints:', {
+          hasProject: !!projectBpRow,
+          hasTopicalMap: !!topicalMapBpRow,
+        });
+      } catch (error) {
+        console.error('Error fetching blueprints:', error);
+        // Don't show error to user - blueprints are optional
+      }
+    };
+
+    initAndFetch();
+  }, [isOpen, topic.map_id, supabaseUrl, supabaseAnonKey]);
+
   // Get current step index
   const currentStepIndex = useMemo(() =>
     STEPS.findIndex(s => s.id === currentStep),
@@ -286,34 +363,24 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     }
   }, [blueprint, learnedPreferences]);
 
-  // Generate blueprint for project or topical map level
+  // Generate blueprint for project or topical map level and save to database
   const handleRegenerateHierarchy = useCallback(async (level: 'project' | 'topical_map') => {
+    if (!topic.map_id) {
+      console.error('[Style & Publish] Cannot generate hierarchy blueprint: no map_id');
+      return;
+    }
+
     setIsRegeneratingHierarchy(true);
     setErrors([]);
 
     try {
-      // Create minimal BusinessInfo for the heuristic generator
-      const minimalBusinessInfo = {
-        domain: '',
-        projectName: topic.title,
-        industry: 'general',
-        model: 'content',
-        valueProp: '',
-        audience: '',
-        expertise: '',
-        seedKeyword: topic.title,
-        language: 'en',
-        targetMarket: '',
-        aiProvider: 'gemini' as const,
-        aiModel: '',
-        supabaseUrl: supabaseUrl,
-        supabaseAnonKey: supabaseAnonKey,
-      };
+      // Ensure storage client is initialized
+      initBlueprintSupabase(supabaseUrl, supabaseAnonKey);
 
       if (level === 'project') {
         // Generate project-level blueprint defaults
         const projectBp: ProjectBlueprint = {
-          projectId: topic.map_id || 'default-project',
+          projectId: topic.map_id,
           defaults: {
             visualStyle: 'editorial',
             pacing: 'balanced',
@@ -333,12 +400,16 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
           reasoning: 'Default project blueprint generated for styling consistency',
           generatedAt: new Date().toISOString(),
         };
+
+        // Save to database
+        await upsertProjectBlueprint(topic.map_id, projectBp);
         setProjectBlueprint(projectBp);
+        console.log('[Style & Publish] Project blueprint generated and saved');
       } else {
         // Generate topical map-level blueprint defaults
         const topicalMapBp: TopicalMapBlueprint = {
-          topicalMapId: topic.map_id || 'default-map',
-          projectId: topic.map_id || 'default-project',
+          topicalMapId: topic.map_id,
+          projectId: topic.map_id,
           defaults: {
             visualStyle: 'editorial',
             pacing: 'balanced',
@@ -348,7 +419,11 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
           reasoning: 'Default topical map blueprint generated for styling consistency',
           generatedAt: new Date().toISOString(),
         };
+
+        // Save to database
+        await upsertTopicalMapBlueprint(topic.map_id, topic.map_id, topicalMapBp);
         setTopicalMapBlueprint(topicalMapBp);
+        console.log('[Style & Publish] Topical map blueprint generated and saved');
       }
     } catch (error) {
       console.error(`Error generating ${level} blueprint:`, error);
@@ -356,7 +431,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     } finally {
       setIsRegeneratingHierarchy(false);
     }
-  }, [topic.map_id, topic.title, supabaseUrl, supabaseAnonKey]);
+  }, [topic.map_id, supabaseUrl, supabaseAnonKey]);
 
   // Handle project blueprint changes
   const handleProjectChange = useCallback((updates: Partial<ProjectBlueprint>) => {
@@ -380,47 +455,65 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     }
   }, [topicalMapBlueprint]);
 
-  // Handle saving hierarchy blueprints
+  // Handle saving hierarchy blueprints to database
   const handleSaveHierarchy = useCallback(async () => {
-    // For now, this just updates the local state (which is already done via onChange handlers)
-    // In the future, this would persist to Supabase via the blueprintStorage service
-    // The blueprints are already updated in state via handleProjectChange/handleTopicalMapChange
-    // This handler confirms the save is "complete"
-    console.log('[Style & Publish] Saving hierarchy blueprints:', {
+    if (!topic.map_id) {
+      console.error('[Style & Publish] Cannot save blueprints: no map_id');
+      return;
+    }
+
+    console.log('[Style & Publish] Saving hierarchy blueprints to database:', {
       projectBlueprint: projectBlueprint ? 'present' : 'none',
       topicalMapBlueprint: topicalMapBlueprint ? 'present' : 'none',
     });
 
-    // Simulate async save operation
-    await new Promise(resolve => setTimeout(resolve, 300));
+    try {
+      // Ensure storage client is initialized
+      initBlueprintSupabase(supabaseUrl, supabaseAnonKey);
 
-    // If we have both blueprints, regenerate the article blueprint with inherited settings
-    if (blueprint && (projectBlueprint || topicalMapBlueprint)) {
-      const inheritedDefaults = {
-        ...projectBlueprint?.defaults,
-        ...topicalMapBlueprint?.defaults,
-      };
+      // Save project blueprint if it exists
+      if (projectBlueprint) {
+        await upsertProjectBlueprint(topic.map_id, projectBlueprint);
+        console.log('[Style & Publish] Project blueprint saved');
+      }
 
-      // Update article blueprint with inherited settings
-      setBlueprint({
-        ...blueprint,
-        pageStrategy: {
-          ...blueprint.pageStrategy,
-          visualStyle: inheritedDefaults.visualStyle || blueprint.pageStrategy.visualStyle,
-          pacing: inheritedDefaults.pacing || blueprint.pageStrategy.pacing,
-          colorIntensity: inheritedDefaults.colorIntensity || blueprint.pageStrategy.colorIntensity,
-        },
-        globalElements: {
-          ...blueprint.globalElements,
-          ctaStrategy: inheritedDefaults.ctaStrategy || blueprint.globalElements.ctaStrategy,
-        },
-        metadata: {
-          ...blueprint.metadata,
-          generatedAt: new Date().toISOString(),
-        },
-      });
+      // Save topical map blueprint if it exists
+      if (topicalMapBlueprint) {
+        await upsertTopicalMapBlueprint(topic.map_id, topic.map_id, topicalMapBlueprint);
+        console.log('[Style & Publish] Topical map blueprint saved');
+      }
+
+      // If we have both blueprints, regenerate the article blueprint with inherited settings
+      if (blueprint && (projectBlueprint || topicalMapBlueprint)) {
+        const inheritedDefaults = {
+          ...projectBlueprint?.defaults,
+          ...topicalMapBlueprint?.defaults,
+        };
+
+        // Update article blueprint with inherited settings
+        setBlueprint({
+          ...blueprint,
+          pageStrategy: {
+            ...blueprint.pageStrategy,
+            visualStyle: inheritedDefaults.visualStyle || blueprint.pageStrategy.visualStyle,
+            pacing: inheritedDefaults.pacing || blueprint.pageStrategy.pacing,
+            colorIntensity: inheritedDefaults.colorIntensity || blueprint.pageStrategy.colorIntensity,
+          },
+          globalElements: {
+            ...blueprint.globalElements,
+            ctaStrategy: inheritedDefaults.ctaStrategy || blueprint.globalElements.ctaStrategy,
+          },
+          metadata: {
+            ...blueprint.metadata,
+            generatedAt: new Date().toISOString(),
+          },
+        });
+      }
+    } catch (error) {
+      console.error('[Style & Publish] Error saving blueprints:', error);
+      throw error; // Re-throw so the UI can show an error
     }
-  }, [projectBlueprint, topicalMapBlueprint, blueprint]);
+  }, [projectBlueprint, topicalMapBlueprint, blueprint, topic.map_id, supabaseUrl, supabaseAnonKey]);
 
   // Get style preference summary for UI
   const stylePreferenceSummary = useMemo(() => {

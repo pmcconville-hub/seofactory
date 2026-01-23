@@ -197,11 +197,25 @@ export function renderBlueprint(
     componentsUsed.push('hero');
   }
 
-  // 2. Table of Contents (if enabled)
-  if (blueprint.globalElements.showToc) {
+  // 2. Table of Contents (if enabled) & 3. Main content sections
+  const isSidebarLayout = blueprint.globalElements.showToc && blueprint.globalElements.tocPosition === 'sidebar';
+
+  // Render TOC for non-sidebar positions (inline or floating)
+  if (blueprint.globalElements.showToc && blueprint.globalElements.tocPosition !== 'sidebar') {
     const tocHtml = renderToc(blueprint, blueprint.globalElements.tocPosition);
     htmlParts.push(tocHtml);
     componentsUsed.push('toc');
+  }
+
+  // For sidebar layout, wrap TOC and content in a grid container
+  if (isSidebarLayout) {
+    htmlParts.push('<div class="ctc-layout-sidebar lg:grid lg:grid-cols-[280px_1fr] lg:gap-8 relative">');
+    // Render sidebar TOC
+    const tocHtml = renderToc(blueprint, 'sidebar');
+    htmlParts.push(`<aside class="ctc-sidebar hidden lg:block">${tocHtml}</aside>`);
+    componentsUsed.push('toc');
+    // Open content wrapper
+    htmlParts.push('<div class="ctc-content-wrapper">');
   }
 
   // 3. Main content sections
@@ -248,6 +262,12 @@ export function renderBlueprint(
 
   htmlParts.push('</article>');
   htmlParts.push('</main>');
+
+  // Close sidebar layout wrappers if needed
+  if (isSidebarLayout) {
+    htmlParts.push('</div>'); // Close content wrapper
+    htmlParts.push('</div>'); // Close sidebar layout
+  }
 
   // 4. Author box (if enabled)
   if (blueprint.globalElements.showAuthorBox && options.author) {

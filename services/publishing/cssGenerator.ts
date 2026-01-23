@@ -407,19 +407,40 @@ function generateLayoutUtilities(): string {
 }
 
 /* Layout with sidebar */
-.ctc-layout--with-sidebar {
+.ctc-layout--with-sidebar,
+.ctc-layout-sidebar {
   display: grid;
   grid-template-columns: 280px 1fr;
   gap: var(--ctc-space-8);
   align-items: start;
+  position: relative;
+}
+
+.ctc-sidebar {
+  position: sticky;
+  top: 1rem;
+  height: fit-content;
+}
+
+.ctc-sidebar .ctc-toc--sidebar {
+  position: relative;
+  top: 0;
+  width: 100%;
+}
+
+.ctc-content-wrapper {
+  min-width: 0;
 }
 
 @media (max-width: 1024px) {
-  .ctc-layout--with-sidebar {
+  .ctc-layout--with-sidebar,
+  .ctc-layout-sidebar {
     grid-template-columns: 1fr;
+    display: block;
   }
 
-  .ctc-layout--with-sidebar > .ctc-toc--sidebar {
+  .ctc-layout--with-sidebar > .ctc-toc--sidebar,
+  .ctc-sidebar {
     display: none;
   }
 }
