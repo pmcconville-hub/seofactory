@@ -380,6 +380,48 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     }
   }, [topicalMapBlueprint]);
 
+  // Handle saving hierarchy blueprints
+  const handleSaveHierarchy = useCallback(async () => {
+    // For now, this just updates the local state (which is already done via onChange handlers)
+    // In the future, this would persist to Supabase via the blueprintStorage service
+    // The blueprints are already updated in state via handleProjectChange/handleTopicalMapChange
+    // This handler confirms the save is "complete"
+    console.log('[Style & Publish] Saving hierarchy blueprints:', {
+      projectBlueprint: projectBlueprint ? 'present' : 'none',
+      topicalMapBlueprint: topicalMapBlueprint ? 'present' : 'none',
+    });
+
+    // Simulate async save operation
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // If we have both blueprints, regenerate the article blueprint with inherited settings
+    if (blueprint && (projectBlueprint || topicalMapBlueprint)) {
+      const inheritedDefaults = {
+        ...projectBlueprint?.defaults,
+        ...topicalMapBlueprint?.defaults,
+      };
+
+      // Update article blueprint with inherited settings
+      setBlueprint({
+        ...blueprint,
+        pageStrategy: {
+          ...blueprint.pageStrategy,
+          visualStyle: inheritedDefaults.visualStyle || blueprint.pageStrategy.visualStyle,
+          pacing: inheritedDefaults.pacing || blueprint.pageStrategy.pacing,
+          colorIntensity: inheritedDefaults.colorIntensity || blueprint.pageStrategy.colorIntensity,
+        },
+        globalElements: {
+          ...blueprint.globalElements,
+          ctaStrategy: inheritedDefaults.ctaStrategy || blueprint.globalElements.ctaStrategy,
+        },
+        metadata: {
+          ...blueprint.metadata,
+          generatedAt: new Date().toISOString(),
+        },
+      });
+    }
+  }, [projectBlueprint, topicalMapBlueprint, blueprint]);
+
   // Get style preference summary for UI
   const stylePreferenceSummary = useMemo(() => {
     if (!learnedPreferences) return null;
@@ -640,6 +682,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
             topicalMapBlueprint={topicalMapBlueprint || undefined}
             onProjectChange={handleProjectChange}
             onTopicalMapChange={handleTopicalMapChange}
+            onSaveHierarchy={handleSaveHierarchy}
             onRegenerateHierarchy={handleRegenerateHierarchy}
             qualityAnalysis={blueprintQuality}
             learnedPreferences={learnedPreferences}

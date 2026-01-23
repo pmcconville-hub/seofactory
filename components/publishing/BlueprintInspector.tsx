@@ -429,12 +429,12 @@ function SectionCard({
                 <select
                   value={section.presentation.emphasis}
                   onChange={(e) => onEmphasisChange(e.target.value as any)}
-                  className="mt-1 w-full text-xs border-0 bg-transparent text-white focus:ring-0"
+                  className="mt-1 w-full text-xs border border-gray-600 rounded bg-gray-800 text-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <option value="background">Background</option>
-                  <option value="normal">Normal</option>
-                  <option value="featured">Featured</option>
-                  <option value="hero-moment">Hero Moment</option>
+                  <option value="background" className="bg-gray-800 text-white">Background</option>
+                  <option value="normal" className="bg-gray-800 text-white">Normal</option>
+                  <option value="featured" className="bg-gray-800 text-white">Featured</option>
+                  <option value="hero-moment" className="bg-gray-800 text-white">Hero Moment</option>
                 </select>
               ) : (
                 <span className="text-white capitalize">{section.presentation.emphasis}</span>
@@ -446,11 +446,11 @@ function SectionCard({
                 <select
                   value={section.presentation.spacing}
                   onChange={(e) => onSpacingChange(e.target.value as any)}
-                  className="mt-1 w-full text-xs border-0 bg-transparent text-white focus:ring-0"
+                  className="mt-1 w-full text-xs border border-gray-600 rounded bg-gray-800 text-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <option value="tight">Tight</option>
-                  <option value="normal">Normal</option>
-                  <option value="breathe">Breathe</option>
+                  <option value="tight" className="bg-gray-800 text-white">Tight</option>
+                  <option value="normal" className="bg-gray-800 text-white">Normal</option>
+                  <option value="breathe" className="bg-gray-800 text-white">Breathe</option>
                 </select>
               ) : (
                 <span className="text-white capitalize">{section.presentation.spacing}</span>
@@ -508,10 +508,10 @@ function SectionCard({
               <select
                 value={section.presentation.component}
                 onChange={(e) => onComponentChange(e.target.value as BlueprintComponentType)}
-                className="w-full text-sm border border-gray-600 rounded px-2 py-1.5 bg-gray-900 text-white"
+                className="w-full text-sm border border-gray-600 rounded px-2 py-1.5 bg-gray-800 text-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               >
                 {componentOptions.map(comp => (
-                  <option key={comp} value={comp}>{comp}</option>
+                  <option key={comp} value={comp} className="bg-gray-800 text-white">{comp}</option>
                 ))}
               </select>
             </div>

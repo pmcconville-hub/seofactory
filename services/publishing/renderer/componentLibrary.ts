@@ -323,7 +323,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   'bullet-list': (ctx) => {
     const items = extractListItems(ctx.content);
     const htmlContent = items.length > 0
-      ? `<ul class="ctc-list list-disc pl-6 space-y-2">${items.map(item => `<li class="ctc-li">${escapeHtml(item)}</li>`).join('')}</ul>`
+      ? `<ul class="ctc-list list-disc pl-6 space-y-2">${items.map(item => `<li class="ctc-li">${markdownToHtml(item)}</li>`).join('')}</ul>`
       : markdownToHtml(ctx.content);
 
     return {
@@ -338,7 +338,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   'numbered-list': (ctx) => {
     const items = extractListItems(ctx.content);
     const htmlContent = items.length > 0
-      ? `<ol class="ctc-list list-decimal pl-6 space-y-2">${items.map(item => `<li class="ctc-li">${escapeHtml(item)}</li>`).join('')}</ol>`
+      ? `<ol class="ctc-list list-decimal pl-6 space-y-2">${items.map(item => `<li class="ctc-li">${markdownToHtml(item)}</li>`).join('')}</ol>`
       : markdownToHtml(ctx.content);
 
     return {
@@ -361,7 +361,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
     ${items.map(item => `
     <li class="ctc-checklist-item flex items-start gap-3">
       <span class="ctc-check w-5 h-5 rounded bg-[var(--ctc-primary)] text-white flex items-center justify-center flex-shrink-0 mt-0.5">✓</span>
-      <span>${escapeHtml(item)}</span>
+      <span>${markdownToHtml(item)}</span>
     </li>`).join('')}
   </ul>
 </div>`,
@@ -380,7 +380,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
     ${items.map((item, i) => `
     <li class="ctc-icon-list-item flex items-start gap-4">
       <span class="ctc-icon w-8 h-8 rounded-full bg-[var(--ctc-primary)] text-white flex items-center justify-center flex-shrink-0">${icons[i % icons.length]}</span>
-      <span class="pt-1">${escapeHtml(item)}</span>
+      <span class="pt-1">${markdownToHtml(item)}</span>
     </li>`).join('')}
   </ul>
 </div>`,
@@ -403,8 +403,8 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
       return `
     <div class="ctc-card p-6 rounded-[var(--ctc-radius-lg)] bg-[var(--ctc-surface)] shadow-sm hover:shadow-md transition-shadow">
       <div class="ctc-card-icon w-10 h-10 rounded-full bg-[var(--ctc-primary)] text-white flex items-center justify-center mb-4 font-bold">${i + 1}</div>
-      <h3 class="ctc-card-title font-semibold mb-2">${escapeHtml(title)}</h3>
-      ${desc ? `<p class="ctc-card-desc text-sm text-[var(--ctc-text-secondary)]">${escapeHtml(desc)}</p>` : ''}
+      <h3 class="ctc-card-title font-semibold mb-2">${markdownToHtml(title)}</h3>
+      ${desc ? `<p class="ctc-card-desc text-sm text-[var(--ctc-text-secondary)]">${markdownToHtml(desc)}</p>` : ''}
     </div>`;
     }).join('')}
   </div>
@@ -424,8 +424,8 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
       const parts = item.split(/[:\-–]/).map(p => p.trim());
       return `
     <div class="ctc-feature flex gap-4 p-4 rounded-lg bg-[var(--ctc-surface)]">
-      <dt class="ctc-feature-name font-semibold text-[var(--ctc-primary)] min-w-[120px]">${escapeHtml(parts[0])}</dt>
-      <dd class="ctc-feature-desc text-[var(--ctc-text-secondary)]">${escapeHtml(parts[1] || '')}</dd>
+      <dt class="ctc-feature-name font-semibold text-[var(--ctc-primary)] min-w-[120px]">${markdownToHtml(parts[0])}</dt>
+      <dd class="ctc-feature-desc text-[var(--ctc-text-secondary)]">${markdownToHtml(parts[1] || '')}</dd>
     </div>`;
     }).join('')}
   </dl>
@@ -449,7 +449,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
       return `
     <div class="ctc-stat text-center p-6 rounded-[var(--ctc-radius-lg)] bg-[var(--ctc-surface)]">
       <div class="ctc-stat-value text-4xl font-bold text-[var(--ctc-primary)]">${escapeHtml(stat)}</div>
-      <div class="ctc-stat-label text-sm text-[var(--ctc-text-muted)] mt-2">${escapeHtml(label)}</div>
+      <div class="ctc-stat-label text-sm text-[var(--ctc-text-muted)] mt-2">${markdownToHtml(label)}</div>
     </div>`;
     }).join('')}
   </div>
@@ -476,8 +476,8 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
     <div class="ctc-timeline-step relative pb-8 last:pb-0" itemscope itemprop="step" itemtype="https://schema.org/HowToStep">
       <meta itemprop="position" content="${i + 1}">
       <div class="ctc-step-marker absolute -left-[calc(1rem+1px)] w-8 h-8 rounded-full bg-[var(--ctc-primary)] text-white flex items-center justify-center font-bold">${i + 1}</div>
-      <h3 class="ctc-step-title font-semibold mb-1" itemprop="name">${escapeHtml(step.title)}</h3>
-      <p class="ctc-step-desc text-[var(--ctc-text-secondary)]" itemprop="text">${escapeHtml(step.description)}</p>
+      <h3 class="ctc-step-title font-semibold mb-1" itemprop="name">${markdownToHtml(step.title)}</h3>
+      <p class="ctc-step-desc text-[var(--ctc-text-secondary)]" itemprop="text">${markdownToHtml(step.description)}</p>
     </div>`).join('')}
   </div>
 </section>`,
@@ -513,8 +513,8 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
       <meta itemprop="position" content="${i + 1}">
       <div class="flex-1 ${isLeft ? 'pr-12 text-right' : 'pl-12 text-left'}">
         <div class="ctc-step-card inline-block max-w-md p-6 rounded-[var(--ctc-radius-lg)] bg-[var(--ctc-surface)] shadow-lg">
-          <h3 class="ctc-step-title text-xl font-semibold mb-2" itemprop="name">${escapeHtml(step.title)}</h3>
-          <p class="ctc-step-desc text-[var(--ctc-text-secondary)]" itemprop="text">${escapeHtml(step.description)}</p>
+          <h3 class="ctc-step-title text-xl font-semibold mb-2" itemprop="name">${markdownToHtml(step.title)}</h3>
+          <p class="ctc-step-desc text-[var(--ctc-text-secondary)]" itemprop="text">${markdownToHtml(step.description)}</p>
         </div>
       </div>
       <div class="ctc-step-node absolute left-1/2 -translate-x-1/2 z-10">
@@ -555,8 +555,8 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
       <meta itemprop="position" content="${i + 1}">
       <span class="ctc-step-num w-8 h-8 rounded-full bg-[var(--ctc-primary)] text-white flex items-center justify-center font-bold flex-shrink-0">${i + 1}</span>
       <div>
-        <h4 class="ctc-step-title font-semibold" itemprop="name">${escapeHtml(step.title)}</h4>
-        ${step.description ? `<p class="ctc-step-desc text-sm text-[var(--ctc-text-secondary)] mt-1" itemprop="text">${escapeHtml(step.description)}</p>` : ''}
+        <h4 class="ctc-step-title font-semibold" itemprop="name">${markdownToHtml(step.title)}</h4>
+        ${step.description ? `<p class="ctc-step-desc text-sm text-[var(--ctc-text-secondary)] mt-1" itemprop="text">${markdownToHtml(step.description)}</p>` : ''}
       </div>
     </li>`).join('')}
   </ol>
@@ -594,12 +594,12 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
     <div class="ctc-faq-item py-4" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
       <h3 class="ctc-faq-question">
         <button type="button" aria-expanded="false" aria-controls="faq-answer-${ctx.sectionId}-${i}" class="ctc-faq-trigger w-full flex justify-between items-center text-left font-semibold text-lg hover:text-[var(--ctc-primary)] transition-colors">
-          <span itemprop="name">${escapeHtml(faq.question)}</span>
+          <span itemprop="name">${markdownToHtml(faq.question)}</span>
           <span class="ctc-faq-icon text-2xl text-[var(--ctc-primary)]" aria-hidden="true">+</span>
         </button>
       </h3>
       <div id="faq-answer-${ctx.sectionId}-${i}" class="ctc-faq-answer" itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer" hidden>
-        <div class="pt-3 text-[var(--ctc-text-secondary)]" itemprop="text">${escapeHtml(faq.answer)}</div>
+        <div class="pt-3 text-[var(--ctc-text-secondary)]" itemprop="text">${markdownToHtml(faq.answer)}</div>
       </div>
     </div>`).join('')}
   </div>
@@ -634,9 +634,9 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   <div class="grid md:grid-cols-${columns} gap-6">
     ${faqs.map(faq => `
     <div class="ctc-faq-card p-6 rounded-[var(--ctc-radius-lg)] bg-[var(--ctc-surface)] shadow-sm" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
-      <h3 class="ctc-faq-question font-semibold mb-3" itemprop="name">${escapeHtml(faq.question)}</h3>
+      <h3 class="ctc-faq-question font-semibold mb-3" itemprop="name">${markdownToHtml(faq.question)}</h3>
       <div class="ctc-faq-answer text-[var(--ctc-text-secondary)]" itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
-        <p itemprop="text">${escapeHtml(faq.answer)}</p>
+        <p itemprop="text">${markdownToHtml(faq.answer)}</p>
       </div>
     </div>`).join('')}
   </div>
@@ -712,7 +712,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
     ${items.map(item => `
     <div class="ctc-takeaway-item flex items-start gap-3 bg-white/15 backdrop-blur-sm p-4 rounded-lg">
       <span class="ctc-takeaway-check w-6 h-6 rounded-full bg-white text-[var(--ctc-primary)] flex items-center justify-center font-bold flex-shrink-0">✓</span>
-      <span class="text-white/90">${escapeHtml(item)}</span>
+      <span class="text-white/90">${markdownToHtml(item)}</span>
     </div>`).join('')}
   </div>
 </aside>`,
