@@ -25,7 +25,7 @@ import type {
   StyledContentOutput,
   ContentTypeTemplate,
 } from '../../types/publishing';
-import type { EnrichedTopic, ContentBrief } from '../../types';
+import type { EnrichedTopic, ContentBrief, TopicalMap } from '../../types';
 import type { BrandKit } from '../../types/business';
 import {
   createInMemoryStyle,
@@ -85,6 +85,7 @@ export interface StylePublishModalProps {
   articleDraft: string;
   brief?: ContentBrief;
   brandKit?: BrandKit;
+  topicalMap?: TopicalMap;
   supabaseUrl: string;
   supabaseAnonKey: string;
   projectId?: string;
@@ -120,6 +121,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   articleDraft,
   brief,
   brandKit,
+  topicalMap,
   supabaseUrl,
   supabaseAnonKey,
   projectId,
@@ -559,13 +561,19 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     try {
       // If we have a blueprint, use the new blueprint renderer
       if (blueprint) {
+        // Extract language from topical map context
+        const language = topicalMap?.business_info?.language || 'en';
+
         const output = renderBlueprint(
           blueprint,
           topic.title,
           {
             brief,
             topic,
+            topicalMap,
             personalityId: personalityId,
+            language,
+            heroImage: layout.components.hero.imageUrl,
             designTokens: style?.designTokens ? {
               colors: {
                 primary: style.designTokens.colors.primary,
@@ -585,11 +593,13 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
             darkMode: false,
             minifyCss: false,
             ctaConfig: {
-              primaryText: layout.components.ctaBanners.primaryText || 'Learn More',
+              // Only pass explicit values if user has configured them
+              // Otherwise let the renderer use localized defaults
+              primaryText: layout.components.ctaBanners.primaryText || undefined,
               primaryUrl: '#contact',
-              secondaryText: layout.components.ctaBanners.secondaryText,
+              secondaryText: layout.components.ctaBanners.secondaryText || undefined,
               secondaryUrl: '#',
-              bannerTitle: 'Ready to Get Started?',
+              bannerTitle: undefined, // Let renderer use localized default
               bannerText: '',
             },
           }

@@ -50,6 +50,10 @@ export interface BlueprintRenderOptions {
   darkMode?: boolean;
   /** Minify CSS output */
   minifyCss?: boolean;
+  /** Language code for localized defaults (e.g., 'nl', 'en', 'de') */
+  language?: string;
+  /** Hero image URL */
+  heroImage?: string;
   /** CTA configuration */
   ctaConfig?: {
     primaryText?: string;
@@ -190,8 +194,10 @@ export function renderBlueprint(
       articleTitle,
       blueprint.sections[0].sourceContent,
       blueprint.pageStrategy,
+      options.heroImage,
       options.ctaConfig,
-      blueprint.globalElements.ctaStrategy.intensity
+      blueprint.globalElements.ctaStrategy.intensity,
+      options.language
     );
     htmlParts.push(heroHtml);
     componentsUsed.push('hero');
@@ -231,7 +237,7 @@ export function renderBlueprint(
 
     // Insert CTA at appropriate positions
     if (shouldInsertCta(i, sectionsToRender.length, blueprint.globalElements.ctaStrategy.positions, 'mid-content')) {
-      htmlParts.push(renderInlineCta(options.ctaConfig, blueprint.globalElements.ctaStrategy));
+      htmlParts.push(renderInlineCta(options.ctaConfig, blueprint.globalElements.ctaStrategy, options.language));
       componentsUsed.push('cta-inline');
     }
 
@@ -278,7 +284,7 @@ export function renderBlueprint(
 
   // 5. End CTA (if in positions)
   if (blueprint.globalElements.ctaStrategy.positions.includes('end')) {
-    htmlParts.push(renderCtaBanner(options.ctaConfig, blueprint.globalElements.ctaStrategy));
+    htmlParts.push(renderCtaBanner(options.ctaConfig, blueprint.globalElements.ctaStrategy, options.language));
     componentsUsed.push('cta-banner');
   }
 
@@ -342,6 +348,59 @@ export function renderBlueprint(
 }
 
 // ============================================================================
+// LOCALIZATION
+// ============================================================================
+
+interface LocalizedCtaDefaults {
+  bannerTitle: string;
+  primaryText: string;
+  secondaryText: string;
+  inlineTitle: string;
+}
+
+/**
+ * Get localized CTA defaults based on language
+ */
+function getLocalizedCtaDefaults(language?: string): LocalizedCtaDefaults {
+  const lang = (language || 'en').toLowerCase().substring(0, 2);
+
+  const localizations: Record<string, LocalizedCtaDefaults> = {
+    nl: {
+      bannerTitle: 'Klaar om te beginnen?',
+      primaryText: 'Offerte aanvragen',
+      secondaryText: 'Meer informatie',
+      inlineTitle: 'Interesse?',
+    },
+    de: {
+      bannerTitle: 'Bereit loszulegen?',
+      primaryText: 'Angebot anfordern',
+      secondaryText: 'Mehr erfahren',
+      inlineTitle: 'Interesse?',
+    },
+    fr: {
+      bannerTitle: 'Prêt à commencer?',
+      primaryText: 'Demander un devis',
+      secondaryText: 'En savoir plus',
+      inlineTitle: 'Intéressé?',
+    },
+    es: {
+      bannerTitle: '¿Listo para empezar?',
+      primaryText: 'Solicitar presupuesto',
+      secondaryText: 'Más información',
+      inlineTitle: '¿Interesado?',
+    },
+    en: {
+      bannerTitle: 'Ready to get started?',
+      primaryText: 'Get a quote',
+      secondaryText: 'Learn more',
+      inlineTitle: 'Interested?',
+    },
+  };
+
+  return localizations[lang] || localizations['en'];
+}
+
+// ============================================================================
 // HELPER RENDERERS
 // ============================================================================
 
@@ -353,13 +412,18 @@ function renderHero(
   title: string,
   introContent: string,
   strategy: LayoutBlueprint['pageStrategy'],
+  heroImage?: string,
   ctaConfig?: BlueprintRenderOptions['ctaConfig'],
-  ctaIntensity?: string
+  ctaIntensity?: string,
+  language?: string
 ): string {
   const isBoldGradient = strategy.visualStyle === 'marketing' || strategy.visualStyle === 'bold' || strategy.visualStyle === 'warm-modern';
-  const isEditorial = strategy.visualStyle === 'editorial' || strategy.visualStyle === 'minimal';
+  const hasHeroImage = !!heroImage;
 
-  // Determine hero style based on visual style
+  // Get localized defaults
+  const localizedDefaults = getLocalizedCtaDefaults(language);
+
+  // Determine hero style based on visual style and whether we have an image
   let heroStyle: string;
   let heroOrbs: string;
   let textColor: string;
@@ -367,7 +431,15 @@ function renderHero(
   let btnPrimaryStyle: string;
   let btnSecondaryStyle: string;
 
-  if (isBoldGradient) {
+  if (hasHeroImage) {
+    // Hero with background image
+    heroStyle = `background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.7) 100%), url('${heroImage}'); background-size: cover; background-position: center`;
+    heroOrbs = '';
+    textColor = 'color: white';
+    subtitleColor = 'color: rgba(255, 255, 255, 0.9)';
+    btnPrimaryStyle = 'background: white; color: var(--ctc-primary); box-shadow: 0 8px 24px -4px rgba(0,0,0,0.2)';
+    btnSecondaryStyle = 'background: transparent; color: white; border: 2px solid rgba(255,255,255,0.8)';
+  } else if (isBoldGradient) {
     // Bold gradient hero
     heroStyle = 'background: linear-gradient(135deg, var(--ctc-primary) 0%, var(--ctc-primary-dark) 100%)';
     heroOrbs = `
@@ -396,8 +468,12 @@ function renderHero(
 
   const showCta = ctaIntensity === 'prominent' || ctaIntensity === 'moderate' || strategy.primaryGoal === 'convert' || ctaConfig?.primaryText;
 
+  // Use localized defaults if ctaConfig values not provided
+  const primaryText = ctaConfig?.primaryText || localizedDefaults.primaryText;
+  const secondaryText = ctaConfig?.secondaryText || localizedDefaults.secondaryText;
+
   return `
-<header class="ctc-hero" role="banner" style="${heroStyle}; position: relative; overflow: hidden">
+<header class="ctc-hero" role="banner" style="${heroStyle}; position: relative; overflow: hidden; min-height: ${hasHeroImage ? '400px' : 'auto'}">
   ${heroOrbs}
   <div class="ctc-hero-content" style="position: relative; z-index: 10; max-width: 56rem; margin: 0 auto; text-align: center; padding: 5rem 1.5rem 5.5rem">
     <h1 class="ctc-hero-title" style="${textColor}; font-weight: var(--ctc-heading-weight); font-family: var(--ctc-font-display); font-size: clamp(2.25rem, 5vw, 3.75rem); line-height: 1.1; letter-spacing: var(--ctc-heading-letter-spacing); margin-bottom: 1.5rem">
@@ -406,15 +482,15 @@ function renderHero(
     <p class="ctc-hero-subtitle" style="${subtitleColor}; font-size: 1.25rem; max-width: 42rem; margin: 0 auto; line-height: 1.7">
       ${extractFirstParagraph(introContent)}
     </p>
-    ${showCta && ctaConfig?.primaryText ? `
+    ${showCta ? `
     <div class="ctc-hero-actions" style="margin-top: 2.5rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap">
-      <a href="${escapeHtml(ctaConfig.primaryUrl || '#contact')}" style="${btnPrimaryStyle}; display: inline-flex; align-items: center; gap: 0.5rem; padding: 1rem 2rem; border-radius: var(--ctc-radius-full); font-weight: 600; text-decoration: none; transition: all 0.2s ease; font-size: 1rem">
-        ${escapeHtml(ctaConfig.primaryText)}
+      <a href="${escapeHtml(ctaConfig?.primaryUrl || '#contact')}" style="${btnPrimaryStyle}; display: inline-flex; align-items: center; gap: 0.5rem; padding: 1rem 2rem; border-radius: var(--ctc-radius-full); font-weight: 600; text-decoration: none; transition: all 0.2s ease; font-size: 1rem">
+        ${escapeHtml(primaryText)}
         <span style="font-size: 1.25rem">→</span>
       </a>
-      ${ctaConfig.secondaryText ? `
-      <a href="${escapeHtml(ctaConfig.secondaryUrl || '#')}" style="${btnSecondaryStyle}; display: inline-flex; align-items: center; gap: 0.5rem; padding: 1rem 2rem; border-radius: var(--ctc-radius-full); font-weight: 600; text-decoration: none; transition: all 0.2s ease; font-size: 1rem">
-        ${escapeHtml(ctaConfig.secondaryText)}
+      ${secondaryText ? `
+      <a href="${escapeHtml(ctaConfig?.secondaryUrl || '#')}" style="${btnSecondaryStyle}; display: inline-flex; align-items: center; gap: 0.5rem; padding: 1rem 2rem; border-radius: var(--ctc-radius-full); font-weight: 600; text-decoration: none; transition: all 0.2s ease; font-size: 1rem">
+        ${escapeHtml(secondaryText)}
       </a>` : ''}
     </div>` : ''}
   </div>
@@ -475,10 +551,15 @@ function renderToc(
  */
 function renderInlineCta(
   ctaConfig?: BlueprintRenderOptions['ctaConfig'],
-  strategy?: LayoutBlueprint['globalElements']['ctaStrategy']
+  strategy?: LayoutBlueprint['globalElements']['ctaStrategy'],
+  language?: string
 ): string {
-  const title = ctaConfig?.bannerTitle || 'Interesse?';
+  // Get localized defaults
+  const localizedDefaults = getLocalizedCtaDefaults(language);
+
+  const title = ctaConfig?.bannerTitle || localizedDefaults.inlineTitle;
   const text = ctaConfig?.bannerText || '';
+  const primaryText = ctaConfig?.primaryText || localizedDefaults.secondaryText;
 
   return `
 <aside class="ctc-cta-inline" style="display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding: 1.5rem 2rem; border-radius: var(--ctc-radius-xl); background: linear-gradient(135deg, var(--ctc-surface) 0%, color-mix(in srgb, var(--ctc-primary) 3%, var(--ctc-surface)) 100%); border: 1px solid var(--ctc-border); margin: 2rem 0; position: relative; overflow: hidden">
@@ -488,7 +569,7 @@ function renderInlineCta(
     ${text ? `<span style="color: var(--ctc-text-secondary); font-size: 0.9375rem; line-height: 1.5">${escapeHtml(text)}</span>` : ''}
   </div>
   <a href="${escapeHtml(ctaConfig?.primaryUrl || '#contact')}" style="background: linear-gradient(135deg, var(--ctc-primary), var(--ctc-primary-light)); color: white; padding: 0.75rem 1.5rem; border-radius: var(--ctc-radius-full); font-weight: 600; text-decoration: none; transition: all 0.2s ease; flex-shrink: 0; font-size: 0.9375rem; display: inline-flex; align-items: center; gap: 0.375rem; box-shadow: 0 4px 12px -2px color-mix(in srgb, var(--ctc-primary) 30%, transparent)">
-    ${escapeHtml(ctaConfig?.primaryText || 'Meer Info')}
+    ${escapeHtml(primaryText)}
     <span style="font-size: 1rem">→</span>
   </a>
 </aside>`;
@@ -499,10 +580,14 @@ function renderInlineCta(
  */
 function renderCtaBanner(
   ctaConfig?: BlueprintRenderOptions['ctaConfig'],
-  strategy?: LayoutBlueprint['globalElements']['ctaStrategy']
+  strategy?: LayoutBlueprint['globalElements']['ctaStrategy'],
+  language?: string
 ): string {
+  // Get localized defaults
+  const localizedDefaults = getLocalizedCtaDefaults(language);
+
   const isProminent = strategy?.intensity === 'prominent';
-  const title = ctaConfig?.bannerTitle || 'Klaar Om Te Beginnen?';
+  const title = ctaConfig?.bannerTitle || localizedDefaults.bannerTitle;
   const text = ctaConfig?.bannerText || '';
 
   // Determine styling based on intensity
@@ -541,12 +626,12 @@ function renderCtaBanner(
     ${text ? `<p class="ctc-cta-text" style="${textStyle}">${escapeHtml(text)}</p>` : ''}
     <div class="ctc-cta-actions" style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap">
       <a href="${escapeHtml(ctaConfig?.primaryUrl || '#contact')}" style="${primaryBtnStyle}; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.875rem 2rem; border-radius: var(--ctc-radius-full); font-weight: 600; text-decoration: none; transition: all 0.2s ease; font-size: 1rem">
-        ${escapeHtml(ctaConfig?.primaryText || 'Contact')}
+        ${escapeHtml(ctaConfig?.primaryText || localizedDefaults.primaryText)}
         <span style="font-size: 1.125rem">→</span>
       </a>
-      ${ctaConfig?.secondaryText ? `
+      ${ctaConfig?.secondaryText || !ctaConfig?.primaryText ? `
       <a href="${escapeHtml(ctaConfig?.secondaryUrl || '#')}" style="${secondaryBtnStyle}; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.875rem 2rem; border-radius: var(--ctc-radius-full); font-weight: 600; text-decoration: none; transition: all 0.2s ease; font-size: 1rem">
-        ${escapeHtml(ctaConfig.secondaryText)}
+        ${escapeHtml(ctaConfig?.secondaryText || localizedDefaults.secondaryText)}
       </a>` : ''}
     </div>
   </div>

@@ -39,6 +39,8 @@ export interface RenderContext {
     columns?: 2 | 3 | 4;
     animateOnScroll?: boolean;
   };
+  /** Map of image descriptions to URLs (for replacing [IMAGE:...] placeholders) */
+  imageUrlMap?: Map<string, string>;
 }
 
 export interface RenderedComponent {
@@ -127,7 +129,7 @@ function slugify(text: string): string {
 /**
  * Convert markdown content to HTML (basic conversion)
  */
-function markdownToHtml(markdown: string): string {
+function markdownToHtml(markdown: string, imageUrlMap?: Map<string, string>): string {
   let html = markdown;
 
   // Headings (h3-h6 only, h1/h2 handled by section structure)
@@ -147,8 +149,32 @@ function markdownToHtml(markdown: string): string {
   // Links
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="ctc-link text-[var(--ctc-primary)] hover:underline">$1</a>');
 
-  // Images with proper figure structure
+  // Images with proper figure structure (standard markdown)
   html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<figure class="ctc-figure"><img src="$2" alt="$1" loading="lazy"><figcaption>$1</figcaption></figure>');
+
+  // Custom image placeholders: [IMAGE: description | alt="alt text"]
+  // If imageUrlMap has a URL for this description, render the actual image
+  // Otherwise, render a styled placeholder
+  html = html.replace(/\[IMAGE:\s*([^\]|]+)(?:\s*\|\s*alt="([^"]*)")?\]/g, (match, description, altText) => {
+    const cleanDescription = description.trim();
+    const alt = altText?.trim() || cleanDescription;
+
+    // Check if we have an actual URL for this image
+    if (imageUrlMap && imageUrlMap.has(cleanDescription)) {
+      const imageUrl = imageUrlMap.get(cleanDescription)!;
+      return `<figure class="ctc-figure ctc-image-figure" style="margin: 2rem 0">
+        <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(alt)}" loading="lazy" style="width: 100%; max-width: 800px; height: auto; border-radius: var(--ctc-radius-lg); box-shadow: 0 4px 16px -4px rgba(0,0,0,0.1)">
+        <figcaption style="text-align: center; color: var(--ctc-text-muted); font-size: 0.875rem; margin-top: 0.5rem">${escapeHtml(alt)}</figcaption>
+      </figure>`;
+    }
+
+    // Render as a styled placeholder
+    return `<figure class="ctc-image-placeholder" style="margin: 2rem 0; padding: 2rem; background: linear-gradient(135deg, var(--ctc-surface) 0%, color-mix(in srgb, var(--ctc-primary) 3%, var(--ctc-surface)) 100%); border: 2px dashed var(--ctc-border); border-radius: var(--ctc-radius-lg); text-align: center">
+      <div style="font-size: 2rem; margin-bottom: 0.5rem; opacity: 0.5">🖼️</div>
+      <p style="color: var(--ctc-text-secondary); font-size: 0.875rem; margin: 0">${escapeHtml(cleanDescription)}</p>
+      ${altText ? `<p style="color: var(--ctc-text-muted); font-size: 0.75rem; margin-top: 0.25rem; font-style: italic">Alt: ${escapeHtml(alt)}</p>` : ''}
+    </figure>`;
+  });
 
   // Code blocks
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="ctc-pre bg-[var(--ctc-surface)] p-4 rounded-lg overflow-x-auto my-4"><code class="ctc-code language-$1">$2</code></pre>');
@@ -288,7 +314,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   // ---------------------------------------------------------------------------
 
   'prose': (ctx) => {
-    const htmlContent = markdownToHtml(ctx.content);
+    const htmlContent = markdownToHtml(ctx.content, ctx.imageUrlMap);
     const emphasisStyle = emphasisStyles(ctx.emphasis);
     const bgStyles = ctx.hasBackground && !emphasisStyle
       ? 'background: var(--ctc-surface); border-radius: var(--ctc-radius-xl); padding: 2rem; border: 1px solid var(--ctc-border-subtle)'
@@ -334,7 +360,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   },
 
   'lead-paragraph': (ctx) => {
-    const htmlContent = markdownToHtml(ctx.content);
+    const htmlContent = markdownToHtml(ctx.content, ctx.imageUrlMap);
     return {
       html: `
 <div id="${ctx.sectionId}" class="ctc-lead-paragraph ${spacingClasses(ctx.spacing)}" style="position: relative">
@@ -365,7 +391,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   },
 
   'highlight-box': (ctx) => {
-    const htmlContent = markdownToHtml(ctx.content);
+    const htmlContent = markdownToHtml(ctx.content, ctx.imageUrlMap);
     const variant = ctx.variant || 'info';
     const variantStyles: Record<string, { variantClass: string; icon: string; iconBg: string }> = {
       'info': { variantClass: 'ctc-highlight-box--info', icon: 'ℹ️', iconBg: '#3B82F6' },
@@ -392,7 +418,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   },
 
   'callout': (ctx) => {
-    const htmlContent = markdownToHtml(ctx.content);
+    const htmlContent = markdownToHtml(ctx.content, ctx.imageUrlMap);
     const icon = ctx.styleHints?.icon || '💡';
 
     return {
@@ -421,7 +447,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
 
     const htmlContent = items.length > 0
       ? `<ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--ctc-space-4)">${items.map(item => `<li style="display: flex; align-items: flex-start; gap: var(--ctc-space-3); color: var(--ctc-text-secondary); line-height: 1.6"><span style="width: 8px; height: 8px; min-width: 8px; background: var(--ctc-primary); border-radius: 50%; margin-top: 8px"></span><span>${markdownToHtml(item)}</span></li>`).join('')}</ul>`
-      : markdownToHtml(ctx.content);
+      : markdownToHtml(ctx.content, ctx.imageUrlMap);
 
     return {
       html: `
@@ -436,7 +462,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
     const items = extractListItems(ctx.content);
     const htmlContent = items.length > 0
       ? `<ol class="ctc-list list-decimal pl-6 space-y-2">${items.map(item => `<li class="ctc-li">${markdownToHtml(item)}</li>`).join('')}</ol>`
-      : markdownToHtml(ctx.content);
+      : markdownToHtml(ctx.content, ctx.imageUrlMap);
 
     return {
       html: `
@@ -500,7 +526,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
 
     // CRITICAL: If no list items found, fall back to prose to preserve ALL content
     if (items.length === 0) {
-      const htmlContent = markdownToHtml(ctx.content);
+      const htmlContent = markdownToHtml(ctx.content, ctx.imageUrlMap);
       return {
         html: `
 <section id="${ctx.sectionId}" class="ctc-prose ctc-card-grid-fallback ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}">
@@ -850,7 +876,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   <div style="position: relative; z-index: 1">
     ${ctx.heading ? `<h2 style="font-family: var(--ctc-font-display); font-weight: 700; font-size: var(--ctc-text-3xl); margin-bottom: var(--ctc-space-4); color: ${isHeroMoment ? 'white' : 'var(--ctc-text)'}">${escapeHtml(ctx.heading)}</h2>` : ''}
     <div style="font-size: var(--ctc-text-lg); opacity: 0.9; margin-bottom: var(--ctc-space-8); max-width: 600px; margin-left: auto; margin-right: auto; line-height: 1.6; color: ${isHeroMoment ? 'rgba(255,255,255,0.9)' : 'var(--ctc-text-secondary)'}">
-      ${markdownToHtml(ctx.content)}
+      ${markdownToHtml(ctx.content, ctx.imageUrlMap)}
     </div>
     <div style="display: flex; gap: var(--ctc-space-4); justify-content: center; flex-wrap: wrap">
       <a href="#contact" style="display: inline-flex; align-items: center; gap: var(--ctc-space-2); padding: var(--ctc-space-4) var(--ctc-space-10); border-radius: var(--ctc-radius-full); font-weight: 600; font-size: 1.0625rem; ${isHeroMoment ? 'background: white; color: var(--ctc-primary); box-shadow: 0 4px 16px -2px rgba(0,0,0,0.2)' : 'background: linear-gradient(135deg, var(--ctc-primary), var(--ctc-primary-light)); color: white; box-shadow: 0 4px 16px -2px color-mix(in srgb, var(--ctc-primary) 40%, transparent)'}; transition: all 0.2s ease; text-decoration: none">
@@ -869,7 +895,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
 <aside id="${ctx.sectionId}" class="ctc-cta-inline flex items-center justify-between gap-6 p-6 rounded-[var(--ctc-radius-lg)] bg-[var(--ctc-surface)] border border-[var(--ctc-border)] my-8">
   <div class="ctc-cta-text">
     ${ctx.heading ? `<strong class="block mb-1">${escapeHtml(ctx.heading)}</strong>` : ''}
-    <span class="text-[var(--ctc-text-secondary)]">${markdownToHtml(ctx.content)}</span>
+    <span class="text-[var(--ctc-text-secondary)]">${markdownToHtml(ctx.content, ctx.imageUrlMap)}</span>
   </div>
   <a href="#contact" class="ctc-btn ctc-btn-primary px-6 py-2 rounded-[var(--ctc-radius-full)] bg-[var(--ctc-primary)] text-white font-semibold hover:opacity-90 transition-opacity flex-shrink-0">
     Meer Info
@@ -915,7 +941,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   },
 
   'summary-box': (ctx) => {
-    const htmlContent = markdownToHtml(ctx.content);
+    const htmlContent = markdownToHtml(ctx.content, ctx.imageUrlMap);
 
     return {
       html: `

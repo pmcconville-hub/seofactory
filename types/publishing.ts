@@ -115,6 +115,8 @@ export interface HeroConfig {
   showImage: boolean;
   showSubtitle: boolean;
   ctaButton: boolean;
+  /** URL for hero background image */
+  imageUrl?: string;
 }
 
 /**

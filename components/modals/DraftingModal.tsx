@@ -4074,6 +4074,7 @@ ${schemaScript}`;
           articleDraft={draftContent}
           brief={brief}
           brandKit={businessInfo?.brandKit}
+          topicalMap={activeMap}
           supabaseUrl={businessInfo.supabaseUrl}
           supabaseAnonKey={businessInfo.supabaseAnonKey}
           projectId={activeMap?.project_id}
