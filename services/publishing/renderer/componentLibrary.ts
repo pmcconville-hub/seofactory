@@ -257,24 +257,44 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
     const htmlContent = markdownToHtml(ctx.content);
     const emphasisStyle = emphasisStyles(ctx.emphasis);
     const bgStyles = ctx.hasBackground && !emphasisStyle
-      ? 'background: var(--ctc-surface); border-radius: var(--ctc-radius-xl); padding: var(--ctc-space-8); border: 1px solid var(--ctc-border-subtle)'
+      ? 'background: var(--ctc-surface); border-radius: var(--ctc-radius-xl); padding: 2rem; border: 1px solid var(--ctc-border-subtle)'
       : emphasisStyle;
 
-    // Add decorative element for hero-moment
-    const heroDecor = ctx.emphasis === 'hero-moment' ? `
-      <div style="position: absolute; top: -50%; right: -20%; width: 400px; height: 400px; background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%); pointer-events: none"></div>
-      <div style="position: absolute; bottom: -30%; left: -10%; width: 300px; height: 300px; background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%); pointer-events: none"></div>
+    // Add decorative element for hero-moment or featured sections
+    const isSpecial = ctx.emphasis === 'hero-moment' || ctx.emphasis === 'featured';
+    const decorElement = isSpecial ? `
+      <div style="position: absolute; top: -30%; right: -15%; width: 300px; height: 300px; background: ${ctx.emphasis === 'hero-moment' ? 'radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%)' : 'radial-gradient(circle, color-mix(in srgb, var(--ctc-primary) 10%, transparent) 0%, transparent 70%)'}; pointer-events: none; z-index: 0"></div>
+    ` : '';
+
+    // Heading styles with underline accent
+    const headingStyle = `
+      font-weight: var(--ctc-heading-weight);
+      font-family: var(--ctc-font-display);
+      font-size: 1.5rem;
+      color: ${ctx.emphasis === 'hero-moment' ? 'white' : 'var(--ctc-text)'};
+      margin-bottom: 1.5rem;
+      position: relative;
+      z-index: 1;
+      padding-bottom: 0.75rem;
+    `;
+
+    const headingAfterStyle = ctx.heading && ctx.emphasis !== 'hero-moment' ? `
+      <div style="width: 50px; height: 3px; background: linear-gradient(to right, var(--ctc-primary), var(--ctc-primary-light)); border-radius: 2px; margin-bottom: 0.5rem"></div>
     ` : '';
 
     return {
       html: `
-<section id="${ctx.sectionId}" class="ctc-prose ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}" ${bgStyles ? `style="${bgStyles}"` : ''}>
-  ${heroDecor}
-  ${ctx.heading ? `<h${ctx.headingLevel} id="${slugify(ctx.heading)}" class="ctc-section-heading" style="font-weight: var(--ctc-heading-weight); font-family: var(--ctc-font-display); font-size: var(--ctc-text-2xl); color: ${ctx.emphasis === 'hero-moment' ? 'white' : 'var(--ctc-text)'}; margin-bottom: var(--ctc-space-6); position: relative; z-index: 1">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
+<section id="${ctx.sectionId}" class="ctc-prose ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}" style="${bgStyles || ''}; position: relative; overflow: hidden">
+  ${decorElement}
+  ${ctx.heading ? `
+  <div style="position: relative; z-index: 1">
+    ${headingAfterStyle}
+    <h${ctx.headingLevel} id="${slugify(ctx.heading)}" class="ctc-section-heading" style="${headingStyle}">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>
+  </div>` : ''}
   <div class="ctc-prose-content" style="position: relative; z-index: 1; color: ${ctx.emphasis === 'hero-moment' ? 'rgba(255,255,255,0.9)' : 'var(--ctc-text-secondary)'}; line-height: 1.8; font-size: 1.0625rem">
     ${htmlContent}
   </div>
-  ${ctx.hasDivider ? '<hr class="ctc-divider" style="border: 0; height: 2px; background: linear-gradient(to right, var(--ctc-border), transparent); margin-top: var(--ctc-space-10)">' : ''}
+  ${ctx.hasDivider ? '<hr class="ctc-divider" style="border: 0; height: 1px; background: linear-gradient(to right, var(--ctc-border), transparent); margin-top: 2.5rem">' : ''}
 </section>`,
     };
   },
@@ -685,18 +705,27 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
     return {
       html: `
 <section id="${ctx.sectionId}" class="ctc-faq-accordion ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}" itemscope itemtype="https://schema.org/FAQPage">
-  ${ctx.heading ? `<h${ctx.headingLevel} style="font-family: var(--ctc-font-display); font-weight: var(--ctc-heading-weight); font-size: var(--ctc-text-2xl); text-align: center; margin-bottom: var(--ctc-space-10); color: var(--ctc-text)">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
-  <div style="max-width: 800px; margin: 0 auto; background: var(--ctc-surface); border-radius: var(--ctc-radius-xl); overflow: hidden; border: 1px solid var(--ctc-border-subtle)">
+  ${ctx.heading ? `
+  <div style="text-align: center; margin-bottom: 2.5rem">
+    <span style="display: inline-flex; align-items: center; gap: 0.5rem; background: linear-gradient(135deg, var(--ctc-primary), var(--ctc-primary-light)); color: white; padding: 0.5rem 1rem; border-radius: var(--ctc-radius-full); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem">
+      <span>❓</span> FAQ
+    </span>
+    <h${ctx.headingLevel} style="font-family: var(--ctc-font-display); font-weight: var(--ctc-heading-weight); font-size: 1.75rem; color: var(--ctc-text); margin: 0">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>
+  </div>` : ''}
+  <div style="max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 0.75rem">
     ${faqs.map((faq, i) => `
-    <div style="border-bottom: 1px solid var(--ctc-border-subtle)${i === faqs.length - 1 ? '; border-bottom: none' : ''}" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+    <div style="background: var(--ctc-surface); border-radius: var(--ctc-radius-xl); border: 1px solid var(--ctc-border-subtle); overflow: hidden; transition: all 0.2s ease" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
       <h3 style="margin: 0">
-        <button type="button" aria-expanded="false" aria-controls="faq-answer-${ctx.sectionId}-${i}" class="ctc-faq-trigger" style="width: 100%; display: flex; justify-content: space-between; align-items: center; text-align: left; padding: var(--ctc-space-6); background: transparent; border: none; cursor: pointer; font-size: var(--ctc-text-lg); font-weight: 600; color: var(--ctc-text); transition: color 0.2s ease">
-          <span itemprop="name">${markdownToHtml(faq.question)}</span>
-          <span class="ctc-faq-icon" style="font-size: 1.5rem; color: var(--ctc-primary); transition: transform 0.2s ease; flex-shrink: 0; margin-left: var(--ctc-space-4)" aria-hidden="true">+</span>
+        <button type="button" aria-expanded="false" aria-controls="faq-answer-${ctx.sectionId}-${i}" class="ctc-faq-trigger" style="width: 100%; display: flex; justify-content: space-between; align-items: center; text-align: left; padding: 1.25rem 1.5rem; background: transparent; border: none; cursor: pointer; font-size: 1.0625rem; font-weight: 600; color: var(--ctc-text); transition: all 0.2s ease; gap: 1rem">
+          <span style="display: flex; align-items: center; gap: 0.75rem">
+            <span style="width: 28px; height: 28px; min-width: 28px; border-radius: var(--ctc-radius-md); background: linear-gradient(135deg, var(--ctc-surface), var(--ctc-background)); border: 1px solid var(--ctc-border); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600; color: var(--ctc-text-muted)">${i + 1}</span>
+            <span itemprop="name">${markdownToHtml(faq.question)}</span>
+          </span>
+          <span class="ctc-faq-icon" style="width: 28px; height: 28px; min-width: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--ctc-primary), var(--ctc-primary-light)); color: white; display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: 300; transition: transform 0.2s ease" aria-hidden="true">+</span>
         </button>
       </h3>
       <div id="faq-answer-${ctx.sectionId}-${i}" class="ctc-faq-answer" itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer" hidden>
-        <div style="padding: 0 var(--ctc-space-6) var(--ctc-space-6); color: var(--ctc-text-secondary); line-height: 1.7" itemprop="text">${markdownToHtml(faq.answer)}</div>
+        <div style="padding: 0 1.5rem 1.5rem 4rem; color: var(--ctc-text-secondary); line-height: 1.7; font-size: 0.9375rem" itemprop="text">${markdownToHtml(faq.answer)}</div>
       </div>
     </div>`).join('')}
   </div>
@@ -805,21 +834,30 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
 
   'key-takeaways': (ctx) => {
     const items = extractListItems(ctx.content);
+    const icons = ['💡', '✓', '🎯', '📌', '⭐', '🔑', '📍', '✨'];
+
+    // If no list items found, fall back to prose
+    if (items.length === 0) {
+      return componentRenderers['prose']!(ctx);
+    }
 
     return {
       html: `
-<aside id="${ctx.sectionId}" class="ctc-key-takeaways" style="background: linear-gradient(135deg, var(--ctc-primary) 0%, var(--ctc-primary-dark) 100%); color: white; padding: var(--ctc-space-10); border-radius: var(--ctc-radius-2xl); margin: var(--ctc-space-12) 0; position: relative; overflow: hidden">
-  <div style="position: absolute; top: -50px; right: -50px; width: 200px; height: 200px; background: white; opacity: 0.05; border-radius: 50%"></div>
-  <div style="position: absolute; bottom: -30px; left: 10%; width: 100px; height: 100px; background: white; opacity: 0.05; border-radius: 50%"></div>
-  <h2 style="font-family: var(--ctc-font-display); font-size: var(--ctc-text-2xl); font-weight: 700; margin-bottom: var(--ctc-space-6); display: flex; align-items: center; gap: var(--ctc-space-3); position: relative; z-index: 1">
-    <span style="width: 40px; height: 40px; background: white; color: var(--ctc-primary); border-radius: var(--ctc-radius-lg); display: flex; align-items: center; justify-content: center; font-size: 1.25rem">💡</span>
-    ${escapeHtml(ctx.heading || 'Belangrijkste Punten')}
-  </h2>
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--ctc-space-4); position: relative; z-index: 1">
-    ${items.map(item => `
-    <div style="display: flex; align-items: flex-start; gap: var(--ctc-space-4); background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); padding: var(--ctc-space-5); border-radius: var(--ctc-radius-lg); border: 1px solid rgba(255, 255, 255, 0.2)">
-      <span style="width: 28px; height: 28px; min-width: 28px; border-radius: 50%; background: white; color: var(--ctc-primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.875rem">✓</span>
-      <span style="color: rgba(255, 255, 255, 0.95); line-height: 1.6">${markdownToHtml(item)}</span>
+<aside id="${ctx.sectionId}" class="ctc-key-takeaways" style="background: linear-gradient(135deg, var(--ctc-primary) 0%, var(--ctc-primary-dark) 100%); color: white; padding: 2.5rem 2rem; border-radius: var(--ctc-radius-2xl); margin: 3rem 0; position: relative; overflow: hidden; box-shadow: 0 25px 50px -12px color-mix(in srgb, var(--ctc-primary) 50%, transparent)">
+  <div style="position: absolute; top: -80px; right: -80px; width: 300px; height: 300px; background: white; opacity: 0.08; border-radius: 50%; pointer-events: none"></div>
+  <div style="position: absolute; bottom: -50px; left: 5%; width: 150px; height: 150px; background: white; opacity: 0.06; border-radius: 50%; pointer-events: none"></div>
+  <div style="position: absolute; top: 40%; right: 10%; width: 80px; height: 80px; background: white; opacity: 0.04; border-radius: 50%; pointer-events: none"></div>
+
+  <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; position: relative; z-index: 1">
+    <span style="width: 48px; height: 48px; background: white; color: var(--ctc-primary); border-radius: var(--ctc-radius-xl); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15)">💡</span>
+    <h2 style="font-family: var(--ctc-font-display); font-size: 1.5rem; font-weight: 700; margin: 0">${escapeHtml(ctx.heading || 'Belangrijkste Punten')}</h2>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; position: relative; z-index: 1">
+    ${items.map((item, i) => `
+    <div style="display: flex; align-items: flex-start; gap: 1rem; background: rgba(255, 255, 255, 0.12); backdrop-filter: blur(12px); padding: 1.25rem; border-radius: var(--ctc-radius-lg); border: 1px solid rgba(255, 255, 255, 0.18); transition: all 0.2s ease">
+      <span style="width: 32px; height: 32px; min-width: 32px; border-radius: var(--ctc-radius-md); background: white; color: var(--ctc-primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.875rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1)">${items.length <= 3 ? icons[1] : (i + 1)}</span>
+      <span style="color: rgba(255, 255, 255, 0.95); line-height: 1.6; font-size: 0.9375rem">${markdownToHtml(item)}</span>
     </div>`).join('')}
   </div>
 </aside>`,

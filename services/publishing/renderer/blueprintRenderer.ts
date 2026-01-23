@@ -347,6 +347,7 @@ export function renderBlueprint(
 
 /**
  * Render hero section
+ * All visual styles get beautiful hero treatment - gradient for bold styles, elegant for editorial
  */
 function renderHero(
   title: string,
@@ -355,34 +356,64 @@ function renderHero(
   ctaConfig?: BlueprintRenderOptions['ctaConfig'],
   ctaIntensity?: string
 ): string {
-  const isGradient = strategy.visualStyle === 'marketing' || strategy.visualStyle === 'bold' || strategy.visualStyle === 'warm-modern';
-  const bgClass = isGradient
-    ? 'ctc-hero--gradient'
-    : 'bg-[var(--ctc-surface)]';
+  const isBoldGradient = strategy.visualStyle === 'marketing' || strategy.visualStyle === 'bold' || strategy.visualStyle === 'warm-modern';
+  const isEditorial = strategy.visualStyle === 'editorial' || strategy.visualStyle === 'minimal';
 
-  const showCta = ctaIntensity === 'prominent' || strategy.primaryGoal === 'convert';
+  // Determine hero style based on visual style
+  let heroStyle: string;
+  let heroOrbs: string;
+  let textColor: string;
+  let subtitleColor: string;
+  let btnPrimaryStyle: string;
+  let btnSecondaryStyle: string;
+
+  if (isBoldGradient) {
+    // Bold gradient hero
+    heroStyle = 'background: linear-gradient(135deg, var(--ctc-primary) 0%, var(--ctc-primary-dark) 100%)';
+    heroOrbs = `
+    <div class="ctc-hero-bg-effects" style="position: absolute; inset: 0; pointer-events: none; overflow: hidden">
+      <div style="position: absolute; width: 500px; height: 500px; background: white; opacity: 0.1; border-radius: 50%; filter: blur(80px); top: -150px; left: 5%"></div>
+      <div style="position: absolute; width: 350px; height: 350px; background: white; opacity: 0.08; border-radius: 50%; filter: blur(60px); bottom: -100px; right: 15%"></div>
+      <div style="position: absolute; width: 200px; height: 200px; background: white; opacity: 0.06; border-radius: 50%; filter: blur(40px); top: 40%; right: 5%"></div>
+    </div>`;
+    textColor = 'color: white';
+    subtitleColor = 'color: rgba(255, 255, 255, 0.9)';
+    btnPrimaryStyle = 'background: white; color: var(--ctc-primary); box-shadow: 0 8px 24px -4px rgba(0,0,0,0.2)';
+    btnSecondaryStyle = 'background: transparent; color: white; border: 2px solid rgba(255,255,255,0.8)';
+  } else {
+    // Editorial/minimal: elegant sophisticated hero with subtle gradient
+    heroStyle = 'background: linear-gradient(180deg, var(--ctc-surface) 0%, var(--ctc-background) 100%); border-bottom: 1px solid var(--ctc-border)';
+    heroOrbs = `
+    <div class="ctc-hero-bg-effects" style="position: absolute; inset: 0; pointer-events: none; overflow: hidden">
+      <div style="position: absolute; width: 600px; height: 600px; background: var(--ctc-primary); opacity: 0.03; border-radius: 50%; filter: blur(100px); top: -200px; left: -100px"></div>
+      <div style="position: absolute; width: 400px; height: 400px; background: var(--ctc-primary); opacity: 0.02; border-radius: 50%; filter: blur(80px); bottom: -150px; right: -50px"></div>
+    </div>`;
+    textColor = 'color: var(--ctc-text)';
+    subtitleColor = 'color: var(--ctc-text-secondary)';
+    btnPrimaryStyle = 'background: linear-gradient(135deg, var(--ctc-primary), var(--ctc-primary-light)); color: white; box-shadow: 0 4px 16px -2px color-mix(in srgb, var(--ctc-primary) 40%, transparent)';
+    btnSecondaryStyle = 'background: transparent; color: var(--ctc-primary); border: 2px solid var(--ctc-primary)';
+  }
+
+  const showCta = ctaIntensity === 'prominent' || ctaIntensity === 'moderate' || strategy.primaryGoal === 'convert' || ctaConfig?.primaryText;
 
   return `
-<header class="ctc-hero ${bgClass} relative overflow-hidden" role="banner">
-  ${isGradient ? `
-  <div class="ctc-hero-bg-effects absolute inset-0 pointer-events-none">
-    <div class="ctc-hero-orb ctc-hero-orb--1"></div>
-    <div class="ctc-hero-orb ctc-hero-orb--2"></div>
-  </div>` : ''}
-  <div class="ctc-hero-content relative z-10 max-w-4xl mx-auto text-center py-20 md:py-28 px-6">
-    <h1 class="ctc-hero-title text-4xl md:text-5xl lg:text-6xl mb-8" style="font-weight: var(--ctc-heading-weight); font-family: var(--ctc-font-display); line-height: 1.1; letter-spacing: var(--ctc-heading-letter-spacing)">
+<header class="ctc-hero" role="banner" style="${heroStyle}; position: relative; overflow: hidden">
+  ${heroOrbs}
+  <div class="ctc-hero-content" style="position: relative; z-index: 10; max-width: 56rem; margin: 0 auto; text-align: center; padding: 5rem 1.5rem 5.5rem">
+    <h1 class="ctc-hero-title" style="${textColor}; font-weight: var(--ctc-heading-weight); font-family: var(--ctc-font-display); font-size: clamp(2.25rem, 5vw, 3.75rem); line-height: 1.1; letter-spacing: var(--ctc-heading-letter-spacing); margin-bottom: 1.5rem">
       ${escapeHtml(title)}
     </h1>
-    <p class="ctc-hero-subtitle text-lg md:text-xl max-w-2xl mx-auto leading-relaxed" style="opacity: 0.9">
+    <p class="ctc-hero-subtitle" style="${subtitleColor}; font-size: 1.25rem; max-width: 42rem; margin: 0 auto; line-height: 1.7">
       ${extractFirstParagraph(introContent)}
     </p>
     ${showCta && ctaConfig?.primaryText ? `
-    <div class="ctc-hero-actions mt-10 flex gap-4 justify-center flex-wrap">
-      <a href="${escapeHtml(ctaConfig.primaryUrl || '#contact')}" class="ctc-btn ctc-btn--white px-8 py-4 rounded-[var(--ctc-radius-full)] font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200">
+    <div class="ctc-hero-actions" style="margin-top: 2.5rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap">
+      <a href="${escapeHtml(ctaConfig.primaryUrl || '#contact')}" style="${btnPrimaryStyle}; display: inline-flex; align-items: center; gap: 0.5rem; padding: 1rem 2rem; border-radius: var(--ctc-radius-full); font-weight: 600; text-decoration: none; transition: all 0.2s ease; font-size: 1rem">
         ${escapeHtml(ctaConfig.primaryText)}
+        <span style="font-size: 1.25rem">→</span>
       </a>
       ${ctaConfig.secondaryText ? `
-      <a href="${escapeHtml(ctaConfig.secondaryUrl || '#')}" class="ctc-btn ctc-btn--outline px-8 py-4 rounded-[var(--ctc-radius-full)] font-semibold border-2 hover:bg-white/10 transition-colors">
+      <a href="${escapeHtml(ctaConfig.secondaryUrl || '#')}" style="${btnSecondaryStyle}; display: inline-flex; align-items: center; gap: 0.5rem; padding: 1rem 2rem; border-radius: var(--ctc-radius-full); font-weight: 600; text-decoration: none; transition: all 0.2s ease; font-size: 1rem">
         ${escapeHtml(ctaConfig.secondaryText)}
       </a>` : ''}
     </div>` : ''}
@@ -407,20 +438,32 @@ function renderToc(
 
   if (headings.length < 3) return '';
 
-  const positionClass = position === 'sidebar'
-    ? 'ctc-toc--sidebar lg:sticky lg:top-4 lg:w-64'
-    : position === 'floating'
-      ? 'ctc-toc--floating fixed bottom-4 right-4 z-50'
-      : 'ctc-toc--inline my-8';
+  const isSidebar = position === 'sidebar';
+  const isFloating = position === 'floating';
+
+  // Base styles for all TOC positions
+  let wrapperStyle = 'background: var(--ctc-surface); border-radius: var(--ctc-radius-xl); border: 1px solid var(--ctc-border-subtle); padding: 1.5rem;';
+
+  if (isSidebar) {
+    wrapperStyle += ' position: sticky; top: 1rem;';
+  } else if (isFloating) {
+    wrapperStyle += ' position: fixed; bottom: 1rem; right: 1rem; z-index: 50; box-shadow: 0 20px 50px -12px rgba(0,0,0,0.25);';
+  } else {
+    wrapperStyle += ' margin: 2rem 0;';
+  }
 
   return `
-<nav class="ctc-toc ${positionClass} p-6 bg-[var(--ctc-surface)] rounded-[var(--ctc-radius-lg)] border border-[var(--ctc-border)]" aria-label="Inhoudsopgave">
-  <h2 class="ctc-toc-title text-lg font-semibold mb-4">Inhoudsopgave</h2>
-  <ol class="ctc-toc-list space-y-2">
-    ${headings.map(h => `
-    <li class="ctc-toc-item" style="margin-left: ${(h.level - 2) * 1}rem">
-      <a href="#${h.id}" class="ctc-toc-link text-[var(--ctc-text-secondary)] hover:text-[var(--ctc-primary)] transition-colors text-sm block py-1">
-        ${escapeHtml(h.text)}
+<nav class="ctc-toc ctc-toc--${position}" style="${wrapperStyle}" aria-label="Inhoudsopgave">
+  <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--ctc-border-subtle)">
+    <span style="width: 32px; height: 32px; border-radius: var(--ctc-radius-md); background: linear-gradient(135deg, var(--ctc-primary), var(--ctc-primary-light)); display: flex; align-items: center; justify-content: center; font-size: 0.875rem; color: white">📋</span>
+    <h2 style="font-weight: 600; font-size: 1rem; color: var(--ctc-text); margin: 0">Inhoudsopgave</h2>
+  </div>
+  <ol style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.25rem">
+    ${headings.map((h, i) => `
+    <li style="margin-left: ${(h.level - 2) * 1}rem">
+      <a href="#${h.id}" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; border-radius: var(--ctc-radius-md); color: var(--ctc-text-secondary); text-decoration: none; font-size: 0.875rem; transition: all 0.15s ease; line-height: 1.4">
+        <span style="min-width: 1.5rem; height: 1.5rem; border-radius: var(--ctc-radius-sm); background: var(--ctc-background); border: 1px solid var(--ctc-border); display: flex; align-items: center; justify-content: center; font-size: 0.6875rem; font-weight: 600; color: var(--ctc-text-muted)">${i + 1}</span>
+        <span>${escapeHtml(h.text)}</span>
       </a>
     </li>`).join('')}
   </ol>
@@ -438,13 +481,15 @@ function renderInlineCta(
   const text = ctaConfig?.bannerText || '';
 
   return `
-<aside class="ctc-cta-inline flex items-center justify-between gap-6 p-6 rounded-[var(--ctc-radius-lg)] bg-[var(--ctc-surface)] border border-[var(--ctc-border)] my-8">
-  <div class="ctc-cta-text">
-    <strong class="block mb-1">${escapeHtml(title)}</strong>
-    ${text ? `<span class="text-[var(--ctc-text-secondary)]">${escapeHtml(text)}</span>` : ''}
+<aside class="ctc-cta-inline" style="display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding: 1.5rem 2rem; border-radius: var(--ctc-radius-xl); background: linear-gradient(135deg, var(--ctc-surface) 0%, color-mix(in srgb, var(--ctc-primary) 3%, var(--ctc-surface)) 100%); border: 1px solid var(--ctc-border); margin: 2rem 0; position: relative; overflow: hidden">
+  <div style="position: absolute; top: -30px; right: -30px; width: 100px; height: 100px; background: var(--ctc-primary); opacity: 0.04; border-radius: 50%; pointer-events: none"></div>
+  <div style="position: relative; z-index: 1; flex: 1">
+    <strong style="display: block; margin-bottom: 0.25rem; font-weight: 600; color: var(--ctc-text); font-size: 1.0625rem">${escapeHtml(title)}</strong>
+    ${text ? `<span style="color: var(--ctc-text-secondary); font-size: 0.9375rem; line-height: 1.5">${escapeHtml(text)}</span>` : ''}
   </div>
-  <a href="${escapeHtml(ctaConfig?.primaryUrl || '#contact')}" class="ctc-btn ctc-btn-primary px-6 py-2 rounded-[var(--ctc-radius-full)] bg-[var(--ctc-primary)] text-white font-semibold hover:opacity-90 transition-opacity flex-shrink-0">
+  <a href="${escapeHtml(ctaConfig?.primaryUrl || '#contact')}" style="background: linear-gradient(135deg, var(--ctc-primary), var(--ctc-primary-light)); color: white; padding: 0.75rem 1.5rem; border-radius: var(--ctc-radius-full); font-weight: 600; text-decoration: none; transition: all 0.2s ease; flex-shrink: 0; font-size: 0.9375rem; display: inline-flex; align-items: center; gap: 0.375rem; box-shadow: 0 4px 12px -2px color-mix(in srgb, var(--ctc-primary) 30%, transparent)">
     ${escapeHtml(ctaConfig?.primaryText || 'Meer Info')}
+    <span style="font-size: 1rem">→</span>
   </a>
 </aside>`;
 }
@@ -460,22 +505,50 @@ function renderCtaBanner(
   const title = ctaConfig?.bannerTitle || 'Klaar Om Te Beginnen?';
   const text = ctaConfig?.bannerText || '';
 
-  const bgClass = isProminent
-    ? 'bg-gradient-to-r from-[var(--ctc-primary)] to-[var(--ctc-primary-light)] text-white'
-    : 'bg-[var(--ctc-surface)] border border-[var(--ctc-border)]';
+  // Determine styling based on intensity
+  let bannerStyle: string;
+  let titleStyle: string;
+  let textStyle: string;
+  let primaryBtnStyle: string;
+  let secondaryBtnStyle: string;
+  let decorativeOrbs: string;
+
+  if (isProminent) {
+    bannerStyle = 'background: linear-gradient(135deg, var(--ctc-primary) 0%, var(--ctc-primary-dark) 100%); color: white; position: relative; overflow: hidden';
+    titleStyle = 'color: white; font-size: clamp(1.5rem, 4vw, 2rem); font-weight: 700; margin-bottom: 1rem';
+    textStyle = 'color: rgba(255,255,255,0.9); font-size: 1.125rem; max-width: 36rem; margin: 0 auto 2rem; line-height: 1.6';
+    primaryBtnStyle = 'background: white; color: var(--ctc-primary); box-shadow: 0 8px 24px -4px rgba(0,0,0,0.2)';
+    secondaryBtnStyle = 'background: transparent; color: white; border: 2px solid rgba(255,255,255,0.8)';
+    decorativeOrbs = `
+    <div style="position: absolute; top: -80px; right: -80px; width: 250px; height: 250px; background: white; opacity: 0.1; border-radius: 50%; pointer-events: none"></div>
+    <div style="position: absolute; bottom: -60px; left: -60px; width: 180px; height: 180px; background: white; opacity: 0.08; border-radius: 50%; pointer-events: none"></div>`;
+  } else {
+    bannerStyle = 'background: linear-gradient(135deg, var(--ctc-surface) 0%, color-mix(in srgb, var(--ctc-primary) 5%, var(--ctc-surface)) 100%); border: 1px solid var(--ctc-border); position: relative; overflow: hidden';
+    titleStyle = 'color: var(--ctc-text); font-size: clamp(1.5rem, 4vw, 2rem); font-weight: 700; margin-bottom: 1rem';
+    textStyle = 'color: var(--ctc-text-secondary); font-size: 1.125rem; max-width: 36rem; margin: 0 auto 2rem; line-height: 1.6';
+    primaryBtnStyle = 'background: linear-gradient(135deg, var(--ctc-primary), var(--ctc-primary-light)); color: white; box-shadow: 0 4px 16px -2px color-mix(in srgb, var(--ctc-primary) 40%, transparent)';
+    secondaryBtnStyle = 'background: transparent; color: var(--ctc-primary); border: 2px solid var(--ctc-primary)';
+    decorativeOrbs = `
+    <div style="position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: var(--ctc-primary); opacity: 0.05; border-radius: 50%; pointer-events: none"></div>
+    <div style="position: absolute; bottom: -40px; left: -40px; width: 100px; height: 100px; background: var(--ctc-primary); opacity: 0.03; border-radius: 50%; pointer-events: none"></div>`;
+  }
 
   return `
-<aside class="ctc-cta-banner ${bgClass} rounded-[var(--ctc-radius-xl)] p-8 md:p-12 text-center my-12">
-  <h2 class="ctc-cta-title text-2xl md:text-3xl font-bold mb-4">${escapeHtml(title)}</h2>
-  ${text ? `<p class="ctc-cta-text text-lg opacity-90 mb-6 max-w-2xl mx-auto">${escapeHtml(text)}</p>` : ''}
-  <div class="ctc-cta-actions flex gap-4 justify-center flex-wrap">
-    <a href="${escapeHtml(ctaConfig?.primaryUrl || '#contact')}" class="ctc-btn ${isProminent ? 'bg-white text-[var(--ctc-primary)]' : 'bg-[var(--ctc-primary)] text-white'} px-8 py-3 rounded-[var(--ctc-radius-full)] font-semibold hover:opacity-90 transition-opacity">
-      ${escapeHtml(ctaConfig?.primaryText || 'Contact')}
-    </a>
-    ${ctaConfig?.secondaryText ? `
-    <a href="${escapeHtml(ctaConfig?.secondaryUrl || '#')}" class="ctc-btn border-2 ${isProminent ? 'border-white text-white' : 'border-[var(--ctc-primary)] text-[var(--ctc-primary)]'} px-8 py-3 rounded-[var(--ctc-radius-full)] font-semibold hover:opacity-90 transition-opacity">
-      ${escapeHtml(ctaConfig.secondaryText)}
-    </a>` : ''}
+<aside class="ctc-cta-banner" style="${bannerStyle}; border-radius: var(--ctc-radius-2xl); padding: 3rem 2rem; text-align: center; margin: 3rem 0; box-shadow: 0 20px 50px -12px rgba(0,0,0,0.12)">
+  ${decorativeOrbs}
+  <div style="position: relative; z-index: 1">
+    <h2 class="ctc-cta-title" style="${titleStyle}">${escapeHtml(title)}</h2>
+    ${text ? `<p class="ctc-cta-text" style="${textStyle}">${escapeHtml(text)}</p>` : ''}
+    <div class="ctc-cta-actions" style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap">
+      <a href="${escapeHtml(ctaConfig?.primaryUrl || '#contact')}" style="${primaryBtnStyle}; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.875rem 2rem; border-radius: var(--ctc-radius-full); font-weight: 600; text-decoration: none; transition: all 0.2s ease; font-size: 1rem">
+        ${escapeHtml(ctaConfig?.primaryText || 'Contact')}
+        <span style="font-size: 1.125rem">→</span>
+      </a>
+      ${ctaConfig?.secondaryText ? `
+      <a href="${escapeHtml(ctaConfig?.secondaryUrl || '#')}" style="${secondaryBtnStyle}; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.875rem 2rem; border-radius: var(--ctc-radius-full); font-weight: 600; text-decoration: none; transition: all 0.2s ease; font-size: 1rem">
+        ${escapeHtml(ctaConfig.secondaryText)}
+      </a>` : ''}
+    </div>
   </div>
 </aside>`;
 }
@@ -544,8 +617,53 @@ function shouldInsertCta(
  * Wrap HTML with root element
  */
 function wrapWithRoot(html: string, personalityId: string): string {
+  // Interactive JavaScript for FAQ accordion and smooth scroll
+  const interactiveScript = `
+<script>
+(function() {
+  // FAQ Accordion Toggle
+  document.querySelectorAll('.ctc-faq-trigger').forEach(function(trigger) {
+    trigger.addEventListener('click', function() {
+      var answer = document.getElementById(trigger.getAttribute('aria-controls'));
+      var icon = trigger.querySelector('.ctc-faq-icon');
+      var isExpanded = trigger.getAttribute('aria-expanded') === 'true';
+
+      trigger.setAttribute('aria-expanded', !isExpanded);
+      if (answer) {
+        answer.hidden = isExpanded;
+      }
+      if (icon) {
+        icon.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(45deg)';
+      }
+    });
+  });
+
+  // Smooth scroll for TOC links
+  document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
+    link.addEventListener('click', function(e) {
+      var target = document.querySelector(this.getAttribute('href'));
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+
+  // Add hover effects for cards and interactive elements
+  document.querySelectorAll('.ctc-toc a').forEach(function(link) {
+    link.addEventListener('mouseenter', function() {
+      this.style.background = 'var(--ctc-surface)';
+    });
+    link.addEventListener('mouseleave', function() {
+      this.style.background = 'transparent';
+    });
+  });
+})();
+</script>`;
+
   return `<div class="ctc-root ctc-styled ctc-personality-${personalityId}" data-ctc-version="2.0" data-blueprint-rendered="true">
 ${html}
+${interactiveScript}
 </div>`;
 }
 
