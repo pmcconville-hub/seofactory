@@ -360,6 +360,11 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   'checklist': (ctx) => {
     const items = extractListItems(ctx.content);
 
+    // CRITICAL: Fallback to prose if no list items
+    if (items.length === 0) {
+      return componentRenderers['prose']!(ctx);
+    }
+
     return {
       html: `
 <section id="${ctx.sectionId}" class="ctc-checklist ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}" style="background: var(--ctc-surface); padding: var(--ctc-space-8); border-radius: var(--ctc-radius-xl); border: 1px solid var(--ctc-border-subtle)">
@@ -379,6 +384,11 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
     const items = extractListItems(ctx.content);
     const icons = ['🔹', '🔸', '▸', '→', '•'];
 
+    // CRITICAL: Fallback to prose if no list items
+    if (items.length === 0) {
+      return componentRenderers['prose']!(ctx);
+    }
+
     return {
       html: `
 <div id="${ctx.sectionId}" class="ctc-icon-list ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}">
@@ -396,8 +406,21 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
 
   'card-grid': (ctx) => {
     const items = extractListItems(ctx.content);
-    const columns = ctx.styleHints?.columns || 3;
     const icons = ['✨', '🎯', '🚀', '💡', '⭐', '🔥', '💪', '🎨', '📈', '🎁'];
+
+    // CRITICAL: If no list items found, fall back to prose to preserve ALL content
+    if (items.length === 0) {
+      const htmlContent = markdownToHtml(ctx.content);
+      return {
+        html: `
+<section id="${ctx.sectionId}" class="ctc-prose ctc-card-grid-fallback ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}">
+  ${ctx.heading ? `<h${ctx.headingLevel} id="${slugify(ctx.heading)}" class="ctc-section-heading" style="font-weight: var(--ctc-heading-weight); font-family: var(--ctc-font-display); font-size: var(--ctc-text-2xl); color: var(--ctc-text)">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
+  <div class="ctc-prose-content">
+    ${htmlContent}
+  </div>
+</section>`,
+      };
+    }
 
     return {
       html: `
@@ -423,6 +446,11 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   'feature-list': (ctx) => {
     const items = extractListItems(ctx.content);
 
+    // CRITICAL: Fallback to prose if no list items
+    if (items.length === 0) {
+      return componentRenderers['prose']!(ctx);
+    }
+
     return {
       html: `
 <div id="${ctx.sectionId}" class="ctc-feature-list ${emphasisClasses(ctx.emphasis)} ${spacingClasses(ctx.spacing)}">
@@ -443,6 +471,11 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
 
   'stat-cards': (ctx) => {
     const items = extractListItems(ctx.content);
+
+    // CRITICAL: Fallback to prose if no list items
+    if (items.length === 0) {
+      return componentRenderers['prose']!(ctx);
+    }
 
     return {
       html: `
