@@ -86,7 +86,7 @@ function generateExecutiveReportHtml(
   config: Partial<ExportConfig>
 ): string {
   const { executiveSummary, topicalAuthority, competitiveIntel, authorityTrust, contentHealth, costUsage, actionCenter } = insights;
-  const brandColor = config.branding?.primaryColor || '#3B82F6';
+  const brandColor = config.branding?.primaryColor || '#18181B';
 
   const getTrendClass = (trend?: { direction: 'up' | 'down' | 'stable'; percentChange: number }) => trend?.direction === 'up' ? 'up' : trend?.direction === 'down' ? 'down' : '';
   const getTrendArrow = (trend?: { direction: 'up' | 'down' | 'stable'; percentChange: number }) => trend?.direction === 'up' ? '↑' : trend?.direction === 'down' ? '↓' : '→';

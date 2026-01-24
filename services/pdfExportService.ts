@@ -56,7 +56,7 @@ const PDF_CONFIG = {
 
   // Colors
   colors: {
-    primary: '#3B82F6',
+    primary: '#18181B',
     text: '#1F2937',
     textLight: '#6B7280',
     border: '#E5E7EB',
@@ -579,7 +579,7 @@ export const generateEnhancedMetricsHtmlReport = (data: EnhancedMetricsReportDat
       background: #f9fafb;
       color: #1f2937;
     }
-    h1 { color: #111827; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; }
+    h1 { color: #111827; border-bottom: 2px solid #18181b; padding-bottom: 10px; }
     h2 { color: #374151; margin-top: 30px; }
     h3 { color: #4b5563; }
     .card {
@@ -689,7 +689,7 @@ export const generateEnhancedMetricsHtmlReport = (data: EnhancedMetricsReportDat
         <div class="metric-label">UNIQUE EAVs</div>
       </div>
       <div class="metric-box">
-        <div class="metric-value" style="color: #3b82f6;">${authorityIndicators.rootEavCount}</div>
+        <div class="metric-value" style="color: #18181b;">${authorityIndicators.rootEavCount}</div>
         <div class="metric-label">ROOT EAVs</div>
       </div>
       <div class="metric-box">

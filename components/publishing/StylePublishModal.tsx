@@ -459,7 +459,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     } finally {
       setIsBlueprintGenerating(false);
     }
-  }, [articleDraft, topic.title, topic.id, brief, personalityId, topicalMap?.business_info, supabaseUrl, supabaseAnonKey]);
+  }, [articleDraft, topic.title, topic.id, brief, personalityId, style, topicalMap?.business_info, supabaseUrl, supabaseAnonKey]);
 
   // Fetch learned preferences for this project
   const fetchLearnedPreferences = useCallback(async () => {

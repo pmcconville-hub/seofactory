@@ -34,7 +34,7 @@ class CTC_Styled_Content {
      * Default CSS variables
      */
     private $default_css_vars = array(
-        '--ctc-primary' => '#3B82F6',
+        '--ctc-primary' => '#18181B',
         '--ctc-secondary' => '#1E40AF',
         '--ctc-accent' => '#F59E0B',
         '--ctc-background' => '#FFFFFF',
@@ -167,7 +167,7 @@ class CTC_Styled_Content {
             'ctc_styled_main',
             array(
                 'label_for' => 'custom_css_vars',
-                'description' => __('Override default CSS variables. Format: --ctc-primary: #3B82F6;', 'ctc-styled-content'),
+                'description' => __('Override default CSS variables. Format: --ctc-primary: #18181B;', 'ctc-styled-content'),
                 'rows' => 6,
             )
         );

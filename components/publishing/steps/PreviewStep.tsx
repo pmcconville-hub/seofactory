@@ -134,8 +134,8 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
   // Render loading state
   if (isGenerating) {
     return (
-      <div className="flex flex-col items-center justify-center h-96 text-gray-400">
-        <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mb-4" />
+      <div className="flex flex-col items-center justify-center h-96 text-zinc-400">
+        <div className="animate-spin w-8 h-8 border-2 border-zinc-500 border-t-transparent rounded-full mb-4" />
         <p>Generating styled preview...</p>
       </div>
     );
@@ -167,8 +167,8 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
               className={`
                 px-3 py-1.5 text-sm rounded-md transition-colors
                 ${device === d
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-zinc-700 text-white'
+                  : 'text-zinc-400 hover:text-white'
                 }
               `}
             >

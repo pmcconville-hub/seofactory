@@ -151,7 +151,7 @@ export const modernMinimal: DesignPersonality = {
     primaryLight: colorPrimitives.zinc[700],
     primaryDark: colorPrimitives.zinc[950],
     secondary: colorPrimitives.zinc[600],
-    accent: colorPrimitives.blue[500],
+    accent: colorPrimitives.zinc[500],
     background: colorPrimitives.white.DEFAULT,
     surface: colorPrimitives.zinc[50],
     surfaceElevated: colorPrimitives.white.DEFAULT,
@@ -164,7 +164,7 @@ export const modernMinimal: DesignPersonality = {
     success: colorPrimitives.green[500],
     warning: colorPrimitives.yellow[500],
     error: colorPrimitives.red[500],
-    info: colorPrimitives.blue[500],
+    info: colorPrimitives.zinc[500],
   },
 
   layout: {
@@ -356,7 +356,7 @@ export const boldEditorial: DesignPersonality = {
     success: colorPrimitives.green[600],
     warning: colorPrimitives.amber[600],
     error: colorPrimitives.red[600],
-    info: colorPrimitives.blue[600],
+    info: colorPrimitives.gray[600],
   },
 
   layout: {

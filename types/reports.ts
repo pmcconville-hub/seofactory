@@ -740,12 +740,12 @@ export interface ReportGenerationState {
 // ============================================
 
 export const CHART_COLORS = {
-  primary: ['#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE', '#DBEAFE'],
+  primary: ['#18181B', '#27272A', '#3F3F46', '#52525B', '#71717A'],
   semantic: {
     success: '#22C55E',
     warning: '#F59E0B',
     error: '#EF4444',
-    info: '#3B82F6',
+    info: '#18181B',
     neutral: '#6B7280'
   },
   pastel: ['#FDA4AF', '#FDBA74', '#FDE047', '#86EFAC', '#7DD3FC', '#C4B5FD'],

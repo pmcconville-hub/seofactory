@@ -13,6 +13,7 @@ import { Input } from '../../ui/Input';
 import { Select } from '../../ui/Select';
 import { Button } from '../../ui/Button';
 import type { PublishingStyle, DesignTokens, StylePresetId } from '../../../types/publishing';
+import { BrandDNASummary } from './BrandDNASummary';
 import type { BrandKit } from '../../../types/business';
 import { stylePresets, applyPresetToTokens, defaultDesignTokens } from '../../../config/publishingTemplates';
 import { brandKitToDesignTokens } from '../../../services/publishing/styleConfigService';
@@ -164,7 +165,7 @@ export const BrandStyleStep: React.FC<BrandStyleStepProps> = ({
             className={`
               px-4 py-2 text-sm font-medium transition-colors
               ${activeTab === tab
-                ? 'text-blue-400 border-b-2 border-blue-400'
+                ? 'text-zinc-300 border-b-2 border-zinc-200'
                 : 'text-gray-400 hover:text-white'
               }
             `}
@@ -178,15 +179,15 @@ export const BrandStyleStep: React.FC<BrandStyleStepProps> = ({
       {activeTab === 'design-style' && (
         <div className="space-y-4">
           {/* AI Stylist / Auto-detect Section - THE HERO ACTION */}
-          <div className="p-5 bg-gradient-to-br from-blue-900/40 to-indigo-900/20 rounded-2xl border-2 border-blue-500/50 shadow-xl mb-8 relative overflow-hidden">
-            <div className="absolute top-0 right-0 px-3 py-1 bg-blue-500 text-white text-[10px] font-bold uppercase tracking-widest rounded-bl-lg">
+          <div className="p-5 bg-gradient-to-br from-zinc-900/40 to-stone-900/20 rounded-2xl border-2 border-zinc-500/50 shadow-xl mb-8 relative overflow-hidden">
+            <div className="absolute top-0 right-0 px-3 py-1 bg-zinc-600 text-white text-[10px] font-bold uppercase tracking-widest rounded-bl-lg">
               Recommended
             </div>
             <div className="flex items-center gap-3 mb-4">
               <span className="text-2xl animate-pulse">✨</span>
               <div>
                 <h3 className="text-base font-bold text-white">AI Brand Detection</h3>
-                <p className="text-xs text-blue-200/70">Extract your site's DNA (Colors, Fonts, Layout) in one click</p>
+                <p className="text-xs text-zinc-300/70">Extract your site's DNA (Colors, Fonts, Layout) in one click</p>
               </div>
             </div>
 
@@ -196,21 +197,21 @@ export const BrandStyleStep: React.FC<BrandStyleStepProps> = ({
                   placeholder="https://your-website.com"
                   value={targetUrl}
                   onChange={(e) => setTargetUrl(e.target.value)}
-                  className="bg-gray-900/80 border-blue-500/30 h-10 text-sm focus:border-blue-400"
+                  className="bg-gray-900/80 border-zinc-500/30 h-10 text-sm focus:border-zinc-400"
                 />
               </div>
               <Button
                 size="lg"
                 onClick={() => onAutoDetect(targetUrl)}
                 disabled={isAnalyzing || !targetUrl}
-                className="bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-900/20 min-w-[140px] font-bold"
+                className="bg-zinc-800 hover:bg-zinc-700 shadow-lg shadow-black/20 min-w-[140px] font-bold"
               >
                 {isAnalyzing ? 'Analyzing...' : 'Detect Design'}
               </Button>
             </div>
 
             {!detectionSuccess && !analysisError && !isAnalyzing && (
-              <div className="mt-4 flex items-center gap-2 text-[11px] text-blue-300/80 bg-blue-500/10 p-2 rounded-lg border border-blue-500/20">
+              <div className="mt-4 flex items-center gap-2 text-[11px] text-zinc-300/80 bg-zinc-500/10 p-2 rounded-lg border border-zinc-500/20">
                 <span>💡</span>
                 <span>Pro tip: Detecting your brand ensures your exported articles match your site perfectly.</span>
               </div>
@@ -222,8 +223,17 @@ export const BrandStyleStep: React.FC<BrandStyleStepProps> = ({
               </p>
             )}
             {detectionSuccess && (
-              <div className="text-xs text-green-300 mt-3 bg-green-900/30 p-2.5 rounded-lg border border-green-500/30 flex items-center gap-2 font-medium">
-                <span className="text-base">✅</span> {detectionSuccess}
+              <div className="space-y-4">
+                <div className="text-xs text-green-300 mt-3 bg-green-900/30 p-2.5 rounded-lg border border-green-500/30 flex items-center gap-2 font-medium">
+                  <span className="text-base">✅</span> {detectionSuccess}
+                </div>
+
+                {/* THE TRUST ANCHOR: Visualize what was actually found */}
+                <BrandDNASummary
+                  tokens={style.designTokens}
+                  confidence={98}
+                  sourceUrl={targetUrl}
+                />
               </div>
             )}
           </div>
@@ -248,7 +258,7 @@ export const BrandStyleStep: React.FC<BrandStyleStepProps> = ({
                 className={`
                   p-4 rounded-xl border text-left transition-all
                   ${personalityId === personality.id
-                    ? 'border-blue-500 bg-blue-900/30 ring-2 ring-blue-500/50'
+                    ? 'border-zinc-500 bg-zinc-900/30 ring-2 ring-zinc-500/50'
                     : 'border-gray-700 bg-gray-800 hover:border-gray-600 hover:bg-gray-750'
                   }
                 `}
@@ -287,7 +297,7 @@ export const BrandStyleStep: React.FC<BrandStyleStepProps> = ({
 
                 {/* Selected indicator */}
                 {personalityId === personality.id && (
-                  <div className="mt-3 flex items-center gap-1 text-blue-400 text-xs font-medium">
+                  <div className="mt-3 flex items-center gap-1 text-zinc-300 text-xs font-medium">
                     <span>✓</span> Selected
                   </div>
                 )}

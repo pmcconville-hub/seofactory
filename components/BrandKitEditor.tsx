@@ -16,7 +16,7 @@ const defaultBrandKit: BrandKit = {
   logoPlacement: 'bottom-right',
   logoOpacity: 0.3,
   colors: {
-    primary: '#3B82F6',
+    primary: '#18181B',
     secondary: '#1E40AF',
     textOnImage: '#FFFFFF',
   },
