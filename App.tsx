@@ -18,6 +18,7 @@ import { AuthScreen, ProjectSelectionScreen, AnalysisStatusScreen } from './comp
 import ProjectWorkspace from './components/ProjectWorkspace';
 import { SiteAnalysisToolV2 } from './components/site-analysis';
 import AdminDashboard from './components/admin/AdminDashboard';
+import { QuotationTool } from './components/quotation';
 
 // Import Global UI
 import { SettingsModal } from './components/modals';
@@ -707,6 +708,7 @@ const App: React.FC = () => {
             case AppStep.ANALYSIS_STATUS: return <AnalysisStatusScreen />;
             case AppStep.SITE_ANALYSIS: return <SiteAnalysisToolV2 onClose={() => dispatch({ type: 'SET_STEP', payload: AppStep.PROJECT_SELECTION })} />;
             case AppStep.ADMIN: return <AdminDashboard />;
+            case AppStep.QUOTATION: return <QuotationTool onClose={() => dispatch({ type: 'SET_STEP', payload: AppStep.PROJECT_SELECTION })} />;
             case AppStep.PROJECT_WORKSPACE:
             case AppStep.BUSINESS_INFO:
             case AppStep.PILLAR_WIZARD:

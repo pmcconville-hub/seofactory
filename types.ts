@@ -44,6 +44,7 @@ export * from './types/wordpress';
 export * from './types/organization';
 export * from './types/social';
 export * from './types/contextualEditor';
+export * from './types/quotation';
 
 export enum AppStep {
   AUTH,
@@ -58,7 +59,8 @@ export enum AppStep {
   PROJECT_DASHBOARD,
   SITE_ANALYSIS,
   ADMIN, // Admin Dashboard
-  QUALITY_DEMO // Quality Enforcement Demo Page
+  QUALITY_DEMO, // Quality Enforcement Demo Page
+  QUOTATION // SEO Quotation Tool
 }
 
 export type WebsiteType =
