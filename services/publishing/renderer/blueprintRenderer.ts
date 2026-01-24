@@ -197,7 +197,8 @@ export function renderBlueprint(
       options.heroImage,
       options.ctaConfig,
       blueprint.globalElements.ctaStrategy.intensity,
-      options.language
+      options.language,
+      options.topicalMap
     );
     htmlParts.push(heroHtml);
     componentsUsed.push('hero');
@@ -415,7 +416,8 @@ function renderHero(
   heroImage?: string,
   ctaConfig?: BlueprintRenderOptions['ctaConfig'],
   ctaIntensity?: string,
-  language?: string
+  language?: string,
+  topicalMap?: TopicalMap
 ): string {
   const isEditorial = strategy.visualStyle === 'editorial' || strategy.visualStyle === 'minimal';
   const hasHeroImage = !!heroImage;
@@ -442,26 +444,28 @@ function renderHero(
   // Render Split Layout for Images (Modern Service Vibe)
   if (hasHeroImage && isEditorial) {
     return `
-<header class="ctc-hero" role="banner" style="${heroStyle}; padding: 4rem 0; overflow: hidden">
+<header class="ctc-hero" role="banner" style="${heroStyle}; padding: 8rem 0 6rem; overflow: hidden; position: relative">
+  <span style="position: absolute; top: 2rem; right: 2rem; font-size: 0.65rem; color: var(--ctc-text-muted); background: rgba(255,255,255,0.8); backdrop-filter: blur(4px); padding: 0.3rem 0.6rem; border-radius: 4px; border: 1px solid var(--ctc-border-subtle); z-index: 20">✨ Visual match: detected from site</span>
   <div class="ctc-container">
-    <div class="ctc-grid ctc-grid-2 items-center gap-12 text-left">
+    <div class="ctc-grid ctc-grid-2 items-center gap-16 text-left">
       <div class="ctc-hero-content">
-        <h1 class="ctc-hero-title" style="${textColor}; font-weight: 800; font-family: var(--ctc-font-display); font-size: clamp(2.5rem, 5vw, 4rem); line-height: 1; margin-bottom: 2rem">
+        <div style="display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.15em; color: var(--ctc-primary); background: var(--ctc-primary-light); padding: 0.4rem 1rem; border-radius: 100px; margin-bottom: 2rem; border: 1px solid color-mix(in srgb, var(--ctc-primary) 20%, transparent)">🛡️ Gecertificeerd Partner</div>
+        <h1 class="ctc-hero-title" style="${textColor}; font-weight: 800; font-family: var(--ctc-font-display); font-size: clamp(2.8rem, 6vw, 4rem); line-height: 1.05; margin-bottom: 2rem; letter-spacing: -0.03em; text-transform: capitalize">
           ${escapeHtml(title).replace(/(&quot;[a-z ]+&quot;|&#39;[a-z ]+&#39;)/gi, '<span style="color: var(--ctc-primary)">$1</span>')}
         </h1>
-        <p class="ctc-hero-subtitle" style="${subtitleColor}; font-size: 1.25rem; line-height: 1.7; margin-bottom: 2.5rem">
+        <p class="ctc-hero-subtitle" style="${subtitleColor}; font-size: 1.25rem; line-height: 1.7; margin-bottom: 3rem">
           ${extractFirstParagraph(introContent)}
         </p>
         ${showCta ? `
         <div class="ctc-hero-actions" style="display: flex; gap: 1rem; align-items: center">
-          <a href="${escapeHtml(ctaConfig?.primaryUrl || '#contact')}" style="${btnPrimaryStyle}; padding: 1rem 2.5rem; border-radius: var(--ctc-radius-full); font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem">
+          <a href="${escapeHtml(ctaConfig?.primaryUrl || '#contact')}" style="${btnPrimaryStyle}; padding: 1.25rem 3rem; border-radius: var(--ctc-radius-full); font-weight: 800; text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 1.125rem">
             ${escapeHtml(primaryText)} <span style="font-size: 1.25rem">→</span>
           </a>
         </div>` : ''}
       </div>
       <div class="ctc-hero-visual" style="position: relative">
         <div style="position: absolute; inset: -20px; background: var(--ctc-primary); opacity: 0.1; filter: blur(40px); border-radius: 50%"></div>
-        <img src="${escapeHtml(heroImage)}" alt="${escapeHtml(title)}" style="position: relative; z-index: 1; border-radius: var(--ctc-radius-2xl); box-shadow: var(--ctc-shadow-2xl); width: 100%; height: 450px; object-fit: cover">
+        <img src="${escapeHtml(heroImage)}" alt="${escapeHtml(title)}" style="position: relative; z-index: 1; border-radius: var(--ctc-radius-2xl); box-shadow: var(--ctc-shadow-float); width: 100%; height: 500px; object-fit: cover">
       </div>
     </div>
   </div>
@@ -477,8 +481,8 @@ function renderHero(
     <div style="position: absolute; bottom: -50px; left: -50px; width: 400px; height: 400px; background: var(--ctc-secondary, var(--ctc-primary)); opacity: 0.05; border-radius: 50%; filter: blur(80px)"></div>
   </div>
   <div class="ctc-hero-content" style="position: relative; z-index: 10; max-width: 56rem; margin: 0 auto">
-    <div style="display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.15em; color: var(--ctc-primary); background: white; padding: 0.5rem 1rem; border-radius: 100px; box-shadow: var(--ctc-shadow-sm); margin-bottom: 2.5rem; border: 1px solid var(--ctc-border-subtle)">🛡️ Gecertificeerd Partner</div>
-    <h1 class="ctc-hero-title" style="${textColor}; font-weight: 800; font-family: var(--ctc-font-display); font-size: clamp(2.5rem, 8vw, 4.5rem); line-height: 1.05; margin-bottom: 2rem; letter-spacing: -0.03em">
+    <div style="display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.15em; color: var(--ctc-primary); background: white; padding: 0.5rem 1.25rem; border-radius: 100px; box-shadow: var(--ctc-shadow-sm); margin-bottom: 2.5rem; border: 1px solid var(--ctc-border-subtle); position: relative; z-index: 10">🛡️ Gecertificeerd Partner</div>
+    <h1 class="ctc-hero-title" style="${textColor}; font-weight: 800; font-family: var(--ctc-font-display); font-size: clamp(2.8rem, 8vw, 4.8rem); line-height: 1.05; margin-bottom: 2rem; letter-spacing: -0.03em; text-transform: capitalize">
       ${escapeHtml(title)}
     </h1>
     <p class="ctc-hero-subtitle" style="${subtitleColor}; font-size: 1.35rem; max-width: 42rem; margin: 0 auto 3.5rem; line-height: 1.7">
@@ -515,14 +519,15 @@ function renderToc(
   const isFloating = position === 'floating';
 
   // Base styles for all TOC positions
-  let wrapperStyle = 'background: #ffffff; border-radius: var(--ctc-radius-lg); border: 1px solid var(--ctc-border-subtle); padding: 3rem; box-shadow: var(--ctc-shadow-float); z-index: 20;';
+  let wrapperStyle = 'background: #ffffff; border-radius: var(--ctc-radius-lg); border: 1px solid var(--ctc-border-subtle); padding: 3rem; box-shadow: var(--ctc-shadow-float); z-index: 50; position: relative;';
 
   if (isSidebar) {
     wrapperStyle += ' position: sticky; top: 2rem;';
   } else if (isFloating) {
     wrapperStyle += ' position: fixed; bottom: 2rem; right: 2rem; z-index: 100;';
   } else {
-    wrapperStyle += ' margin: -5rem auto 5rem; width: 100%; max-width: 1100px; position: relative;';
+    // LUXURY OVERLAP: Pull TOC up into the Hero
+    wrapperStyle += ' margin: -6rem auto 6rem; width: 100%; max-width: 1100px;';
   }
 
   return `
@@ -870,6 +875,10 @@ export function generateStandaloneBlueprintHtml(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}</title>
+  <!-- Premium Font Stack -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,700;0,800;1,700&display=swap" rel="stylesheet">
   <style>
 ${output.css}
   </style>

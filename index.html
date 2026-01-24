@@ -1,143 +1,323 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>Holistic SEO Topical Map Generator</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-            },
-            typography: {
-              DEFAULT: {
-                css: {
-                  color: '#d1d5db',
-                  a: {
-                    color: '#3b82f6',
-                    '&:hover': {
-                      color: '#60a5fa',
-                    },
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Holistic SEO Topical Map Generator</title>
+  <title>Holistic SEO Topical Map Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          typography: {
+            DEFAULT: {
+              css: {
+                color: '#d1d5db',
+                a: {
+                  color: '#3b82f6',
+                  '&:hover': {
+                    color: '#60a5fa',
                   },
-                  h1: { color: '#fff' },
-                  h2: { color: '#fff' },
-                  h3: { color: '#fff' },
-                  h4: { color: '#fff' },
-                  strong: { color: '#fff' },
-                  blockquote: {
-                    borderLeftColor: '#3b82f6',
-                    color: '#9ca3af',
-                  },
-                  code: {
-                    color: '#e5e7eb',
-                    backgroundColor: '#1f2937',
-                    padding: '0.25rem',
-                    borderRadius: '0.25rem',
-                    fontWeight: '400',
-                  },
-                  'code::before': { content: '""' },
-                  'code::after': { content: '""' },
                 },
+                h1: { color: '#fff' },
+                h2: { color: '#fff' },
+                h3: { color: '#fff' },
+                h4: { color: '#fff' },
+                strong: { color: '#fff' },
+                blockquote: {
+                  borderLeftColor: '#3b82f6',
+                  color: '#9ca3af',
+                },
+                code: {
+                  color: '#e5e7eb',
+                  backgroundColor: '#1f2937',
+                  padding: '0.25rem',
+                  borderRadius: '0.25rem',
+                  fontWeight: '400',
+                },
+                'code::before': { content: '""' },
+                'code::after': { content: '""' },
               },
             },
-          }
-        },
-        plugins: [
-          // We need to load the typography plugin from CDN or define styles manually if not available via standard CDN easily in this env.
-          // For simplicity in this environment, we rely on standard CSS classes or a simple CDN if possible.
-          // Since full tailwind/typography via CDN is heavy, we will style the prose manually in App.css or inline.
-        ]
+          },
+        }
+      },
+      plugins: [
+        // We need to load the typography plugin from CDN or define styles manually if not available via standard CDN easily in this env.
+        // For simplicity in this environment, we rely on standard CSS classes or a simple CDN if possible.
+        // Since full tailwind/typography via CDN is heavy, we will style the prose manually in App.css or inline.
+      ]
+    }
+  </script>
+  <style>
+    /* Custom Prose Styles for Markdown Preview */
+    .prose h1 {
+      font-size: 2em;
+      font-weight: 700;
+      margin-top: 1em;
+      margin-bottom: 0.5em;
+      color: white;
+    }
+
+    .prose h2 {
+      font-size: 1.5em;
+      font-weight: 600;
+      margin-top: 1em;
+      margin-bottom: 0.5em;
+      color: white;
+      border-bottom: 1px solid #374151;
+      padding-bottom: 0.2em;
+    }
+
+    .prose h3 {
+      font-size: 1.25em;
+      font-weight: 600;
+      margin-top: 1em;
+      margin-bottom: 0.5em;
+      color: white;
+    }
+
+    .prose p {
+      margin-bottom: 1em;
+      line-height: 1.6;
+      color: inherit;
+    }
+
+    .prose ul {
+      list-style-type: disc;
+      padding-left: 1.5em;
+      margin-bottom: 1em;
+      color: inherit;
+    }
+
+    .prose ol {
+      list-style-type: decimal;
+      padding-left: 1.5em;
+      margin-bottom: 1em;
+      color: inherit;
+    }
+
+    .prose li {
+      margin-bottom: 0.25em;
+    }
+
+    .prose blockquote {
+      border-left: 4px solid #3b82f6;
+      padding-left: 1em;
+      color: #9ca3af;
+      font-style: italic;
+      margin-bottom: 1em;
+    }
+
+    .prose table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 1em;
+    }
+
+    .prose th {
+      text-align: left;
+      padding: 0.5em;
+      border-bottom: 2px solid #4b5563;
+      color: white;
+    }
+
+    .prose td {
+      padding: 0.5em;
+      border-bottom: 1px solid #374151;
+      color: inherit;
+    }
+
+    .prose a {
+      color: #60a5fa;
+      text-decoration: underline;
+    }
+
+    .prose strong {
+      color: inherit;
+      font-weight: bold;
+    }
+
+    .prose em {
+      font-style: italic;
+    }
+
+    .prose code {
+      background-color: rgba(0, 0, 0, 0.3);
+      padding: 0.15rem 0.3rem;
+      border-radius: 0.25rem;
+      font-size: 0.875em;
+    }
+
+    /* Compact prose for smaller spaces */
+    .prose-compact p {
+      margin-bottom: 0.5em;
+    }
+
+    .prose-compact ul,
+    .prose-compact ol {
+      margin-bottom: 0.5em;
+      padding-left: 1.25em;
+    }
+
+    .prose-compact li {
+      margin-bottom: 0.125em;
+    }
+
+    .prose-compact h1,
+    .prose-compact h2,
+    .prose-compact h3 {
+      margin-top: 0.5em;
+      margin-bottom: 0.25em;
+    }
+
+    .prose-compact h1 {
+      font-size: 1.5em;
+    }
+
+    .prose-compact h2 {
+      font-size: 1.25em;
+      border-bottom: none;
+    }
+
+    .prose-compact h3 {
+      font-size: 1.1em;
+    }
+
+    /* Extra compact prose for task lists */
+    .prose-xs p {
+      margin-bottom: 0.25em;
+      font-size: 0.875rem;
+      line-height: 1.4;
+    }
+
+    .prose-xs ul,
+    .prose-xs ol {
+      margin-bottom: 0.25em;
+      padding-left: 1em;
+      font-size: 0.875rem;
+    }
+
+    .prose-xs li {
+      margin-bottom: 0.1em;
+    }
+
+    .prose-xs h1,
+    .prose-xs h2,
+    .prose-xs h3 {
+      font-size: 1em;
+      margin-top: 0.25em;
+      margin-bottom: 0.15em;
+    }
+
+    .prose-xs strong {
+      font-weight: 600;
+    }
+
+    /* Gamification Animations */
+    @keyframes bounce-in {
+      0% {
+        transform: scale(0);
+        opacity: 0;
       }
-    </script>
-    <style>
-      /* Custom Prose Styles for Markdown Preview */
-      .prose h1 { font-size: 2em; font-weight: 700; margin-top: 1em; margin-bottom: 0.5em; color: white; }
-      .prose h2 { font-size: 1.5em; font-weight: 600; margin-top: 1em; margin-bottom: 0.5em; color: white; border-bottom: 1px solid #374151; padding-bottom: 0.2em;}
-      .prose h3 { font-size: 1.25em; font-weight: 600; margin-top: 1em; margin-bottom: 0.5em; color: white; }
-      .prose p { margin-bottom: 1em; line-height: 1.6; color: inherit; }
-      .prose ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 1em; color: inherit; }
-      .prose ol { list-style-type: decimal; padding-left: 1.5em; margin-bottom: 1em; color: inherit; }
-      .prose li { margin-bottom: 0.25em; }
-      .prose blockquote { border-left: 4px solid #3b82f6; padding-left: 1em; color: #9ca3af; font-style: italic; margin-bottom: 1em; }
-      .prose table { width: 100%; border-collapse: collapse; margin-bottom: 1em; }
-      .prose th { text-align: left; padding: 0.5em; border-bottom: 2px solid #4b5563; color: white; }
-      .prose td { padding: 0.5em; border-bottom: 1px solid #374151; color: inherit; }
-      .prose a { color: #60a5fa; text-decoration: underline; }
-      .prose strong { color: inherit; font-weight: bold; }
-      .prose em { font-style: italic; }
-      .prose code { background-color: rgba(0,0,0,0.3); padding: 0.15rem 0.3rem; border-radius: 0.25rem; font-size: 0.875em; }
 
-      /* Compact prose for smaller spaces */
-      .prose-compact p { margin-bottom: 0.5em; }
-      .prose-compact ul, .prose-compact ol { margin-bottom: 0.5em; padding-left: 1.25em; }
-      .prose-compact li { margin-bottom: 0.125em; }
-      .prose-compact h1, .prose-compact h2, .prose-compact h3 { margin-top: 0.5em; margin-bottom: 0.25em; }
-      .prose-compact h1 { font-size: 1.5em; }
-      .prose-compact h2 { font-size: 1.25em; border-bottom: none; }
-      .prose-compact h3 { font-size: 1.1em; }
-
-      /* Extra compact prose for task lists */
-      .prose-xs p { margin-bottom: 0.25em; font-size: 0.875rem; line-height: 1.4; }
-      .prose-xs ul, .prose-xs ol { margin-bottom: 0.25em; padding-left: 1em; font-size: 0.875rem; }
-      .prose-xs li { margin-bottom: 0.1em; }
-      .prose-xs h1, .prose-xs h2, .prose-xs h3 { font-size: 1em; margin-top: 0.25em; margin-bottom: 0.15em; }
-      .prose-xs strong { font-weight: 600; }
-
-      /* Gamification Animations */
-      @keyframes bounce-in {
-        0% { transform: scale(0); opacity: 0; }
-        50% { transform: scale(1.1); }
-        100% { transform: scale(1); opacity: 1; }
+      50% {
+        transform: scale(1.1);
       }
 
-      @keyframes scale-in {
-        0% { transform: scale(0.8); opacity: 0; }
-        100% { transform: scale(1); opacity: 1; }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    @keyframes scale-in {
+      0% {
+        transform: scale(0.8);
+        opacity: 0;
       }
 
-      @keyframes slide-up {
-        0% { transform: translateY(20px); opacity: 0; }
-        100% { transform: translateY(0); opacity: 1; }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    @keyframes slide-up {
+      0% {
+        transform: translateY(20px);
+        opacity: 0;
       }
 
-      @keyframes celebration-glow {
-        0%, 100% { box-shadow: 0 0 5px currentColor; }
-        50% { box-shadow: 0 0 20px currentColor, 0 0 40px currentColor; }
+      100% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes celebration-glow {
+
+      0%,
+      100% {
+        box-shadow: 0 0 5px currentColor;
       }
 
-      @keyframes celebration-shake {
-        0%, 100% { transform: translateX(0); }
-        10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
-        20%, 40%, 60%, 80% { transform: translateX(2px); }
+      50% {
+        box-shadow: 0 0 20px currentColor, 0 0 40px currentColor;
+      }
+    }
+
+    @keyframes celebration-shake {
+
+      0%,
+      100% {
+        transform: translateX(0);
       }
 
-      .animate-bounce-in {
-        animation: bounce-in 0.5s ease-out forwards;
+      10%,
+      30%,
+      50%,
+      70%,
+      90% {
+        transform: translateX(-2px);
       }
 
-      .animate-scale-in {
-        animation: scale-in 0.4s ease-out forwards;
+      20%,
+      40%,
+      60%,
+      80% {
+        transform: translateX(2px);
       }
+    }
 
-      .animate-slide-up {
-        animation: slide-up 0.3s ease-out forwards;
-      }
+    .animate-bounce-in {
+      animation: bounce-in 0.5s ease-out forwards;
+    }
 
-      .animate-glow {
-        animation: celebration-glow 0.5s ease-in-out 3;
-      }
+    .animate-scale-in {
+      animation: scale-in 0.4s ease-out forwards;
+    }
 
-      .animate-shake {
-        animation: celebration-shake 0.5s ease-in-out;
-      }
-    </style>
+    .animate-slide-up {
+      animation: slide-up 0.3s ease-out forwards;
+    }
+
+    .animate-glow {
+      animation: celebration-glow 0.5s ease-in-out 3;
+    }
+
+    .animate-shake {
+      animation: celebration-shake 0.5s ease-in-out;
+    }
+  </style>
   <script type="importmap">
 {
   "imports": {
@@ -160,8 +340,10 @@
 }
 </script>
 </head>
-  <body class="bg-gray-900 text-gray-100 font-sans" style="background-color: #111827; color: #f3f4f6;">
-    <div id="root" style="min-height: 100vh;"></div>
+
+<body class="bg-gray-900 text-gray-100 font-sans" style="background-color: #111827; color: #f3f4f6;">
+  <div id="root" style="min-height: 100vh;"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
+
 </html>

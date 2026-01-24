@@ -50,9 +50,9 @@ export const DesignAnalyzer = {
         await page.waitForLoadState('networkidle');
         
         // 1. GLOBAL COLOR SAMPLER (The "Histogram" Approach)
-        // We look for colors that are actually used in the design, not just CSS variables
-        const elements = Array.from(document.querySelectorAll('h1, h2, h3, button, a, span, div'))
-          .slice(0, 100);
+        // Sample ALL relevant elements for better color density
+        const elements = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, button, a, [class*="btn"], [class*="button"], .primary, nav, footer'))
+          .slice(0, 150);
         
         const colorCounts = {};
         const bgCounts = {};
@@ -62,10 +62,24 @@ export const DesignAnalyzer = {
           const color = style.color;
           const bg = style.backgroundColor;
           
-          if (color && !color.includes('rgba(0, 0, 0, 0)') && color !== 'rgb(255, 255, 255)' && color !== 'rgb(0, 0, 0)') {
+          // Ignore neutrals: pure white, pure black, standard grey-on-white text
+          const isNeutral = (c) => {
+             if (!c || c.includes('rgba(0, 0, 0, 0)')) return true;
+             const rgbStr = c.match(/\\d+/g);
+             if (!rgbStr) return true;
+             const [r, g, b] = rgbStr.map(Number);
+             // Pure white or black
+             if (r === 255 && g === 255 && b === 255) return true;
+             if (r === 0 && g === 0 && b === 0) return true;
+             // Very close to black/white (neutrals)
+             if (Math.abs(r-g) < 10 && Math.abs(g-b) < 10) return true; 
+             return false;
+          };
+
+          if (!isNeutral(color)) {
             colorCounts[color] = (colorCounts[color] || 0) + 1;
           }
-          if (bg && !bg.includes('rgba(0, 0, 0, 0)') && bg !== 'rgb(255, 255, 255)' && bg !== 'rgb(0, 0, 0)') {
+          if (!isNeutral(bg)) {
             bgCounts[bg] = (bgCounts[bg] || 0) + 1;
           }
         });
@@ -76,25 +90,36 @@ export const DesignAnalyzer = {
 
         // 2. ELEMENT SPECIFIC DETECTORS
         const findPrimaryButton = () => {
-          const btnSelectors = ['button[class*="primary"]', '.wp-block-button__link', '.btn-primary', 'button', 'a.button'];
+          const btnSelectors = [
+            'button[class*="primary"]', 
+            '.wp-block-button__link', 
+            '.btn-primary', 
+            'button', 
+            'a.button',
+            'a[class*="btn"]',
+            'a[class*="button"]'
+          ];
           for (const sel of btnSelectors) {
             const el = document.querySelector(sel);
-            if (el) return el;
+            if (el) {
+                const s = window.getComputedStyle(el);
+                if (s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.display !== 'none') return el;
+            }
           }
           return null;
         };
 
         const bodyStyle = window.getComputedStyle(document.body);
-        const h1 = document.querySelector('h1');
+        const h1 = document.querySelector('h1') || document.querySelector('h2');
         const h1Style = h1 ? window.getComputedStyle(h1) : bodyStyle;
         const primBtn = findPrimaryButton();
         const btnStyle = primBtn ? window.getComputedStyle(primBtn) : null;
 
-        // 3. RESOLVE BRAND COLOR (The "Orange" Fix)
-        // Hierarchy: Button BG -> Most frequent BG -> H1 Color -> Link Color
+        // 3. RESOLVE BRAND COLOR (The "Robust Orange" Fix)
+        // Hierarchy: Button BG -> Most frequent BG -> H1 Color -> Most frequent Color
         let brandColor = btnStyle?.backgroundColor;
-        if (!brandColor || brandColor.includes('rgba(0, 0, 0, 0)') || brandColor === 'rgb(255, 255, 255)') {
-          brandColor = getMostFrequent(bgCounts) || h1Style.color || getMostFrequent(colorCounts) || 'rgb(59, 130, 246)';
+        if (!brandColor || brandColor === 'rgba(0, 0, 0, 0)' || brandColor === 'transparent') {
+           brandColor = getMostFrequent(bgCounts) || h1Style.color || getMostFrequent(colorCounts) || 'rgb(234, 88, 12)'; 
         }
 
         // 4. THEME DETECTION
