@@ -142,6 +142,98 @@ export interface DesignProfile {
   updatedAt: string;
 }
 
+// ============================================================================
+// MULTI-PASS DESIGN TYPES
+// ============================================================================
+
+/**
+ * Pass 1: Content Analysis
+ * Analyzes article structure to inform design decisions
+ */
+export interface ContentAnalysis {
+  sections: Array<{
+    index: number;
+    heading: string;
+    headingLevel: number;
+    contentType: 'comparison' | 'process' | 'definition' | 'narrative' | 'statistics' | 'list' | 'faq';
+    wordCount: number;
+    hasTable: boolean;
+    hasList: boolean;
+    hasQuote: boolean;
+    semanticImportance: 'hero' | 'key' | 'supporting';
+  }>;
+  totalWordCount: number;
+  estimatedReadTime: number;
+}
+
+/**
+ * Pass 2: Component Selection
+ * AI selects optimal component for each section
+ */
+export interface ComponentSelection {
+  sectionIndex: number;
+  selectedComponent: string;
+  reasoning: string;
+  alternatives: string[];
+}
+
+/**
+ * Pass 3: Visual Rhythm Planning
+ * Plans the flow and pacing of the article
+ */
+export interface VisualRhythmPlan {
+  sections: Array<{
+    index: number;
+    emphasisLevel: 'normal' | 'background' | 'featured' | 'hero-moment';
+    spacingBefore: 'tight' | 'normal' | 'breathe' | 'dramatic';
+    visualAnchor: boolean;
+  }>;
+  overallPacing: 'dense' | 'balanced' | 'spacious';
+}
+
+/**
+ * Pass 5: Design Quality Validation
+ * AI vision comparison between target site and generated output
+ */
+export interface DesignQualityValidation {
+  overallScore: number;
+  colorMatch: {
+    score: number;
+    notes: string;
+    passed: boolean;
+  };
+  typographyMatch: {
+    score: number;
+    notes: string;
+    passed: boolean;
+  };
+  visualDepth: {
+    score: number;
+    notes: string;
+    passed: boolean;
+  };
+  brandFit: {
+    score: number;
+    notes: string;
+    passed: boolean;
+  };
+  passesThreshold: boolean;
+  autoFixSuggestions?: string[];
+}
+
+/**
+ * Complete multi-pass design state
+ */
+export interface MultiPassDesignState {
+  pass1: ContentAnalysis | null;
+  pass2: ComponentSelection[] | null;
+  pass3: VisualRhythmPlan | null;
+  pass4Complete: boolean;
+  pass5: DesignQualityValidation | null;
+  currentPass: 1 | 2 | 3 | 4 | 5 | 'complete';
+  error?: string;
+}
+
 /**
  * Publishing style configuration
  * Extends BrandKit concept with full design tokens for publishing
