@@ -234,6 +234,67 @@ export interface MultiPassDesignState {
   error?: string;
 }
 
+// ============================================================================
+// DESIGN INHERITANCE TYPES
+// ============================================================================
+
+/**
+ * Design preferences that can be saved and inherited
+ */
+export interface DesignPreferences {
+  layoutPatterns: Record<string, string>;  // contentType -> preferredComponent
+  visualRhythm: {
+    defaultPacing: 'dense' | 'balanced' | 'spacious';
+    breathingRoomScale: number;  // 1.0 = normal, 1.5 = 50% more spacing
+  };
+  componentOverrides: Record<string, Partial<Record<string, string>>>;  // componentName -> CSS overrides
+}
+
+/**
+ * User feedback on a design decision for learning
+ */
+export interface DesignFeedback {
+  sectionIndex: number;
+  originalComponent: string;
+  chosenComponent: string;
+  feedbackType: 'alternative-selected' | 'natural-language' | 'regenerated';
+  feedbackText?: string;
+  timestamp: string;
+}
+
+/**
+ * Complete design inheritance hierarchy
+ */
+export interface DesignInheritance {
+  projectLevel: {
+    designProfileId: string;
+    preferences: DesignPreferences;
+  };
+  topicalMapLevel?: {
+    topicalMapId: string;
+    preferences: Partial<DesignPreferences>;
+    feedback: DesignFeedback[];
+  };
+  articleLevel?: {
+    articleId: string;
+    overrides: Partial<DesignPreferences>;
+    feedback: DesignFeedback[];
+    optOutOfInheritance: boolean;
+  };
+}
+
+/**
+ * Resolved design settings after applying inheritance
+ */
+export interface ResolvedDesignSettings {
+  tokens: DesignTokens;
+  preferences: DesignPreferences;
+  inheritanceSource: {
+    tokens: 'project' | 'topicalMap' | 'article';
+    preferences: 'project' | 'topicalMap' | 'article';
+  };
+}
+
 /**
  * Publishing style configuration
  * Extends BrandKit concept with full design tokens for publishing
