@@ -228,7 +228,7 @@ function generateTypographyStyles(): string {
 }
 
 .ctc-styled a:not(.ctc-btn):hover {
-  color: var(--ctc-primary-dark);
+  opacity: 0.8;
 }
 
 /* Lists */
@@ -741,11 +741,6 @@ function generateComponentStyles(): string {
   opacity: 0.05;
   border-radius: 50%;
   pointer-events: none;
-}
-
-.ctc-highlight-box--info {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--ctc-primary) 5%, var(--ctc-surface)) 0%, color-mix(in srgb, var(--ctc-primary) 10%, var(--ctc-surface)) 100%);
-  border-left-color: var(--ctc-primary);
 }
 
 .ctc-highlight-box--warning {

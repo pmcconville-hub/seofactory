@@ -418,10 +418,10 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
     const htmlContent = markdownToHtml(ctx.content, ctx.imageUrlMap);
     const variant = ctx.variant || 'info';
     const variantStyles: Record<string, { variantClass: string; icon: string; iconBg: string }> = {
-      'info': { variantClass: 'ctc-highlight-box--info', icon: 'ℹ️', iconBg: '#3B82F6' },
+      'info': { variantClass: 'ctc-highlight-box--info', icon: 'ℹ️', iconBg: 'var(--ctc-primary)' },
       'warning': { variantClass: 'ctc-highlight-box--warning', icon: '⚠️', iconBg: '#F59E0B' },
       'success': { variantClass: 'ctc-highlight-box--success', icon: '✓', iconBg: '#10B981' },
-      'tip': { variantClass: 'ctc-highlight-box--tip', icon: '💡', iconBg: '#8B5CF6' },
+      'tip': { variantClass: 'ctc-highlight-box--tip', icon: '💡', iconBg: 'var(--ctc-accent, #8B5CF6)' },
     };
     const style = variantStyles[variant] || variantStyles.info;
 
@@ -573,19 +573,19 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   ${ctx.heading ? `<h${ctx.headingLevel} style="font-family: var(--ctc-font-display); font-weight: var(--ctc-heading-weight); font-size: var(--ctc-text-2xl); text-align: center; margin-bottom: var(--ctc-space-10); color: ${ctx.emphasis === 'hero-moment' ? 'white' : 'var(--ctc-text)'}; position: relative; z-index: 1">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--ctc-space-6); position: relative; z-index: 1">
     ${items.map((item, i) => {
-      const parts = item.split(/[:\-–]/).map(p => p.trim());
-      const title = parts[0];
-      const desc = parts[1] || '';
-      const textColor = ctx.emphasis === 'hero-moment' ? 'white' : 'var(--ctc-text)';
-      const descColor = ctx.emphasis === 'hero-moment' ? 'rgba(255,255,255,0.85)' : 'var(--ctc-text-secondary)';
-      const glassBg = ctx.emphasis === 'hero-moment' ? 'background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2);' : '';
-      return `
+        const parts = item.split(/[:\-–]/).map(p => p.trim());
+        const title = parts[0];
+        const desc = parts[1] || '';
+        const textColor = ctx.emphasis === 'hero-moment' ? 'white' : 'var(--ctc-text)';
+        const descColor = ctx.emphasis === 'hero-moment' ? 'rgba(255,255,255,0.85)' : 'var(--ctc-text-secondary)';
+        const glassBg = ctx.emphasis === 'hero-moment' ? 'background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2);' : '';
+        return `
     <div class="ctc-card ${cardClass}" style="padding: var(--ctc-space-8); ${glassBg}">
       <div class="ctc-card-icon" aria-hidden="true">${icons[i % icons.length]}</div>
       <h3 style="font-weight: 600; font-size: var(--ctc-text-lg); margin-bottom: var(--ctc-space-3); color: ${textColor}; line-height: 1.3">${markdownToHtml(title)}</h3>
       ${desc ? `<p style="font-size: var(--ctc-text-sm); color: ${descColor}; line-height: 1.7">${markdownToHtml(desc)}</p>` : ''}
     </div>`;
-    }).join('')}
+      }).join('')}
   </div>
 </section>`,
     };
@@ -607,10 +607,10 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   ${ctx.heading ? `<h${ctx.headingLevel} style="font-family: var(--ctc-font-display); font-weight: var(--ctc-heading-weight); font-size: var(--ctc-text-xl); margin-bottom: var(--ctc-space-8); color: ${ctx.emphasis === 'hero-moment' ? 'white' : 'var(--ctc-text)'}">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
   <dl style="display: flex; flex-direction: column; gap: var(--ctc-space-4)">
     ${items.map((item, i) => {
-      const parts = item.split(/[:\-–]/).map(p => p.trim());
-      const bgColor = ctx.emphasis === 'hero-moment' ? 'rgba(255,255,255,0.1)' : 'var(--ctc-surface)';
-      const borderColor = ctx.emphasis === 'hero-moment' ? 'rgba(255,255,255,0.2)' : 'var(--ctc-border-subtle)';
-      return `
+        const parts = item.split(/[:\-–]/).map(p => p.trim());
+        const bgColor = ctx.emphasis === 'hero-moment' ? 'rgba(255,255,255,0.1)' : 'var(--ctc-surface)';
+        const borderColor = ctx.emphasis === 'hero-moment' ? 'rgba(255,255,255,0.2)' : 'var(--ctc-border-subtle)';
+        return `
     <div style="display: flex; gap: var(--ctc-space-6); padding: var(--ctc-space-5) var(--ctc-space-6); border-radius: var(--ctc-radius-lg); background: ${bgColor}; border: 1px solid ${borderColor}; align-items: flex-start; transition: all 0.2s ease">
       <div style="width: 36px; height: 36px; min-width: 36px; border-radius: var(--ctc-radius-md); background: linear-gradient(135deg, var(--ctc-primary), var(--ctc-primary-light)); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 0.875rem">${i + 1}</div>
       <div style="flex: 1">
@@ -618,7 +618,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
         <dd style="color: ${ctx.emphasis === 'hero-moment' ? 'rgba(255,255,255,0.85)' : 'var(--ctc-text-secondary)'}; line-height: 1.6; font-size: 0.9375rem">${markdownToHtml(parts[1] || '')}</dd>
       </div>
     </div>`;
-    }).join('')}
+      }).join('')}
   </dl>
 </section>`,
     };
@@ -638,16 +638,16 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   ${ctx.heading ? `<h${ctx.headingLevel} class="text-2xl font-semibold text-center mb-8">${escapeHtml(ctx.heading)}</h${ctx.headingLevel}>` : ''}
   <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
     ${items.map(item => {
-      // Try to extract number and label
-      const match = item.match(/(\d+[%+]?|\d+\.\d+)/);
-      const stat = match ? match[1] : '•';
-      const label = item.replace(/\d+[%+]?|\d+\.\d+/, '').trim() || item;
-      return `
+        // Try to extract number and label
+        const match = item.match(/(\d+[%+]?|\d+\.\d+)/);
+        const stat = match ? match[1] : '•';
+        const label = item.replace(/\d+[%+]?|\d+\.\d+/, '').trim() || item;
+        return `
     <div class="ctc-stat text-center p-6 rounded-[var(--ctc-radius-lg)] bg-[var(--ctc-surface)]">
       <div class="ctc-stat-value text-4xl font-bold text-[var(--ctc-primary)]">${escapeHtml(stat)}</div>
       <div class="ctc-stat-label text-sm text-[var(--ctc-text-muted)] mt-2">${markdownToHtml(label)}</div>
     </div>`;
-    }).join('')}
+      }).join('')}
   </div>
 </div>`,
     };
@@ -718,8 +718,8 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
   ${introHtml}
   <div class="ctc-timeline-zigzag-track relative before:absolute before:left-1/2 before:top-0 before:bottom-0 before:w-1 before:bg-gradient-to-b before:from-[var(--ctc-primary)] before:to-[var(--ctc-primary-light)] before:-translate-x-1/2">
     ${steps.map((step, i) => {
-      const isLeft = i % 2 === 0;
-      return `
+        const isLeft = i % 2 === 0;
+        return `
     <div class="ctc-timeline-zigzag-step relative flex mb-12 ${isLeft ? '' : 'flex-row-reverse'}" itemscope itemprop="step" itemtype="https://schema.org/HowToStep">
       <meta itemprop="position" content="${i + 1}">
       <div class="flex-1 ${isLeft ? 'pr-12 text-right' : 'pl-12 text-left'}">
@@ -733,7 +733,7 @@ const componentRenderers: Partial<Record<ComponentType, ComponentRenderer>> = {
       </div>
       <div class="flex-1"></div>
     </div>`;
-    }).join('')}
+      }).join('')}
   </div>
 </section>`,
       jsonLd: {

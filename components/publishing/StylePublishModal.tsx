@@ -439,8 +439,8 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
           preferences: {
             styleLeaning: 'auto',
           },
-          // Inject custom branding directly into architect if provided
-          styleOverride,
+          // HOLISTIC FIX: Use the ACTUAL design tokens from state
+          styleOverride: style?.designTokens,
           personalityOverride: activePersonality
         }
       );

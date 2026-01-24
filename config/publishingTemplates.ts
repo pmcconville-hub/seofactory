@@ -487,10 +487,10 @@ export function getDefaultComponents(template: ContentTypeTemplate): ComponentCo
  */
 export const defaultDesignTokens: DesignTokens = {
   colors: {
-    primary: '#3B82F6',      // Blue 500
-    secondary: '#1E40AF',    // Blue 800
-    accent: '#F59E0B',       // Amber 500
-    background: '#FFFFFF',
+    primary: '#18181b',      // Zinc 900
+    secondary: '#4b5563',    // Slate 600
+    accent: '#71717a',       // Zinc 500
+    background: '#ffffff',
     surface: '#F9FAFB',      // Gray 50
     text: '#111827',         // Gray 900
     textMuted: '#6B7280',    // Gray 500

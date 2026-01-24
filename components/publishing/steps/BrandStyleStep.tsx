@@ -56,31 +56,36 @@ export const BrandStyleStep: React.FC<BrandStyleStepProps> = ({
   const [targetUrl, setTargetUrl] = useState(defaultDomain || '');
 
   // Handle personality change - sync colors to designTokens
+  // Handle personality change - sync ONLY vibe (fonts/layout) while preserving brand colors
   const handlePersonalityChange = useCallback((id: DesignPersonalityId) => {
     const personality = designPersonalities[id];
     if (personality) {
-      // Update the personality ID
       onPersonalityChange(id);
-      // Also sync the personality's colors to the style's designTokens
+
+      // Determine if we should keep current colors (if they differ from personality defaults or are manually set)
+      // For now, we prioritize PRESERVING existing colors in the state to prevent "Blue-Washing"
       onChange({
         designTokens: {
           ...style.designTokens,
-          colors: {
-            ...style.designTokens.colors,
-            primary: personality.colors.primary,
-            secondary: personality.colors.secondary,
-            accent: personality.colors.accent,
-            background: personality.colors.background,
-            surface: personality.colors.surface,
-            text: personality.colors.text,
-            textMuted: personality.colors.textMuted,
-            border: personality.colors.border,
-          },
+          // Keep existing colors!
           fonts: {
             ...style.designTokens.fonts,
             heading: personality.typography.displayFont,
             body: personality.typography.bodyFont,
           },
+          // Copy other non-color traits if needed, but the main thing is preservation of primary branding
+          typography: {
+            ...style.designTokens.typography,
+            headingWeight: personality.typography.headingWeight >= 800 ? 'bold' :
+              personality.typography.headingWeight >= 600 ? 'semibold' :
+                personality.typography.headingWeight >= 500 ? 'medium' : 'normal',
+            headingCase: personality.typography.headingCase,
+            headingLetterSpacing: personality.typography.headingLetterSpacing,
+            bodyLineHeight: personality.typography.bodyLineHeight >= 1.8 ? 'relaxed' :
+              personality.typography.bodyLineHeight <= 1.4 ? 'tight' : 'normal',
+          },
+          borderRadius: personality.layout.radiusScale.lg === '0' ? 'none' :
+            personality.layout.radiusScale.lg.includes('12') ? 'rounded' : 'subtle'
         },
       });
     }
@@ -172,42 +177,54 @@ export const BrandStyleStep: React.FC<BrandStyleStepProps> = ({
       {/* Design Style Tab - NEW Design Personalities */}
       {activeTab === 'design-style' && (
         <div className="space-y-4">
-          {/* AI Stylist / Auto-detect Section */}
-          <div className="p-4 bg-blue-900/20 rounded-xl border border-blue-500/30 mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-xl">✨</span>
-              <h3 className="text-sm font-semibold text-blue-300">AI Stylist: Auto-detect Branding</h3>
+          {/* AI Stylist / Auto-detect Section - THE HERO ACTION */}
+          <div className="p-5 bg-gradient-to-br from-blue-900/40 to-indigo-900/20 rounded-2xl border-2 border-blue-500/50 shadow-xl mb-8 relative overflow-hidden">
+            <div className="absolute top-0 right-0 px-3 py-1 bg-blue-500 text-white text-[10px] font-bold uppercase tracking-widest rounded-bl-lg">
+              Recommended
             </div>
-            <p className="text-xs text-gray-400 mb-4">
-              Enter a website URL to automatically extract its color palette, typography, and design tokens.
-            </p>
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-2xl animate-pulse">✨</span>
+              <div>
+                <h3 className="text-base font-bold text-white">AI Brand Detection</h3>
+                <p className="text-xs text-blue-200/70">Extract your site's DNA (Colors, Fonts, Layout) in one click</p>
+              </div>
+            </div>
+
             <div className="flex gap-2">
               <div className="flex-1">
                 <Input
-                  placeholder="https://example.com"
+                  placeholder="https://your-website.com"
                   value={targetUrl}
                   onChange={(e) => setTargetUrl(e.target.value)}
-                  className="bg-gray-900/50 border-gray-700 h-9 text-xs"
+                  className="bg-gray-900/80 border-blue-500/30 h-10 text-sm focus:border-blue-400"
                 />
               </div>
               <Button
-                size="sm"
+                size="lg"
                 onClick={() => onAutoDetect(targetUrl)}
                 disabled={isAnalyzing || !targetUrl}
-                className="bg-blue-600 hover:bg-blue-500 min-w-[120px]"
+                className="bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-900/20 min-w-[140px] font-bold"
               >
                 {isAnalyzing ? 'Analyzing...' : 'Detect Design'}
               </Button>
             </div>
+
+            {!detectionSuccess && !analysisError && !isAnalyzing && (
+              <div className="mt-4 flex items-center gap-2 text-[11px] text-blue-300/80 bg-blue-500/10 p-2 rounded-lg border border-blue-500/20">
+                <span>💡</span>
+                <span>Pro tip: Detecting your brand ensures your exported articles match your site perfectly.</span>
+              </div>
+            )}
+
             {analysisError && (
-              <p className="text-[10px] text-red-400 mt-2 bg-red-900/20 p-2 rounded border border-red-500/20">
+              <p className="text-xs text-red-400 mt-3 bg-red-900/30 p-2.5 rounded-lg border border-red-500/30">
                 ⚠️ {analysisError}
               </p>
             )}
             {detectionSuccess && (
-              <p className="text-[10px] text-green-400 mt-2 bg-green-900/20 p-2 rounded border border-green-500/20 flex items-center gap-2">
-                <span className="text-sm">✅</span> {detectionSuccess}
-              </p>
+              <div className="text-xs text-green-300 mt-3 bg-green-900/30 p-2.5 rounded-lg border border-green-500/30 flex items-center gap-2 font-medium">
+                <span className="text-base">✅</span> {detectionSuccess}
+              </div>
             )}
           </div>
 

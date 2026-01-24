@@ -243,11 +243,11 @@ export const corporateProfessional: DesignPersonality = {
   colors: {
     scheme: 'branded',
     saturation: 'medium',
-    primary: colorPrimitives.blue[800],
-    primaryLight: colorPrimitives.blue[600],
-    primaryDark: colorPrimitives.blue[900],
-    secondary: colorPrimitives.teal[600],
-    accent: colorPrimitives.amber[500],
+    primary: colorPrimitives.zinc[900],
+    primaryLight: colorPrimitives.zinc[700],
+    primaryDark: colorPrimitives.zinc[950],
+    secondary: colorPrimitives.slate[600],
+    accent: colorPrimitives.zinc[500],
     background: colorPrimitives.white.DEFAULT,
     surface: colorPrimitives.slate[50],
     surfaceElevated: colorPrimitives.white.DEFAULT,
@@ -260,7 +260,7 @@ export const corporateProfessional: DesignPersonality = {
     success: colorPrimitives.emerald[600],
     warning: colorPrimitives.amber[600],
     error: colorPrimitives.red[600],
-    info: colorPrimitives.blue[600],
+    info: colorPrimitives.zinc[600],
   },
 
   layout: {
@@ -536,11 +536,11 @@ export const techClean: DesignPersonality = {
   colors: {
     scheme: 'cool',
     saturation: 'medium',
-    primary: colorPrimitives.indigo[500],
-    primaryLight: colorPrimitives.indigo[400],
-    primaryDark: colorPrimitives.indigo[600],
-    secondary: colorPrimitives.violet[500],
-    accent: colorPrimitives.cyan[400],
+    primary: colorPrimitives.slate[900],
+    primaryLight: colorPrimitives.slate[700],
+    primaryDark: colorPrimitives.slate[950],
+    secondary: colorPrimitives.slate[600],
+    accent: colorPrimitives.slate[400],
     background: colorPrimitives.slate[900],
     surface: colorPrimitives.slate[800],
     surfaceElevated: colorPrimitives.slate[700],
@@ -553,7 +553,7 @@ export const techClean: DesignPersonality = {
     success: colorPrimitives.emerald[400],
     warning: colorPrimitives.amber[400],
     error: colorPrimitives.rose[400],
-    info: colorPrimitives.cyan[400],
+    info: colorPrimitives.slate[400],
   },
 
   layout: {

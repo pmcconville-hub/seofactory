@@ -79,6 +79,8 @@ export interface DesignTokens {
     headingWeight: 'normal' | 'medium' | 'semibold' | 'bold';
     bodyLineHeight: 'tight' | 'normal' | 'relaxed';
     headingLineHeight: 'tight' | 'normal' | 'relaxed';
+    headingCase?: 'normal' | 'uppercase' | 'small-caps';
+    headingLetterSpacing?: string;
   };
 }
 
