@@ -10,7 +10,7 @@ import time
 # Configuration
 BASE_URL = "http://localhost:3002"
 EMAIL = "richard@kjenmarks.nl"
-PASSWORD = "pannekoek"
+PASSWORD = os.getenv("TEST_PASSWORD", "pannekoek")
 SCREENSHOT_DIR = "docs/help-screenshots"
 
 def ensure_dir(path):

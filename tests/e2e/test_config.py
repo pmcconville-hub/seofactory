@@ -3,13 +3,15 @@
 Test configuration for CutTheCrap E2E tests
 """
 
+import os
+
 # Application URLs
 BASE_URL = "https://app.cutthecrap.net"
 LOGIN_URL = f"{BASE_URL}/"
 
 # Test credentials
 TEST_EMAIL = "richard@kjenmarks.nl"
-TEST_PASSWORD = "pannekoek"
+TEST_PASSWORD = os.getenv("TEST_PASSWORD", "pannekoek") # Default for local dev if env not set
 
 # Test project (Dutch)
 TEST_PROJECT = "daadvracht"

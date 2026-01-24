@@ -9,7 +9,7 @@ import time
 
 BASE_URL = "http://localhost:3002"
 EMAIL = "richard@kjenmarks.nl"
-PASSWORD = "pannekoek"
+PASSWORD = os.getenv("TEST_PASSWORD", "pannekoek")
 SCREENSHOT_DIR = "docs/help-screenshots"
 
 os.makedirs(SCREENSHOT_DIR, exist_ok=True)

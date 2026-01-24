@@ -3,12 +3,13 @@ Test script for Polish, Flow, Audit, and Save Draft operations
 Tests the activity-based timeout fix and base64 image stripping for long articles
 """
 import time
+import os
 from playwright.sync_api import sync_playwright
 
 # Configuration
 APP_URL = "http://localhost:3003"
 LOGIN_EMAIL = "richard@kjenmarks.nl"
-LOGIN_PASSWORD = "pannekoek"
+LOGIN_PASSWORD = os.getenv("TEST_PASSWORD", "pannekoek")
 PROJECT_NAME = "CutTheCrap"
 TOPIC_NAME = "Internal Linking & Contextual Bridges"
 
