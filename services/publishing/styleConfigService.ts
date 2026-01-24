@@ -36,12 +36,12 @@ export function brandKitToDesignTokens(brandKit: BrandKit | undefined): DesignTo
     colors: {
       primary: brandKit.colors?.primary || defaultDesignTokens.colors.primary,
       secondary: brandKit.colors?.secondary || defaultDesignTokens.colors.secondary,
-      accent: brandKit.colors?.primary || defaultDesignTokens.colors.accent, // Use primary as accent fallback
-      background: '#FFFFFF',
-      surface: '#F9FAFB',
-      text: '#111827',
-      textMuted: '#6B7280',
-      border: '#E5E7EB',
+      accent: brandKit.colors?.primary || defaultDesignTokens.colors.accent,
+      background: brandKit.colors?.background || '#FFFFFF',
+      surface: brandKit.colors?.surface || '#F9FAFB',
+      text: brandKit.colors?.text || '#111827',
+      textMuted: brandKit.colors?.textMuted || '#6B7280',
+      border: brandKit.colors?.border || '#E5E7EB',
       success: '#10B981',
       warning: '#F59E0B',
       error: '#EF4444',

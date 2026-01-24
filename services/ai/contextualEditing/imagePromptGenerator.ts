@@ -15,10 +15,36 @@ import {
   PlacementSuggestion,
 } from '../../../types/contextualEditor';
 
+import { resolvePersonalityToTokens } from '../../publishing/tokenResolver';
+import { DesignPersonalityId } from '../../../config/designTokens/personalities';
+
+/**
+ * Build a style descriptor for the AI prompt based on design personality
+ */
+function getVisualVibeDescriptor(personalityId?: string): string {
+  if (!personalityId) return '';
+
+  const id = personalityId as DesignPersonalityId;
+  switch (id) {
+    case 'modern-minimal':
+      return 'minimalist aesthetic, clean composition, pastel colors, generous white space, soft lighting, 4k resolution';
+    case 'bold-creative':
+    case 'tech-clean':
+      return 'vibrant high-contrast style, futuristic elements, glassmorphism, dynamic lighting, sharp edges, professional digital art';
+    case 'warm-friendly':
+      return 'approachable organic style, soft focus, warm color palette, natural textures, inviting composition';
+    case 'corporate-professional':
+    case 'bold-editorial':
+      return 'premium editorial photography style, high-end magazine aesthetic, sophisticated composition, balanced lighting';
+    default:
+      return '';
+  }
+}
+
 /**
  * Suggest image style based on content analysis
  */
-export function suggestImageStyle(contextText: string): ImageStyle {
+export function suggestImageStyle(contextText: string, personalityId?: string): ImageStyle {
   const lower = contextText.toLowerCase();
 
   // How-to, process, step-by-step content -> diagram
@@ -131,27 +157,31 @@ async function buildImagePrompt(params: {
   style: ImageStyle;
   businessInfo: BusinessInfo;
   dispatch: React.Dispatch<any>;
+  personalityId?: string;
 }): Promise<string> {
-  const { contextText, sectionHeading, articleTitle, style, businessInfo, dispatch } = params;
+  const { contextText, sectionHeading, articleTitle, style, businessInfo, dispatch, personalityId } = params;
+
+  const vibeDescriptor = getVisualVibeDescriptor(personalityId);
 
   const systemPrompt = `You are an expert at creating image generation prompts for SEO content.
 
 Your task is to create a detailed, specific prompt for generating a ${style} that:
 1. Directly relates to the content context
 2. Adds visual value without being generic
-3. Avoids copyrighted characters, logos, or trademarked content
-4. Is appropriate for professional/business content
+3. Matches the brand's visual identity: ${vibeDescriptor || 'professional and clean'}
+4. Avoids copyrighted characters, logos, or trademarked content
+5. Is appropriate for professional/business content
 
 Context from the article:
 "${contextText}"
 
 Section: ${sectionHeading}
 Article: ${articleTitle}
-${businessInfo?.name ? `Business: ${businessInfo.name}` : ''}
-${businessInfo?.location ? `Location: ${businessInfo.location}` : ''}
+${(businessInfo as any)?.projectName ? `Business: ${(businessInfo as any).projectName}` : ''}
+${(businessInfo as any)?.targetMarket ? `Location: ${(businessInfo as any).targetMarket}` : ''}
 
-Generate a single, detailed prompt (50-100 words) for creating this ${style}.
-Focus on specific visual elements, composition, and style.
+Generate a single, detailed prompt (50-100 words) for creating this ${style}. 
+Include keywords for composition, lighting, and "vibe": ${vibeDescriptor || 'standard professional'}.
 Do not include any explanations, just the prompt.`;
 
   // Use the user's preferred AI provider with fallback support
@@ -176,11 +206,12 @@ export async function generateImagePrompt(params: {
   businessInfo: BusinessInfo;
   dispatch: React.Dispatch<any>;
   imageType?: 'hero' | 'content' | 'inline';
+  personalityId?: string;
 }): Promise<ImagePromptResult> {
-  const { request, businessInfo, dispatch, imageType = 'content' } = params;
+  const { request, businessInfo, dispatch, imageType = 'content', personalityId } = params;
 
   // Analyze context to suggest appropriate style
-  const suggestedStyle = suggestImageStyle(request.contextText);
+  const suggestedStyle = suggestImageStyle(request.contextText, personalityId);
 
   // Get aspect ratio based on image placement type
   const suggestedAspectRatio = suggestAspectRatio(imageType);

@@ -24,6 +24,7 @@ import { PublishOptionsStep } from './steps/PublishOptionsStep';
 import type {
   StylePublishStep,
   PublishingStyle,
+  DesignTokens,
   LayoutConfiguration,
   StyledContentOutput,
   ContentTypeTemplate,
@@ -195,12 +196,20 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
       // 2. Process tokens into BrandKit format
       const processed = StyleExtractor.processTokens(rawTokens, url);
 
-      // 3. Update local style state immediately
+      // 3. Update local style state immediately with full palette
       if (style) {
+        const isDark = processed.colors.background.startsWith('#1') || processed.colors.background.startsWith('#0');
+        const suggestedPersonality: DesignPersonalityId = isDark ? 'bold-creative' : 'modern-minimal';
+
         const newTokens = brandKitToDesignTokens({
           colors: {
             primary: processed.colors.primary,
             secondary: processed.colors.secondary,
+            background: processed.colors.background,
+            surface: processed.colors.surface,
+            text: processed.colors.text,
+            textMuted: processed.colors.textMuted,
+            border: processed.colors.border,
             textOnImage: '#ffffff',
             overlayGradient: `linear-gradient(135deg, ${processed.colors.primary}, ${processed.colors.secondary})`
           },
@@ -214,6 +223,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
           heroTemplates: []
         });
 
+        setPersonalityId(suggestedPersonality);
         setStyle({
           ...style,
           designTokens: {
@@ -222,19 +232,30 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
           },
           updatedAt: new Date().toISOString()
         });
+
+        // 4. TRIGGER BLUEPRINT REGENERATION (The "Intelligence" Bridge)
+        // This ensures the layout morphs to match the new vibe
+        console.log('[Style & Publish] Triggering intelligent blueprint update...');
+        generateBlueprint(newTokens, suggestedPersonality);
+
         setPreview(null);
       }
 
-      // 4. Persist to database (Topical Map's business_info)
+      // 5. Persist to database (Topical Map's business_info)
       if (topic.map_id && topicalMap) {
         const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
         const updatedBusinessInfo = {
           ...topicalMap.business_info,
           brandKit: {
-            ...topicalMap.business_info?.brandKit, // Fixed: accessing brandKit via business_info
+            ...topicalMap.business_info?.brandKit,
             colors: {
               primary: processed.colors.primary,
               secondary: processed.colors.secondary,
+              background: processed.colors.background,
+              surface: processed.colors.surface,
+              text: processed.colors.text,
+              textMuted: processed.colors.textMuted,
+              border: processed.colors.border,
               textOnImage: '#ffffff',
               overlayGradient: `linear-gradient(135deg, ${processed.colors.primary}, ${processed.colors.secondary})`
             },
@@ -315,13 +336,13 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
               pacing: projectBpRow.pacing,
               colorIntensity: projectBpRow.color_intensity,
               ctaStrategy: {
-                positions: projectBpRow.cta_positions as ('after-intro' | 'mid' | 'end')[],
-                intensity: projectBpRow.cta_intensity as 'subtle' | 'moderate' | 'prominent',
-                style: projectBpRow.cta_style as 'banner' | 'inline' | 'floating',
+                positions: (projectBpRow.cta_positions || []) as any[],
+                intensity: (projectBpRow.cta_intensity || 'moderate') as any,
+                style: (projectBpRow.cta_style || 'banner') as any,
               },
             },
-            componentPreferences: projectBpRow.component_preferences as Record<string, string>,
-            avoidComponents: projectBpRow.avoid_components as string[],
+            componentPreferences: (projectBpRow.component_preferences || {}) as any,
+            avoidComponents: (projectBpRow.avoid_components || []) as any[],
             reasoning: projectBpRow.ai_reasoning || '',
             generatedAt: projectBpRow.updated_at,
           });
@@ -336,13 +357,13 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
               pacing: topicalMapBpRow.pacing || undefined,
               colorIntensity: topicalMapBpRow.color_intensity || undefined,
               ctaStrategy: topicalMapBpRow.cta_positions ? {
-                positions: topicalMapBpRow.cta_positions as ('after-intro' | 'mid' | 'end')[],
-                intensity: (topicalMapBpRow.cta_intensity || 'moderate') as 'subtle' | 'moderate' | 'prominent',
-                style: (topicalMapBpRow.cta_style || 'banner') as 'banner' | 'inline' | 'floating',
+                positions: (topicalMapBpRow.cta_positions || []) as any[],
+                intensity: (topicalMapBpRow.cta_intensity || 'moderate') as any,
+                style: (topicalMapBpRow.cta_style || 'banner') as any,
               } : undefined,
             },
-            componentPreferences: (topicalMapBpRow.component_preferences as Record<string, string>) || {},
-            clusterSpecificRules: (topicalMapBpRow.cluster_rules as unknown[]) || [],
+            componentPreferences: (topicalMapBpRow.component_preferences || {}) as any,
+            clusterSpecificRules: (topicalMapBpRow.cluster_rules || []) as any[],
             reasoning: topicalMapBpRow.ai_reasoning || '',
             generatedAt: topicalMapBpRow.updated_at,
           });
@@ -368,28 +389,29 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   );
 
   // Generate blueprint using the heuristic approach
-  const generateBlueprint = useCallback(async () => {
+  const generateBlueprint = useCallback(async (styleOverride?: DesignTokens, personalityOverride?: DesignPersonalityId) => {
     if (!articleDraft) return;
-
     setIsBlueprintGenerating(true);
     setErrors([]);
 
     try {
-      // Create minimal BusinessInfo for the heuristic generator
-      // The generator only uses: industry, valueProp, expertise
-      const minimalBusinessInfo = {
-        domain: '',
-        projectName: topic.title,
-        industry: 'general',
-        model: 'content',
-        valueProp: '',
-        audience: '',
-        expertise: '',
-        seedKeyword: topic.title,
-        language: 'en',
-        targetMarket: '',
-        aiProvider: 'gemini' as const,
-        aiModel: '',
+      // Use current or overridden values
+      const activePersonality = personalityOverride || personalityId;
+
+      // Extract full business context for intelligent design
+      const businessContext = {
+        domain: topicalMap?.business_info?.domain || '',
+        projectName: (topicalMap?.business_info as any)?.projectName || topic.title,
+        industry: (topicalMap?.business_info as any)?.industry || 'general',
+        model: (topicalMap?.business_info as any)?.model || 'content',
+        valueProp: (topicalMap?.business_info as any)?.valueProp || '',
+        audience: (topicalMap?.business_info as any)?.audience || '',
+        expertise: (topicalMap?.business_info as any)?.expertise || '',
+        seedKeyword: (topicalMap?.business_info as any)?.seedKeyword || topic.title,
+        language: (topicalMap?.business_info as any)?.language || 'en',
+        targetMarket: (topicalMap?.business_info as any)?.targetMarket || '',
+        aiProvider: (topicalMap?.business_info as any)?.aiProvider || 'gemini',
+        aiModel: (topicalMap?.business_info as any)?.aiModel || '',
         supabaseUrl: supabaseUrl,
         supabaseAnonKey: supabaseAnonKey,
       };
@@ -398,12 +420,15 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
         articleDraft,
         topic.title,
         topic.id,
-        minimalBusinessInfo,
+        businessContext as any,
         {
           brief,
           preferences: {
             styleLeaning: 'auto',
           },
+          // Inject custom branding directly into architect if provided
+          styleOverride,
+          personalityOverride: activePersonality
         }
       );
 
@@ -421,7 +446,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     } finally {
       setIsBlueprintGenerating(false);
     }
-  }, [articleDraft, topic.title, topic.id, brief, supabaseUrl, supabaseAnonKey]);
+  }, [articleDraft, topic.title, topic.id, brief, personalityId, topicalMap?.business_info, supabaseUrl, supabaseAnonKey]);
 
   // Fetch learned preferences for this project
   const fetchLearnedPreferences = useCallback(async () => {
@@ -495,7 +520,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
             colorIntensity: 'moderate',
             ctaStrategy: {
               intensity: 'moderate',
-              positions: ['end'],
+              positions: ['after-intro', 'mid-content', 'end'],
               style: 'banner',
             },
           },
@@ -504,7 +529,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
             preferredTimelineStyle: 'steps-numbered',
             preferredFaqStyle: 'faq-accordion',
           },
-          avoidComponents: [],
+          avoidComponents: [] as any[],
           reasoning: 'Default project blueprint generated for styling consistency',
           generatedAt: new Date().toISOString(),
         };
@@ -525,10 +550,10 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
           projectId: projectId || topic.map_id, // Use actual projectId if available
           defaults: {
             visualStyle: 'editorial',
-            pacing: 'balanced',
-            colorIntensity: 'moderate',
+            pacing: 'balanced' as any,
+            colorIntensity: 'moderate' as any,
           },
-          componentPreferences: {},
+          componentPreferences: {} as any,
           reasoning: 'Default topical map blueprint generated for styling consistency',
           generatedAt: new Date().toISOString(),
         };

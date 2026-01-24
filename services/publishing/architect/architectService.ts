@@ -32,6 +32,8 @@ import {
   generateCoherenceReport,
   type CoherenceAnalysis,
 } from './coherenceEngine';
+import { DesignTokens } from '../../../types/publishing';
+import { DesignPersonalityId } from '../../../config/designTokens/personalities';
 
 import type { BusinessInfo, ContentBrief, EnrichedTopic, TopicalMap } from '../../../types';
 import type {
@@ -103,7 +105,7 @@ export async function generateBlueprint(
   const combinedPrompt = `${systemPrompt}\n\n---\n\n${userPrompt}`;
 
   // No-op dispatch for services that require it
-  const noOpDispatch = () => {};
+  const noOpDispatch = () => { };
 
   // Call AI provider
   const response = await dispatchToProvider(businessInfo, {
@@ -224,11 +226,11 @@ function extractContentSignals(
   let buyerJourneyStage: ContentSignals['buyerJourneyStage'] = 'awareness';
   const lowerContent = content.toLowerCase();
   if (lowerContent.includes('koop') || lowerContent.includes('bestel') ||
-      lowerContent.includes('buy') || lowerContent.includes('prijs') ||
-      lowerContent.includes('price')) {
+    lowerContent.includes('buy') || lowerContent.includes('prijs') ||
+    lowerContent.includes('price')) {
     buyerJourneyStage = 'decision';
   } else if (lowerContent.includes('vergelijk') || lowerContent.includes('compare') ||
-             lowerContent.includes('verschil') || lowerContent.includes('vs')) {
+    lowerContent.includes('verschil') || lowerContent.includes('vs')) {
     buyerJourneyStage = 'consideration';
   }
 
@@ -261,7 +263,7 @@ function extractContentSignals(
     hasTestimonials: !!analysis.components.testimonials,
     hasBenefits: !!analysis.components.benefits,
     hasComparison: content.toLowerCase().includes('vergelijk') ||
-                   content.toLowerCase().includes('compare'),
+      content.toLowerCase().includes('compare'),
     wordCount: analysis.structure.wordCount,
     readingLevel,
   };
@@ -400,25 +402,25 @@ function generateHeuristicSections(
     }
     // Benefits section
     else if (section.heading?.toLowerCase().includes('voordel') ||
-             section.heading?.toLowerCase().includes('benefit') ||
-             section.heading?.toLowerCase().includes('kenmer')) {
+      section.heading?.toLowerCase().includes('benefit') ||
+      section.heading?.toLowerCase().includes('kenmer')) {
       component = listItemCount > 4 ? 'card-grid' : 'icon-list';
       reasoning = 'Benefits/features content presented as visual cards or icons.';
       emphasis = 'featured';
     }
     // Process/how-to section
     else if (section.heading?.toLowerCase().includes('hoe') ||
-             section.heading?.toLowerCase().includes('stap') ||
-             section.heading?.toLowerCase().includes('proces') ||
-             section.heading?.toLowerCase().includes('how')) {
+      section.heading?.toLowerCase().includes('stap') ||
+      section.heading?.toLowerCase().includes('proces') ||
+      section.heading?.toLowerCase().includes('how')) {
       component = 'timeline-zigzag';
       reasoning = 'Process steps presented as visual timeline.';
       emphasis = 'featured';
     }
     // FAQ section
     else if (section.heading?.toLowerCase().includes('faq') ||
-             section.heading?.toLowerCase().includes('vraag') ||
-             section.heading?.toLowerCase().includes('question')) {
+      section.heading?.toLowerCase().includes('vraag') ||
+      section.heading?.toLowerCase().includes('question')) {
       component = 'faq-accordion';
       reasoning = 'FAQ content as interactive accordion.';
     }
@@ -509,7 +511,7 @@ export async function generateBlueprintV2(
   // Step 5: Determine buyer journey and goals
   const buyerJourneyStage = richContext.intent.buyerStage;
   const primaryGoal = buyerJourneyStage === 'decision' ? 'convert' :
-                      buyerJourneyStage === 'consideration' ? 'engage' : 'inform';
+    buyerJourneyStage === 'consideration' ? 'engage' : 'inform';
 
   // Step 6: Create initial blueprint
   let blueprint: LayoutBlueprint = {
@@ -533,7 +535,7 @@ export async function generateBlueprintV2(
       ctaStrategy: {
         positions: determineCtaPositions(buyerJourneyStage, richContext),
         intensity: richContext.market.industryNorms.ctaApproach === 'aggressive' ? 'prominent' :
-                   richContext.market.industryNorms.ctaApproach === 'subtle' ? 'subtle' : 'moderate',
+          richContext.market.industryNorms.ctaApproach === 'subtle' ? 'subtle' : 'moderate',
         style: visualStyle === 'marketing' ? 'banner' : 'inline',
       },
       showSources: true,
@@ -565,14 +567,21 @@ export function generateBlueprintHeuristicV2(
   options?: {
     brief?: ContentBrief;
     preferences?: Partial<UserPreferences>;
+    styleOverride?: DesignTokens;
+    personalityOverride?: DesignPersonalityId;
   }
 ): LayoutBlueprint {
   const startTime = Date.now();
   const analysis = analyzeContent(articleContent, articleTitle);
   const contentSignals = extractContentSignals(analysis, articleContent);
 
-  // Use v1 visual style determination (synchronous)
-  const visualStyle = determineVisualStyle(businessInfo, contentSignals);
+  // Determine design personality
+  // 1. Manual override (from AI Stylist or UI)
+  // 2. Industry-based heuristic fallback
+  const visualStyle = options?.personalityOverride ?
+    (options.personalityOverride.includes('minimal') ? 'minimal' as VisualStyle : 'bold' as VisualStyle) :
+    determineVisualStyle(businessInfo, contentSignals);
+
   const pacing = determinePacing(contentSignals);
 
   // Generate sections with enhanced heuristics
@@ -1046,9 +1055,9 @@ function generateEnhancedHeuristicSections(
     }
     // Benefits section (enhanced component selection based on style)
     else if (headingLower.includes('voordel') ||
-             headingLower.includes('benefit') ||
-             headingLower.includes('kenmer') ||
-             headingLower.includes('waarom')) {
+      headingLower.includes('benefit') ||
+      headingLower.includes('kenmer') ||
+      headingLower.includes('waarom')) {
       if (visualStyle === 'minimal') {
         component = 'bullet-list';
       } else if (!hasUsedCardGrid && listItemCount >= 3) {
@@ -1070,10 +1079,10 @@ function generateEnhancedHeuristicSections(
     }
     // Process/how-to section (varied timeline components)
     else if (headingLower.includes('hoe') ||
-             headingLower.includes('stap') ||
-             headingLower.includes('proces') ||
-             headingLower.includes('how') ||
-             headingLower.includes('werkwijze')) {
+      headingLower.includes('stap') ||
+      headingLower.includes('proces') ||
+      headingLower.includes('how') ||
+      headingLower.includes('werkwijze')) {
       // Avoid repeating timeline if used recently
       if (lastComponent?.includes('timeline')) {
         component = 'steps-numbered';
@@ -1085,9 +1094,9 @@ function generateEnhancedHeuristicSections(
     }
     // FAQ section
     else if (headingLower.includes('faq') ||
-             headingLower.includes('vraag') ||
-             headingLower.includes('question') ||
-             headingLower.includes('veelgesteld')) {
+      headingLower.includes('vraag') ||
+      headingLower.includes('question') ||
+      headingLower.includes('veelgesteld')) {
       component = visualStyle === 'marketing' ? 'faq-cards' : 'faq-accordion';
       reasoning = `FAQ as ${component} (${visualStyle} style).`;
     }
@@ -1123,7 +1132,7 @@ function generateEnhancedHeuristicSections(
 
     // Determine background based on emphasis and position
     const hasBackground = emphasis === 'featured' ||
-      emphasis === 'hero-moment' ||
+      emphasis === ('hero-moment' as SectionEmphasis) ||
       (index % 4 === 2 && visualStyle !== 'minimal');
 
     sections.push({
@@ -1244,7 +1253,7 @@ function detectHighlightContent(contentLower: string): boolean {
   ];
 
   return highlightPatterns.some(p => contentLower.includes(p)) &&
-         contentLower.length < 500; // Short enough to be a highlight
+    contentLower.length < 500; // Short enough to be a highlight
 }
 
 /**
@@ -1336,7 +1345,7 @@ Return ONLY a JSON object with the updated section design:
 }`;
 
   // No-op dispatch for services that require it
-  const noOpDispatch = () => {};
+  const noOpDispatch = () => { };
 
   const response = await dispatchToProvider(businessInfo, {
     gemini: () => geminiService.generateText(prompt, businessInfo, noOpDispatch),
@@ -1396,9 +1405,9 @@ import type {
  * This creates sensible defaults based on business context
  */
 export function generateProjectBlueprint(businessInfo: BusinessInfo): ProjectBlueprint {
-  const industry = (businessInfo.industry || '').toLowerCase();
-  const valueProp = (businessInfo.valueProp || '').toLowerCase();
-  const websiteType = businessInfo.websiteType;
+  const industry = ((businessInfo as any).industry || '').toLowerCase();
+  const valueProp = ((businessInfo as any).valueProp || '').toLowerCase();
+  const websiteType = (businessInfo as any).websiteType;
 
   // Determine visual style based on industry and website type
   let visualStyle: VisualStyle = 'editorial';

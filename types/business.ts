@@ -195,6 +195,11 @@ export interface BrandKit {
     primary: string;
     secondary: string;
     textOnImage: string;
+    background?: string;
+    surface?: string;
+    text?: string;
+    textMuted?: string;
+    border?: string;
     overlayGradient?: string;
   };
   fonts: {

@@ -24,6 +24,8 @@ interface PreviewStepProps {
   isGenerating: boolean;
   onRegenerate: () => void;
   seoWarnings: SeoWarning[];
+  onCopyHtml?: (html: string) => void;
+  onCopyCss?: (css: string) => void;
 }
 
 interface DeviceFrameProps {
@@ -116,6 +118,8 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
   isGenerating,
   onRegenerate,
   seoWarnings,
+  onCopyHtml,
+  onCopyCss,
 }) => {
   const [device, setDevice] = useState<DevicePreview>('desktop');
   const [showRawHtml, setShowRawHtml] = useState(false);
@@ -190,6 +194,20 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
             {showRawHtml ? '👁️ Preview' : '</> HTML'}
           </button>
 
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              if (preview) {
+                const bundle = `<style>\n${preview.css}\n</style>\n${preview.html}`;
+                navigator.clipboard.writeText(bundle);
+                if (onCopyHtml) onCopyHtml(bundle);
+              }
+            }}
+          >
+            📋 Copy Bundle
+          </Button>
+
           <Button variant="ghost" size="sm" onClick={onRegenerate}>
             Regenerate
           </Button>
@@ -222,14 +240,13 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
             {seoWarnings.slice(0, 3).map((warning, index) => (
               <li
                 key={index}
-                className={`text-xs flex items-start gap-2 ${
-                  warning.severity === 'error' ? 'text-red-400' :
+                className={`text-xs flex items-start gap-2 ${warning.severity === 'error' ? 'text-red-400' :
                   warning.severity === 'warning' ? 'text-yellow-400' : 'text-blue-400'
-                }`}
+                  }`}
               >
                 <span>
                   {warning.severity === 'error' ? '❌' :
-                   warning.severity === 'warning' ? '⚠️' : 'ℹ️'}
+                    warning.severity === 'warning' ? '⚠️' : 'ℹ️'}
                 </span>
                 <span>
                   {warning.message}
