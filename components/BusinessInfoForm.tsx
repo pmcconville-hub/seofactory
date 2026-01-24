@@ -18,7 +18,7 @@ import { useSmartWizard } from '../hooks/useSmartWizard';
 import { detectInputType } from '../services/ai/businessResearch';
 import BrandKitEditor from './BrandKitEditor';
 
-const AIConfiguration = ({ localBusinessInfo, setLocalBusinessInfo, globalBusinessInfo }: { localBusinessInfo: Partial<BusinessInfo>, setLocalBusinessInfo: React.Dispatch<React.SetStateAction<Partial<BusinessInfo>>>, globalBusinessInfo: BusinessInfo }) => {
+const AIConfiguration = ({ localBusinessInfo, setLocalBusinessInfo, globalBusinessInfo, onProviderChange }: { localBusinessInfo: Partial<BusinessInfo>, setLocalBusinessInfo: React.Dispatch<React.SetStateAction<Partial<BusinessInfo>>>, globalBusinessInfo: BusinessInfo, onProviderChange?: (provider: string, model: string) => void }) => {
     const [models, setModels] = useState<string[]>([]);
     const [isFetchingModels, setIsFetchingModels] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -55,7 +55,15 @@ const AIConfiguration = ({ localBusinessInfo, setLocalBusinessInfo, globalBusine
 
 
     const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        setLocalBusinessInfo(prev => ({...prev, [e.target.name]: e.target.value }));
+        const { name, value } = e.target;
+        setLocalBusinessInfo(prev => ({...prev, [name]: value }));
+
+        // Also update global state when AI settings change
+        if (onProviderChange && (name === 'aiProvider' || name === 'aiModel')) {
+            const newProvider = name === 'aiProvider' ? value : localBusinessInfo.aiProvider || 'gemini';
+            const newModel = name === 'aiModel' ? value : localBusinessInfo.aiModel || '';
+            onProviderChange(newProvider, newModel);
+        }
     };
 
     return (
@@ -365,7 +373,7 @@ interface BusinessInfoFormProps {
 }
 
 const BusinessInfoForm: React.FC<BusinessInfoFormProps> = ({ onSave, onBack, isLoading }) => {
-    const { state } = useAppState();
+    const { state, dispatch } = useAppState();
     const activeMap = state.topicalMaps.find(m => m.id === state.activeMapId);
 
     // Track which fields were auto-filled by Smart Wizard
@@ -572,7 +580,22 @@ const BusinessInfoForm: React.FC<BusinessInfoFormProps> = ({ onSave, onBack, isL
                           onChange={(brandKit) => setLocalBusinessInfo(prev => ({ ...prev, brandKit }))}
                         />
 
-                        <AIConfiguration localBusinessInfo={localBusinessInfo} setLocalBusinessInfo={setLocalBusinessInfo} globalBusinessInfo={state.businessInfo} />
+                        <AIConfiguration
+                            localBusinessInfo={localBusinessInfo}
+                            setLocalBusinessInfo={setLocalBusinessInfo}
+                            globalBusinessInfo={state.businessInfo}
+                            onProviderChange={(provider, model) => {
+                                // Update global state so PillarDefinitionWizard uses the correct provider
+                                dispatch({
+                                    type: 'SET_BUSINESS_INFO',
+                                    payload: {
+                                        ...state.businessInfo,
+                                        aiProvider: provider as BusinessInfo['aiProvider'],
+                                        aiModel: model,
+                                    }
+                                });
+                            }}
+                        />
                     </div>
                 </div>
                 <footer className="p-4 bg-gray-800 border-t border-gray-700 flex justify-between items-center">
