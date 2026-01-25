@@ -47,247 +47,236 @@ export const BrandDiscoveryService = {
 
           log.info('Screenshot captured, size:', screenshotBase64.length, 'chars');
 
-        // Helper: Check if color is neutral (white, black, gray)
-        const isNeutral = (c) => {
-          if (!c || c.includes('rgba(0, 0, 0, 0)')) return true;
+          // Extract design data from the page using page.evaluate()
+          // This runs in the browser context where document/window are available
+          log.info('Extracting design data from DOM...');
 
-          let r, g, b;
+          const designData = await page.evaluate(() => {
+            // Helper: Check if color is neutral (white, black, gray)
+            const isNeutral = (c) => {
+              if (!c || c.includes('rgba(0, 0, 0, 0)')) return true;
 
-          // Handle hex colors
-          if (c.startsWith('#')) {
-            const hex = c.replace('#', '');
-            const fullHex = hex.length === 3
-              ? hex.split('').map(ch => ch + ch).join('')
-              : hex;
-            r = parseInt(fullHex.slice(0, 2), 16);
-            g = parseInt(fullHex.slice(2, 4), 16);
-            b = parseInt(fullHex.slice(4, 6), 16);
-          } else {
-            // Handle rgb/rgba
-            const match = c.match(/\\d+/g);
-            if (!match || match.length < 3) return true;
-            [r, g, b] = match.map(Number);
-          }
+              let r, g, b;
 
-          if (r === 255 && g === 255 && b === 255) return true;
-          if (r === 0 && g === 0 && b === 0) return true;
-          // Gray detection: all channels similar
-          if (Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && Math.abs(r - b) < 15) return true;
-          return false;
-        };
-
-        // Helper: Convert RGB to hex
-        const rgbToHex = (c) => {
-          if (!c) return null;
-          if (c.startsWith('#')) return c.toLowerCase();
-          const match = c.match(/\\d+/g);
-          if (!match || match.length < 3) return null;
-          const [r, g, b] = match.map(Number);
-          return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
-        };
-
-        // Helper: Extract CSS custom properties from :root
-        const extractCssVariables = () => {
-          const vars = {};
-          try {
-            const rootStyles = getComputedStyle(document.documentElement);
-            const colorVarNames = [
-              '--primary', '--primary-color', '--accent', '--accent-color',
-              '--brand', '--brand-color', '--theme-color', '--main-color',
-              '--color-primary', '--color-accent', '--wp--preset--color--primary',
-              '--global-palette1', '--global-palette2' // Kadence theme
-            ];
-            colorVarNames.forEach(name => {
-              const val = rootStyles.getPropertyValue(name).trim();
-              if (val && !isNeutral(val)) {
-                vars[name] = val;
+              // Handle hex colors
+              if (c.startsWith('#')) {
+                const hex = c.replace('#', '');
+                const fullHex = hex.length === 3
+                  ? hex.split('').map(ch => ch + ch).join('')
+                  : hex;
+                r = parseInt(fullHex.slice(0, 2), 16);
+                g = parseInt(fullHex.slice(2, 4), 16);
+                b = parseInt(fullHex.slice(4, 6), 16);
+              } else {
+                // Handle rgb/rgba
+                const match = c.match(/\\d+/g);
+                if (!match || match.length < 3) return true;
+                [r, g, b] = match.map(Number);
               }
-            });
-          } catch (e) {}
-          return vars;
-        };
 
-        // Color extraction with source tracking
-        const extractColors = () => {
-          const results = { primary: null, secondary: null, accent: null, background: null };
-          const sources = { primary: 'fallback', secondary: 'fallback', accent: 'fallback', background: 'element' };
+              if (r === 255 && g === 255 && b === 255) return true;
+              if (r === 0 && g === 0 && b === 0) return true;
+              // Gray detection: all channels similar
+              if (Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && Math.abs(r - b) < 15) return true;
+              return false;
+            };
 
-          // 1. FIRST: Try CSS custom properties (highest confidence for modern sites)
-          const cssVars = extractCssVariables();
-          const cssVarKeys = Object.keys(cssVars);
-          if (cssVarKeys.length > 0) {
-            // Prioritize --primary, --accent, etc.
-            const primaryVar = cssVarKeys.find(k => k.includes('primary') || k.includes('brand'));
-            const accentVar = cssVarKeys.find(k => k.includes('accent'));
-            if (primaryVar) {
-              results.primary = cssVars[primaryVar];
-              sources.primary = 'css_variable';
-            }
-            if (accentVar && accentVar !== primaryVar) {
-              results.accent = cssVars[accentVar];
-              sources.accent = 'css_variable';
-            }
-          }
+            // Helper: Convert RGB to hex
+            const rgbToHex = (c) => {
+              if (!c) return null;
+              if (c.startsWith('#')) return c.toLowerCase();
+              const match = c.match(/\\d+/g);
+              if (!match || match.length < 3) return null;
+              const [r, g, b] = match.map(Number);
+              return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+            };
 
-          // 2. Try button colors (expanded selectors for WordPress/Elementor)
-          if (!results.primary) {
-            const btnSelectors = [
-              // Standard WordPress
-              '.wp-block-button__link', '.wp-element-button',
-              // Elementor
-              '.elementor-button', '[class*="elementor-button"]', '.e-button',
-              // Kadence
-              '.kb-button', '.kb-btn', '[class*="kb-button"]',
-              // Generic
-              'button[class*="primary"]', '.btn-primary', 'a.button',
-              'a[class*="btn"]', 'a[class*="button"]', 'button:not([class*="close"])',
-              // CTA sections
-              '.cta a', '.hero a[href]', '[class*="cta"] a'
-            ];
-
-            for (const sel of btnSelectors) {
+            // Extract CSS custom properties from :root
+            const extractCssVariables = () => {
+              const vars = {};
               try {
-                const btn = document.querySelector(sel);
-                if (btn) {
-                  const style = window.getComputedStyle(btn);
-                  const bg = style.backgroundColor;
-                  if (bg && !isNeutral(bg)) {
-                    results.primary = bg;
-                    sources.primary = 'button';
-                    break;
+                const rootStyles = getComputedStyle(document.documentElement);
+                const colorVarNames = [
+                  '--primary', '--primary-color', '--accent', '--accent-color',
+                  '--brand', '--brand-color', '--theme-color', '--main-color',
+                  '--color-primary', '--color-accent', '--wp--preset--color--primary',
+                  '--global-palette1', '--global-palette2'
+                ];
+                colorVarNames.forEach(name => {
+                  const val = rootStyles.getPropertyValue(name).trim();
+                  if (val && !isNeutral(val)) {
+                    vars[name] = val;
                   }
-                }
+                });
               } catch (e) {}
-            }
-          }
+              return vars;
+            };
 
-          // 3. Try link colors (often the brand color)
-          if (!results.primary) {
-            const links = document.querySelectorAll('a[href]:not([class*="logo"]):not([class*="nav"])');
-            for (const link of Array.from(links).slice(0, 20)) {
-              const style = window.getComputedStyle(link);
-              const color = style.color;
-              if (color && !isNeutral(color)) {
-                results.primary = color;
-                sources.primary = 'link_color';
-                break;
+            // Color extraction
+            const results = { primary: null, secondary: null, accent: null, background: null };
+            const sources = { primary: 'fallback', secondary: 'fallback', accent: 'fallback', background: 'element' };
+
+            // 1. Try CSS custom properties
+            const cssVars = extractCssVariables();
+            const cssVarKeys = Object.keys(cssVars);
+            if (cssVarKeys.length > 0) {
+              const primaryVar = cssVarKeys.find(k => k.includes('primary') || k.includes('brand'));
+              const accentVar = cssVarKeys.find(k => k.includes('accent'));
+              if (primaryVar) {
+                results.primary = cssVars[primaryVar];
+                sources.primary = 'css_variable';
+              }
+              if (accentVar && accentVar !== primaryVar) {
+                results.accent = cssVars[accentVar];
+                sources.accent = 'css_variable';
               }
             }
-          }
 
-          // 4. Heading color for secondary
-          const h1 = document.querySelector('h1, h2');
-          if (h1) {
-            const color = window.getComputedStyle(h1).color;
-            results.secondary = color || '#18181b';
-            sources.secondary = isNeutral(color) ? 'heading_neutral' : 'heading';
-          }
+            // 2. Try button colors
+            if (!results.primary) {
+              const btnSelectors = [
+                '.wp-block-button__link', '.wp-element-button',
+                '.elementor-button', '[class*="elementor-button"]', '.e-button',
+                '.kb-button', '.kb-btn', '[class*="kb-button"]',
+                'button[class*="primary"]', '.btn-primary', 'a.button',
+                'a[class*="btn"]', 'a[class*="button"]', 'button:not([class*="close"])',
+                '.cta a', '.hero a[href]', '[class*="cta"] a'
+              ];
 
-          // 5. Background from body
-          results.background = window.getComputedStyle(document.body).backgroundColor || '#ffffff';
-
-          // 6. Fallback: frequency analysis for primary (with improved element selection)
-          if (!results.primary) {
-            const colors = {};
-            const elements = document.querySelectorAll(
-              'a, button, [class*="btn"], [class*="button"], nav a, header a, ' +
-              '.elementor-widget, [class*="cta"], [class*="primary"], [class*="accent"]'
-            );
-            elements.forEach(el => {
-              const style = window.getComputedStyle(el);
-              // Check both background AND text color
-              const bg = style.backgroundColor;
-              const color = style.color;
-              if (!isNeutral(bg)) {
-                colors[bg] = (colors[bg] || 0) + 2; // Higher weight for backgrounds
+              for (const sel of btnSelectors) {
+                try {
+                  const btn = document.querySelector(sel);
+                  if (btn) {
+                    const style = window.getComputedStyle(btn);
+                    const bg = style.backgroundColor;
+                    if (bg && !isNeutral(bg)) {
+                      results.primary = bg;
+                      sources.primary = 'button';
+                      break;
+                    }
+                  }
+                } catch (e) {}
               }
-              if (!isNeutral(color)) {
-                colors[color] = (colors[color] || 0) + 1;
+            }
+
+            // 3. Try link colors
+            if (!results.primary) {
+              const links = document.querySelectorAll('a[href]:not([class*="logo"]):not([class*="nav"])');
+              for (const link of Array.from(links).slice(0, 20)) {
+                const style = window.getComputedStyle(link);
+                const color = style.color;
+                if (color && !isNeutral(color)) {
+                  results.primary = color;
+                  sources.primary = 'link_color';
+                  break;
+                }
+              }
+            }
+
+            // 4. Heading color for secondary
+            const h1 = document.querySelector('h1, h2');
+            if (h1) {
+              const color = window.getComputedStyle(h1).color;
+              results.secondary = color || '#18181b';
+              sources.secondary = isNeutral(color) ? 'heading_neutral' : 'heading';
+            }
+
+            // 5. Background from body
+            results.background = window.getComputedStyle(document.body).backgroundColor || '#ffffff';
+
+            // 6. Frequency analysis fallback
+            if (!results.primary) {
+              const colors = {};
+              const elements = document.querySelectorAll(
+                'a, button, [class*="btn"], [class*="button"], nav a, header a, ' +
+                '.elementor-widget, [class*="cta"], [class*="primary"], [class*="accent"]'
+              );
+              elements.forEach(el => {
+                const style = window.getComputedStyle(el);
+                const bg = style.backgroundColor;
+                const color = style.color;
+                if (!isNeutral(bg)) {
+                  colors[bg] = (colors[bg] || 0) + 2;
+                }
+                if (!isNeutral(color)) {
+                  colors[color] = (colors[color] || 0) + 1;
+                }
+              });
+              const sorted = Object.entries(colors).sort((a, b) => b[1] - a[1]);
+              if (sorted.length > 0) {
+                results.primary = sorted[0][0];
+                sources.primary = 'frequency';
+              }
+            }
+
+            // 7. Final fallback
+            if (!results.primary || isNeutral(results.primary)) {
+              results.primary = 'rgb(234, 88, 12)';
+              sources.primary = 'fallback';
+            }
+
+            // 8. Accent defaults to primary
+            if (!results.accent) {
+              results.accent = results.primary;
+              sources.accent = sources.primary;
+            }
+
+            // Convert all to hex
+            Object.keys(results).forEach(key => {
+              if (results[key]) {
+                const hex = rgbToHex(results[key]);
+                if (hex) results[key] = hex;
               }
             });
-            const sorted = Object.entries(colors).sort((a, b) => b[1] - a[1]);
-            if (sorted.length > 0) {
-              results.primary = sorted[0][0];
-              sources.primary = 'frequency';
-            }
-          }
 
-          // 7. Final fallback: vibrant orange (better than black!)
-          if (!results.primary || isNeutral(results.primary)) {
-            results.primary = 'rgb(234, 88, 12)';
-            sources.primary = 'fallback';
-          }
-
-          // 8. Accent defaults to primary if not already set
-          if (!results.accent) {
-            results.accent = results.primary;
-            sources.accent = sources.primary;
-          }
-
-          // Convert all to hex for consistency
-          Object.keys(results).forEach(key => {
-            if (results[key]) {
-              const hex = rgbToHex(results[key]);
-              if (hex) results[key] = hex;
-            }
-          });
-
-          return { colors: results, sources };
-        };
-
-        // Typography extraction
-        const extractTypography = () => {
-          const h1 = document.querySelector('h1, h2');
-          const body = document.body;
-
-          return {
-            fonts: {
-              heading: h1 ? window.getComputedStyle(h1).fontFamily : 'system-ui, sans-serif',
-              body: window.getComputedStyle(body).fontFamily || 'system-ui, sans-serif',
-              baseSize: window.getComputedStyle(body).fontSize || '16px'
-            },
-            sources: {
-              heading: h1 ? 'h1_element' : 'fallback',
+            // Typography extraction
+            const typoH1 = document.querySelector('h1, h2');
+            const typography = {
+              heading: typoH1 ? window.getComputedStyle(typoH1).fontFamily : 'system-ui, sans-serif',
+              body: window.getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif',
+              baseSize: window.getComputedStyle(document.body).fontSize || '16px'
+            };
+            const typographySources = {
+              heading: typoH1 ? 'h1_element' : 'fallback',
               body: 'body_element'
-            }
-          };
-        };
+            };
 
-        // Component style extraction
-        const extractComponents = () => {
-          const btn = document.querySelector('button, .btn, a.button, [class*="button"]');
-          const card = document.querySelector('.card, [class*="card"], article, .wp-block-group');
+            // Component extraction
+            const btn = document.querySelector('button, .btn, a.button, [class*="button"]');
+            const card = document.querySelector('.card, [class*="card"], article, .wp-block-group');
+            const components = {
+              button: btn ? {
+                borderRadius: window.getComputedStyle(btn).borderRadius || '4px',
+                source: 'button_element'
+              } : { borderRadius: '8px', source: 'fallback' },
+              shadow: card ? {
+                style: window.getComputedStyle(card).boxShadow || 'none',
+                source: 'card_element'
+              } : { style: '0 4px 6px rgba(0,0,0,0.1)', source: 'fallback' }
+            };
 
-          return {
-            button: btn ? {
-              borderRadius: window.getComputedStyle(btn).borderRadius || '4px',
-              source: 'button_element'
-            } : { borderRadius: '8px', source: 'fallback' },
-            shadow: card ? {
-              style: window.getComputedStyle(card).boxShadow || 'none',
-              source: 'card_element'
-            } : { style: '0 4px 6px rgba(0,0,0,0.1)', source: 'fallback' }
-          };
-        };
-
-        const colorData = extractColors();
-        const typoData = extractTypography();
-        const compData = extractComponents();
+            return {
+              colors: results,
+              colorSources: sources,
+              typography,
+              typographySources,
+              components
+            };
+          });
 
           log.info('Extraction complete, returning data');
 
           return {
             screenshotBase64,
-            colors: colorData.colors,
-            colorSources: colorData.sources,
-            typography: typoData.fonts,
-            typographySources: typoData.sources,
-            components: compData,
+            colors: designData.colors,
+            colorSources: designData.colorSources,
+            typography: designData.typography,
+            typographySources: designData.typographySources,
+            components: designData.components,
             url: request.url
           };
         } catch (error) {
           log.error('Page analysis failed:', error.message);
-          // Return error info so we can debug
           return {
             error: error.message,
             url: request.url,
