@@ -1,11 +1,10 @@
 /**
  * Style & Publish Modal
  *
- * 4-step modal for styled content publishing:
- * 1. Brand Style - Configure colors, fonts, design tokens
- * 2. Layout Config - Select template and toggle components
- * 3. Preview - Live preview with device frames
- * 4. Publish Options - WordPress settings and publish
+ * 3-step modal for styled content publishing:
+ * 1. Brand - One-click brand detection with AI Vision
+ * 2. Preview - Live preview with layout/blueprint panels
+ * 3. Publish - WordPress settings and publish
  *
  * @module components/publishing/StylePublishModal
  */
@@ -14,18 +13,11 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { getSupabaseClient } from '../../services/supabaseClient';
-import { BrandDiscoveryService } from '../../services/design-analysis/BrandDiscoveryService';
-import { DesignQualityValidator } from '../../services/design-analysis/DesignQualityValidator';
-import { StyleExtractor } from '../../services/design-analysis/StyleExtractor';
-import { BrandStyleStep } from './steps/BrandStyleStep';
-import { LayoutConfigStep } from './steps/LayoutConfigStep';
-import { BlueprintStep } from './steps/BlueprintStep';
+import { BrandStep } from './steps/BrandStep';
 import { PreviewStep } from './steps/PreviewStep';
 import { PublishOptionsStep } from './steps/PublishOptionsStep';
-import { DesignGenerationStep } from './steps/DesignGenerationStep';
-import { useMultiPassDesign } from '../../hooks/useMultiPassDesign';
 import { useDesignInheritance } from '../../hooks/useDesignInheritance';
-import type { BrandDiscoveryReport } from '../../types/publishing';
+import type { DesignDNA, BrandDesignSystem } from '../../types/designDna';
 import type {
   StylePublishStep,
   PublishingStyle,
@@ -42,11 +34,7 @@ import {
 } from '../../services/publishing/styleConfigService';
 import {
   createInMemoryLayout,
-  countEnabledComponents,
 } from '../../services/publishing/layoutConfigService';
-import {
-  calculateReadTime,
-} from '../../services/publishing/styledHtmlGenerator';
 import { suggestTemplate } from '../../config/publishingTemplates';
 import { assemblePage, type PageTemplate } from '../../services/publishing/pageAssembler';
 import type { DesignPersonalityId } from '../../config/designTokens/personalities';
@@ -112,12 +100,9 @@ interface StepInfo {
 // ============================================================================
 
 const STEPS: StepInfo[] = [
-  { id: 'brand-style', label: 'Brand Style', icon: '🎨' },
-  { id: 'design-generation', label: 'Design', icon: '✨' },
-  { id: 'layout-config', label: 'Layout', icon: '📐' },
-  { id: 'blueprint', label: 'Blueprint', icon: '🏗️' },
+  { id: 'brand', label: 'Brand', icon: '🎨' },
   { id: 'preview', label: 'Preview', icon: '👁️' },
-  { id: 'publish-options', label: 'Publish', icon: '🚀' },
+  { id: 'publish', label: 'Publish', icon: '🚀' },
 ];
 
 // ============================================================================
@@ -138,7 +123,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   onPublishSuccess,
 }) => {
   // State
-  const [currentStep, setCurrentStep] = useState<StylePublishStep>('brand-style');
+  const [currentStep, setCurrentStep] = useState<StylePublishStep>('brand');
   const [style, setStyle] = useState<PublishingStyle | null>(null);
   const [layout, setLayout] = useState<LayoutConfiguration | null>(null);
   const [blueprint, setBlueprint] = useState<LayoutBlueprint | null>(null);
@@ -175,26 +160,10 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   const [errors, setErrors] = useState<string[]>([]);
   const [personalityId, setPersonalityId] = useState<DesignPersonalityId>('corporate-professional');
 
-  // AI Stylist / Auto-detect state
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
-  const [lastDetectionResult, setLastDetectionResult] = useState<DesignTokens | null>(null);
-  const [brandDiscoveryReport, setBrandDiscoveryReport] = useState<BrandDiscoveryReport | null>(null);
-
-  // Multi-pass design generation
-  const geminiKey = (topicalMap?.business_info as any)?.geminiKey || '';
-  const multiPassDesign = useMultiPassDesign({
-    personality: personalityId,
-    aiProvider: 'gemini',
-    aiApiKey: geminiKey,
-    onComplete: (result) => {
-      console.log('[Style & Publish] Multi-pass design complete:', result);
-    },
-    onError: (error) => {
-      console.error('[Style & Publish] Multi-pass design error:', error);
-      setErrors([error.message]);
-    },
-  });
+  // Brand detection result state (for passing to Preview step)
+  const [detectedDesignDna, setDetectedDesignDna] = useState<DesignDNA | null>(null);
+  const [detectedDesignSystem, setDetectedDesignSystem] = useState<BrandDesignSystem | null>(null);
+  const [detectedScreenshot, setDetectedScreenshot] = useState<string | null>(null);
 
   // Design inheritance - load project/map level settings
   const supabaseClient = useMemo(
@@ -225,241 +194,6 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     }
   }, [designInheritance.tokens, designInheritance.isLoading]);
 
-  // Auto-detect branding handler
-  const handleAutoDetectBranding = useCallback(async (url: string) => {
-    if (!url) return;
-    setIsAnalyzing(true);
-    setAnalysisError(null);
-
-    try {
-      // 1. Get API tokens
-      const apifyToken = (topicalMap?.business_info as any)?.apifyToken;
-      if (!apifyToken) {
-        throw new Error('Apify API token is required for design analysis. Please add it to Settings.');
-      }
-
-      // Get Gemini API key for AI vision validation
-      const geminiApiKey = (topicalMap?.business_info as any)?.geminiApiKey ||
-        localStorage.getItem('gemini_api_key') || '';
-
-      console.log('[Style & Publish] Starting auto-detect for:', url);
-
-      // 2. Use BrandDiscoveryService to extract colors AND capture screenshot
-      const discoveryReport = await BrandDiscoveryService.analyze(url, apifyToken);
-      if (!discoveryReport) {
-        throw new Error('Failed to extract branding from the provided URL.');
-      }
-
-      console.log('[Style & Publish] Initial extraction:', {
-        primary: discoveryReport.findings.primaryColor.value,
-        secondary: discoveryReport.findings.secondaryColor.value,
-        source: discoveryReport.findings.primaryColor.source
-      });
-
-      // 3. VALIDATE extraction with AI vision if we have a screenshot and API key
-      let finalPrimary = discoveryReport.findings.primaryColor.value;
-      let finalSecondary = discoveryReport.findings.secondaryColor.value;
-      let finalAccent = discoveryReport.findings.accentColor.value;
-      let validationConfidence = discoveryReport.overallConfidence;
-
-      if (discoveryReport.screenshotBase64 && geminiApiKey) {
-        console.log('[Style & Publish] Validating extraction with AI vision...');
-
-        const validator = new DesignQualityValidator({
-          provider: 'gemini',
-          apiKey: geminiApiKey
-        });
-
-        const validation = await validator.validateExtraction(
-          discoveryReport.screenshotBase64,
-          {
-            primary: finalPrimary,
-            secondary: finalSecondary,
-            accent: finalAccent,
-            background: discoveryReport.findings.backgroundColor.value
-          }
-        );
-
-        console.log('[Style & Publish] AI Vision validation result:', validation);
-
-        if (!validation.isValid && Object.keys(validation.corrections).length > 0) {
-          console.log('[Style & Publish] Applying AI corrections:', validation.corrections);
-
-          // Apply corrections from AI vision
-          if (validation.corrections.primaryColor) {
-            finalPrimary = validation.corrections.primaryColor;
-          }
-          if (validation.corrections.secondaryColor) {
-            finalSecondary = validation.corrections.secondaryColor;
-          }
-          if (validation.corrections.accentColor) {
-            finalAccent = validation.corrections.accentColor;
-          }
-
-          validationConfidence = validation.confidence;
-          setDetectionSuccess(`AI corrected colors: ${validation.notes}`);
-        } else if (validation.isValid) {
-          validationConfidence = validation.confidence;
-          console.log('[Style & Publish] Extraction validated by AI vision');
-        }
-      } else {
-        console.log('[Style & Publish] Skipping AI validation (no screenshot or API key)');
-      }
-
-      // 4. Process tokens into BrandKit format with validated colors
-      const processed = {
-        colors: {
-          primary: finalPrimary,
-          secondary: finalSecondary,
-          background: discoveryReport.findings.backgroundColor.value,
-          surface: discoveryReport.derivedTokens.colors.surface,
-          text: discoveryReport.derivedTokens.colors.text,
-          textMuted: discoveryReport.derivedTokens.colors.textMuted,
-          border: discoveryReport.derivedTokens.colors.border,
-        },
-        typography: {
-          headingFont: discoveryReport.findings.headingFont.value,
-          bodyFont: discoveryReport.findings.bodyFont.value,
-        }
-      };
-
-      // 5. Update local style state immediately with full palette
-      if (style) {
-        const isDark = processed.colors.background.startsWith('#1') || processed.colors.background.startsWith('#0');
-
-        // Smarter personality suggestion
-        let suggestedPersonality: DesignPersonalityId = isDark ? 'bold-creative' : 'modern-minimal';
-
-        // If it's a WordPress-style domain or has rich headings, editorial is often better
-        const isWordPress = url.includes('wordpress') || url.includes('.cloudwaysapps.com');
-        if (!isDark && isWordPress) {
-          suggestedPersonality = 'bold-editorial';
-        }
-
-        const newTokens = brandKitToDesignTokens({
-          colors: {
-            primary: processed.colors.primary,
-            secondary: processed.colors.secondary,
-            background: processed.colors.background,
-            surface: processed.colors.surface,
-            text: processed.colors.text,
-            textMuted: processed.colors.textMuted,
-            border: processed.colors.border,
-            textOnImage: '#ffffff',
-            overlayGradient: `linear-gradient(135deg, ${processed.colors.primary}, ${processed.colors.secondary})`
-          },
-          fonts: {
-            heading: processed.typography.headingFont,
-            body: processed.typography.bodyFont
-          },
-          logoPlacement: 'top-left',
-          logoOpacity: 1,
-          copyright: { holder: url.replace(/https?:\/\//, '').split('/')[0] },
-          heroTemplates: []
-        });
-
-        setPersonalityId(suggestedPersonality);
-        setStyle({
-          ...style,
-          designTokens: {
-            ...style.designTokens,
-            ...newTokens,
-          },
-          updatedAt: new Date().toISOString()
-        });
-
-        // 6. TRIGGER BLUEPRINT REGENERATION (The "Intelligence" Bridge)
-        // This ensures the layout morphs to match the new vibe
-        console.log('[Style & Publish] Triggering intelligent blueprint update...');
-        generateBlueprint(newTokens, suggestedPersonality);
-        setLastDetectionResult(newTokens);
-        setPreview(null);
-
-        // Show success with validation confidence
-        const confidenceText = validationConfidence > 0 ? ` (${validationConfidence}% AI confidence)` : '';
-        setDetectionSuccess(`Branding detected successfully${confidenceText}! The layout has been updated.`);
-
-        // Clear success message after 5 seconds
-        setTimeout(() => setDetectionSuccess(null), 5000);
-      }
-
-      // 5. Persist to database (Topical Map's business_info)
-      if (topic.map_id && topicalMap) {
-        const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
-        const updatedBusinessInfo = {
-          ...topicalMap.business_info,
-          brandKit: {
-            ...topicalMap.business_info?.brandKit,
-            colors: {
-              primary: processed.colors.primary,
-              secondary: processed.colors.secondary,
-              background: processed.colors.background,
-              surface: processed.colors.surface,
-              text: processed.colors.text,
-              textMuted: processed.colors.textMuted,
-              border: processed.colors.border,
-              textOnImage: '#ffffff',
-              overlayGradient: `linear-gradient(135deg, ${processed.colors.primary}, ${processed.colors.secondary})`
-            },
-            fonts: {
-              heading: processed.typography.headingFont,
-              body: processed.typography.bodyFont
-            }
-          }
-        };
-
-        const { error: saveError } = await supabase
-          .from('topical_maps')
-          .update({
-            business_info: updatedBusinessInfo as any
-          })
-          .eq('id', topic.map_id);
-
-        if (saveError) {
-          console.error('[Style & Publish] Failed to persist detected branding:', saveError);
-        } else {
-          console.log('[Style & Publish] Successfully persisted detected branding to BrandKit');
-        }
-      }
-
-    } catch (err) {
-      console.error('[Style & Publish] Auto-detect error:', err);
-      setAnalysisError(err instanceof Error ? err.message : 'Unknown error during analysis');
-    } finally {
-      setIsAnalyzing(false);
-    }
-  }, [style, topic.map_id, topicalMap, supabaseUrl, supabaseAnonKey, setPreview, setStyle]);
-
-  // Start multi-pass design generation
-  const handleStartDesignGeneration = useCallback(async () => {
-    if (!style) return;
-
-    // Create a brand discovery report from current style
-    const report: BrandDiscoveryReport = {
-      id: `report-${Date.now()}`,
-      targetUrl: topicalMap?.business_info?.domain || '',
-      screenshotBase64: undefined,
-      analyzedAt: new Date().toISOString(),
-      findings: {
-        primaryColor: { value: style.designTokens.colors.primary, confidence: 'found', source: 'user-defined' },
-        secondaryColor: { value: style.designTokens.colors.secondary, confidence: 'found', source: 'user-defined' },
-        accentColor: { value: style.designTokens.colors.accent, confidence: 'found', source: 'user-defined' },
-        backgroundColor: { value: style.designTokens.colors.background, confidence: 'found', source: 'user-defined' },
-        headingFont: { value: style.designTokens.fonts.heading, confidence: 'found', source: 'user-defined' },
-        bodyFont: { value: style.designTokens.fonts.body, confidence: 'found', source: 'user-defined' },
-        borderRadius: { value: style.designTokens.borderRadius, confidence: 'found', source: 'user-defined' },
-        shadowStyle: { value: style.designTokens.shadows, confidence: 'found', source: 'user-defined' },
-      },
-      overallConfidence: 85,
-      derivedTokens: style.designTokens,
-    };
-
-    setBrandDiscoveryReport(report);
-
-    // Start multi-pass generation
-    await multiPassDesign.generate(articleDraft, report);
-  }, [style, articleDraft, topicalMap, multiPassDesign]);
-
   // Initialize style and layout on open
   useEffect(() => {
     if (isOpen && !style) {
@@ -477,9 +211,12 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   // Reset on close
   useEffect(() => {
     if (!isOpen) {
-      setCurrentStep('brand-style');
+      setCurrentStep('brand');
       setPreview(null);
       setErrors([]);
+      setDetectedDesignDna(null);
+      setDetectedDesignSystem(null);
+      setDetectedScreenshot(null);
     }
   }, [isOpen]);
 
@@ -619,6 +356,75 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
       setIsBlueprintGenerating(false);
     }
   }, [articleDraft, topic.title, topic.id, brief, personalityId, style, topicalMap?.business_info, supabaseUrl, supabaseAnonKey]);
+
+  // Handle brand detection completion from BrandStep
+  const handleBrandDetectionComplete = useCallback((result: {
+    designDna: DesignDNA;
+    designSystem: BrandDesignSystem;
+    screenshotBase64: string;
+  }) => {
+    console.log('[Style & Publish] Brand detection complete:', result);
+
+    // Store the detection results
+    setDetectedDesignDna(result.designDna);
+    setDetectedDesignSystem(result.designSystem);
+    setDetectedScreenshot(result.screenshotBase64);
+
+    // Convert DesignDNA to DesignTokens for the style
+    const dna = result.designDna;
+
+    // Determine personality based on detected mood
+    let suggestedPersonality: DesignPersonalityId = 'modern-minimal';
+    if (dna.colors.dominantMood === 'corporate') {
+      suggestedPersonality = 'corporate-professional';
+    } else if (dna.colors.dominantMood === 'creative' || dna.colors.dominantMood === 'bold') {
+      suggestedPersonality = 'bold-creative';
+    } else if (dna.colors.dominantMood === 'luxurious' || dna.colors.dominantMood === 'minimal') {
+      suggestedPersonality = 'modern-minimal';
+    }
+
+    // Update personality
+    setPersonalityId(suggestedPersonality);
+
+    // Convert to DesignTokens and update style
+    if (style) {
+      const newTokens = brandKitToDesignTokens({
+        colors: {
+          primary: dna.colors.primary.hex,
+          secondary: dna.colors.secondary.hex,
+          background: dna.colors.neutrals.lightest,
+          surface: dna.colors.neutrals.light,
+          text: dna.colors.neutrals.darkest,
+          textMuted: dna.colors.neutrals.medium,
+          border: dna.colors.neutrals.light,
+          textOnImage: '#ffffff',
+          overlayGradient: dna.effects.gradients.primaryGradient || `linear-gradient(135deg, ${dna.colors.primary.hex}, ${dna.colors.secondary.hex})`
+        },
+        fonts: {
+          heading: dna.typography.headingFont.family,
+          body: dna.typography.bodyFont.family
+        },
+        logoPlacement: 'top-left',
+        logoOpacity: 1,
+        copyright: { holder: '' },
+        heroTemplates: []
+      });
+
+      setStyle({
+        ...style,
+        designTokens: {
+          ...style.designTokens,
+          ...newTokens,
+        },
+        updatedAt: new Date().toISOString()
+      });
+
+      // Auto-generate blueprint with the new design tokens
+      console.log('[Style & Publish] Auto-generating blueprint...');
+      generateBlueprint(newTokens, suggestedPersonality);
+      setPreview(null);
+    }
+  }, [style, generateBlueprint]);
 
   // Fetch learned preferences for this project
   const fetchLearnedPreferences = useCallback(async () => {
@@ -1010,8 +816,8 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     if (nextIndex < STEPS.length) {
       const nextStep = STEPS[nextIndex].id;
 
-      // Generate blueprint when entering blueprint step
-      if (nextStep === 'blueprint' && !blueprint) {
+      // Generate blueprint if not already generated when moving to preview
+      if (nextStep === 'preview' && !blueprint) {
         await generateBlueprint();
       }
 
@@ -1079,79 +885,26 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     onClose();
   }, [onPublishSuccess, onClose]);
 
-  // Component count for layout step
-  const componentCount = useMemo(() => {
-    if (!layout) return null;
-    return countEnabledComponents(layout.components);
-  }, [layout]);
+  // Get API keys from topical map business info
+  const apifyToken = (topicalMap?.business_info as any)?.apifyToken || '';
+  const geminiApiKey = (topicalMap?.business_info as any)?.geminiApiKey || localStorage.getItem('gemini_api_key') || '';
+  const anthropicApiKey = (topicalMap?.business_info as any)?.anthropicApiKey || localStorage.getItem('anthropic_api_key') || '';
 
   // Render step content
   const renderStepContent = () => {
     switch (currentStep) {
-      case 'brand-style':
-        return style ? (
-          <BrandStyleStep
-            style={style}
-            brandKit={brandKit}
-            onChange={handleStyleChange}
-            personalityId={personalityId}
-            onPersonalityChange={setPersonalityId}
-            onAutoDetect={handleAutoDetectBranding}
-            isAnalyzing={isAnalyzing}
-            analysisError={analysisError}
-            detectionSuccess={detectionSuccess}
-            lastDetectionResult={lastDetectionResult}
+      case 'brand':
+        return (
+          <BrandStep
             defaultDomain={topicalMap?.business_info?.domain}
-          />
-        ) : null;
-
-      case 'design-generation':
-        return (
-          <DesignGenerationStep
-            isGenerating={multiPassDesign.state.isGenerating}
-            currentPass={multiPassDesign.state.currentPass}
-            progress={multiPassDesign.state.progress}
-            contentAnalysis={multiPassDesign.state.contentAnalysis}
-            componentSelections={multiPassDesign.state.componentSelections}
-            rhythmPlan={multiPassDesign.state.rhythmPlan}
-            designApplied={multiPassDesign.state.designApplied}
-            qualityValidation={multiPassDesign.state.qualityValidation}
-            error={multiPassDesign.state.error}
-            onGenerate={handleStartDesignGeneration}
-            onCancel={multiPassDesign.cancel}
-          />
-        );
-
-      case 'layout-config':
-        return layout ? (
-          <LayoutConfigStep
-            layout={layout}
-            content={articleDraft}
-            onChange={handleLayoutChange}
-            onTemplateChange={handleTemplateChange}
-          />
-        ) : null;
-
-      case 'blueprint':
-        return (
-          <BlueprintStep
-            blueprint={blueprint}
-            isGenerating={isBlueprintGenerating || isRegeneratingHierarchy}
-            onGenerate={generateBlueprint}
-            onBlueprintChange={setBlueprint}
-            topicalMapId={topic.map_id}
-            projectBlueprint={projectBlueprint || undefined}
-            topicalMapBlueprint={topicalMapBlueprint || undefined}
-            onProjectChange={handleProjectChange}
-            onTopicalMapChange={handleTopicalMapChange}
-            onSaveHierarchy={handleSaveHierarchy}
-            onRegenerateHierarchy={handleRegenerateHierarchy}
-            qualityAnalysis={blueprintQuality}
-            learnedPreferences={learnedPreferences}
-            stylePreferenceSummary={stylePreferenceSummary}
-            isLoadingPreferences={isLoadingPreferences}
-            isApplyingStyle={isApplyingStyle}
-            onApplyMyStyle={handleApplyMyStyle}
+            apifyToken={apifyToken}
+            geminiApiKey={geminiApiKey}
+            anthropicApiKey={anthropicApiKey}
+            supabaseUrl={supabaseUrl}
+            supabaseAnonKey={supabaseAnonKey}
+            projectId={projectId}
+            onDetectionComplete={handleBrandDetectionComplete}
+            onDesignDnaChange={setDetectedDesignDna}
           />
         );
 
@@ -1165,7 +918,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
           />
         );
 
-      case 'publish-options':
+      case 'publish':
         return style && layout && preview ? (
           <PublishOptionsStep
             topic={topic}
@@ -1188,7 +941,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   const footerContent = (
     <div className="flex items-center justify-between w-full">
       <div className="flex items-center gap-2">
-        {currentStep !== 'brand-style' && (
+        {currentStep !== 'brand' && (
           <Button
             variant="secondary"
             onClick={handleBack}
@@ -1200,13 +953,6 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
       </div>
 
       <div className="flex items-center gap-3">
-        {/* Component count badge */}
-        {currentStep === 'layout-config' && componentCount && (
-          <span className="text-sm text-gray-400">
-            {componentCount.enabled}/{componentCount.total} components enabled
-          </span>
-        )}
-
         {/* Error display */}
         {errors.length > 0 && (
           <span className="text-sm text-red-400">
@@ -1215,7 +961,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
         )}
 
         {/* Next/Publish button */}
-        {currentStep !== 'publish-options' ? (
+        {currentStep !== 'publish' ? (
           <Button
             variant="primary"
             onClick={handleNext}
