@@ -426,3 +426,20 @@ export type {
   MultiPassConfig,
   MultiPassResult,
 } from './multipass';
+
+// ============================================================================
+// DESIGN INHERITANCE (v5.0)
+// ============================================================================
+
+export {
+  DesignInheritanceService,
+  initDesignInheritanceService,
+  getDesignInheritanceService,
+} from './designInheritance';
+
+export type {
+  DesignInheritanceConfig,
+  DesignProfileRow,
+  ProjectDesignDefaultsRow,
+  TopicalMapDesignRulesRow,
+} from './designInheritance';
