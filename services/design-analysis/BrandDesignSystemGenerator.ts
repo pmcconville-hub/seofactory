@@ -142,19 +142,19 @@ export class BrandDesignSystemGenerator {
     json['--ctc-accent'] = accentHex;
 
     // Neutral colors (with fallbacks)
-    const neutrals = colors.neutrals || {};
-    json['--ctc-neutral-darkest'] = neutrals.darkest || '#111827';
-    json['--ctc-neutral-dark'] = neutrals.dark || '#374151';
-    json['--ctc-neutral-medium'] = neutrals.medium || '#6b7280';
-    json['--ctc-neutral-light'] = neutrals.light || '#d1d5db';
-    json['--ctc-neutral-lightest'] = neutrals.lightest || '#f9fafb';
+    const neutrals = colors.neutrals || {} as NonNullable<DesignDNA['colors']>['neutrals'];
+    json['--ctc-neutral-darkest'] = neutrals?.darkest || '#111827';
+    json['--ctc-neutral-dark'] = neutrals?.dark || '#374151';
+    json['--ctc-neutral-medium'] = neutrals?.medium || '#6b7280';
+    json['--ctc-neutral-light'] = neutrals?.light || '#d1d5db';
+    json['--ctc-neutral-lightest'] = neutrals?.lightest || '#f9fafb';
 
     // Semantic colors (with fallbacks)
-    const semantic = colors.semantic || {};
-    json['--ctc-success'] = semantic.success || '#10b981';
-    json['--ctc-warning'] = semantic.warning || '#f59e0b';
-    json['--ctc-error'] = semantic.error || '#ef4444';
-    json['--ctc-info'] = semantic.info || '#3b82f6';
+    const semantic = colors.semantic || {} as NonNullable<DesignDNA['colors']>['semantic'];
+    json['--ctc-success'] = semantic?.success || '#10b981';
+    json['--ctc-warning'] = semantic?.warning || '#f59e0b';
+    json['--ctc-error'] = semantic?.error || '#ef4444';
+    json['--ctc-info'] = semantic?.info || '#3b82f6';
 
     // Typography (with fallbacks for all nested properties)
     const typography = designDna.typography || {} as DesignDNA['typography'];
@@ -195,18 +195,18 @@ export class BrandDesignSystemGenerator {
 
     // Border radius tokens (with fallbacks)
     const shapes = designDna.shapes || {} as DesignDNA['shapes'];
-    const borderRadius = shapes.borderRadius || {};
-    json['--ctc-radius-sm'] = borderRadius.small || '4px';
-    json['--ctc-radius-md'] = borderRadius.medium || '8px';
-    json['--ctc-radius-lg'] = borderRadius.large || '16px';
-    json['--ctc-radius-full'] = borderRadius.full || '9999px';
+    const borderRadius = shapes?.borderRadius || {} as NonNullable<DesignDNA['shapes']>['borderRadius'];
+    json['--ctc-radius-sm'] = borderRadius?.small || '4px';
+    json['--ctc-radius-md'] = borderRadius?.medium || '8px';
+    json['--ctc-radius-lg'] = borderRadius?.large || '16px';
+    json['--ctc-radius-full'] = borderRadius?.full || '9999px';
 
     // Shadow tokens (with fallbacks)
     const effects = designDna.effects || {} as DesignDNA['effects'];
-    const shadows = effects.shadows || {};
-    json['--ctc-shadow-card'] = shadows.cardShadow || '0 1px 3px rgba(0,0,0,0.1)';
-    json['--ctc-shadow-button'] = shadows.buttonShadow || '0 1px 2px rgba(0,0,0,0.05)';
-    json['--ctc-shadow-elevated'] = shadows.elevatedShadow || '0 10px 25px rgba(0,0,0,0.15)';
+    const shadows = effects?.shadows || {} as NonNullable<DesignDNA['effects']>['shadows'];
+    json['--ctc-shadow-card'] = shadows?.cardShadow || '0 1px 3px rgba(0,0,0,0.1)';
+    json['--ctc-shadow-button'] = shadows?.buttonShadow || '0 1px 2px rgba(0,0,0,0.05)';
+    json['--ctc-shadow-elevated'] = shadows?.elevatedShadow || '0 10px 25px rgba(0,0,0,0.15)';
 
     // Motion tokens (with fallbacks)
     const motion = designDna.motion || {} as DesignDNA['motion'];
@@ -741,6 +741,11 @@ export class BrandDesignSystemGenerator {
    * Generate default decorative elements from Design DNA
    */
   private getDefaultDecorative(designDna: DesignDNA): BrandDesignSystem['decorative'] {
+    // Safe access to nested properties with proper typing
+    const decorative = designDna.decorative || {} as NonNullable<DesignDNA['decorative']>;
+    const effects = designDna.effects || {} as NonNullable<DesignDNA['effects']>;
+    const backgrounds = effects?.backgrounds || {} as NonNullable<NonNullable<DesignDNA['effects']>['backgrounds']>;
+
     return {
       dividers: {
         default: `.ctc-divider { height: 1px; background-color: var(--ctc-neutral-light); margin: var(--ctc-spacing-xl) 0; }`,
@@ -758,11 +763,11 @@ export class BrandDesignSystemGenerator {
         accent: `.ctc-section--accent { background-color: var(--ctc-neutral-light); }`,
         featured: `.ctc-section--featured { background-color: var(--ctc-primary); color: var(--ctc-neutral-lightest); }`
       },
-      shapes: designDna.decorative.usesWaveShapes ? {
+      shapes: decorative?.usesWaveShapes ? {
         topWave: `.ctc-wave-top { position: absolute; top: 0; left: 0; width: 100%; }`,
         bottomWave: `.ctc-wave-bottom { position: absolute; bottom: 0; left: 0; width: 100%; transform: rotate(180deg); }`
       } : undefined,
-      patterns: designDna.effects.backgrounds.usesPatterns ? {
+      patterns: backgrounds?.usesPatterns ? {
         dots: `.ctc-pattern-dots { background-image: radial-gradient(var(--ctc-neutral-medium) 1px, transparent 1px); background-size: 20px 20px; }`,
         grid: `.ctc-pattern-grid { background-image: linear-gradient(var(--ctc-neutral-light) 1px, transparent 1px), linear-gradient(90deg, var(--ctc-neutral-light) 1px, transparent 1px); background-size: 20px 20px; }`
       } : undefined
@@ -773,6 +778,10 @@ export class BrandDesignSystemGenerator {
    * Generate default interactions from Design DNA
    */
   private getDefaultInteractions(designDna: DesignDNA): BrandDesignSystem['interactions'] {
+    // Safe access to nested properties with proper typing
+    const motion = designDna.motion || {} as NonNullable<DesignDNA['motion']>;
+    const hoverEffects = motion?.hoverEffects || {} as NonNullable<NonNullable<DesignDNA['motion']>['hoverEffects']>;
+
     const hoverMap: Record<string, string> = {
       none: '',
       darken: 'filter: brightness(0.9);',
@@ -782,8 +791,8 @@ export class BrandDesignSystemGenerator {
       scale: 'transform: scale(1.05);'
     };
 
-    const buttonHoverEffect = hoverMap[designDna.motion.hoverEffects.buttons] || hoverMap.darken;
-    const cardHoverEffect = hoverMap[designDna.motion.hoverEffects.cards] || '';
+    const buttonHoverEffect = hoverMap[hoverEffects?.buttons || 'darken'] || hoverMap.darken;
+    const cardHoverEffect = hoverMap[hoverEffects?.cards || 'none'] || '';
 
     return {
       buttonHover: `.ctc-button:hover { ${buttonHoverEffect} }`,
@@ -804,6 +813,9 @@ export class BrandDesignSystemGenerator {
    * Generate default typography treatments from Design DNA
    */
   private getDefaultTypography(designDna: DesignDNA): BrandDesignSystem['typographyTreatments'] {
+    // Safe access to nested properties
+    const typography = designDna.typography || {} as DesignDNA['typography'];
+
     const headingDecorationMap: Record<string, string> = {
       none: '',
       solid: `
@@ -844,8 +856,8 @@ export class BrandDesignSystemGenerator {
     };
 
     return {
-      headingDecoration: headingDecorationMap[designDna.typography.headingUnderlineStyle] || '',
-      dropCap: designDna.typography.usesDropCaps
+      headingDecoration: headingDecorationMap[typography.headingUnderlineStyle] || '',
+      dropCap: typography.usesDropCaps
         ? `.ctc-drop-cap::first-letter {
   float: left;
   font-size: 3.5em;
@@ -900,6 +912,9 @@ export class BrandDesignSystemGenerator {
    * Generate default image treatments from Design DNA
    */
   private getDefaultImageTreatments(designDna: DesignDNA): BrandDesignSystem['imageTreatments'] {
+    // Safe access to nested properties
+    const images = designDna.images || {} as DesignDNA['images'];
+
     const frameMap: Record<string, string> = {
       none: '',
       rounded: 'border-radius: var(--ctc-radius-lg);',
@@ -908,7 +923,8 @@ export class BrandDesignSystemGenerator {
       'custom-mask': 'clip-path: polygon(0 0, 100% 0, 100% 90%, 0 100%);'
     };
 
-    const baseFrame = frameMap[designDna.images.frameStyle] || frameMap.rounded;
+    const baseFrame = frameMap[images.frameStyle] || frameMap.rounded;
+    const hoverEffect = images.hoverEffect || 'none';
 
     return {
       defaultFrame: `.ctc-image { ${baseFrame} width: 100%; height: auto; }`,
@@ -917,9 +933,9 @@ export class BrandDesignSystemGenerator {
   width: 100%;
   aspect-ratio: 16/9;
   object-fit: cover;
-  ${designDna.images.hoverEffect === 'zoom' ? 'transition: transform var(--ctc-transition-speed) var(--ctc-easing);' : ''}
+  ${hoverEffect === 'zoom' ? 'transition: transform var(--ctc-transition-speed) var(--ctc-easing);' : ''}
 }
-${designDna.images.hoverEffect === 'zoom' ? '.ctc-image--featured:hover { transform: scale(1.05); }' : ''}`,
+${hoverEffect === 'zoom' ? '.ctc-image--featured:hover { transform: scale(1.05); }' : ''}`,
       thumbnail: `.ctc-image--thumbnail {
   width: 80px;
   height: 80px;
@@ -931,7 +947,7 @@ ${designDna.images.hoverEffect === 'zoom' ? '.ctc-image--featured:hover { transf
   aspect-ratio: 1/1;
   object-fit: cover;
 }`,
-      mask: designDna.images.frameStyle === 'custom-mask' ? `.ctc-image--masked { clip-path: polygon(0 0, 100% 0, 100% 90%, 0 100%); }` : undefined,
+      mask: images.frameStyle === 'custom-mask' ? `.ctc-image--masked { clip-path: polygon(0 0, 100% 0, 100% 90%, 0 100%); }` : undefined,
       overlay: `.ctc-image-overlay {
   position: relative;
 }

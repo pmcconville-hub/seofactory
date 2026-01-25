@@ -89,7 +89,7 @@ describe('BrandDesignSystemGenerator', () => {
         usesOverlays: false
       },
       borders: {
-        style: 'minimal',
+        style: 'subtle',
         defaultColor: '#e2e8f0',
         accentBorderUsage: false
       }
