@@ -410,3 +410,19 @@ export type {
   BlueprintSuggestions,
   SuggestionConfig,
 } from './refinement';
+
+// ============================================================================
+// MULTI-PASS DESIGN GENERATION (v5.0)
+// ============================================================================
+
+export {
+  analyzeContent as analyzeContentStructure,
+  selectComponents,
+  planVisualRhythm,
+  MultiPassOrchestrator,
+} from './multipass';
+
+export type {
+  MultiPassConfig,
+  MultiPassResult,
+} from './multipass';
