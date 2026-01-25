@@ -66,7 +66,7 @@ export const BrandDiscoveryService = {
         // Helper: Convert RGB to hex
         const rgbToHex = (c) => {
           if (!c) return null;
-          if (c.startsWith('#')) return c;
+          if (c.startsWith('#')) return c.toLowerCase();
           const match = c.match(/\\d+/g);
           if (!match || match.length < 3) return null;
           const [r, g, b] = match.map(Number);

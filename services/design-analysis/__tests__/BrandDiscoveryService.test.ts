@@ -62,6 +62,38 @@ describe('BrandDiscoveryService', () => {
       expect(isNeutral('rgb(128, 128, 128)')).toBe(true);
     });
   });
+
+  describe('rgbToHex helper', () => {
+    const rgbToHex = (c: string | null): string | null => {
+      if (!c) return null;
+      if (c.startsWith('#')) return c.toLowerCase();
+      const match = c.match(/\d+/g);
+      if (!match || match.length < 3) return null;
+      const [r, g, b] = match.map(Number);
+      return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+    };
+
+    it('should pass through valid hex colors', () => {
+      expect(rgbToHex('#012d55')).toBe('#012d55');
+      expect(rgbToHex('#EA580C')).toBe('#ea580c');
+    });
+
+    it('should convert rgb to hex', () => {
+      expect(rgbToHex('rgb(1, 45, 85)')).toBe('#012d55');
+      expect(rgbToHex('rgb(234, 88, 12)')).toBe('#ea580c');
+    });
+
+    it('should handle rgba', () => {
+      expect(rgbToHex('rgba(1, 45, 85, 1)')).toBe('#012d55');
+    });
+
+    it('should return null for invalid input', () => {
+      expect(rgbToHex(null)).toBe(null);
+      expect(rgbToHex('')).toBe(null);
+    });
+  });
+
+
   describe('calculateConfidence', () => {
     it('should return "found" for button-extracted colors', () => {
       const confidence = BrandDiscoveryService.calculateConfidence('primary', 'button');
