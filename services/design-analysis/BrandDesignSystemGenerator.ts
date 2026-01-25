@@ -111,44 +111,68 @@ export class BrandDesignSystemGenerator {
   }
 
   /**
+   * Safely extract hex color from a ColorWithUsage object or string
+   */
+  private getHex(color: { hex?: string } | string | undefined, fallback: string): string {
+    if (!color) return fallback;
+    if (typeof color === 'string') return color;
+    return color.hex || fallback;
+  }
+
+  /**
    * Generate CSS tokens from Design DNA
    * This is the deterministic fallback that always works
    */
   generateTokensFromDNA(designDna: DesignDNA): { css: string; json: Record<string, string> } {
     const json: Record<string, string> = {};
 
+    // Safely extract colors with fallbacks
+    const colors = designDna.colors || {} as DesignDNA['colors'];
+    const primaryHex = this.getHex(colors.primary, '#3b82f6');
+    const primaryLightHex = this.getHex(colors.primaryLight, '#60a5fa');
+    const primaryDarkHex = this.getHex(colors.primaryDark, '#2563eb');
+    const secondaryHex = this.getHex(colors.secondary, '#1f2937');
+    const accentHex = this.getHex(colors.accent, '#f59e0b');
+
     // Color tokens
-    json['--ctc-primary'] = designDna.colors.primary.hex;
-    json['--ctc-primary-light'] = designDna.colors.primaryLight.hex;
-    json['--ctc-primary-dark'] = designDna.colors.primaryDark.hex;
-    json['--ctc-secondary'] = designDna.colors.secondary.hex;
-    json['--ctc-accent'] = designDna.colors.accent.hex;
+    json['--ctc-primary'] = primaryHex;
+    json['--ctc-primary-light'] = primaryLightHex;
+    json['--ctc-primary-dark'] = primaryDarkHex;
+    json['--ctc-secondary'] = secondaryHex;
+    json['--ctc-accent'] = accentHex;
 
-    // Neutral colors
-    json['--ctc-neutral-darkest'] = designDna.colors.neutrals.darkest;
-    json['--ctc-neutral-dark'] = designDna.colors.neutrals.dark;
-    json['--ctc-neutral-medium'] = designDna.colors.neutrals.medium;
-    json['--ctc-neutral-light'] = designDna.colors.neutrals.light;
-    json['--ctc-neutral-lightest'] = designDna.colors.neutrals.lightest;
+    // Neutral colors (with fallbacks)
+    const neutrals = colors.neutrals || {};
+    json['--ctc-neutral-darkest'] = neutrals.darkest || '#111827';
+    json['--ctc-neutral-dark'] = neutrals.dark || '#374151';
+    json['--ctc-neutral-medium'] = neutrals.medium || '#6b7280';
+    json['--ctc-neutral-light'] = neutrals.light || '#d1d5db';
+    json['--ctc-neutral-lightest'] = neutrals.lightest || '#f9fafb';
 
-    // Semantic colors
-    json['--ctc-success'] = designDna.colors.semantic.success;
-    json['--ctc-warning'] = designDna.colors.semantic.warning;
-    json['--ctc-error'] = designDna.colors.semantic.error;
-    json['--ctc-info'] = designDna.colors.semantic.info;
+    // Semantic colors (with fallbacks)
+    const semantic = colors.semantic || {};
+    json['--ctc-success'] = semantic.success || '#10b981';
+    json['--ctc-warning'] = semantic.warning || '#f59e0b';
+    json['--ctc-error'] = semantic.error || '#ef4444';
+    json['--ctc-info'] = semantic.info || '#3b82f6';
+
+    // Typography (with fallbacks for all nested properties)
+    const typography = designDna.typography || {} as DesignDNA['typography'];
+    const headingFont = typography.headingFont || { family: 'system-ui', fallback: 'sans-serif', weight: 700, lineHeight: 1.2 };
+    const bodyFont = typography.bodyFont || { family: 'system-ui', fallback: 'sans-serif', weight: 400, lineHeight: 1.6 };
 
     // Typography tokens
-    json['--ctc-font-heading'] = `${designDna.typography.headingFont.family}, ${designDna.typography.headingFont.fallback}`;
-    json['--ctc-font-body'] = `${designDna.typography.bodyFont.family}, ${designDna.typography.bodyFont.fallback}`;
-    json['--ctc-font-size-base'] = designDna.typography.baseSize;
-    json['--ctc-font-scale-ratio'] = String(designDna.typography.scaleRatio);
-    json['--ctc-heading-weight'] = String(designDna.typography.headingFont.weight);
-    json['--ctc-body-weight'] = String(designDna.typography.bodyFont.weight);
-    json['--ctc-body-line-height'] = String(designDna.typography.bodyFont.lineHeight);
+    json['--ctc-font-heading'] = `${headingFont.family || 'system-ui'}, ${headingFont.fallback || 'sans-serif'}`;
+    json['--ctc-font-body'] = `${bodyFont.family || 'system-ui'}, ${bodyFont.fallback || 'sans-serif'}`;
+    json['--ctc-font-size-base'] = typography.baseSize || '16px';
+    json['--ctc-font-scale-ratio'] = String(typography.scaleRatio || 1.25);
+    json['--ctc-heading-weight'] = String(headingFont.weight || 700);
+    json['--ctc-body-weight'] = String(bodyFont.weight || 400);
+    json['--ctc-body-line-height'] = String(bodyFont.lineHeight || 1.6);
 
     // Typography scale (using scale ratio)
-    const baseSize = parseFloat(designDna.typography.baseSize) || 16;
-    const ratio = designDna.typography.scaleRatio || 1.25;
+    const baseSize = parseFloat(typography.baseSize || '16') || 16;
+    const ratio = typography.scaleRatio || 1.25;
     json['--ctc-font-size-xs'] = `${(baseSize / ratio / ratio).toFixed(2)}px`;
     json['--ctc-font-size-sm'] = `${(baseSize / ratio).toFixed(2)}px`;
     json['--ctc-font-size-md'] = `${baseSize}px`;
@@ -157,8 +181,9 @@ export class BrandDesignSystemGenerator {
     json['--ctc-font-size-2xl'] = `${(baseSize * ratio * ratio * ratio).toFixed(2)}px`;
     json['--ctc-font-size-3xl'] = `${(baseSize * ratio * ratio * ratio * ratio).toFixed(2)}px`;
 
-    // Spacing tokens
-    const unit = designDna.spacing.baseUnit || 16;
+    // Spacing tokens (with fallbacks)
+    const spacing = designDna.spacing || {} as DesignDNA['spacing'];
+    const unit = spacing.baseUnit || 16;
     json['--ctc-spacing-unit'] = `${unit}px`;
     json['--ctc-spacing-xs'] = `${unit * 0.25}px`;
     json['--ctc-spacing-sm'] = `${unit * 0.5}px`;
@@ -168,25 +193,30 @@ export class BrandDesignSystemGenerator {
     json['--ctc-spacing-2xl'] = `${unit * 3}px`;
     json['--ctc-spacing-3xl'] = `${unit * 4}px`;
 
-    // Border radius tokens
-    json['--ctc-radius-sm'] = designDna.shapes.borderRadius.small;
-    json['--ctc-radius-md'] = designDna.shapes.borderRadius.medium;
-    json['--ctc-radius-lg'] = designDna.shapes.borderRadius.large;
-    json['--ctc-radius-full'] = designDna.shapes.borderRadius.full;
+    // Border radius tokens (with fallbacks)
+    const shapes = designDna.shapes || {} as DesignDNA['shapes'];
+    const borderRadius = shapes.borderRadius || {};
+    json['--ctc-radius-sm'] = borderRadius.small || '4px';
+    json['--ctc-radius-md'] = borderRadius.medium || '8px';
+    json['--ctc-radius-lg'] = borderRadius.large || '16px';
+    json['--ctc-radius-full'] = borderRadius.full || '9999px';
 
-    // Shadow tokens
-    json['--ctc-shadow-card'] = designDna.effects.shadows.cardShadow;
-    json['--ctc-shadow-button'] = designDna.effects.shadows.buttonShadow;
-    json['--ctc-shadow-elevated'] = designDna.effects.shadows.elevatedShadow;
+    // Shadow tokens (with fallbacks)
+    const effects = designDna.effects || {} as DesignDNA['effects'];
+    const shadows = effects.shadows || {};
+    json['--ctc-shadow-card'] = shadows.cardShadow || '0 1px 3px rgba(0,0,0,0.1)';
+    json['--ctc-shadow-button'] = shadows.buttonShadow || '0 1px 2px rgba(0,0,0,0.05)';
+    json['--ctc-shadow-elevated'] = shadows.elevatedShadow || '0 10px 25px rgba(0,0,0,0.15)';
 
-    // Motion tokens
+    // Motion tokens (with fallbacks)
+    const motion = designDna.motion || {} as DesignDNA['motion'];
     const speedMap: Record<string, string> = {
       instant: '0ms',
       fast: '150ms',
       normal: '250ms',
       slow: '400ms'
     };
-    json['--ctc-transition-speed'] = speedMap[designDna.motion.transitionSpeed] || '250ms';
+    json['--ctc-transition-speed'] = speedMap[motion.transitionSpeed] || '250ms';
 
     const easingMap: Record<string, string> = {
       linear: 'linear',
@@ -194,7 +224,7 @@ export class BrandDesignSystemGenerator {
       spring: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
       bounce: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)'
     };
-    json['--ctc-easing'] = easingMap[designDna.motion.easingStyle] || 'ease';
+    json['--ctc-easing'] = easingMap[motion.easingStyle] || 'ease';
 
     // Generate CSS string
     const cssLines = Object.entries(json)
