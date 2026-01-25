@@ -42,8 +42,40 @@ export const BrandDiscoveryService = {
           const [r, g, b] = match.map(Number);
           if (r === 255 && g === 255 && b === 255) return true;
           if (r === 0 && g === 0 && b === 0) return true;
-          if (Math.abs(r-g) < 15 && Math.abs(g-b) < 15) return true;
+          // Gray detection: all channels similar AND not vibrant
+          if (Math.abs(r-g) < 15 && Math.abs(g-b) < 15 && Math.abs(r-b) < 15) return true;
           return false;
+        };
+
+        // Helper: Convert RGB to hex
+        const rgbToHex = (c) => {
+          if (!c) return null;
+          if (c.startsWith('#')) return c;
+          const match = c.match(/\\d+/g);
+          if (!match || match.length < 3) return null;
+          const [r, g, b] = match.map(Number);
+          return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+        };
+
+        // Helper: Extract CSS custom properties from :root
+        const extractCssVariables = () => {
+          const vars = {};
+          try {
+            const rootStyles = getComputedStyle(document.documentElement);
+            const colorVarNames = [
+              '--primary', '--primary-color', '--accent', '--accent-color',
+              '--brand', '--brand-color', '--theme-color', '--main-color',
+              '--color-primary', '--color-accent', '--wp--preset--color--primary',
+              '--global-palette1', '--global-palette2' // Kadence theme
+            ];
+            colorVarNames.forEach(name => {
+              const val = rootStyles.getPropertyValue(name).trim();
+              if (val && !isNeutral(val)) {
+                vars[name] = val;
+              }
+            });
+          } catch (e) {}
+          return vars;
         };
 
         // Color extraction with source tracking
@@ -51,46 +83,97 @@ export const BrandDiscoveryService = {
           const results = { primary: null, secondary: null, accent: null, background: null };
           const sources = { primary: 'fallback', secondary: 'fallback', accent: 'fallback', background: 'element' };
 
-          // Try primary button first (highest confidence)
-          const btnSelectors = [
-            'button[class*="primary"]', '.btn-primary',
-            '.wp-block-button__link', 'button', 'a.button',
-            'a[class*="btn"]', 'a[class*="button"]'
-          ];
+          // 1. FIRST: Try CSS custom properties (highest confidence for modern sites)
+          const cssVars = extractCssVariables();
+          const cssVarKeys = Object.keys(cssVars);
+          if (cssVarKeys.length > 0) {
+            // Prioritize --primary, --accent, etc.
+            const primaryVar = cssVarKeys.find(k => k.includes('primary') || k.includes('brand'));
+            const accentVar = cssVarKeys.find(k => k.includes('accent'));
+            if (primaryVar) {
+              results.primary = cssVars[primaryVar];
+              sources.primary = 'css_variable';
+            }
+            if (accentVar && accentVar !== primaryVar) {
+              results.accent = cssVars[accentVar];
+              sources.accent = 'css_variable';
+            }
+          }
 
-          for (const sel of btnSelectors) {
-            const btn = document.querySelector(sel);
-            if (btn) {
-              const style = window.getComputedStyle(btn);
-              const bg = style.backgroundColor;
-              if (bg && !isNeutral(bg)) {
-                results.primary = bg;
-                sources.primary = 'button';
+          // 2. Try button colors (expanded selectors for WordPress/Elementor)
+          if (!results.primary) {
+            const btnSelectors = [
+              // Standard WordPress
+              '.wp-block-button__link', '.wp-element-button',
+              // Elementor
+              '.elementor-button', '[class*="elementor-button"]', '.e-button',
+              // Kadence
+              '.kb-button', '.kb-btn', '[class*="kb-button"]',
+              // Generic
+              'button[class*="primary"]', '.btn-primary', 'a.button',
+              'a[class*="btn"]', 'a[class*="button"]', 'button:not([class*="close"])',
+              // CTA sections
+              '.cta a', '.hero a[href]', '[class*="cta"] a'
+            ];
+
+            for (const sel of btnSelectors) {
+              try {
+                const btn = document.querySelector(sel);
+                if (btn) {
+                  const style = window.getComputedStyle(btn);
+                  const bg = style.backgroundColor;
+                  if (bg && !isNeutral(bg)) {
+                    results.primary = bg;
+                    sources.primary = 'button';
+                    break;
+                  }
+                }
+              } catch (e) {}
+            }
+          }
+
+          // 3. Try link colors (often the brand color)
+          if (!results.primary) {
+            const links = document.querySelectorAll('a[href]:not([class*="logo"]):not([class*="nav"])');
+            for (const link of Array.from(links).slice(0, 20)) {
+              const style = window.getComputedStyle(link);
+              const color = style.color;
+              if (color && !isNeutral(color)) {
+                results.primary = color;
+                sources.primary = 'link_color';
                 break;
               }
             }
           }
 
-          // Heading color for secondary
+          // 4. Heading color for secondary
           const h1 = document.querySelector('h1, h2');
           if (h1) {
             const color = window.getComputedStyle(h1).color;
-            if (!isNeutral(color)) {
-              results.secondary = color;
-              sources.secondary = 'heading';
-            }
+            results.secondary = color || '#18181b';
+            sources.secondary = isNeutral(color) ? 'heading_neutral' : 'heading';
           }
 
-          // Background from body
+          // 5. Background from body
           results.background = window.getComputedStyle(document.body).backgroundColor || '#ffffff';
 
-          // Fallback: frequency analysis for primary
+          // 6. Fallback: frequency analysis for primary (with improved element selection)
           if (!results.primary) {
             const colors = {};
-            document.querySelectorAll('a, button, [class*="btn"], nav, header').forEach(el => {
-              const bg = window.getComputedStyle(el).backgroundColor;
+            const elements = document.querySelectorAll(
+              'a, button, [class*="btn"], [class*="button"], nav a, header a, ' +
+              '.elementor-widget, [class*="cta"], [class*="primary"], [class*="accent"]'
+            );
+            elements.forEach(el => {
+              const style = window.getComputedStyle(el);
+              // Check both background AND text color
+              const bg = style.backgroundColor;
+              const color = style.color;
               if (!isNeutral(bg)) {
-                colors[bg] = (colors[bg] || 0) + 1;
+                colors[bg] = (colors[bg] || 0) + 2; // Higher weight for backgrounds
+              }
+              if (!isNeutral(color)) {
+                colors[color] = (colors[color] || 0) + 1;
               }
             });
             const sorted = Object.entries(colors).sort((a, b) => b[1] - a[1]);
@@ -100,15 +183,25 @@ export const BrandDiscoveryService = {
             }
           }
 
-          // Final fallback: vibrant orange
-          if (!results.primary) {
+          // 7. Final fallback: vibrant orange (better than black!)
+          if (!results.primary || isNeutral(results.primary)) {
             results.primary = 'rgb(234, 88, 12)';
             sources.primary = 'fallback';
           }
 
-          // Accent defaults to primary
-          results.accent = results.primary;
-          sources.accent = sources.primary;
+          // 8. Accent defaults to primary if not already set
+          if (!results.accent) {
+            results.accent = results.primary;
+            sources.accent = sources.primary;
+          }
+
+          // Convert all to hex for consistency
+          Object.keys(results).forEach(key => {
+            if (results[key]) {
+              const hex = rgbToHex(results[key]);
+              if (hex) results[key] = hex;
+            }
+          });
 
           return { colors: results, sources };
         };

@@ -48,81 +48,180 @@ export const DesignAnalyzer = {
       async function pageFunction(context) {
         const { request, page, log } = context;
         await page.waitForLoadState('networkidle');
-        
-        // 1. GLOBAL COLOR SAMPLER (The "Histogram" Approach)
-        // Sample ALL relevant elements for better color density
-        const elements = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, button, a, [class*="btn"], [class*="button"], .primary, nav, footer'))
-          .slice(0, 150);
-        
-        const colorCounts = {};
-        const bgCounts = {};
-        
-        elements.forEach(el => {
-          const style = window.getComputedStyle(el);
-          const color = style.color;
-          const bg = style.backgroundColor;
-          
-          // Ignore neutrals: pure white, pure black, standard grey-on-white text
-          const isNeutral = (c) => {
-             if (!c || c.includes('rgba(0, 0, 0, 0)')) return true;
-             const rgbStr = c.match(/\\d+/g);
-             if (!rgbStr) return true;
-             const [r, g, b] = rgbStr.map(Number);
-             // Pure white or black
-             if (r === 255 && g === 255 && b === 255) return true;
-             if (r === 0 && g === 0 && b === 0) return true;
-             // Very close to black/white (neutrals)
-             if (Math.abs(r-g) < 10 && Math.abs(g-b) < 10) return true; 
-             return false;
-          };
 
-          if (!isNeutral(color)) {
-            colorCounts[color] = (colorCounts[color] || 0) + 1;
-          }
-          if (!isNeutral(bg)) {
-            bgCounts[bg] = (bgCounts[bg] || 0) + 1;
-          }
-        });
-
-        const getMostFrequent = (counts) => {
-          return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+        // Helper: Check if color is neutral (white, black, gray)
+        const isNeutral = (c) => {
+          if (!c || c.includes('rgba(0, 0, 0, 0)')) return true;
+          const rgbStr = c.match(/\\d+/g);
+          if (!rgbStr) return true;
+          const [r, g, b] = rgbStr.map(Number);
+          if (r === 255 && g === 255 && b === 255) return true;
+          if (r === 0 && g === 0 && b === 0) return true;
+          // Gray detection: all channels similar
+          if (Math.abs(r-g) < 15 && Math.abs(g-b) < 15 && Math.abs(r-b) < 15) return true;
+          return false;
         };
 
-        // 2. ELEMENT SPECIFIC DETECTORS
+        // Helper: Convert RGB to hex
+        const rgbToHex = (c) => {
+          if (!c) return null;
+          if (c.startsWith('#')) return c;
+          const match = c.match(/\\d+/g);
+          if (!match || match.length < 3) return null;
+          const [r, g, b] = match.map(Number);
+          return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+        };
+
+        // 1. EXTRACT CSS CUSTOM PROPERTIES (highest confidence for modern sites)
+        const extractCssVariables = () => {
+          const vars = {};
+          try {
+            const rootStyles = getComputedStyle(document.documentElement);
+            const colorVarNames = [
+              '--primary', '--primary-color', '--accent', '--accent-color',
+              '--brand', '--brand-color', '--theme-color', '--main-color',
+              '--color-primary', '--color-accent', '--wp--preset--color--primary',
+              '--global-palette1', '--global-palette2', // Kadence theme
+              '--ast-global-color-0', '--ast-global-color-1' // Astra theme
+            ];
+            colorVarNames.forEach(name => {
+              const val = rootStyles.getPropertyValue(name).trim();
+              if (val && !isNeutral(val)) {
+                vars[name] = val;
+              }
+            });
+          } catch (e) {}
+          return vars;
+        };
+
+        // 2. FIND PRIMARY BUTTON (expanded selectors for WordPress/Elementor)
         const findPrimaryButton = () => {
           const btnSelectors = [
-            'button[class*="primary"]', 
-            '.wp-block-button__link', 
-            '.btn-primary', 
-            'button', 
-            'a.button',
-            'a[class*="btn"]',
-            'a[class*="button"]'
+            // WordPress core
+            '.wp-block-button__link', '.wp-element-button',
+            // Elementor
+            '.elementor-button', '[class*="elementor-button"]', '.e-button',
+            // Kadence
+            '.kb-button', '.kb-btn', '[class*="kb-button"]',
+            // Astra
+            '.ast-button', '[class*="ast-button"]',
+            // Generic
+            'button[class*="primary"]', '.btn-primary', 'a.button',
+            'a[class*="btn"]', 'a[class*="button"]',
+            'button:not([class*="close"]):not([class*="dismiss"])',
+            // CTA sections
+            '.cta a', '.hero a[href]', '[class*="cta"] a'
           ];
           for (const sel of btnSelectors) {
-            const el = document.querySelector(sel);
-            if (el) {
+            try {
+              const el = document.querySelector(sel);
+              if (el) {
                 const s = window.getComputedStyle(el);
-                if (s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.display !== 'none') return el;
-            }
+                const bg = s.backgroundColor;
+                if (bg && bg !== 'rgba(0, 0, 0, 0)' && !isNeutral(bg) && s.display !== 'none') {
+                  return el;
+                }
+              }
+            } catch (e) {}
           }
           return null;
         };
 
+        // 3. FREQUENCY ANALYSIS (improved element selection)
+        const analyzeColorFrequency = () => {
+          const colorCounts = {};
+          const bgCounts = {};
+
+          const elements = Array.from(document.querySelectorAll(
+            'h1, h2, h3, button, a[href], [class*="btn"], [class*="button"], ' +
+            '.elementor-widget, [class*="cta"], [class*="primary"], [class*="accent"], ' +
+            'nav a, header a, .wp-block-button__link'
+          )).slice(0, 200);
+
+          elements.forEach(el => {
+            const style = window.getComputedStyle(el);
+            const color = style.color;
+            const bg = style.backgroundColor;
+
+            if (!isNeutral(color)) {
+              colorCounts[color] = (colorCounts[color] || 0) + 1;
+            }
+            if (!isNeutral(bg)) {
+              bgCounts[bg] = (bgCounts[bg] || 0) + 2; // Higher weight for backgrounds
+            }
+          });
+
+          return { colorCounts, bgCounts };
+        };
+
+        const getMostFrequent = (counts) => {
+          const entries = Object.entries(counts);
+          if (entries.length === 0) return null;
+          return entries.sort((a, b) => b[1] - a[1])[0][0];
+        };
+
+        // Execute extraction
+        const cssVars = extractCssVariables();
+        const { colorCounts, bgCounts } = analyzeColorFrequency();
         const bodyStyle = window.getComputedStyle(document.body);
         const h1 = document.querySelector('h1') || document.querySelector('h2');
         const h1Style = h1 ? window.getComputedStyle(h1) : bodyStyle;
         const primBtn = findPrimaryButton();
         const btnStyle = primBtn ? window.getComputedStyle(primBtn) : null;
 
-        // 3. RESOLVE BRAND COLOR (The "Robust Orange" Fix)
-        // Hierarchy: Button BG -> Most frequent BG -> H1 Color -> Most frequent Color
-        let brandColor = btnStyle?.backgroundColor;
-        if (!brandColor || brandColor === 'rgba(0, 0, 0, 0)' || brandColor === 'transparent') {
-           brandColor = getMostFrequent(bgCounts) || h1Style.color || getMostFrequent(colorCounts) || 'rgb(234, 88, 12)'; 
+        // 4. RESOLVE BRAND COLOR (priority order)
+        let brandColor = null;
+        let brandSource = 'fallback';
+
+        // Priority 1: CSS custom properties
+        const cssVarKeys = Object.keys(cssVars);
+        if (cssVarKeys.length > 0) {
+          const primaryVar = cssVarKeys.find(k => k.includes('primary') || k.includes('brand') || k.includes('palette1'));
+          if (primaryVar) {
+            brandColor = cssVars[primaryVar];
+            brandSource = 'css_variable';
+          }
         }
 
-        // 4. THEME DETECTION
+        // Priority 2: Button background
+        if (!brandColor && btnStyle) {
+          const btnBg = btnStyle.backgroundColor;
+          if (btnBg && !isNeutral(btnBg)) {
+            brandColor = btnBg;
+            brandSource = 'button';
+          }
+        }
+
+        // Priority 3: Link colors (often the brand color)
+        if (!brandColor) {
+          const links = document.querySelectorAll('a[href]:not([class*="logo"]):not([class*="nav"])');
+          for (const link of Array.from(links).slice(0, 20)) {
+            const style = window.getComputedStyle(link);
+            const color = style.color;
+            if (color && !isNeutral(color)) {
+              brandColor = color;
+              brandSource = 'link_color';
+              break;
+            }
+          }
+        }
+
+        // Priority 4: Frequency analysis
+        if (!brandColor) {
+          brandColor = getMostFrequent(bgCounts) || getMostFrequent(colorCounts);
+          if (brandColor) brandSource = 'frequency';
+        }
+
+        // Priority 5: Final fallback - vibrant orange
+        if (!brandColor || isNeutral(brandColor)) {
+          brandColor = 'rgb(234, 88, 12)';
+          brandSource = 'fallback';
+        }
+
+        // Convert to hex
+        brandColor = rgbToHex(brandColor) || brandColor;
+
+        // Theme detection
         const rgb = bodyStyle.backgroundColor.match(/\\d+/g);
         const luma = rgb ? (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) : 255;
         const isDark = luma < 128;
@@ -132,7 +231,7 @@ export const DesignAnalyzer = {
             background: bodyStyle.backgroundColor || '#ffffff',
             text: bodyStyle.color || '#000000',
             primary: brandColor,
-            secondary: h1Style.color || '#000000',
+            secondary: h1Style.color || '#18181b',
             isDark
           },
           typography: {
@@ -147,6 +246,12 @@ export const DesignAnalyzer = {
               borderRadius: btnStyle.borderRadius,
               fontFamily: btnStyle.fontFamily
             } : null
+          },
+          _debug: {
+            brandSource,
+            cssVarsFound: cssVarKeys,
+            frequencyTopColors: Object.entries(colorCounts).slice(0, 3),
+            frequencyTopBgs: Object.entries(bgCounts).slice(0, 3)
           }
         };
       }
@@ -177,13 +282,26 @@ export const DesignAnalyzer = {
       // Note: The structure returned from pageFunction matches what we put in `return {...}` inside it.
       // But we need to ensure defaults if things are missing
 
+      // Log debug info if available
+      if (data._debug) {
+        console.log('[DesignAnalyzer] Brand detection:', {
+          source: data._debug.brandSource,
+          cssVars: data._debug.cssVarsFound,
+          topColors: data._debug.frequencyTopColors,
+          topBgs: data._debug.frequencyTopBgs
+        });
+      }
+
+      // Use vibrant orange as fallback instead of dark gray
+      const fallbackPrimary = '#ea580c';
+
       return {
         colors: {
           background: data.colors?.background || '#ffffff',
-          text: data.colors?.text || '#000000',
-          primary: data.colors?.primary || '#18181B',
-          secondary: data.colors?.secondary || '#000000',
-          accent: data.colors?.primary || '#18181B' // Default accent to primary
+          text: data.colors?.text || '#18181b',
+          primary: data.colors?.primary || fallbackPrimary,
+          secondary: data.colors?.secondary || '#18181b',
+          accent: data.colors?.primary || fallbackPrimary
         },
         typography: {
           bodyFont: data.typography?.bodyFont || 'system-ui, sans-serif',
@@ -192,9 +310,9 @@ export const DesignAnalyzer = {
         },
         components: {
           button: {
-            backgroundColor: data.components?.button?.backgroundColor || '#18181B',
+            backgroundColor: data.components?.button?.backgroundColor || fallbackPrimary,
             color: data.components?.button?.color || '#ffffff',
-            borderRadius: data.components?.button?.borderRadius || '4px'
+            borderRadius: data.components?.button?.borderRadius || '8px'
           },
           card: {
             backgroundColor: '#ffffff',
