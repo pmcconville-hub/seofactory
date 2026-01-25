@@ -23,16 +23,28 @@ export const BrandDiscoveryService = {
 
     const pageFunction = `
       async function pageFunction(context) {
-        const { request, page } = context;
-        await page.waitForLoadState('networkidle');
+        const { request, page, log } = context;
 
-        // Capture screenshot
-        const screenshot = await page.screenshot({
-          type: 'jpeg',
-          quality: 80,
-          fullPage: false
-        });
-        const screenshotBase64 = screenshot.toString('base64');
+        try {
+          log.info('Starting page analysis for:', request.url);
+
+          // Wait for page to be ready (with timeout)
+          await page.waitForLoadState('domcontentloaded', { timeout: 30000 });
+
+          // Additional wait for JS-heavy sites
+          await page.waitForTimeout(2000);
+
+          log.info('Page loaded, capturing screenshot...');
+
+          // Capture screenshot
+          const screenshot = await page.screenshot({
+            type: 'jpeg',
+            quality: 80,
+            fullPage: false
+          });
+          const screenshotBase64 = screenshot.toString('base64');
+
+          log.info('Screenshot captured, size:', screenshotBase64.length, 'chars');
 
         // Helper: Check if color is neutral (white, black, gray)
         const isNeutral = (c) => {
@@ -261,15 +273,26 @@ export const BrandDiscoveryService = {
         const typoData = extractTypography();
         const compData = extractComponents();
 
-        return {
-          screenshotBase64,
-          colors: colorData.colors,
-          colorSources: colorData.sources,
-          typography: typoData.fonts,
-          typographySources: typoData.sources,
-          components: compData,
-          url: request.url
-        };
+          log.info('Extraction complete, returning data');
+
+          return {
+            screenshotBase64,
+            colors: colorData.colors,
+            colorSources: colorData.sources,
+            typography: typoData.fonts,
+            typographySources: typoData.sources,
+            components: compData,
+            url: request.url
+          };
+        } catch (error) {
+          log.error('Page analysis failed:', error.message);
+          // Return error info so we can debug
+          return {
+            error: error.message,
+            url: request.url,
+            screenshotBase64: null
+          };
+        }
       }
     `;
 
@@ -282,13 +305,32 @@ export const BrandDiscoveryService = {
       linkSelector: ''
     };
 
+    console.log('[BrandDiscovery] Starting Apify actor for URL:', url);
     const results = await runApifyActor(WEB_SCRAPER_ACTOR_ID, apiToken, runInput);
 
+    console.log('[BrandDiscovery] Apify returned', results?.length || 0, 'results');
+
     if (!results || results.length === 0) {
-      throw new Error('No results from brand analysis');
+      throw new Error('No results from brand analysis - Apify returned empty dataset');
     }
 
-    return this.buildReport(url, results[0]);
+    const firstResult = results[0];
+
+    // Check if the pageFunction reported an error
+    if (firstResult.error) {
+      console.error('[BrandDiscovery] Page analysis error:', firstResult.error);
+      throw new Error(`Page analysis failed: ${firstResult.error}`);
+    }
+
+    // Check if screenshot was captured
+    if (!firstResult.screenshotBase64) {
+      console.error('[BrandDiscovery] No screenshot in result:', Object.keys(firstResult));
+      throw new Error('Screenshot capture failed - no image data returned');
+    }
+
+    console.log('[BrandDiscovery] Screenshot captured, size:', firstResult.screenshotBase64.length, 'chars');
+
+    return this.buildReport(url, firstResult);
   },
 
   /**

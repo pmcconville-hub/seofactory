@@ -40,6 +40,8 @@ export const runApifyActor = async (actorId: string, apiToken: string, runInput:
   const { data: runDetails }: { data: ApifyRun } = await startResponse.json();
 
   let run = runDetails;
+  console.log('[Apify] Run started with ID:', run.id, 'status:', run.status);
+
   const maxRetries = 40; // ~200 seconds max wait
   for (let i = 0; i < maxRetries; i++) {
     await sleep(5000);
@@ -51,17 +53,22 @@ export const runApifyActor = async (actorId: string, apiToken: string, runInput:
     }
     const { data: currentRun }: { data: ApifyRun } = await statusResponse.json();
     run = currentRun;
+    console.log('[Apify] Run status:', run.status, `(attempt ${i + 1}/${maxRetries})`);
     if (run.status === 'SUCCEEDED') break;
     if (['FAILED', 'TIMED-OUT', 'ABORTED'].includes(run.status)) throw new Error(`Apify actor run failed with status: ${run.status}`);
   }
 
   if (run.status !== 'SUCCEEDED') throw new Error('Apify actor run timed out.');
 
+  console.log('[Apify] Fetching results from dataset:', run.defaultDatasetId);
   const resultsUrl = `${API_BASE_URL}/datasets/${run.defaultDatasetId}/items?token=${apiToken}&format=json`;
   const resultsResponse = await fetch(resultsUrl);
   if (!resultsResponse.ok) throw new Error(`Apify fetch results failed: ${resultsResponse.statusText}`);
 
-  return await resultsResponse.json();
+  const results = await resultsResponse.json();
+  console.log('[Apify] Fetched', results.length, 'items from dataset');
+
+  return results;
 };
 
 export const countryNameToCode = (name: string): string | undefined => {
