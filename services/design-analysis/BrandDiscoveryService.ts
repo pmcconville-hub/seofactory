@@ -6,7 +6,8 @@ import type {
   DesignTokens
 } from '../../types/publishing';
 
-const WEB_SCRAPER_ACTOR_ID = 'apify/web-scraper';
+// Use playwright-scraper which guarantees Playwright page object
+const PLAYWRIGHT_SCRAPER_ACTOR_ID = 'apify/playwright-scraper';
 
 /**
  * Enhanced Brand Discovery Service with screenshot capture and confidence scoring.
@@ -299,19 +300,25 @@ export const BrandDiscoveryService = {
     const runInput = {
       startUrls: [{ url }],
       pageFunction,
-      // CRITICAL: Must use playwright crawler for screenshot capture
-      crawlerType: 'playwright:firefox',
+      // Playwright-scraper native options
       proxyConfiguration: { useApifyProxy: true },
       maxConcurrency: 1,
       maxRequestsPerCrawl: 1,
+      // Don't follow links - just process the given URL
       linkSelector: '',
+      // Browser settings
+      launchContext: {
+        launchOptions: {
+          headless: true,
+        },
+      },
       // Increase timeout for slow sites
-      pageLoadTimeoutSecs: 60,
-      pageFunctionTimeoutSecs: 60,
+      navigationTimeoutSecs: 60,
+      requestHandlerTimeoutSecs: 60,
     };
 
-    console.log('[BrandDiscovery] Starting Apify actor for URL:', url);
-    const results = await runApifyActor(WEB_SCRAPER_ACTOR_ID, apiToken, runInput);
+    console.log('[BrandDiscovery] Starting Apify playwright-scraper for URL:', url);
+    const results = await runApifyActor(PLAYWRIGHT_SCRAPER_ACTOR_ID, apiToken, runInput);
 
     console.log('[BrandDiscovery] Apify returned', results?.length || 0, 'results');
 
