@@ -28,11 +28,16 @@ interface TopicBridgingContextProps {
 }
 
 // Attribute category weights for scoring (Semantic SEO principle)
-const CATEGORY_WEIGHTS: Record<AttributeCategory, number> = {
+const CATEGORY_WEIGHTS: Partial<Record<AttributeCategory, number>> = {
   UNIQUE: 1.0,
   ROOT: 0.8,
   RARE: 0.5,
   COMMON: 0.2,
+  CORE_DEFINITION: 0.9,
+  SEARCH_DEMAND: 0.7,
+  COMPETITIVE_EXPANSION: 0.6,
+  COMPOSITE: 0.4,
+  UNCLASSIFIED: 0.1,
 };
 
 interface BridgeRecommendation {
@@ -73,15 +78,17 @@ function calculateBridgeScore(
   eavs.forEach(eav => {
     if (!eav.entity) return;
     const entityLower = eav.entity.toLowerCase();
-    const valueLower = (eav.value || '').toLowerCase();
+    // Handle value that might be string or number
+    const valueStr = eav.value != null ? String(eav.value) : '';
+    const valueLower = valueStr.toLowerCase();
 
-    if (sourceTitle.includes(entityLower) || sourceTitle.includes(valueLower)) {
+    if (sourceTitle.includes(entityLower) || (valueLower && sourceTitle.includes(valueLower))) {
       sourceEntities.add(eav.entity);
-      if (eav.value) sourceEntities.add(eav.value);
+      if (valueStr) sourceEntities.add(valueStr);
     }
-    if (targetTitle.includes(entityLower) || targetTitle.includes(valueLower)) {
+    if (targetTitle.includes(entityLower) || (valueLower && targetTitle.includes(valueLower))) {
       targetEntities.add(eav.entity);
-      if (eav.value) targetEntities.add(eav.value);
+      if (valueStr) targetEntities.add(valueStr);
     }
   });
 
@@ -94,7 +101,7 @@ function calculateBridgeScore(
 
   // 2. Score based on shared entities with category weights
   const relevantEavs = eavs.filter(eav =>
-    sharedEntities.includes(eav.entity) || sharedEntities.includes(eav.value || '')
+    sharedEntities.includes(eav.entity) || sharedEntities.includes(String(eav.value ?? ''))
   );
 
   relevantEavs.forEach(eav => {
@@ -157,13 +164,13 @@ function calculateBridgeScore(
   }
 
   // 6. Parent-child relationship bonus
-  if (sourceTopic.parent_id === targetTopic.id || targetTopic.parent_id === sourceTopic.id) {
+  if (sourceTopic.parent_topic_id === targetTopic.id || targetTopic.parent_topic_id === sourceTopic.id) {
     score += 5;
     reasons.push('maintains topic hierarchy');
   }
 
   // 7. Penalty for same-cluster redundancy (we want diversity)
-  if (sourceTopic.parent_id === targetTopic.parent_id && sourceTopic.parent_id) {
+  if (sourceTopic.parent_topic_id === targetTopic.parent_topic_id && sourceTopic.parent_topic_id) {
     score -= 5; // Sibling topics - slightly less valuable
   }
 

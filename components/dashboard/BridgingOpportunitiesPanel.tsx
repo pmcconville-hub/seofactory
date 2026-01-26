@@ -6,15 +6,16 @@
  *
  * Intelligence:
  * - Transforms node IDs to human-readable names
- * - Generates proper topic title based on gap context
+ * - Generates proper topic title based on gap context (NO REPETITION)
  * - Determines optimal placement (parent topic)
  * - Provides clear SEO reasoning
  * - Deduplicates identical suggestions
+ * - Auto-generates internal link suggestions for existing bridges
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { KnowledgeGraph, StructuralHole } from '../../lib/knowledgeGraph';
-import { SemanticTriple, SEOPillars, EnrichedTopic, AttributeCategory } from '../../types';
+import { SemanticTriple, SEOPillars, EnrichedTopic, AttributeCategory, ContextualBridgeLink } from '../../types';
 import { Button } from '../ui/Button';
 
 /**
@@ -36,6 +37,18 @@ export interface BridgeTopicSuggestion {
   };
 }
 
+/**
+ * Auto-generated internal link suggestion
+ */
+export interface SuggestedInternalLink {
+  targetTopicId: string;
+  targetTopicTitle: string;
+  anchorText: string;
+  reasoning: string;
+  cluster: 'A' | 'B';
+  approved: boolean;
+}
+
 interface BridgingOpportunitiesPanelProps {
   knowledgeGraph: KnowledgeGraph | null;
   eavs: SemanticTriple[];
@@ -43,14 +56,20 @@ interface BridgingOpportunitiesPanelProps {
   topics: EnrichedTopic[];
   onSelectTopic?: (topicId: string) => void;
   onCreateBridgeTopic?: (suggestion: BridgeTopicSuggestion) => void;
+  onAddLinks?: (bridgeTopicId: string, links: ContextualBridgeLink[]) => void;
 }
 
-// Attribute category weights for scoring
-const CATEGORY_WEIGHTS: Record<AttributeCategory, number> = {
+// Attribute category weights for scoring (includes all AttributeCategory values)
+const CATEGORY_WEIGHTS: Partial<Record<AttributeCategory, number>> = {
   UNIQUE: 1.0,
   ROOT: 0.8,
   RARE: 0.5,
   COMMON: 0.2,
+  CORE_DEFINITION: 0.9,
+  SEARCH_DEMAND: 0.7,
+  COMPETITIVE_EXPANSION: 0.6,
+  COMPOSITE: 0.4,
+  UNCLASSIFIED: 0.1,
 };
 
 /**
@@ -78,7 +97,7 @@ function findBestParent(
   topics: EnrichedTopic[]
 ): { parentTopic: EnrichedTopic | null; reason: string } {
   // Find topics that match either cluster
-  const coreTopics = topics.filter(t => t.topic_type === 'core');
+  const coreTopics = topics.filter(t => t.type === 'core');
 
   for (const coreTopic of coreTopics) {
     const titleLower = (coreTopic.title || '').toLowerCase();
@@ -114,7 +133,47 @@ function findBestParent(
 }
 
 /**
- * Generate intelligent topic title
+ * Check if two terms are similar (overlap or contain each other)
+ */
+function areSimilarTerms(term1: string, term2: string): boolean {
+  if (!term1 || !term2) return false;
+  const t1 = term1.toLowerCase().trim();
+  const t2 = term2.toLowerCase().trim();
+
+  // Exact match
+  if (t1 === t2) return true;
+
+  // One contains the other
+  if (t1.includes(t2) || t2.includes(t1)) return true;
+
+  // Check word overlap (more than 50% of words shared)
+  const words1 = t1.split(/\s+/);
+  const words2 = t2.split(/\s+/);
+  const sharedWords = words1.filter(w => words2.includes(w));
+  const overlapRatio = sharedWords.length / Math.min(words1.length, words2.length);
+
+  return overlapRatio > 0.5;
+}
+
+/**
+ * Get unique, non-overlapping terms from a list
+ */
+function getDistinctTerms(terms: string[]): string[] {
+  const distinct: string[] = [];
+
+  for (const term of terms) {
+    if (!term) continue;
+    const isDuplicate = distinct.some(existing => areSimilarTerms(existing, term));
+    if (!isDuplicate) {
+      distinct.push(term);
+    }
+  }
+
+  return distinct;
+}
+
+/**
+ * Generate intelligent topic title - NO REPETITION ALLOWED
  */
 function generateBridgeTitle(
   clusterA: string[],
@@ -123,38 +182,49 @@ function generateBridgeTitle(
   pillars?: SEOPillars
 ): string {
   // Get human-readable names for clusters
-  const clusterANames = clusterA.slice(0, 2).map(humanizeNodeId).filter(Boolean);
-  const clusterBNames = clusterB.slice(0, 2).map(humanizeNodeId).filter(Boolean);
+  const clusterANames = clusterA.map(humanizeNodeId).filter(Boolean);
+  const clusterBNames = clusterB.map(humanizeNodeId).filter(Boolean);
 
-  // If there's a bridge candidate, use it as the main topic
+  // Get ALL unique terms across both clusters
+  const allTerms = [...clusterANames, ...clusterBNames];
+  const distinctTerms = getDistinctTerms(allTerms);
+
+  // If bridge candidate exists, check if it's distinct
+  let mainTopic: string | null = null;
   if (bridgeCandidates.length > 0) {
-    const mainTopic = humanizeNodeId(bridgeCandidates[0]);
-
-    // Create a title that explains the connection
-    if (clusterANames.length > 0 && clusterBNames.length > 0) {
-      // Pick the most specific terms
-      const termA = clusterANames[0];
-      const termB = clusterBNames[0];
-
-      // Check if main topic is related to CSI
-      if (pillars?.centralSearchIntent && Array.isArray(pillars.centralSearchIntent)) {
-        const csiTerm = pillars.centralSearchIntent[0];
-        if (csiTerm && mainTopic.toLowerCase().includes(csiTerm.toLowerCase())) {
-          return `${mainTopic}: ${termA} en ${termB}`;
-        }
-      }
-
-      return `${mainTopic} voor ${termA} en ${termB}`;
+    const candidate = humanizeNodeId(bridgeCandidates[0]);
+    // Only use if distinct from cluster terms
+    const isDuplicate = distinctTerms.some(t => areSimilarTerms(t, candidate));
+    if (!isDuplicate) {
+      mainTopic = candidate;
     }
-
-    return mainTopic;
   }
 
-  // No bridge candidate - create connection title
-  if (clusterANames.length > 0 && clusterBNames.length > 0) {
-    return `${clusterANames[0]} en ${clusterBNames[0]}: De Verbinding`;
+  // Find the most distinct term from each cluster
+  const distinctA = getDistinctTerms(clusterANames);
+  const distinctB = clusterBNames.filter(b => !distinctA.some(a => areSimilarTerms(a, b)));
+
+  // If we have a main topic that's distinct, use it
+  if (mainTopic && distinctA.length > 0 && distinctB.length > 0) {
+    return `${mainTopic}: ${distinctA[0]} en ${distinctB[0]}`;
   }
 
+  // If we have a main topic but clusters overlap
+  if (mainTopic && distinctA.length > 0) {
+    return `${mainTopic} voor ${distinctA[0]}`;
+  }
+
+  // No main topic - just use distinct terms from each cluster
+  if (distinctA.length > 0 && distinctB.length > 0) {
+    return `${distinctA[0]} en ${distinctB[0]}: Verbinding`;
+  }
+
+  // Fallback: use the most distinct term available
+  if (distinctTerms.length > 0) {
+    return `${distinctTerms[0]}: Uitgebreid`;
+  }
+
+  // Last resort
   return 'Bridge Content';
 }
 
@@ -195,6 +265,95 @@ interface ScoredOpportunity {
   score: number;
   impactLevel: 'critical' | 'high' | 'medium';
   existingBridge?: EnrichedTopic;
+  suggestedLinks?: SuggestedInternalLink[];
+}
+
+/**
+ * Auto-generate internal link suggestions for an existing bridge topic
+ * This is the SMART part - AI generates specific links with context
+ */
+function generateLinkSuggestions(
+  bridgeTopic: EnrichedTopic,
+  clusterANames: string[],
+  clusterBNames: string[],
+  allTopics: EnrichedTopic[],
+  eavs: SemanticTriple[]
+): SuggestedInternalLink[] {
+  const suggestions: SuggestedInternalLink[] = [];
+  const bridgeTitle = bridgeTopic.title?.toLowerCase() || '';
+
+  // Find topics that match each cluster
+  for (const topic of allTopics) {
+    if (topic.id === bridgeTopic.id) continue;
+    if (!topic.title) continue;
+
+    const topicTitleLower = topic.title.toLowerCase();
+
+    // Check cluster A matches
+    const matchesA = clusterANames.some(name => {
+      const nameLower = name.toLowerCase();
+      return topicTitleLower.includes(nameLower) || nameLower.includes(topicTitleLower.split(':')[0]);
+    });
+
+    // Check cluster B matches
+    const matchesB = clusterBNames.some(name => {
+      const nameLower = name.toLowerCase();
+      return topicTitleLower.includes(nameLower) || nameLower.includes(topicTitleLower.split(':')[0]);
+    });
+
+    if (!matchesA && !matchesB) continue;
+
+    // Generate intelligent anchor text based on EAVs
+    let anchorText = topic.title;
+    let reasoning = '';
+
+    // Find relevant EAV for this topic
+    const relevantEav = eavs.find(eav => {
+      if (!eav.entity || !eav.attribute) return false;
+      const entityLower = eav.entity.toLowerCase();
+      const attrLower = eav.attribute.toLowerCase();
+      return topicTitleLower.includes(entityLower) || topicTitleLower.includes(attrLower);
+    });
+
+    if (relevantEav) {
+      // Create semantic anchor text from EAV
+      anchorText = `${relevantEav.entity} ${relevantEav.attribute}`.trim();
+      reasoning = `Links via ${relevantEav.category} attribute "${relevantEav.attribute}" - strengthens semantic relationship`;
+    } else {
+      // Fallback reasoning based on topic relationship
+      if (matchesA) {
+        reasoning = `Connects to ${clusterANames[0]} cluster - expands topical coverage`;
+      } else {
+        reasoning = `Connects to ${clusterBNames[0]} cluster - bridges content gaps`;
+      }
+    }
+
+    // Ensure anchor text is not too long
+    if (anchorText.length > 50) {
+      anchorText = topic.title.split(':')[0].trim() || topic.title.substring(0, 45) + '...';
+    }
+
+    suggestions.push({
+      targetTopicId: topic.id,
+      targetTopicTitle: topic.title,
+      anchorText,
+      reasoning,
+      cluster: matchesA ? 'A' : 'B',
+      approved: true, // Default to approved - user can reject
+    });
+  }
+
+  // Sort by cluster to show balanced distribution
+  suggestions.sort((a, b) => {
+    if (a.cluster !== b.cluster) return a.cluster === 'A' ? -1 : 1;
+    return 0;
+  });
+
+  // Limit to reasonable number (3 from each cluster max)
+  const clusterALinks = suggestions.filter(s => s.cluster === 'A').slice(0, 3);
+  const clusterBLinks = suggestions.filter(s => s.cluster === 'B').slice(0, 3);
+
+  return [...clusterALinks, ...clusterBLinks];
 }
 
 /**
@@ -236,6 +395,18 @@ function analyzeOpportunities(
       return clusterANames.some(n => titleLower.includes(n.toLowerCase())) &&
              clusterBNames.some(n => titleLower.includes(n.toLowerCase()));
     });
+
+    // Generate link suggestions if existing bridge found
+    let suggestedLinks: SuggestedInternalLink[] | undefined;
+    if (existingBridge) {
+      suggestedLinks = generateLinkSuggestions(
+        existingBridge,
+        clusterANames,
+        clusterBNames,
+        topics,
+        eavs
+      );
+    }
 
     // Calculate score
     let score = 0;
@@ -295,6 +466,7 @@ function analyzeOpportunities(
       score,
       impactLevel,
       existingBridge,
+      suggestedLinks,
     });
   }
 
@@ -311,7 +483,12 @@ const BridgingOpportunitiesPanel: React.FC<BridgingOpportunitiesPanelProps> = ({
   topics,
   onSelectTopic,
   onCreateBridgeTopic,
+  onAddLinks,
 }) => {
+  // State for managing link approvals
+  const [linkApprovals, setLinkApprovals] = useState<Record<string, boolean>>({});
+  const [isAddingLinks, setIsAddingLinks] = useState(false);
+
   // Analyze and get the SINGLE BEST opportunity
   const opportunity = useMemo(() => {
     if (!knowledgeGraph) return null;
@@ -324,6 +501,50 @@ const BridgingOpportunitiesPanel: React.FC<BridgingOpportunitiesPanelProps> = ({
       return null;
     }
   }, [knowledgeGraph, eavs, topics, pillars]);
+
+  // Initialize link approvals when suggestions change
+  React.useEffect(() => {
+    if (opportunity?.suggestedLinks) {
+      const initial: Record<string, boolean> = {};
+      opportunity.suggestedLinks.forEach(link => {
+        initial[link.targetTopicId] = true; // Default to approved
+      });
+      setLinkApprovals(initial);
+    }
+  }, [opportunity?.suggestedLinks]);
+
+  // Toggle link approval
+  const toggleLinkApproval = (topicId: string) => {
+    setLinkApprovals(prev => ({
+      ...prev,
+      [topicId]: !prev[topicId],
+    }));
+  };
+
+  // Handle adding approved links
+  const handleAddLinks = () => {
+    if (!opportunity?.existingBridge || !opportunity.suggestedLinks || !onAddLinks) return;
+
+    setIsAddingLinks(true);
+
+    // Convert approved suggestions to ContextualBridgeLink format
+    const approvedLinks: ContextualBridgeLink[] = opportunity.suggestedLinks
+      .filter(link => linkApprovals[link.targetTopicId])
+      .map(link => ({
+        targetTopic: link.targetTopicTitle,
+        anchorText: link.anchorText,
+        annotation_text_hint: link.reasoning,
+        reasoning: link.reasoning,
+      }));
+
+    onAddLinks(opportunity.existingBridge.id, approvedLinks);
+    setIsAddingLinks(false);
+  };
+
+  // Count approved links
+  const approvedCount = opportunity?.suggestedLinks?.filter(
+    link => linkApprovals[link.targetTopicId]
+  ).length || 0;
 
   if (!knowledgeGraph) {
     return (
@@ -356,27 +577,127 @@ const BridgingOpportunitiesPanel: React.FC<BridgingOpportunitiesPanelProps> = ({
 
   return (
     <div className="space-y-3">
-      {/* If existing bridge exists, show that first */}
+      {/* If existing bridge exists, show auto-generated links */}
       {existingBridge ? (
         <div className="p-3 rounded-lg border bg-green-500/10 border-green-500/30">
           <div className="flex items-center gap-2 mb-2">
             <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="text-sm font-medium text-green-400">Existing Bridge Found</span>
+            <span className="text-sm font-medium text-green-400">Bridge Topic Ready</span>
           </div>
-          <p className="text-sm text-gray-300 mb-2">
-            "{existingBridge.title}" can bridge these clusters. Add internal links to strengthen the connection.
+          <p className="text-sm text-gray-300 mb-3">
+            <span className="text-white font-medium">"{existingBridge.title}"</span> bridges these clusters.
           </p>
-          {onSelectTopic && (
-            <Button
-              onClick={() => onSelectTopic(existingBridge.id)}
-              variant="secondary"
-              size="sm"
-              className="text-xs"
-            >
-              View & Add Links
-            </Button>
+
+          {/* Auto-generated internal links */}
+          {opportunity.suggestedLinks && opportunity.suggestedLinks.length > 0 ? (
+            <div className="space-y-2 mb-3">
+              <p className="text-xs text-gray-400 font-medium">
+                Suggested Internal Links ({approvedCount}/{opportunity.suggestedLinks.length} approved):
+              </p>
+
+              <div className="max-h-48 overflow-y-auto space-y-1.5">
+                {opportunity.suggestedLinks.map((link) => (
+                  <div
+                    key={link.targetTopicId}
+                    className={`p-2 rounded border transition-colors cursor-pointer ${
+                      linkApprovals[link.targetTopicId]
+                        ? 'bg-emerald-500/10 border-emerald-500/30'
+                        : 'bg-gray-800/50 border-gray-700/50 opacity-60'
+                    }`}
+                    onClick={() => toggleLinkApproval(link.targetTopicId)}
+                  >
+                    <div className="flex items-start gap-2">
+                      {/* Checkbox */}
+                      <div className={`w-4 h-4 mt-0.5 rounded border flex items-center justify-center flex-shrink-0 ${
+                        linkApprovals[link.targetTopicId]
+                          ? 'bg-emerald-500 border-emerald-500'
+                          : 'border-gray-500'
+                      }`}>
+                        {linkApprovals[link.targetTopicId] && (
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        {/* Link target */}
+                        <p className="text-xs text-white truncate" title={link.targetTopicTitle}>
+                          → {link.targetTopicTitle}
+                        </p>
+                        {/* Anchor text */}
+                        <p className="text-xs text-blue-400">
+                          Anchor: "<span className="italic">{link.anchorText}</span>"
+                        </p>
+                        {/* Reasoning */}
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {link.reasoning}
+                        </p>
+                      </div>
+
+                      {/* Cluster badge */}
+                      <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
+                        link.cluster === 'A'
+                          ? 'bg-blue-500/20 text-blue-400'
+                          : 'bg-purple-500/20 text-purple-400'
+                      }`}>
+                        {link.cluster}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex gap-2 mt-3">
+                {onAddLinks && approvedCount > 0 && (
+                  <Button
+                    onClick={handleAddLinks}
+                    variant="primary"
+                    size="sm"
+                    disabled={isAddingLinks}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    {isAddingLinks ? (
+                      'Adding...'
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                        Add {approvedCount} Links
+                      </>
+                    )}
+                  </Button>
+                )}
+                {onSelectTopic && (
+                  <Button
+                    onClick={() => onSelectTopic(existingBridge.id)}
+                    variant="secondary"
+                    size="sm"
+                    className="text-xs"
+                  >
+                    View Topic
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* No suggestions available - fallback to manual */
+            <div className="flex gap-2">
+              {onSelectTopic && (
+                <Button
+                  onClick={() => onSelectTopic(existingBridge.id)}
+                  variant="secondary"
+                  size="sm"
+                  className="text-xs"
+                >
+                  View & Add Links Manually
+                </Button>
+              )}
+            </div>
           )}
         </div>
       ) : (

@@ -2,7 +2,7 @@
 // components/ProjectDashboard.tsx
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { useAppState } from '../state/appState';
-import { TopicalMap, EnrichedTopic, ContentBrief, BusinessInfo, SEOPillars, TopicRecommendation, GscRow, ValidationIssue, MergeSuggestion, ResponseCode, SemanticTriple, ExpansionMode, AuditRuleResult, ContextualFlowIssue, FoundationPage, FoundationPageType, NAPData, NavigationStructure, ExpandedTemplateResult, FreshnessProfile } from '../types';
+import { TopicalMap, EnrichedTopic, ContentBrief, BusinessInfo, SEOPillars, TopicRecommendation, GscRow, ValidationIssue, MergeSuggestion, ResponseCode, SemanticTriple, ExpansionMode, AuditRuleResult, ContextualFlowIssue, FoundationPage, FoundationPageType, NAPData, NavigationStructure, ExpandedTemplateResult, FreshnessProfile, ContextualBridgeLink } from '../types';
 import { getSupabaseClient } from '../services/supabaseClient';
 import { KnowledgeGraph as KnowledgeGraphClass } from '../lib/knowledgeGraph';
 import { calculateDashboardMetrics } from '../utils/helpers';
@@ -515,9 +515,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                 knowledgeGraph={knowledgeGraph}
                 onSelectTopic={(topicId) => {
                     const topic = allTopics.find(t => t.id === topicId);
-                    if (topic) {
-                        dispatch({ type: 'SELECT_TOPIC', payload: topic });
-                    }
+                    if (topic) handleSelectTopicForBrief(topic);
                 }}
                 collapsed={true}
             />
@@ -592,6 +590,74 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                             };
                             setBridgeTopicPrefill(prefill);
                             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'addTopic', visible: true } });
+                        }}
+                        onAddLinks={async (bridgeTopicId: string, links: ContextualBridgeLink[]) => {
+                            // Get existing brief for the bridge topic
+                            const existingBrief = briefs[bridgeTopicId];
+
+                            if (!existingBrief) {
+                                // No brief exists yet - we need to notify user to generate brief first
+                                dispatch({
+                                    type: 'SET_NOTIFICATION',
+                                    payload: 'Please generate a content brief for this topic first before adding links.'
+                                });
+                                return;
+                            }
+
+                            // Merge new links with existing contextual bridge
+                            let currentLinks: ContextualBridgeLink[] = [];
+                            if (Array.isArray(existingBrief.contextualBridge)) {
+                                currentLinks = existingBrief.contextualBridge;
+                            } else if (existingBrief.contextualBridge && typeof existingBrief.contextualBridge === 'object' && 'links' in existingBrief.contextualBridge) {
+                                currentLinks = existingBrief.contextualBridge.links || [];
+                            }
+
+                            // Filter out duplicates (same target topic)
+                            const existingTargets = new Set(currentLinks.map(l => l.targetTopic.toLowerCase()));
+                            const newLinks = links.filter(l => !existingTargets.has(l.targetTopic.toLowerCase()));
+
+                            if (newLinks.length === 0) {
+                                dispatch({
+                                    type: 'SET_NOTIFICATION',
+                                    payload: 'All suggested links already exist in the brief.'
+                                });
+                                return;
+                            }
+
+                            // Update state with merged links
+                            const updatedBridge = [...currentLinks, ...newLinks];
+
+                            dispatch({
+                                type: 'UPDATE_BRIEF',
+                                payload: {
+                                    mapId: topicalMap.id,
+                                    topicId: bridgeTopicId,
+                                    updates: { contextualBridge: updatedBridge }
+                                }
+                            });
+
+                            // Persist to database
+                            try {
+                                const supabase = getSupabaseClient(
+                                    effectiveBusinessInfo.supabaseUrl,
+                                    effectiveBusinessInfo.supabaseAnonKey
+                                );
+                                await supabase
+                                    .from('content_briefs')
+                                    .update({ contextual_bridge: JSON.stringify(updatedBridge) })
+                                    .eq('topic_id', bridgeTopicId);
+
+                                dispatch({
+                                    type: 'SET_NOTIFICATION',
+                                    payload: `✅ Added ${newLinks.length} internal links to "${existingBrief.title || 'the brief'}"`
+                                });
+                            } catch (err) {
+                                console.error('Failed to persist links:', err);
+                                dispatch({
+                                    type: 'SET_NOTIFICATION',
+                                    payload: 'Links added to state but failed to persist to database. Please save the brief manually.'
+                                });
+                            }
                         }}
                     />
                 </FeatureErrorBoundary>
