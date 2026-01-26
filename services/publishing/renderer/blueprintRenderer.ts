@@ -353,23 +353,22 @@ export function renderBlueprint(
 
   if (options.brandDesignSystem?.compiledCss) {
     // THE KEY FIX: Use full brand design system CSS
+    // IMPORTANT: compiledCss already includes the tokens CSS (:root declaration)
+    // Do NOT add tokensCss separately - that causes duplicate :root declarations
     const brandCss = options.brandDesignSystem.compiledCss;
-    const tokensCss = options.brandDesignSystem.tokens?.css || '';
 
-    // Combine: tokens first (CSS variables), then compiled component styles
+    // Just add a header comment and use the compiledCss directly
     css = `/* ============================================
    Brand Design System - Auto-Generated
-   Source: ${options.brandDesignSystem.brandName || 'Unknown'}
+   Source: ${options.brandDesignSystem.sourceUrl || 'Unknown'}
+   Brand: ${options.brandDesignSystem.brandName || 'Unknown'}
    Generated: ${options.brandDesignSystem.generatedAt || 'Unknown'}
    ============================================ */
-
-${tokensCss}
 
 ${brandCss}`;
 
     console.log('[BlueprintRenderer] Using BrandDesignSystem.compiledCss');
     console.log('[BlueprintRenderer] Brand CSS length:', brandCss.length);
-    console.log('[BlueprintRenderer] Tokens CSS length:', tokensCss.length);
   } else {
     // Legacy fallback: use designTokens with generateDesignSystemCss
     const customOverrides = options.designTokens ? convertDesignTokensToOverrides(options.designTokens) : undefined;

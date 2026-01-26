@@ -5,6 +5,7 @@ import type {
   ComponentStyleDefinition
 } from '../../types/designDna';
 import { buildDesignSystemGenerationPrompt } from './prompts/designSystemPrompt';
+import { CSSPostProcessor, type PostProcessResult } from './CSSPostProcessor';
 
 interface BrandDesignSystemGeneratorConfig {
   provider: 'gemini' | 'anthropic';
@@ -106,7 +107,7 @@ export class BrandDesignSystemGenerator {
     }
 
     // Compile all CSS
-    const compiledCss = this.compileCSS(
+    const rawCss = this.compileCSS(
       tokens.css,
       componentStyles,
       decorative,
@@ -114,6 +115,25 @@ export class BrandDesignSystemGenerator {
       typographyTreatments,
       imageTreatments
     );
+
+    // Post-process CSS to fix AI-generated issues
+    console.log('[BrandDesignSystemGenerator] Post-processing CSS...');
+    const postProcessor = new CSSPostProcessor({
+      definedTokens: tokens.json,
+      logWarnings: true,
+    });
+    const postProcessResult = postProcessor.process(rawCss);
+
+    // Log post-processing results
+    if (postProcessResult.strippedRootCount > 0) {
+      console.log(`[BrandDesignSystemGenerator] Stripped ${postProcessResult.strippedRootCount} duplicate :root declarations`);
+    }
+    if (postProcessResult.normalizedCount > 0) {
+      console.log(`[BrandDesignSystemGenerator] Normalized ${postProcessResult.normalizedCount} CSS variable names`);
+    }
+    if (postProcessResult.warnings.length > 0) {
+      console.warn('[BrandDesignSystemGenerator] CSS warnings:', postProcessResult.warnings);
+    }
 
     return {
       id: `bds_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -127,7 +147,7 @@ export class BrandDesignSystemGenerator {
       interactions,
       typographyTreatments,
       imageTreatments,
-      compiledCss,
+      compiledCss: postProcessResult.css,
       variantMappings: this.getDefaultVariantMappings(designDna)
     };
   }
@@ -432,12 +452,37 @@ export class BrandDesignSystemGenerator {
 ## Component: ${componentType}
 ${componentDescriptions[componentType] || 'UI component'}
 
+## CRITICAL: Allowed CSS Variables (use ONLY these exact names)
+Colors:
+- --ctc-primary, --ctc-primary-light, --ctc-primary-dark
+- --ctc-secondary, --ctc-accent
+- --ctc-neutral-lightest, --ctc-neutral-light, --ctc-neutral-medium, --ctc-neutral-dark, --ctc-neutral-darkest
+- --ctc-success, --ctc-warning, --ctc-error, --ctc-info
+
+Typography:
+- --ctc-font-heading, --ctc-font-body
+- --ctc-font-size-xs, --ctc-font-size-sm, --ctc-font-size-md, --ctc-font-size-lg, --ctc-font-size-xl, --ctc-font-size-2xl, --ctc-font-size-3xl
+- --ctc-heading-weight, --ctc-body-weight, --ctc-body-line-height
+
+Spacing:
+- --ctc-spacing-xs, --ctc-spacing-sm, --ctc-spacing-md, --ctc-spacing-lg, --ctc-spacing-xl, --ctc-spacing-2xl, --ctc-spacing-3xl
+
+Border Radius:
+- --ctc-radius-sm, --ctc-radius-md, --ctc-radius-lg, --ctc-radius-full
+
+Shadows:
+- --ctc-shadow-button, --ctc-shadow-card, --ctc-shadow-elevated
+
+Motion:
+- --ctc-transition-speed, --ctc-easing
+
 ## Requirements
-1. Use CSS custom properties: --ctc-primary, --ctc-secondary, --ctc-accent, --ctc-neutral-*, --ctc-radius-*, --ctc-spacing-*, --ctc-shadow-*, --ctc-transition-speed
+1. Use ONLY the CSS variables listed above - NO numeric variants like --ctc-neutral-700 or --ctc-spacing-4
 2. CSS class prefix: .ctc-${componentType}
 3. The CSS MUST reflect the brand personality - ${personality} brands need ${personalityDescriptions[personality]}
 4. Include hover, active, and focus states
 5. Make it unique to THIS brand - not generic
+6. DO NOT include any :root declarations - variables are already defined
 
 ## Output Format (JSON only)
 {
@@ -452,7 +497,7 @@ ${componentDescriptions[componentType] || 'UI component'}
   }
 }
 
-CRITICAL: Return ONLY valid JSON. The CSS must be unique to this ${personality} brand.`;
+CRITICAL: Return ONLY valid JSON. DO NOT include :root declarations. Use ONLY the exact variable names listed above.`;
   }
 
   /**
@@ -525,6 +570,12 @@ CRITICAL: Return ONLY valid JSON. The CSS must be unique to this ${personality} 
 Divider style: ${dividerStyle}
 Uses waves: ${usesWaves}
 
+## CRITICAL: Allowed CSS Variables (use ONLY these exact names)
+- Colors: --ctc-primary, --ctc-primary-light, --ctc-primary-dark, --ctc-secondary, --ctc-accent
+- Neutrals: --ctc-neutral-lightest, --ctc-neutral-light, --ctc-neutral-medium, --ctc-neutral-dark, --ctc-neutral-darkest
+- Spacing: --ctc-spacing-xs, --ctc-spacing-sm, --ctc-spacing-md, --ctc-spacing-lg, --ctc-spacing-xl, --ctc-spacing-2xl, --ctc-spacing-3xl
+- Radius: --ctc-radius-sm, --ctc-radius-md, --ctc-radius-lg, --ctc-radius-full
+
 Return JSON:
 {
   "dividers": {
@@ -539,7 +590,7 @@ Return JSON:
   }
 }
 
-Use --ctc-* CSS variables. Make it unique to ${personality} personality.
+DO NOT include :root declarations. Use ONLY the exact variable names listed above.
 CRITICAL: Return ONLY valid JSON.`;
 
     try {
@@ -580,6 +631,12 @@ Button hover: ${hoverButtons}
 Card hover: ${hoverCards}
 Link hover: ${hoverLinks}
 
+## CRITICAL: Allowed CSS Variables (use ONLY these exact names)
+- Colors: --ctc-primary, --ctc-primary-light, --ctc-primary-dark, --ctc-secondary, --ctc-accent
+- Neutrals: --ctc-neutral-lightest, --ctc-neutral-light, --ctc-neutral-medium, --ctc-neutral-dark, --ctc-neutral-darkest
+- Shadows: --ctc-shadow-button, --ctc-shadow-card, --ctc-shadow-elevated
+- Motion: --ctc-transition-speed, --ctc-easing
+
 Return JSON with actual CSS (not descriptions):
 {
   "buttonHover": ".ctc-button:hover { actual CSS properties }",
@@ -599,6 +656,7 @@ Make animations reflect ${personality} personality:
 - playful: bouncy, fun
 - minimal: quick, subtle
 
+DO NOT include :root declarations. Use ONLY the exact variable names listed above.
 CRITICAL: Return ONLY valid JSON with actual CSS code.`;
 
     try {
@@ -636,6 +694,13 @@ Heading decoration: ${headingStyle}
 Uses drop caps: ${usesDropCaps}
 Link style: ${linkStyle}
 
+## CRITICAL: Allowed CSS Variables (use ONLY these exact names)
+- Colors: --ctc-primary, --ctc-primary-light, --ctc-primary-dark, --ctc-secondary, --ctc-accent
+- Neutrals: --ctc-neutral-lightest, --ctc-neutral-light, --ctc-neutral-medium, --ctc-neutral-dark, --ctc-neutral-darkest
+- Typography: --ctc-font-heading, --ctc-font-body, --ctc-font-size-xs/sm/md/lg/xl/2xl/3xl, --ctc-heading-weight, --ctc-body-weight, --ctc-body-line-height
+- Spacing: --ctc-spacing-xs, --ctc-spacing-sm, --ctc-spacing-md, --ctc-spacing-lg, --ctc-spacing-xl, --ctc-spacing-2xl, --ctc-spacing-3xl
+- Radius: --ctc-radius-sm, --ctc-radius-md, --ctc-radius-lg, --ctc-radius-full
+
 Return JSON:
 {
   "headingDecoration": ".ctc-heading-decorated::after { CSS for underline/decoration }",
@@ -646,7 +711,7 @@ Return JSON:
   "codeBlock": "pre, code { CSS for code blocks }"
 }
 
-Make it unique to ${personality} personality.
+DO NOT include :root declarations. Use ONLY the exact variable names listed above.
 CRITICAL: Return ONLY valid JSON.`;
 
     try {
@@ -681,6 +746,13 @@ CRITICAL: Return ONLY valid JSON.`;
 Frame style: ${frameStyle}
 Hover effect: ${hoverEffect}
 
+## CRITICAL: Allowed CSS Variables (use ONLY these exact names)
+- Colors: --ctc-primary, --ctc-primary-light, --ctc-primary-dark, --ctc-secondary, --ctc-accent
+- Neutrals: --ctc-neutral-lightest, --ctc-neutral-light, --ctc-neutral-medium, --ctc-neutral-dark, --ctc-neutral-darkest
+- Radius: --ctc-radius-sm, --ctc-radius-md, --ctc-radius-lg, --ctc-radius-full
+- Shadows: --ctc-shadow-button, --ctc-shadow-card, --ctc-shadow-elevated
+- Motion: --ctc-transition-speed, --ctc-easing
+
 Return JSON:
 {
   "defaultFrame": ".ctc-image { CSS for default images }",
@@ -689,7 +761,7 @@ Return JSON:
   "gallery": ".ctc-image--gallery { CSS for gallery items }"
 }
 
-Make it unique to ${personality} personality.
+DO NOT include :root declarations. Use ONLY the exact variable names listed above.
 CRITICAL: Return ONLY valid JSON.`;
 
     try {

@@ -73,8 +73,10 @@ const mockBlueprint: LayoutBlueprint = {
 describe('BlueprintRenderer Brand Integration', () => {
   describe('compiledCss injection', () => {
     it('should inject compiledCss from BrandDesignSystem into output CSS', () => {
+      // NOTE: compiledCss already includes the tokens (CSS variables) from BrandDesignSystemGenerator
+      // The renderer should NOT add tokens.css separately to avoid duplicate :root declarations
       const mockBrandSystem: Partial<BrandDesignSystem> = {
-        compiledCss: '.ctc-brand-btn { background: blue; border-radius: 8px; }',
+        compiledCss: ':root { --ctc-primary: #0066cc; }\n.ctc-brand-btn { background: blue; border-radius: 8px; }',
         tokens: { css: ':root { --ctc-primary: #0066cc; }', json: {} },
       };
 
@@ -88,9 +90,10 @@ describe('BlueprintRenderer Brand Integration', () => {
       expect(result.css).toContain(':root { --ctc-primary: #0066cc; }');
     });
 
-    it('should include tokens.css before compiledCss for proper CSS variable ordering', () => {
+    it('should include tokens before component styles for proper CSS variable ordering', () => {
+      // compiledCss should already have tokens first, then component styles
       const mockBrandSystem: Partial<BrandDesignSystem> = {
-        compiledCss: '.ctc-component { color: var(--ctc-primary); }',
+        compiledCss: ':root { --ctc-primary: #ff0000; }\n.ctc-component { color: var(--ctc-primary); }',
         tokens: { css: ':root { --ctc-primary: #ff0000; }', json: {} },
       };
 
@@ -108,8 +111,9 @@ describe('BlueprintRenderer Brand Integration', () => {
     });
 
     it('should prefer BrandDesignSystem over legacy designTokens when both provided', () => {
+      // compiledCss includes the tokens - check that brand system CSS is used, not legacy
       const mockBrandSystem: Partial<BrandDesignSystem> = {
-        compiledCss: '/* Brand CSS */',
+        compiledCss: ':root { --ctc-primary: #ff0000; }\n/* Brand CSS */',
         tokens: { css: ':root { --ctc-primary: #ff0000; }', json: {} },
       };
 
@@ -122,10 +126,9 @@ describe('BlueprintRenderer Brand Integration', () => {
         }
       );
 
-      // Should contain the brand system CSS
+      // Should contain the brand system CSS with the correct primary color
       expect(result.css).toContain('--ctc-primary: #ff0000');
       // The legacy blue color should NOT be in the CSS (we're using brand system)
-      // Note: We need to check that it's NOT present as a CSS variable override
       expect(result.css).not.toContain('--ctc-primary: #0000ff');
     });
 
