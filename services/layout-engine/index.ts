@@ -12,6 +12,7 @@ export * from './types';
 export { SectionAnalyzer } from './SectionAnalyzer';
 export { LayoutPlanner } from './LayoutPlanner';
 export { ComponentSelector } from './ComponentSelector';
+export { VisualEmphasizer } from './VisualEmphasizer';
 
 // Component Mappings
 export * from './componentMappings';

@@ -125,22 +125,53 @@ export interface LayoutParameters {
 // =============================================================================
 
 /**
- * Level of visual emphasis
+ * Level of visual emphasis mapped from semantic weight
+ * Weight 5 -> hero, Weight 4 -> featured, Weight 3 -> standard,
+ * Weight 2 -> supporting, Weight 1 -> minimal
  */
-export type EmphasisLevel = 'minimal' | 'subtle' | 'moderate' | 'strong' | 'hero';
+export type EmphasisLevel = 'hero' | 'featured' | 'standard' | 'supporting' | 'minimal';
 
 /**
- * Visual emphasis configuration
+ * Heading size options
+ */
+export type HeadingSize = 'xl' | 'lg' | 'md' | 'sm';
+
+/**
+ * Background treatment types
+ */
+export type BackgroundType = 'solid' | 'gradient' | 'pattern' | 'image';
+
+/**
+ * Accent border positions
+ */
+export type AccentPosition = 'left' | 'top' | 'bottom' | 'all';
+
+/**
+ * Animation types for entry effects
+ */
+export type AnimationType = 'fade' | 'slide' | 'scale';
+
+/**
+ * Elevation levels (shadow depth)
+ */
+export type ElevationLevel = 0 | 1 | 2 | 3;
+
+/**
+ * Visual emphasis configuration derived from semantic weight and brand DNA
  */
 export interface VisualEmphasis {
   level: EmphasisLevel;
-  useBackgroundColor: boolean;
-  useBorder: boolean;
-  useAccentColor: boolean;
-  useDropShadow: boolean;
-  useGradient: boolean;
-  useIcon: boolean;
-  iconSuggestion?: string;
+  headingSize: HeadingSize;
+  headingDecoration: boolean;
+  paddingMultiplier: number;
+  marginMultiplier: number;
+  hasBackgroundTreatment: boolean;
+  backgroundType?: BackgroundType;
+  hasAccentBorder: boolean;
+  accentPosition?: AccentPosition;
+  elevation: ElevationLevel;
+  hasEntryAnimation: boolean;
+  animationType?: AnimationType;
 }
 
 // =============================================================================
