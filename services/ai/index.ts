@@ -13,5 +13,8 @@ export * from './briefOptimization';
 // Provider dispatcher utility (centralizes AI provider switching logic)
 export * from './providerDispatcher';
 
+// Bridge suggestion service for structural hole analysis
+export * from './bridgeSuggestionService';
+
 // Re-export scrapeUrl from firecrawlService for quick audit
 export { scrapeUrl } from '../firecrawlService';
