@@ -165,6 +165,10 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
       onDesignDnaChange({
         ...currentDna,
         personality: {
+          overall: currentDna.personality?.overall || 'corporate',
+          formality: currentDna.personality?.formality || 3,
+          energy: currentDna.personality?.energy || 3,
+          warmth: currentDna.personality?.warmth || 3,
           ...currentDna.personality,
           [field]: value as 1 | 2 | 3 | 4 | 5,
         },

@@ -43,12 +43,12 @@ export const LayoutIntelligenceStep: React.FC<LayoutIntelligenceStepProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
 
-  // Calculate summary stats
-  const heroCount = blueprint?.sections.filter((s) => s.emphasis.level === 'hero').length || 0;
-  const featuredCount = blueprint?.sections.filter((s) => s.emphasis.level === 'featured').length || 0;
-  const totalSections = blueprint?.sections.length || 0;
-  const mainSectionCount = blueprint?.metadata.mainSectionCount || 0;
-  const supplementaryCount = blueprint?.metadata.supplementarySectionCount || 0;
+  // Calculate summary stats with defensive checks
+  const heroCount = blueprint?.sections?.filter((s) => s.emphasis?.level === 'hero').length || 0;
+  const featuredCount = blueprint?.sections?.filter((s) => s.emphasis?.level === 'featured').length || 0;
+  const totalSections = blueprint?.sections?.length || 0;
+  const mainSectionCount = blueprint?.metadata?.mainSectionCount || 0;
+  const supplementaryCount = blueprint?.metadata?.supplementarySectionCount || 0;
 
   // For now, suggestions applied is 0 until we have full suggestion system
   const suggestionsApplied = 0;
@@ -134,9 +134,9 @@ export const LayoutIntelligenceStep: React.FC<LayoutIntelligenceStepProps> = ({
             <h4 className="text-sm font-medium text-zinc-300 sticky top-0 bg-zinc-950 py-2 z-10">
               Sections ({totalSections})
             </h4>
-            {blueprint.sections.map((section) => (
+            {(blueprint.sections || []).map((section) => (
               <SectionPreviewCard
-                key={section.id}
+                key={section.id || `section-${Math.random()}`}
                 section={section}
                 isHighlighted={selectedSectionId === section.id}
                 onClick={() =>
@@ -182,27 +182,27 @@ export const LayoutIntelligenceStep: React.FC<LayoutIntelligenceStepProps> = ({
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div>
                 <span className="text-zinc-500">Default Width:</span>
-                <span className="ml-2 text-white">{blueprint.globalSettings.defaultWidth}</span>
+                <span className="ml-2 text-white">{blueprint.globalSettings?.defaultWidth || 'medium'}</span>
               </div>
               <div>
                 <span className="text-zinc-500">Spacing:</span>
-                <span className="ml-2 text-white">{blueprint.globalSettings.defaultSpacing}</span>
+                <span className="ml-2 text-white">{blueprint.globalSettings?.defaultSpacing || 'normal'}</span>
               </div>
               <div>
                 <span className="text-zinc-500">Primary Font:</span>
-                <span className="ml-2 text-white">{blueprint.globalSettings.primaryFont}</span>
+                <span className="ml-2 text-white">{blueprint.globalSettings?.primaryFont || 'system-ui'}</span>
               </div>
               <div>
                 <span className="text-zinc-500">Secondary Font:</span>
-                <span className="ml-2 text-white">{blueprint.globalSettings.secondaryFont}</span>
+                <span className="ml-2 text-white">{blueprint.globalSettings?.secondaryFont || 'system-ui'}</span>
               </div>
               <div>
                 <span className="text-zinc-500">Color Scheme:</span>
                 <span className="ml-2 text-white capitalize">
-                  {blueprint.globalSettings.colorScheme}
+                  {blueprint.globalSettings?.colorScheme || 'auto'}
                 </span>
               </div>
-              {blueprint.metadata.heroSectionId && (
+              {blueprint.metadata?.heroSectionId && (
                 <div>
                   <span className="text-zinc-500">Hero Section:</span>
                   <span className="ml-2 text-yellow-400">Detected</span>
@@ -212,11 +212,11 @@ export const LayoutIntelligenceStep: React.FC<LayoutIntelligenceStepProps> = ({
           </div>
 
           {/* Average Semantic Weight */}
-          {blueprint.metadata.averageSemanticWeight > 0 && (
+          {(blueprint.metadata?.averageSemanticWeight || 0) > 0 && (
             <div className="flex items-center justify-between p-3 bg-zinc-900/30 rounded-lg border border-zinc-800/50">
               <span className="text-xs text-zinc-500">Average Semantic Weight</span>
               <span className="text-sm font-medium text-white">
-                {blueprint.metadata.averageSemanticWeight.toFixed(1)} / 5.0
+                {(blueprint.metadata?.averageSemanticWeight || 0).toFixed(1)} / 5.0
               </span>
             </div>
           )}

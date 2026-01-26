@@ -64,8 +64,13 @@ export const SectionPreviewCard: React.FC<SectionPreviewCardProps> = ({
   isHighlighted = false,
   onClick,
 }) => {
-  const emphasisColor = emphasisColors[section.emphasis.level] || 'text-zinc-400';
-  const badgeStyle = emphasisBadgeStyles[section.emphasis.level] || 'bg-zinc-800 text-zinc-400';
+  // Defensive accessors for nested properties
+  const emphasisLevel = section.emphasis?.level || 'standard';
+  const emphasisColor = emphasisColors[emphasisLevel] || 'text-zinc-400';
+  const badgeStyle = emphasisBadgeStyles[emphasisLevel] || 'bg-zinc-800 text-zinc-400';
+  const layoutWidth = section.layout?.width || 'medium';
+  const componentType = section.component?.primaryComponent || 'prose';
+  const componentReasoning = section.component?.reasoning;
 
   return (
     <div
@@ -85,28 +90,28 @@ export const SectionPreviewCard: React.FC<SectionPreviewCardProps> = ({
       {/* Header: Stars + Heading */}
       <div className="flex items-start gap-3">
         <span className={`text-sm font-mono ${emphasisColor}`}>
-          {weightToStars(section.semanticWeight)}
+          {weightToStars(section.semanticWeight || 3)}
         </span>
         <div className="flex-1 min-w-0">
           <h4 className="font-medium text-white text-sm truncate">
-            {section.heading || `Section ${section.order + 1}`}
+            {section.heading || `Section ${(section.order ?? 0) + 1}`}
           </h4>
 
           {/* Layout Info */}
           <div className="flex items-center gap-2 mt-1 text-xs text-zinc-400 flex-wrap">
             <span className={`px-1.5 py-0.5 rounded ${badgeStyle}`}>
-              {section.emphasis.level}
+              {emphasisLevel}
             </span>
             <span className="text-zinc-600">&middot;</span>
-            <span>{section.layout.width}</span>
+            <span>{layoutWidth}</span>
             <span className="text-zinc-600">&middot;</span>
-            <span>{section.component.primaryComponent}</span>
+            <span>{componentType}</span>
           </div>
 
           {/* Reasoning */}
-          {section.component.reasoning && (
+          {componentReasoning && (
             <p className="mt-2 text-xs text-zinc-500 italic line-clamp-2">
-              &ldquo;{section.component.reasoning}&rdquo;
+              &ldquo;{componentReasoning}&rdquo;
             </p>
           )}
         </div>
