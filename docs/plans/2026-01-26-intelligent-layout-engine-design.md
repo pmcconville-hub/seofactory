@@ -1087,6 +1087,321 @@ interface QualityValidation {
 
 ---
 
+## Future Roadmap
+
+### Phase 5: Interactive Output Editing (Future)
+
+**Goal:** Allow users to edit the rendered output directly, switching styles or modifying sections they don't like.
+
+#### 5.1 Element-Level Style Switching
+
+```typescript
+interface StyleSwitchContext {
+  elementId: string;
+  currentComponent: string;        // 'faq-accordion-clean'
+  availableAlternatives: string[]; // ['faq-cards', 'faq-list', 'faq-inline']
+  previewUrls: Record<string, string>; // Thumbnail previews
+}
+
+// User clicks element → sees style alternatives → picks one → live update
+function showStyleSwitcher(element: HTMLElement): StyleSwitchContext {
+  const sectionId = element.dataset.sectionId;
+  const currentStyle = element.dataset.componentType;
+
+  // Get alternatives compatible with content
+  const alternatives = getCompatibleAlternatives(sectionId, currentStyle);
+
+  return {
+    elementId: sectionId,
+    currentComponent: currentStyle,
+    availableAlternatives: alternatives,
+    previewUrls: generateThumbnails(alternatives)
+  };
+}
+```
+
+#### 5.2 Section Content Editing
+
+```typescript
+interface SectionEditContext {
+  sectionId: string;
+  editableFields: {
+    headingText: boolean;          // Can edit heading
+    contentHtml: boolean;          // Can edit body
+    layoutWidth: boolean;          // Can change width
+    emphasis: boolean;             // Can adjust emphasis
+  };
+  constraints: {
+    formatCodeLocked: boolean;     // FS-protected sections
+    maxLength?: number;
+    requiredElements?: string[];   // Must keep these HTML elements
+  };
+}
+
+// Inline editing with constraint enforcement
+async function saveInlineEdit(
+  sectionId: string,
+  changes: Partial<SectionContent>
+): Promise<{ success: boolean; warnings: string[] }> {
+  // Validate against Semantic SEO constraints
+  const validation = validateSemanticCompliance(changes);
+
+  if (!validation.valid) {
+    return { success: false, warnings: validation.issues };
+  }
+
+  // Apply changes
+  await updateSection(sectionId, changes);
+
+  return { success: true, warnings: [] };
+}
+```
+
+#### 5.3 "I Don't Like This" Feedback Loop
+
+```typescript
+interface DislikeContext {
+  sectionId: string;
+  userFeedback: string;            // "Too busy", "Wrong color", "Too corporate"
+  currentState: BlueprintSection;
+}
+
+// AI suggests alternatives based on feedback
+async function suggestAlternatives(
+  context: DislikeContext
+): Promise<AlternativeSuggestion[]> {
+  const prompt = `
+    User doesn't like this section. Feedback: "${context.userFeedback}"
+    Current settings: ${JSON.stringify(context.currentState)}
+
+    Suggest 3 alternatives that address their concern while maintaining:
+    - Brand alignment
+    - Semantic SEO compliance
+    - Format code requirements
+  `;
+
+  return await generateAlternatives(prompt, context);
+}
+```
+
+### Phase 6: Design Memory System (Future)
+
+**Goal:** Save design choices for reuse across future generations, reducing repetitive validation.
+
+#### 6.1 Design Choice Storage
+
+```typescript
+interface DesignMemory {
+  id: string;
+  projectId: string;
+  brandId: string;
+
+  // Saved preferences
+  preferences: {
+    // Layout preferences
+    preferredWidths: Record<string, 'narrow' | 'standard' | 'wide' | 'full'>;
+    preferredComponents: Record<string, string>; // contentType → component
+    emphasisOverrides: Record<string, EmphasisLevel>;
+
+    // Style preferences
+    colorOverrides: Record<string, string>;      // token → custom value
+    typographyOverrides: Record<string, string>;
+    spacingPreferences: 'tighter' | 'default' | 'looser';
+
+    // AI feedback memory
+    rejectedSuggestions: string[];               // Don't suggest these again
+    acceptedPatterns: string[];                  // Patterns user likes
+  };
+
+  // Learning from interactions
+  interactions: {
+    styleSwitches: StyleSwitchRecord[];         // What they switched from/to
+    dislikeReasons: DislikeRecord[];            // Why they rejected things
+    editPatterns: EditRecord[];                 // Common edits they make
+  };
+
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+#### 6.2 Database Schema
+
+```sql
+-- Design memory per project/brand
+CREATE TABLE design_memory (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID REFERENCES projects(id),
+  brand_design_dna_id UUID REFERENCES brand_design_dna(id),
+
+  -- Preferences blob
+  preferences JSONB NOT NULL DEFAULT '{}',
+
+  -- Interaction history (for learning)
+  interactions JSONB NOT NULL DEFAULT '{}',
+
+  -- Confidence scores (how reliable is this memory?)
+  confidence_scores JSONB NOT NULL DEFAULT '{}',
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index for fast lookup
+CREATE INDEX idx_design_memory_project ON design_memory(project_id);
+CREATE INDEX idx_design_memory_brand ON design_memory(brand_design_dna_id);
+```
+
+#### 6.3 Memory Application
+
+```typescript
+async function generateLayoutWithMemory(
+  content: ArticleContent,
+  brandSystem: BrandDesignSystem,
+  memory: DesignMemory | null
+): Promise<LayoutBlueprint> {
+  // Start with standard generation
+  let blueprint = await generateBaseBlueprint(content, brandSystem);
+
+  // Apply remembered preferences if available
+  if (memory) {
+    blueprint = applyMemoryPreferences(blueprint, memory);
+
+    // Log which preferences were applied
+    blueprint.reasoning.memoryApplied = {
+      preferencesUsed: Object.keys(memory.preferences),
+      confidenceScore: calculateConfidence(memory),
+      lastUpdated: memory.updatedAt
+    };
+  }
+
+  return blueprint;
+}
+
+function applyMemoryPreferences(
+  blueprint: LayoutBlueprint,
+  memory: DesignMemory
+): LayoutBlueprint {
+  const { preferences } = memory;
+
+  // Apply width preferences
+  if (preferences.preferredWidths) {
+    blueprint.sections = blueprint.sections.map(section => {
+      const preferredWidth = preferences.preferredWidths[section.contentType];
+      if (preferredWidth) {
+        section.layout.width = preferredWidth;
+        section.reasoning += ` (width from saved preference)`;
+      }
+      return section;
+    });
+  }
+
+  // Apply component preferences
+  if (preferences.preferredComponents) {
+    blueprint.sections = blueprint.sections.map(section => {
+      const preferredComponent = preferences.preferredComponents[section.contentType];
+      if (preferredComponent) {
+        section.component.componentType = preferredComponent;
+        section.reasoning += ` (component from saved preference)`;
+      }
+      return section;
+    });
+  }
+
+  // Filter out rejected suggestions
+  if (preferences.rejectedSuggestions?.length) {
+    blueprint.reasoning.suggestionsSkipped = blueprint.reasoning.suggestionsSkipped
+      .concat(preferences.rejectedSuggestions.map(reason => ({
+        type: 'memory_rejection',
+        reason
+      })));
+  }
+
+  return blueprint;
+}
+```
+
+#### 6.4 Memory Learning
+
+```typescript
+// After user makes changes, learn from them
+async function learnFromInteraction(
+  projectId: string,
+  interaction: UserInteraction
+): Promise<void> {
+  const memory = await getOrCreateDesignMemory(projectId);
+
+  switch (interaction.type) {
+    case 'style_switch':
+      // User switched component style
+      memory.interactions.styleSwitches.push({
+        from: interaction.oldValue,
+        to: interaction.newValue,
+        sectionType: interaction.context.contentType,
+        timestamp: new Date().toISOString()
+      });
+
+      // After 3+ consistent switches, save as preference
+      const switchPattern = analyzeStyleSwitchPattern(memory.interactions.styleSwitches);
+      if (switchPattern.consistent && switchPattern.count >= 3) {
+        memory.preferences.preferredComponents[switchPattern.contentType] = switchPattern.preferredStyle;
+      }
+      break;
+
+    case 'dislike_feedback':
+      // User rejected something
+      memory.interactions.dislikeReasons.push({
+        reason: interaction.feedback,
+        context: interaction.context,
+        timestamp: new Date().toISOString()
+      });
+
+      // Pattern detection for rejections
+      const rejectionPattern = analyzeRejectionPattern(memory.interactions.dislikeReasons);
+      if (rejectionPattern.consistent) {
+        memory.preferences.rejectedSuggestions.push(rejectionPattern.pattern);
+      }
+      break;
+
+    case 'inline_edit':
+      // User edited content
+      memory.interactions.editPatterns.push({
+        field: interaction.field,
+        beforeLength: interaction.oldValue.length,
+        afterLength: interaction.newValue.length,
+        timestamp: new Date().toISOString()
+      });
+      break;
+  }
+
+  await saveDesignMemory(memory);
+}
+```
+
+### Phase 7: Advanced Features (Future)
+
+#### 7.1 Multi-Article Consistency
+- Generate consistent layouts across article series
+- Shared visual language within topical clusters
+- Cross-article CTA placement strategy
+
+#### 7.2 A/B Testing Integration
+- Generate multiple layout variants
+- Track engagement metrics per variant
+- Auto-optimize based on performance data
+
+#### 7.3 Dark Mode Auto-Generation
+- Derive dark mode palette from DesignDNA
+- Intelligent contrast adjustments
+- User preference detection
+
+#### 7.4 Export Template System
+- Save successful layouts as templates
+- Share templates across projects
+- Template marketplace integration
+
+---
+
 ## Open Questions
 
 1. **Real-time Preview Updates**: Should personality slider changes update preview instantly?
