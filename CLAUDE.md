@@ -75,6 +75,37 @@ Database tables (see migrations):
 - `content_generation_sections` - Per-section content with version history
 - `entity_resolution_cache` - Cached Wikidata entity resolutions
 
+### Intelligent Layout Engine
+The `services/layout-engine/` module transforms content into design-agency quality layouts using AI-detected brand intelligence:
+
+**Core Services:**
+- `SectionAnalyzer.ts` - Analyzes content sections, calculates semantic weight (1-5) based on attribute category (UNIQUE/RARE/ROOT/COMMON)
+- `LayoutPlanner.ts` - Determines width, columns, spacing based on semantic weight
+- `ComponentSelector.ts` - Two-factor selection: content type × brand personality, with FS protection
+- `VisualEmphasizer.ts` - Maps weight to visual properties (hero/featured/standard/supporting/minimal)
+- `ImageHandler.ts` - Semantic image placement (CRITICAL: never between heading and first paragraph)
+- `LayoutEngine.ts` - Orchestrates all services, generates complete LayoutBlueprint
+
+**Key Types (in `services/layout-engine/types.ts`):**
+- `SectionAnalysis` - Content type, semantic weight, constraints
+- `LayoutParameters` - Width, columns, spacing, breaks
+- `VisualEmphasis` - Heading size, padding, background, animations
+- `ComponentSelection` - Primary/alternative components with reasoning
+- `BlueprintSection` - Complete section specification
+- `LayoutBlueprint` - Full article layout specification
+
+**Integration with Publishing:**
+- `services/publishing/renderer/blueprintRenderer.ts` - Uses `BrandDesignSystem.compiledCss` (THE KEY FIX)
+- Accepts `brandDesignSystem?: BrandDesignSystem` option
+- Falls back to legacy `designTokens` if no brand system provided
+
+**UI Components:**
+- `components/publishing/steps/BrandIntelligenceStep.tsx` - Step 1: AI brand detection with personality sliders
+- `components/publishing/steps/LayoutIntelligenceStep.tsx` - Step 2: Section preview with emphasis indicators
+- `components/publishing/steps/PreviewStep.tsx` - Step 3: Live preview with BrandMatchIndicator
+- `components/publishing/SectionPreviewCard.tsx` - Compact section summary card
+- `components/publishing/BrandMatchIndicator.tsx` - Brand alignment score (0-100%)
+
 ### Key Directories
 - `components/` - React components (wizards, modals, dashboard panels)
 - `components/ui/` - Reusable UI primitives
