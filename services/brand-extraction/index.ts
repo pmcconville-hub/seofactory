@@ -12,6 +12,9 @@ export { ExtractionAnalyzer } from './ExtractionAnalyzer';
 
 export { ComponentLibrary } from './ComponentLibrary';
 
+export { UrlDiscoveryService } from './UrlDiscoveryService';
+export type { UrlSuggestion } from './UrlDiscoveryService';
+
 // Re-export types
 export type {
   BrandExtraction,

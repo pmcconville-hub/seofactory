@@ -2,14 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { UrlDiscoveryService, type UrlSuggestion } from '../UrlDiscoveryService';
 import { PageCrawler } from '../PageCrawler';
 
-// Mock PageCrawler
-vi.mock('../PageCrawler', () => ({
-  PageCrawler: vi.fn().mockImplementation(() => ({
-    capturePage: vi.fn(),
-    close: vi.fn()
-  }))
-}));
-
 const mockHtml = `
 <!DOCTYPE html>
 <html>
@@ -46,11 +38,11 @@ describe('UrlDiscoveryService', () => {
         computedStyles: {},
         capturedAt: new Date().toISOString()
       }),
-      close: vi.fn()
+      close: vi.fn().mockResolvedValue(undefined)
     };
 
-    (PageCrawler as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => mockCrawler);
-    service = new UrlDiscoveryService();
+    // Use dependency injection to pass mock crawler factory
+    service = new UrlDiscoveryService(() => mockCrawler);
   });
 
   afterEach(() => {
