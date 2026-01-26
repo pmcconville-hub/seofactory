@@ -173,7 +173,14 @@ function getDistinctTerms(terms: string[]): string[] {
 }
 
 /**
- * Generate intelligent topic title - NO REPETITION ALLOWED
+ * Generate intelligent topic title following Semantic SEO rules:
+ *
+ * 1. MUST include Central Entity (CE) when relevant - site-wide N-gram consistency
+ * 2. SHOULD use CSI predicates (verbs) to connect concepts
+ * 3. Entity-first naming for prominence
+ * 4. Short, specific titles (15-25 characters ideal, max 60)
+ * 5. NO repetition of terms
+ * 6. Semantically meaningful - no generic fallbacks
  */
 function generateBridgeTitle(
   clusterA: string[],
@@ -181,83 +188,198 @@ function generateBridgeTitle(
   bridgeCandidates: string[],
   pillars?: SEOPillars
 ): string {
+  // Extract Central Entity and CSI from pillars (CRITICAL for Semantic SEO)
+  const centralEntity = pillars?.centralEntity?.trim() || '';
+  const csiVerbs = (pillars?.centralSearchIntent || []).filter(Boolean);
+
   // Get human-readable names for clusters
   const clusterANames = clusterA.map(humanizeNodeId).filter(Boolean);
   const clusterBNames = clusterB.map(humanizeNodeId).filter(Boolean);
 
-  // Get ALL unique terms across both clusters
+  // Get ALL unique terms across both clusters (excluding CE to avoid repetition)
   const allTerms = [...clusterANames, ...clusterBNames];
-  const distinctTerms = getDistinctTerms(allTerms);
+  const distinctTerms = getDistinctTerms(allTerms).filter(
+    t => !centralEntity || !areSimilarTerms(t, centralEntity)
+  );
 
-  // If bridge candidate exists, check if it's distinct
-  let mainTopic: string | null = null;
+  // Find the most distinct term from each cluster (excluding CE)
+  const distinctA = getDistinctTerms(clusterANames).filter(
+    t => !centralEntity || !areSimilarTerms(t, centralEntity)
+  );
+  const distinctB = clusterBNames.filter(
+    b => !distinctA.some(a => areSimilarTerms(a, b)) &&
+         (!centralEntity || !areSimilarTerms(b, centralEntity))
+  );
+
+  // Check if bridge candidate is distinct from clusters AND from CE
+  let bridgeTopic: string | null = null;
   if (bridgeCandidates.length > 0) {
     const candidate = humanizeNodeId(bridgeCandidates[0]);
-    // Only use if distinct from cluster terms
-    const isDuplicate = distinctTerms.some(t => areSimilarTerms(t, candidate));
-    if (!isDuplicate) {
-      mainTopic = candidate;
+    const isDuplicateOfCluster = distinctTerms.some(t => areSimilarTerms(t, candidate));
+    const isDuplicateOfCE = centralEntity && areSimilarTerms(candidate, centralEntity);
+    if (!isDuplicateOfCluster && !isDuplicateOfCE) {
+      bridgeTopic = candidate;
     }
   }
 
-  // Find the most distinct term from each cluster
-  const distinctA = getDistinctTerms(clusterANames);
-  const distinctB = clusterBNames.filter(b => !distinctA.some(a => areSimilarTerms(a, b)));
+  // Find the best CSI verb to use (prefer action verbs)
+  const actionVerbs = ['beheren', 'kiezen', 'vergelijken', 'vinden', 'optimaliseren'];
+  const bestCsiVerb = csiVerbs.find(v =>
+    typeof v === 'string' && actionVerbs.some(av => v.toLowerCase().includes(av))
+  ) || csiVerbs[0] || '';
 
-  // If we have a main topic that's distinct, use it
-  if (mainTopic && distinctA.length > 0 && distinctB.length > 0) {
-    return `${mainTopic}: ${distinctA[0]} en ${distinctB[0]}`;
+  // === TITLE GENERATION FOLLOWING SEMANTIC SEO RULES ===
+
+  // Pattern 1: CE + Bridge Topic + Cluster Term (when all available)
+  // Example: "MVGM VVE Beheer Diensten" or "MVGM Vastgoedbeheer Vergelijking"
+  if (centralEntity && bridgeTopic && distinctA.length > 0) {
+    // Check CE isn't already in bridge topic
+    if (!areSimilarTerms(bridgeTopic, centralEntity)) {
+      return truncateTitle(`${centralEntity} ${bridgeTopic}`);
+    }
   }
 
-  // If we have a main topic but clusters overlap
-  if (mainTopic && distinctA.length > 0) {
-    return `${mainTopic} voor ${distinctA[0]}`;
+  // Pattern 2: CE + Cluster A + Cluster B connection (entity-first)
+  // Example: "MVGM: VVE en Commercieel Beheer"
+  if (centralEntity && distinctA.length > 0 && distinctB.length > 0) {
+    return truncateTitle(`${centralEntity}: ${distinctA[0]} en ${distinctB[0]}`);
   }
 
-  // No main topic - just use distinct terms from each cluster
+  // Pattern 3: CE + Single Cluster Term (when clusters overlap)
+  // Example: "MVGM VVE Beheer Overzicht"
+  if (centralEntity && distinctA.length > 0) {
+    const suffix = bestCsiVerb ? capitalize(bestCsiVerb) : 'Overzicht';
+    return truncateTitle(`${centralEntity} ${distinctA[0]} ${suffix}`);
+  }
+
+  // Pattern 4: No CE but distinct terms from both clusters
+  // Example: "VVE Beheer en Commercieel Vastgoed"
   if (distinctA.length > 0 && distinctB.length > 0) {
-    return `${distinctA[0]} en ${distinctB[0]}: Verbinding`;
+    return truncateTitle(`${distinctA[0]} en ${distinctB[0]}`);
   }
 
-  // Fallback: use the most distinct term available
+  // Pattern 5: Bridge topic with cluster context
+  // Example: "Vastgoedbeheer: Volledige Gids"
+  if (bridgeTopic) {
+    return truncateTitle(`${bridgeTopic}: Volledige Gids`);
+  }
+
+  // Pattern 6: Single distinct term with semantic purpose
+  // Example: "VVE Beheer Kernconcepten"
   if (distinctTerms.length > 0) {
-    return `${distinctTerms[0]}: Uitgebreid`;
+    return truncateTitle(`${distinctTerms[0]} Kernconcepten`);
   }
 
-  // Last resort
-  return 'Bridge Content';
+  // Pattern 7: CE-only fallback (still semantically meaningful)
+  if (centralEntity) {
+    return truncateTitle(`${centralEntity} Verbindende Content`);
+  }
+
+  // Last resort - should rarely happen if pillars are defined
+  return 'Topical Bridge Content';
 }
 
 /**
- * Generate description explaining why this topic is needed
+ * Capitalize first letter of a string
+ */
+function capitalize(str: string): string {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
+/**
+ * Truncate title to max length while keeping semantic meaning
+ * Semantic SEO: Titles should be concise but complete
+ */
+function truncateTitle(title: string, maxLength: number = 60): string {
+  if (title.length <= maxLength) return title;
+
+  // Try to break at a word boundary
+  const truncated = title.substring(0, maxLength);
+  const lastSpace = truncated.lastIndexOf(' ');
+
+  if (lastSpace > maxLength * 0.7) {
+    return truncated.substring(0, lastSpace);
+  }
+
+  return truncated;
+}
+
+/**
+ * Generate description following Semantic SEO Algorithmic Authorship rules:
+ *
+ * 1. One EAV triple per sentence (Subject-Predicate-Object)
+ * 2. Entity-first naming (CE appears first when relevant)
+ * 3. Definitive modality ("is", "connects") not hedging ("might", "could")
+ * 4. High information density - no filler words
+ * 5. Short sentences (15-25 words max)
  */
 function generateDescription(
   clusterANames: string[],
   clusterBNames: string[],
   pillars?: SEOPillars
 ): string {
-  const a = clusterANames.slice(0, 2).join(' en ');
-  const b = clusterBNames.slice(0, 2).join(' en ');
+  const centralEntity = pillars?.centralEntity?.trim();
+  const termA = clusterANames[0] || 'onderwerp A';
+  const termB = clusterBNames[0] || 'onderwerp B';
 
-  let desc = `Dit artikel verbindt twee belangrijke onderwerpen binnen uw topical map: ${a} en ${b}. `;
-  desc += `Door deze onderwerpen te verbinden versterkt u de interne linkstructuur en toont u expertise over het volledige domein. `;
+  const sentences: string[] = [];
 
-  if (pillars?.centralEntity) {
-    desc += `Dit draagt bij aan uw autoriteit rondom "${pillars.centralEntity}".`;
+  // Sentence 1: CE-first entity definition (EAV: CE -> has_bridge -> Topics)
+  if (centralEntity) {
+    sentences.push(
+      `${centralEntity} omvat zowel ${termA} als ${termB}.`
+    );
+  } else {
+    sentences.push(
+      `Dit onderwerp verbindt ${termA} met ${termB}.`
+    );
   }
 
-  return desc;
+  // Sentence 2: Bridge function (EAV: Article -> function -> internal_linking)
+  sentences.push(
+    `Het artikel versterkt de interne linkstructuur tussen deze clusters.`
+  );
+
+  // Sentence 3: Authority benefit (EAV: Content -> builds -> topical_authority)
+  if (centralEntity) {
+    sentences.push(
+      `De content bouwt topical authority voor ${centralEntity}.`
+    );
+  } else {
+    sentences.push(
+      `De content demonstreert domeinexpertise.`
+    );
+  }
+
+  // Sentence 4: Semantic SEO benefit (EAV: Strategy -> reduces -> cost_of_retrieval)
+  sentences.push(
+    `Dit verlaagt de Cost of Retrieval voor zoekmachines.`
+  );
+
+  return sentences.join(' ');
 }
 
 /**
- * Generate SEO impact explanation
+ * Generate SEO impact explanation following Semantic SEO principles
+ * Uses specific numbers and definitive language
  */
 function generateSeoImpact(
   clusterANames: string[],
   clusterBNames: string[],
-  entityCount: number
+  entityCount: number,
+  pillars?: SEOPillars
 ): string {
-  return `Verbindt ${entityCount} gerelateerde entiteiten. Versterkt topical authority door ${clusterANames[0] || 'cluster A'} te koppelen aan ${clusterBNames[0] || 'cluster B'}.`;
+  const centralEntity = pillars?.centralEntity?.trim();
+  const termA = clusterANames[0] || 'cluster A';
+  const termB = clusterBNames[0] || 'cluster B';
+
+  // Entity-first, specific values, definitive modality
+  if (centralEntity) {
+    return `${centralEntity}: verbindt ${entityCount} entiteiten. Koppelt ${termA} aan ${termB}. Verhoogt topical authority.`;
+  }
+
+  return `Verbindt ${entityCount} entiteiten. Koppelt ${termA} aan ${termB}. Versterkt domeinrelevantie.`;
 }
 
 interface ScoredOpportunity {
@@ -451,7 +573,7 @@ function analyzeOpportunities(
         parentTopicTitle: parentTopic?.title,
       },
       reasoning: placementReason,
-      seoImpact: generateSeoImpact(clusterANames, clusterBNames, clusterA.length + clusterB.length),
+      seoImpact: generateSeoImpact(clusterANames, clusterBNames, clusterA.length + clusterB.length, pillars),
       clustersConnected: {
         clusterA: clusterANames,
         clusterB: clusterBNames,
