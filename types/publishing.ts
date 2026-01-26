@@ -592,7 +592,7 @@ export interface SeoWarning {
 /**
  * Style publish modal step
  */
-export type StylePublishStep = 'brand-style' | 'design-generation' | 'layout-config' | 'blueprint' | 'preview' | 'publish-options' | 'brand' | 'publish';
+export type StylePublishStep = 'brand-style' | 'design-generation' | 'layout-config' | 'blueprint' | 'preview' | 'publish-options' | 'brand' | 'layout' | 'publish';
 
 /**
  * Device preview mode

@@ -1,10 +1,11 @@
 /**
  * Style & Publish Modal
  *
- * 3-step modal for styled content publishing:
- * 1. Brand - One-click brand detection with AI Vision
- * 2. Preview - Live preview with layout/blueprint panels
- * 3. Publish - WordPress settings and publish
+ * 4-step modal for styled content publishing:
+ * 1. Brand Intelligence - One-click brand detection with AI Vision
+ * 2. Layout Intelligence - AI layout decisions with section-by-section breakdown
+ * 3. Preview - Live preview with brand validation
+ * 4. Publish - WordPress settings and publish
  *
  * @module components/publishing/StylePublishModal
  */
@@ -13,10 +14,13 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { getSupabaseClient } from '../../services/supabaseClient';
-import { BrandStep } from './steps/BrandStep';
+import { BrandIntelligenceStep } from './steps/BrandIntelligenceStep';
+import { LayoutIntelligenceStep } from './steps/LayoutIntelligenceStep';
 import { PreviewStep } from './steps/PreviewStep';
 import { PublishOptionsStep } from './steps/PublishOptionsStep';
 import { useDesignInheritance } from '../../hooks/useDesignInheritance';
+import { LayoutEngine, type LayoutBlueprintOutput } from '../../services/layout-engine/LayoutEngine';
+import type { LayoutBlueprint as LayoutEngineBlueprint, BlueprintSection } from '../../services/layout-engine/types';
 import type { DesignDNA, BrandDesignSystem } from '../../types/designDna';
 import type {
   StylePublishStep,
@@ -101,6 +105,7 @@ interface StepInfo {
 
 const STEPS: StepInfo[] = [
   { id: 'brand', label: 'Brand', icon: '🎨' },
+  { id: 'layout', label: 'Layout', icon: '🧠' },
   { id: 'preview', label: 'Preview', icon: '👁️' },
   { id: 'publish', label: 'Publish', icon: '🚀' },
 ];
@@ -164,6 +169,15 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   const [detectedDesignDna, setDetectedDesignDna] = useState<DesignDNA | null>(null);
   const [detectedDesignSystem, setDetectedDesignSystem] = useState<BrandDesignSystem | null>(null);
   const [detectedScreenshot, setDetectedScreenshot] = useState<string | null>(null);
+
+  // Layout Engine state (for new LayoutIntelligenceStep)
+  const [layoutEngineBlueprint, setLayoutEngineBlueprint] = useState<LayoutEngineBlueprint | null>(null);
+  const [isLayoutEngineGenerating, setIsLayoutEngineGenerating] = useState(false);
+  const [layoutEngineError, setLayoutEngineError] = useState<string | null>(null);
+
+  // Brand validation state (for Preview step)
+  const [brandMatchScore, setBrandMatchScore] = useState<number | undefined>(undefined);
+  const [brandAssessment, setBrandAssessment] = useState<string | undefined>(undefined);
 
   // Design inheritance - load project/map level settings
   const supabaseClient = useMemo(
@@ -325,6 +339,19 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
         supabaseAnonKey: supabaseAnonKey,
       };
 
+      // Use passed styleOverride if provided, otherwise fall back to state
+      const activeDesignTokens = styleOverride || style?.designTokens;
+
+      console.log('[Style & Publish] generateBlueprint - using design tokens:', {
+        hasStyleOverride: !!styleOverride,
+        usingOverride: !!styleOverride,
+        tokens: activeDesignTokens ? {
+          primary: activeDesignTokens.colors?.primary,
+          secondary: activeDesignTokens.colors?.secondary,
+          background: activeDesignTokens.colors?.background,
+        } : 'NO TOKENS',
+      });
+
       const generatedBlueprint = generateBlueprintHeuristicV2(
         articleDraft,
         topic.title,
@@ -335,8 +362,8 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
           preferences: {
             styleLeaning: 'auto',
           },
-          // HOLISTIC FIX: Use the ACTUAL design tokens from state
-          styleOverride: style?.designTokens,
+          // Use the passed override tokens or fall back to state tokens
+          styleOverride: activeDesignTokens,
           personalityOverride: activePersonality
         }
       );
@@ -357,7 +384,90 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     }
   }, [articleDraft, topic.title, topic.id, brief, personalityId, style, topicalMap?.business_info, supabaseUrl, supabaseAnonKey]);
 
-  // Handle brand detection completion from BrandStep
+  // Generate layout engine blueprint for the LayoutIntelligenceStep
+  const generateLayoutEngineBlueprint = useCallback(async (dna?: DesignDNA) => {
+    if (!articleDraft) return;
+    setIsLayoutEngineGenerating(true);
+    setLayoutEngineError(null);
+
+    try {
+      // Convert brief sections if available
+      const briefSections = brief?.structured_outline?.sections?.map((s: any) => ({
+        heading: s.heading || '',
+        formatCode: s.format,
+        attributeCategory: s.attributeCategory,
+        fsTarget: s.isTargetedForFeaturedSnippet,
+        wordCount: s.wordCount,
+      })) || [];
+
+      // Generate using the new LayoutEngine
+      const output = LayoutEngine.generateBlueprint(
+        articleDraft,
+        briefSections,
+        dna || detectedDesignDna || undefined,
+        {
+          topicTitle: topic.title,
+          isCoreTopic: topic.is_core_topic,
+          mainIntent: brief?.mainIntent,
+        }
+      );
+
+      // Convert LayoutBlueprintOutput to LayoutEngineBlueprint format for UI
+      const layoutBlueprint: LayoutEngineBlueprint = {
+        id: output.id,
+        articleId: output.articleId,
+        createdAt: output.generatedAt,
+        version: 1,
+        sections: output.sections,
+        globalSettings: {
+          defaultWidth: output.pageSettings.maxWidth.includes('768') ? 'narrow' :
+                       output.pageSettings.maxWidth.includes('1024') ? 'medium' :
+                       output.pageSettings.maxWidth.includes('1200') ? 'wide' : 'full',
+          defaultSpacing: output.pageSettings.baseSpacing.includes('16') ? 'tight' :
+                         output.pageSettings.baseSpacing.includes('24') ? 'normal' :
+                         output.pageSettings.baseSpacing.includes('32') ? 'generous' : 'dramatic',
+          primaryFont: dna?.typography?.headingFont?.family || 'system-ui',
+          secondaryFont: dna?.typography?.bodyFont?.family || 'system-ui',
+          colorScheme: output.pageSettings.colorMode,
+        },
+        designDnaHash: dna ? `dna-${Date.now()}` : undefined,
+        metadata: {
+          totalSections: output.sections.length,
+          mainSectionCount: output.sections.filter(s => s.contentZone === 'MAIN').length,
+          supplementarySectionCount: output.sections.filter(s => s.contentZone === 'SUPPLEMENTARY').length,
+          averageSemanticWeight: output.sections.length > 0
+            ? output.sections.reduce((sum, s) => sum + s.semanticWeight, 0) / output.sections.length
+            : 0,
+          heroSectionId: output.sections.find(s => s.emphasis.level === 'hero')?.id,
+        },
+      };
+
+      setLayoutEngineBlueprint(layoutBlueprint);
+
+      // Set brand validation score from the new engine
+      setBrandMatchScore(output.validation.brandAlignmentScore);
+      setBrandAssessment(
+        output.validation.brandAlignmentScore >= 80
+          ? 'Excellent brand alignment - design matches detected style'
+          : output.validation.brandAlignmentScore >= 60
+          ? 'Good alignment - minor adjustments may improve consistency'
+          : 'Review recommended - some elements may not match brand guidelines'
+      );
+
+      console.log('[Style & Publish] Layout engine blueprint generated:', {
+        sections: layoutBlueprint.sections.length,
+        heroSection: layoutBlueprint.metadata.heroSectionId,
+        brandScore: output.validation.brandAlignmentScore,
+      });
+    } catch (error) {
+      console.error('Error generating layout engine blueprint:', error);
+      setLayoutEngineError('Failed to analyze content structure. Please try again.');
+    } finally {
+      setIsLayoutEngineGenerating(false);
+    }
+  }, [articleDraft, brief, topic.title, topic.is_core_topic, detectedDesignDna]);
+
+  // Handle brand detection completion from BrandIntelligenceStep
   const handleBrandDetectionComplete = useCallback((result: {
     designDna: DesignDNA;
     designSystem: BrandDesignSystem;
@@ -465,11 +575,12 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
       return updatedStyle;
     });
 
-    // Auto-generate blueprint with the new design tokens
-    console.log('[Style & Publish] Auto-generating blueprint with detected colors...');
+    // Auto-generate blueprints with the new design tokens
+    console.log('[Style & Publish] Auto-generating blueprints with detected colors...');
     generateBlueprint(newTokens, suggestedPersonality);
+    generateLayoutEngineBlueprint(result.designDna);
     setPreview(null);
-  }, [generateBlueprint]);
+  }, [generateBlueprint, generateLayoutEngineBlueprint]);
 
   // Fetch learned preferences for this project
   const fetchLearnedPreferences = useCallback(async () => {
@@ -737,6 +848,8 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
             personalityId: personalityId,
             language,
             heroImage: layout.components.hero.imageUrl,
+            // Pass brandDesignSystem for compiledCss injection (THE KEY FIX)
+            brandDesignSystem: detectedDesignSystem || undefined,
             designTokens: style?.designTokens ? {
               colors: {
                 primary: style.designTokens.colors.primary,
@@ -873,7 +986,12 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     if (nextIndex < STEPS.length) {
       const nextStep = STEPS[nextIndex].id;
 
-      // Generate blueprint if not already generated when moving to preview
+      // Generate layout engine blueprint when moving to layout step (if not already generated)
+      if (nextStep === 'layout' && !layoutEngineBlueprint) {
+        await generateLayoutEngineBlueprint(detectedDesignDna || undefined);
+      }
+
+      // Generate rendering blueprint if not already generated when moving to preview
       if (nextStep === 'preview' && !blueprint) {
         await generateBlueprint();
       }
@@ -885,7 +1003,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
 
       setCurrentStep(nextStep);
     }
-  }, [currentStepIndex, generatePreview, generateBlueprint, blueprint]);
+  }, [currentStepIndex, generatePreview, generateBlueprint, blueprint, generateLayoutEngineBlueprint, layoutEngineBlueprint, detectedDesignDna]);
 
   const handleBack = useCallback(() => {
     const prevIndex = currentStepIndex - 1;
@@ -952,7 +1070,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     switch (currentStep) {
       case 'brand':
         return (
-          <BrandStep
+          <BrandIntelligenceStep
             defaultDomain={topicalMap?.business_info?.domain}
             apifyToken={apifyToken}
             geminiApiKey={geminiApiKey}
@@ -960,8 +1078,21 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
             supabaseUrl={supabaseUrl}
             supabaseAnonKey={supabaseAnonKey}
             projectId={projectId}
+            designDna={detectedDesignDna}
+            brandDesignSystem={detectedDesignSystem}
+            screenshotBase64={detectedScreenshot}
             onDetectionComplete={handleBrandDetectionComplete}
             onDesignDnaChange={setDetectedDesignDna}
+          />
+        );
+
+      case 'layout':
+        return (
+          <LayoutIntelligenceStep
+            blueprint={layoutEngineBlueprint}
+            isGenerating={isLayoutEngineGenerating}
+            error={layoutEngineError}
+            onRegenerate={() => generateLayoutEngineBlueprint(detectedDesignDna || undefined)}
           />
         );
 
@@ -981,6 +1112,10 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
             onBlueprintChange={setBlueprint}
             isBlueprintGenerating={isBlueprintGenerating}
             onRegenerateBlueprint={() => generateBlueprint()}
+            // Brand validation display
+            brandMatchScore={brandMatchScore}
+            brandAssessment={brandAssessment}
+            onShowBrandDetails={() => setCurrentStep('brand')}
           />
         );
 
