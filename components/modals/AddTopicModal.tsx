@@ -14,6 +14,17 @@ import { useAppState } from '../../state/appState';
 import { SmartLoader } from '../ui/FunLoaders';
 import { QueryTemplatePanel } from '../templates/QueryTemplatePanel';
 
+/**
+ * Pre-fill data for bridge topic creation
+ */
+export interface TopicPrefill {
+  title: string;
+  description: string;
+  type: 'core' | 'outer' | 'child';
+  parentTopicId?: string;
+  reasoning?: string;
+}
+
 interface AddTopicModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -26,6 +37,8 @@ interface AddTopicModalProps {
   mapId?: string;
   onGenerateTopicsFromTemplate?: (result: ExpandedTemplateResult) => Promise<void>;
   onOpenLocationManager?: () => void;
+  // Pre-fill for bridge topics
+  prefill?: TopicPrefill | null;
 }
 
 // Structure for the new AI response
@@ -48,11 +61,12 @@ const AddTopicModal: React.FC<AddTopicModalProps> = ({
   mapId,
   onGenerateTopicsFromTemplate,
   onOpenLocationManager,
+  prefill,
 }) => {
   const { state, dispatch } = useAppState();
 
   const [activeTab, setActiveTab] = useState<'manual' | 'template' | 'ai'>('manual');
-  
+
   // Manual State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -60,6 +74,19 @@ const AddTopicModal: React.FC<AddTopicModalProps> = ({
   const [placement, setPlacement] = useState<'ai' | 'root' | string>('ai');
   const [viabilityResult, setViabilityResult] = useState<TopicViabilityResult | null>(null);
   const [isCheckingViability, setIsCheckingViability] = useState(false);
+  const [prefillReasoning, setPrefillReasoning] = useState<string | null>(null);
+
+  // Pre-fill form when prefill prop changes
+  React.useEffect(() => {
+    if (prefill && isOpen) {
+      setTitle(prefill.title);
+      setDescription(prefill.description);
+      setType(prefill.type);
+      setPlacement(prefill.parentTopicId || 'ai');
+      setPrefillReasoning(prefill.reasoning || null);
+      setActiveTab('manual'); // Switch to manual tab to show pre-filled data
+    }
+  }, [prefill, isOpen]);
 
   // AI Assistant State
   const [userThoughts, setUserThoughts] = useState('');
@@ -200,6 +227,7 @@ const AddTopicModal: React.FC<AddTopicModalProps> = ({
       setUserThoughts('');
       setSuggestions([]);
       setSelectedIndices(new Set());
+      setPrefillReasoning(null);
       // Keep active tab context
   };
 
@@ -269,6 +297,18 @@ const AddTopicModal: React.FC<AddTopicModalProps> = ({
             {/* Manual Entry Tab */}
             {activeTab === 'manual' && (
                 <form id="manual-form" role="tabpanel" aria-labelledby="tab-manual" onSubmit={handleManualSubmit} className="space-y-4">
+                    {/* Pre-fill reasoning from bridge topic suggestion */}
+                    {prefillReasoning && (
+                        <div className="p-3 rounded border bg-emerald-900/20 border-emerald-600 text-emerald-200 text-sm">
+                            <div className="flex items-center gap-2 font-bold mb-1">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg>
+                                <span>Bridge Topic Suggestion</span>
+                            </div>
+                            <p>{prefillReasoning}</p>
+                        </div>
+                    )}
                     <div>
                         <Label htmlFor="topic-title">Title</Label>
                         <div className="flex gap-2">

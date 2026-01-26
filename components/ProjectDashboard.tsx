@@ -63,7 +63,8 @@ import { PortfolioAnalytics } from './quality';
 
 // Entity Health
 import { EntityHealthDashboard } from './dashboard/EntityHealthDashboard';
-import BridgingOpportunitiesPanel from './dashboard/BridgingOpportunitiesPanel';
+import BridgingOpportunitiesPanel, { BridgeTopicSuggestion } from './dashboard/BridgingOpportunitiesPanel';
+import { TopicPrefill } from './modals/AddTopicModal';
 
 import { Button } from './ui/Button';
 import { FeatureErrorBoundary } from './ui/FeatureErrorBoundary';
@@ -437,6 +438,9 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     const [showSocialSignals, setShowSocialSignals] = useState(false);
     const [showEntityHealth, setShowEntityHealth] = useState(false);
 
+    // Bridge topic pre-fill for AddTopicModal
+    const [bridgeTopicPrefill, setBridgeTopicPrefill] = useState<TopicPrefill | null>(null);
+
     // Create navigation tabs configuration
     const dashboardTabs = createDashboardTabs({
         onEditPillars: () => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'pillarEdit', visible: true } }),
@@ -577,7 +581,16 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                             const topic = allTopics.find(t => t.id === topicId);
                             if (topic) handleSelectTopicForBrief(topic);
                         }}
-                        onCreateTopic={() => {
+                        onCreateBridgeTopic={(suggestion: BridgeTopicSuggestion) => {
+                            // Convert BridgeTopicSuggestion to TopicPrefill
+                            const prefill: TopicPrefill = {
+                                title: suggestion.title,
+                                description: suggestion.description,
+                                type: suggestion.placement.type,
+                                parentTopicId: suggestion.placement.parentTopicId,
+                                reasoning: `${suggestion.reasoning}\n\nSEO Impact: ${suggestion.seoImpact}`,
+                            };
+                            setBridgeTopicPrefill(prefill);
                             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'addTopic', visible: true } });
                         }}
                     />
@@ -664,7 +677,10 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
 
             <AddTopicModal
                 isOpen={!!modals.addTopic}
-                onClose={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'addTopic', visible: false } })}
+                onClose={() => {
+                    dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'addTopic', visible: false } });
+                    setBridgeTopicPrefill(null); // Clear prefill when closing
+                }}
                 onAddTopic={onAddTopic}
                 onBulkAddTopics={onBulkAddTopics}
                 coreTopics={coreTopics}
@@ -673,6 +689,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                 mapId={topicalMap.id}
                 onGenerateTopicsFromTemplate={handleTemplateGeneratedTopics}
                 onOpenLocationManager={() => setShowLocationManager(true)}
+                prefill={bridgeTopicPrefill}
             />
             <ContentBriefModal
                 allTopics={allTopics}
