@@ -27,6 +27,7 @@ import {
 import { BriefHealthOverview } from '../brief/BriefHealthOverview';
 import { MoneyPagePillarsIndicator } from '../brief/MoneyPagePillarsIndicator';
 import { VisualSemanticsPanel } from '../brief/VisualSemanticsPanel';
+import { TopicBridgingContext } from '../brief/TopicBridgingContext';
 import { getSupabaseClient } from '../../services/supabaseClient';
 import CompetitiveIntelligenceWrapper from '../analysis/CompetitiveIntelligenceWrapper';
 import { useFeatureGate } from '../../hooks/usePermissions';
@@ -1324,6 +1325,17 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                                     ))}
                                 </div>
                             </Card>
+                        )}
+
+                        {/* Knowledge Graph Bridging Context */}
+                        {activeBriefTopic && knowledgeGraph && activeMap?.eavs && (
+                            <TopicBridgingContext
+                                topic={activeBriefTopic}
+                                knowledgeGraph={knowledgeGraph}
+                                eavs={activeMap.eavs as import('../../types').SemanticTriple[]}
+                                pillars={activeMap.pillars}
+                                allTopics={allTopics}
+                            />
                         )}
 
                          {/* Internal Links */}
