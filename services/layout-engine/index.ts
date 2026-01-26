@@ -10,3 +10,4 @@ export * from './types';
 
 // Services
 export { SectionAnalyzer } from './SectionAnalyzer';
+export { LayoutPlanner } from './LayoutPlanner';
