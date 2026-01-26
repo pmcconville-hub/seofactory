@@ -137,6 +137,38 @@ describe('CSSPostProcessor', () => {
       expect(result.css).toContain('var(--ctc-spacing-xs)');
     });
 
+    it('should normalize high-value spacing variables to 3xl', () => {
+      const css = `
+.test {
+  padding: var(--ctc-spacing-12);
+  margin: var(--ctc-spacing-16);
+  gap: var(--ctc-spacing-20);
+}
+      `;
+
+      const result = postProcessCSS(css, SAMPLE_TOKENS, false);
+
+      expect(result.normalizedCount).toBe(3);
+      expect(result.css).toContain('var(--ctc-spacing-3xl)');
+      expect(result.css).not.toContain('var(--ctc-spacing-12)');
+      expect(result.css).not.toContain('var(--ctc-spacing-16)');
+      expect(result.css).not.toContain('var(--ctc-spacing-20)');
+    });
+
+    it('should normalize neutral-0 to lightest', () => {
+      const css = `
+.test {
+  background: var(--ctc-neutral-0);
+}
+      `;
+
+      const result = postProcessCSS(css, SAMPLE_TOKENS, false);
+
+      expect(result.normalizedCount).toBe(1);
+      expect(result.css).toContain('var(--ctc-neutral-lightest)');
+      expect(result.css).not.toContain('var(--ctc-neutral-0)');
+    });
+
     it('should normalize space alias variables', () => {
       const css = `
 .test {

@@ -28,6 +28,7 @@ export interface PostProcessResult {
  */
 const VARIABLE_NORMALIZATION_MAP: Record<string, string> = {
   // Neutral color scale (numeric to named)
+  '--ctc-neutral-0': '--ctc-neutral-lightest',
   '--ctc-neutral-1': '--ctc-neutral-lightest',
   '--ctc-neutral-2': '--ctc-neutral-light',
   '--ctc-neutral-3': '--ctc-neutral-light',
@@ -59,6 +60,14 @@ const VARIABLE_NORMALIZATION_MAP: Record<string, string> = {
   '--ctc-spacing-6': '--ctc-spacing-2xl',
   '--ctc-spacing-7': '--ctc-spacing-2xl',
   '--ctc-spacing-8': '--ctc-spacing-3xl',
+  '--ctc-spacing-9': '--ctc-spacing-3xl',
+  '--ctc-spacing-10': '--ctc-spacing-3xl',
+  '--ctc-spacing-11': '--ctc-spacing-3xl',
+  '--ctc-spacing-12': '--ctc-spacing-3xl',
+  '--ctc-spacing-14': '--ctc-spacing-3xl',
+  '--ctc-spacing-16': '--ctc-spacing-3xl',
+  '--ctc-spacing-20': '--ctc-spacing-3xl',
+  '--ctc-spacing-24': '--ctc-spacing-3xl',
   // Tailwind-style spacing
   '--ctc-space-0': '0',
   '--ctc-space-1': '--ctc-spacing-xs',
