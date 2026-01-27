@@ -153,14 +153,12 @@ export class DesignInheritanceService {
         .single();
 
       if (error) {
-        if (this.isTableMissingError(error)) {
-          // Table doesn't exist yet - graceful degradation
+        // Table missing, no rows found, or RLS issues - all gracefully return null
+        // Don't log warnings for expected "table not yet created" scenarios
+        if (this.isTableMissingError(error) || (error as { code?: string }).code === 'PGRST116') {
           return null;
         }
-        // PGRST116 = no rows found is also OK
-        if ((error as { code?: string }).code === 'PGRST116') {
-          return null;
-        }
+        // Only log unexpected errors
         console.warn('[DesignInheritance] getActiveDesignProfile error:', error.message);
         return null;
       }
@@ -184,10 +182,8 @@ export class DesignInheritanceService {
         .single();
 
       if (error) {
-        if (this.isTableMissingError(error)) {
-          return null;
-        }
-        if ((error as { code?: string }).code === 'PGRST116') {
+        // Table missing, no rows found, or RLS issues - all gracefully return null
+        if (this.isTableMissingError(error) || (error as { code?: string }).code === 'PGRST116') {
           return null;
         }
         console.warn('[DesignInheritance] getProjectDefaults error:', error.message);
@@ -213,10 +209,8 @@ export class DesignInheritanceService {
         .single();
 
       if (error) {
-        if (this.isTableMissingError(error)) {
-          return null;
-        }
-        if ((error as { code?: string }).code === 'PGRST116') {
+        // Table missing, no rows found, or RLS issues - all gracefully return null
+        if (this.isTableMissingError(error) || (error as { code?: string }).code === 'PGRST116') {
           return null;
         }
         console.warn('[DesignInheritance] getTopicalMapRules error:', error.message);

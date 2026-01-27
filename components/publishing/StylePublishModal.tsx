@@ -208,7 +208,9 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     supabase: supabaseClient,
     projectId: projectId || '',
     topicalMapId: topic.map_id,
-    skipInitialLoad: !projectId, // Skip if no project ID
+    // Skip initial load - design_profiles tables may not exist yet
+    // User can manually reload when design inheritance feature is deployed
+    skipInitialLoad: true,
   });
 
   // Apply inherited tokens to style when loaded
