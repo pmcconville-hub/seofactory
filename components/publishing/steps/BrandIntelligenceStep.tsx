@@ -394,7 +394,7 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
                 <div>
                   <span className="text-zinc-400">Confidence:</span>
                   <span className="ml-2 text-green-400 font-medium">
-                    {Math.round((currentDna.confidence?.overall || 0.5) * 100)}%
+                    {Math.round(currentDna.confidence?.overall || 50)}%
                   </span>
                 </div>
               </div>

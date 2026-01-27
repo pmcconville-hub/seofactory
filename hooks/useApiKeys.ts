@@ -18,6 +18,7 @@ import {
   ApiKeyStatus,
   ResolvedApiKey,
   BusinessInfo,
+  ApiKeySource,
 } from '../types';
 
 // Supported AI providers
@@ -71,9 +72,9 @@ export function useApiKeys(businessInfo: BusinessInfo) {
         return {
           provider,
           hasKey: !!key?.is_active,
-          keySource: key?.key_source || 'inherit',
+          keySource: (key?.key_source || 'inherit') as ApiKeySource,
           isActive: key?.is_active || false,
-          usageThisMonth: key?.usage_this_month,
+          usageThisMonth: key?.usage_this_month as { tokens: number; requests: number; cost_usd: number } | undefined,
         };
       });
     } catch (err) {
@@ -109,9 +110,9 @@ export function useApiKeys(businessInfo: BusinessInfo) {
         return {
           provider,
           hasKey: key?.key_source === 'byok',
-          keySource: key?.key_source || 'inherit',
+          keySource: (key?.key_source || 'inherit') as ApiKeySource,
           isActive: key?.is_active ?? true,
-          usageThisMonth: key?.usage_this_month,
+          usageThisMonth: key?.usage_this_month as { tokens: number; requests: number; cost_usd: number } | undefined,
         };
       });
     } catch (err) {
@@ -166,10 +167,11 @@ export function useApiKeys(businessInfo: BusinessInfo) {
       if (rpcError) throw rpcError;
       if (!data) return null;
 
+      const result = data as { key_source: string; billable_to: string; billable_id: string };
       return {
-        keySource: data.key_source,
-        billableTo: data.billable_to,
-        billableId: data.billable_id,
+        keySource: result.key_source,
+        billableTo: result.billable_to,
+        billableId: result.billable_id,
       };
     } catch (err) {
       console.error('Failed to get billable info:', err);

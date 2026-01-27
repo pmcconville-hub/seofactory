@@ -127,10 +127,10 @@ export const SemanticComplianceCard: React.FC<SemanticComplianceCardProps> = ({
                 : 'Significant improvements needed'}
           </p>
 
-          {/* Score breakdown */}
-          {showDetails && (
+          {/* Score breakdown - only for PostComplianceReport which has checks */}
+          {showDetails && 'checks' in report && report.checks && (
             <div className="mt-3 space-y-1.5">
-              {report.checks?.slice(0, 4).map((check, i) => (
+              {report.checks.slice(0, 4).map((check, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${
                     check.passed ? 'bg-green-400' : 'bg-red-400'
@@ -141,7 +141,7 @@ export const SemanticComplianceCard: React.FC<SemanticComplianceCardProps> = ({
                   </span>
                 </div>
               ))}
-              {report.checks && report.checks.length > 4 && (
+              {report.checks.length > 4 && (
                 <p className="text-xs text-gray-500">
                   +{report.checks.length - 4} more checks
                 </p>

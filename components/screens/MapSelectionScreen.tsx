@@ -33,7 +33,7 @@ const MapSelectionScreen: React.FC<MapSelectionScreenProps> = ({
             <header className="flex justify-between items-start">
                 <div>
                     <h1 className="text-4xl font-bold text-white">{projectName}</h1>
-                    <p className="text-lg text-gray-400 mt-1">Select a topical map, create a new one, or analyze your website.</p>
+                    <p className="text-lg text-gray-400 mt-1">Select a topical map or create a new one.</p>
                 </div>
                 <Button onClick={onBackToProjects} variant="secondary">Back to Projects</Button>
             </header>
@@ -46,10 +46,12 @@ const MapSelectionScreen: React.FC<MapSelectionScreenProps> = ({
                         <p className="text-gray-400 mt-2 flex-grow">Start from scratch with our guided wizard to build a content strategy based on your business goals.</p>
                         <Button onClick={onCreateNewMap} className="mt-6 w-full">Start Wizard</Button>
                     </Card>
-                    <Card className="p-8 flex flex-col items-center justify-center text-center">
+                    {/* TODO: Re-enable when edge function pipeline is complete (start-website-analysis → gap-analysis-worker) */}
+                    <Card className="p-8 flex flex-col items-center justify-center text-center opacity-60">
                         <h2 className="text-2xl font-bold text-white">Analyze Existing Website</h2>
                         <p className="text-gray-400 mt-2 flex-grow">Crawl your live website to automatically discover its current topical map and get AI-powered improvement suggestions.</p>
-                        <Button onClick={onStartAnalysis} variant="secondary" className="mt-6 w-full">Start Analysis</Button>
+                        <Button disabled variant="secondary" className="mt-6 w-full">Coming Soon</Button>
+                        <p className="text-xs text-amber-400/70 mt-2">Backend integration in progress</p>
                     </Card>
                     <Card className="p-8 flex flex-col items-center justify-center text-center">
                         <h2 className="text-2xl font-bold text-white">Merge Topical Maps</h2>

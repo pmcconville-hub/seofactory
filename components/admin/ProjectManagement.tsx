@@ -95,13 +95,14 @@ const ProjectManagement: React.FC = () => {
 
             if (error) throw error;
 
-            if (data?.success) {
+            const result = data as { success?: boolean; maps_updated?: number; error?: string } | null;
+            if (result?.success) {
                 const targetUser = users.find(u => u.id === newUserId);
-                setSuccessMessage(`Project "${selectedProject.project_name}" reassigned to ${targetUser?.email || 'new user'}. ${data.maps_updated} map(s) updated.`);
+                setSuccessMessage(`Project "${selectedProject.project_name}" reassigned to ${targetUser?.email || 'new user'}. ${result.maps_updated} map(s) updated.`);
                 setIsModalOpen(false);
                 fetchProjects(); // Refresh list
             } else {
-                throw new Error(data?.error || 'Reassignment failed');
+                throw new Error(result?.error || 'Reassignment failed');
             }
         } catch (e) {
             setError(e instanceof Error ? e.message : "Reassignment failed.");

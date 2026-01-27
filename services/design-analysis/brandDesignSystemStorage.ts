@@ -14,25 +14,48 @@ export function initBrandDesignSystemStorage(url: string, key: string) {
 export async function saveDesignDNA(
   projectId: string,
   result: DesignDNAExtractionResult
-): Promise<string> {
+): Promise<string | null> {
   if (!supabase) throw new Error('Storage not initialized');
 
-  const { data, error } = await supabase
-    .from('brand_design_dna')
-    .insert({
-      project_id: projectId,
-      source_url: result.sourceUrl,
-      screenshot_base64: result.screenshotBase64,
-      design_dna: result.designDna,
-      ai_model: result.aiModel,
-      confidence_score: result.designDna.confidence.overall,
-      processing_time_ms: result.processingTimeMs
-    })
-    .select('id')
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('brand_design_dna')
+      .insert({
+        project_id: projectId,
+        source_url: result.sourceUrl,
+        screenshot_base64: result.screenshotBase64,
+        design_dna: result.designDna,
+        ai_model: result.aiModel,
+        confidence_score: result.designDna.confidence.overall,
+        processing_time_ms: result.processingTimeMs
+      })
+      .select('id')
+      .single();
 
-  if (error) throw error;
-  return data.id;
+    if (error) {
+      if (isTableMissingError(error)) {
+        console.warn('[BrandDesignStorage] saveDesignDNA: Table not found, skipping persistence');
+        return null;
+      }
+      console.warn('[BrandDesignStorage] saveDesignDNA error:', error.message);
+      return null;
+    }
+
+    return data.id;
+  } catch (err) {
+    console.warn('[BrandDesignStorage] saveDesignDNA exception:', err);
+    return null;
+  }
+}
+
+/**
+ * Check if an error indicates a missing table (graceful degradation)
+ */
+function isTableMissingError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { code?: string; message?: string; status?: number };
+  // PGRST116 = relation does not exist or no rows, 406 = Not Acceptable (table issues)
+  return err.code === 'PGRST116' || err.code === '42P01' || err.status === 406;
 }
 
 /**
@@ -41,24 +64,38 @@ export async function saveDesignDNA(
 export async function getDesignDNA(projectId: string): Promise<DesignDNAExtractionResult | null> {
   if (!supabase) throw new Error('Storage not initialized');
 
-  const { data, error } = await supabase
-    .from('brand_design_dna')
-    .select('*')
-    .eq('project_id', projectId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('brand_design_dna')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
 
-  if (error || !data) return null;
+    if (error) {
+      if (isTableMissingError(error)) {
+        // Table doesn't exist yet - graceful degradation
+        return null;
+      }
+      console.warn('[BrandDesignStorage] getDesignDNA error:', error.message);
+      return null;
+    }
 
-  return {
-    designDna: data.design_dna as DesignDNA,
-    screenshotBase64: data.screenshot_base64,
-    sourceUrl: data.source_url,
-    extractedAt: data.created_at,
-    aiModel: data.ai_model,
-    processingTimeMs: data.processing_time_ms
-  };
+    if (!data) return null;
+
+    return {
+      designDna: data.design_dna as DesignDNA,
+      screenshotBase64: data.screenshot_base64,
+      sourceUrl: data.source_url,
+      extractedAt: data.created_at,
+      aiModel: data.ai_model,
+      processingTimeMs: data.processing_time_ms
+    };
+  } catch (err) {
+    console.warn('[BrandDesignStorage] getDesignDNA exception:', err);
+    return null;
+  }
 }
 
 /**
@@ -68,32 +105,45 @@ export async function saveBrandDesignSystem(
   projectId: string,
   designDnaId: string | null,
   system: BrandDesignSystem
-): Promise<string> {
+): Promise<string | null> {
   if (!supabase) throw new Error('Storage not initialized');
 
-  const { data, error } = await supabase
-    .from('brand_design_systems')
-    .upsert({
-      project_id: projectId,
-      design_dna_id: designDnaId,
-      brand_name: system.brandName,
-      design_dna_hash: system.designDnaHash,
-      tokens: system.tokens,
-      component_styles: system.componentStyles,
-      decorative_elements: system.decorative,
-      interactions: system.interactions,
-      typography_treatments: system.typographyTreatments,
-      image_treatments: system.imageTreatments,
-      compiled_css: system.compiledCss,
-      variant_mappings: system.variantMappings
-    }, {
-      onConflict: 'project_id,design_dna_hash'
-    })
-    .select('id')
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('brand_design_systems')
+      .upsert({
+        project_id: projectId,
+        design_dna_id: designDnaId,
+        brand_name: system.brandName,
+        design_dna_hash: system.designDnaHash,
+        tokens: system.tokens,
+        component_styles: system.componentStyles,
+        decorative_elements: system.decorative,
+        interactions: system.interactions,
+        typography_treatments: system.typographyTreatments,
+        image_treatments: system.imageTreatments,
+        compiled_css: system.compiledCss,
+        variant_mappings: system.variantMappings
+      }, {
+        onConflict: 'project_id,design_dna_hash'
+      })
+      .select('id')
+      .single();
 
-  if (error) throw error;
-  return data.id;
+    if (error) {
+      if (isTableMissingError(error)) {
+        console.warn('[BrandDesignStorage] saveBrandDesignSystem: Table not found, skipping persistence');
+        return null;
+      }
+      console.warn('[BrandDesignStorage] saveBrandDesignSystem error:', error.message);
+      return null;
+    }
+
+    return data.id;
+  } catch (err) {
+    console.warn('[BrandDesignStorage] saveBrandDesignSystem exception:', err);
+    return null;
+  }
 }
 
 /**
@@ -102,31 +152,44 @@ export async function saveBrandDesignSystem(
 export async function getBrandDesignSystem(projectId: string): Promise<BrandDesignSystem | null> {
   if (!supabase) throw new Error('Storage not initialized');
 
-  const { data, error } = await supabase
-    .from('brand_design_systems')
-    .select('*')
-    .eq('project_id', projectId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('brand_design_systems')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
 
-  if (error || !data) return null;
+    if (error) {
+      if (isTableMissingError(error)) {
+        return null;
+      }
+      console.warn('[BrandDesignStorage] getBrandDesignSystem error:', error.message);
+      return null;
+    }
 
-  return {
-    id: data.id,
-    brandName: data.brand_name,
-    sourceUrl: '',
-    generatedAt: data.created_at,
-    designDnaHash: data.design_dna_hash,
-    tokens: data.tokens,
-    componentStyles: data.component_styles,
-    decorative: data.decorative_elements,
-    interactions: data.interactions,
-    typographyTreatments: data.typography_treatments,
-    imageTreatments: data.image_treatments,
-    compiledCss: data.compiled_css,
-    variantMappings: data.variant_mappings
-  };
+    if (!data) return null;
+
+    return {
+      id: data.id,
+      brandName: data.brand_name,
+      sourceUrl: '',
+      generatedAt: data.created_at,
+      designDnaHash: data.design_dna_hash,
+      tokens: data.tokens,
+      componentStyles: data.component_styles,
+      decorative: data.decorative_elements,
+      interactions: data.interactions,
+      typographyTreatments: data.typography_treatments,
+      imageTreatments: data.image_treatments,
+      compiledCss: data.compiled_css,
+      variantMappings: data.variant_mappings
+    };
+  } catch (err) {
+    console.warn('[BrandDesignStorage] getBrandDesignSystem exception:', err);
+    return null;
+  }
 }
 
 /**
@@ -138,11 +201,24 @@ export async function hasDesignSystemForHash(
 ): Promise<boolean> {
   if (!supabase) throw new Error('Storage not initialized');
 
-  const { count } = await supabase
-    .from('brand_design_systems')
-    .select('id', { count: 'exact', head: true })
-    .eq('project_id', projectId)
-    .eq('design_dna_hash', hash);
+  try {
+    const { count, error } = await supabase
+      .from('brand_design_systems')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', projectId)
+      .eq('design_dna_hash', hash);
 
-  return (count || 0) > 0;
+    if (error) {
+      if (isTableMissingError(error)) {
+        return false;
+      }
+      console.warn('[BrandDesignStorage] hasDesignSystemForHash error:', error.message);
+      return false;
+    }
+
+    return (count || 0) > 0;
+  } catch (err) {
+    console.warn('[BrandDesignStorage] hasDesignSystemForHash exception:', err);
+    return false;
+  }
 }

@@ -599,6 +599,24 @@ export function getAvailableTemplateTypes(
 }
 
 /**
+ * Get all default templates as SocialPostTemplate objects
+ */
+export function getDefaultTemplates(): SocialPostTemplate[] {
+  return DEFAULT_TEMPLATES.map(def => ({
+    id: `default-${def.platform}-${def.template_type}`,
+    user_id: 'system',
+    name: def.name,
+    platform: def.platform,
+    template_type: def.template_type,
+    content_template: def.template,
+    character_limit: def.characterLimit,
+    is_default: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }));
+}
+
+/**
  * Template placeholder definitions
  */
 export const TEMPLATE_PLACEHOLDERS = {

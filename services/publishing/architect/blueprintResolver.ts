@@ -176,10 +176,10 @@ export function applyOverrides(
   const result = { ...blueprint };
 
   // Apply page strategy overrides
-  if (overrides.pageStrategy) {
+  if (overrides.pageStrategyOverrides) {
     result.pageStrategy = {
       ...result.pageStrategy,
-      ...overrides.pageStrategy,
+      ...overrides.pageStrategyOverrides,
     };
   }
 
@@ -188,13 +188,13 @@ export function applyOverrides(
     result.sections = result.sections.map(section => {
       const override = overrides.sectionOverrides?.find(o => o.sectionId === section.id);
       if (override) {
+        const { sectionId: _sectionId, ...presentationOverrides } = override;
         return {
           ...section,
           presentation: {
             ...section.presentation,
-            ...override.presentation,
+            ...presentationOverrides,
           },
-          reasoning: override.reasoning || section.reasoning,
         };
       }
       return section;
@@ -202,10 +202,10 @@ export function applyOverrides(
   }
 
   // Apply global element overrides
-  if (overrides.globalElements) {
+  if (overrides.globalOverrides) {
     result.globalElements = {
       ...result.globalElements,
-      ...overrides.globalElements,
+      ...overrides.globalOverrides,
     };
   }
 

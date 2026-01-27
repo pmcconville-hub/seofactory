@@ -351,6 +351,14 @@ export function renderBlueprint(
 
   let css: string;
 
+  // DEBUG: Log what brandDesignSystem we received
+  console.log('[BlueprintRenderer] CSS generation - options.brandDesignSystem:', {
+    hasBrandDesignSystem: !!options.brandDesignSystem,
+    hasCompiledCss: !!options.brandDesignSystem?.compiledCss,
+    compiledCssLength: options.brandDesignSystem?.compiledCss?.length || 0,
+    brandName: options.brandDesignSystem?.brandName,
+  });
+
   if (options.brandDesignSystem?.compiledCss) {
     // THE KEY FIX: Use full brand design system CSS
     // IMPORTANT: compiledCss already includes the tokens CSS (:root declaration)
@@ -370,6 +378,7 @@ ${brandCss}`;
     console.log('[BlueprintRenderer] Using BrandDesignSystem.compiledCss');
     console.log('[BlueprintRenderer] Brand CSS length:', brandCss.length);
   } else {
+    console.log('[BlueprintRenderer] FALLBACK: No compiledCss - using legacy generateDesignSystemCss');
     // Legacy fallback: use designTokens with generateDesignSystemCss
     const customOverrides = options.designTokens ? convertDesignTokensToOverrides(options.designTokens) : undefined;
 
@@ -517,16 +526,19 @@ function renderHero(
   // Get localized defaults
   const localizedDefaults = getLocalizedCtaDefaults(language);
 
-  // AIRY LUXURY: White background with branded accents
-  // This matches modern WordPress/Premium service aesthetics
-  let heroStyle = 'background: #ffffff; border-bottom: 1px solid var(--ctc-border-subtle)';
-  let textColor = 'color: var(--ctc-text)';
-  let subtitleColor = 'color: var(--ctc-text-secondary)';
+  // DESIGN AGENCY QUALITY: Use CSS variables for hero background
+  // This allows brand CSS to override with brand-specific gradients/colors
+  // --ctc-hero-bg can be set by brand CSS for full customization
+  let heroStyle = 'background: var(--ctc-hero-bg, var(--ctc-background)); border-bottom: 1px solid var(--ctc-border-subtle)';
+  let textColor = 'color: var(--ctc-hero-text, var(--ctc-text))';
+  let subtitleColor = 'color: var(--ctc-hero-subtitle, var(--ctc-text-secondary))';
   let btnPrimaryStyle = 'background: var(--ctc-primary); color: white; box-shadow: 0 4px 12px color-mix(in srgb, var(--ctc-primary) 30%, transparent)';
   let btnSecondaryStyle = 'background: transparent; color: var(--ctc-primary); border: 2px solid var(--ctc-primary)';
 
   if (strategy.visualStyle === 'bold' || strategy.visualStyle === 'marketing') {
-    heroStyle = 'background: linear-gradient(135deg, var(--ctc-surface) 0%, #ffffff 100%)';
+    heroStyle = 'background: var(--ctc-hero-bg, linear-gradient(135deg, var(--ctc-primary) 0%, var(--ctc-primary-dark) 100%)); color: white';
+    textColor = 'color: var(--ctc-hero-text, white)';
+    subtitleColor = 'color: var(--ctc-hero-subtitle, rgba(255,255,255,0.9))';
   }
 
   const showCta = ctaIntensity === 'prominent' || ctaIntensity === 'moderate' || strategy.primaryGoal === 'convert' || ctaConfig?.primaryText;

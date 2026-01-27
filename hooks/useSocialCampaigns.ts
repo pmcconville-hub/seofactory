@@ -89,7 +89,7 @@ export function useSocialCampaigns({
         if (!acc[post.campaign_id]) {
           acc[post.campaign_id] = [];
         }
-        acc[post.campaign_id].push(post as SocialPost);
+        acc[post.campaign_id].push(post as unknown as SocialPost);
         return acc;
       }, {} as Record<string, SocialPost[]>);
 
@@ -245,7 +245,7 @@ export function useSocialCampaigns({
 
       return {
         campaign: campaignData as SocialCampaign,
-        posts: (postData || []) as SocialPost[]
+        posts: (postData || []) as unknown as SocialPost[]
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to get campaign';

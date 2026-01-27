@@ -367,7 +367,7 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
     // Use actual slug from topic if available, otherwise generate from title
     const slug = activeBriefTopic.slug ||
                  activeBriefTopic.url_slug_hint ||
-                 slugify(brief.title || activeBriefTopic.topic || '');
+                 slugify(brief.title || activeBriefTopic.title || '');
 
     // Build URL from domain - domain should include protocol (e.g., "https://example.com")
     // If domain doesn't include protocol, add https://
@@ -384,7 +384,7 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
     return {
       job_id: databaseJobInfo.jobId,
       topic_id: activeBriefTopic.id,
-      title: brief.title || activeBriefTopic.topic || 'Untitled',
+      title: brief.title || activeBriefTopic.title || 'Untitled',
       meta_description: brief.metaDescription || '',
       link_url: linkUrl,
       language: businessInfo.language || undefined,
@@ -414,7 +414,14 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
   const handleSocialTransform = useCallback(async (config: TransformationConfig): Promise<{
     campaign: SocialCampaign;
     posts: SocialPost[];
-    complianceReport: CampaignComplianceReport;
+    complianceReport: {
+      overall_score: number;
+      entity_consistency: { score: number; issues: string[] };
+      eav_coverage: { score: number; issues: string[] };
+      information_density: { score: number; issues: string[] };
+      semantic_distance: { score: number; issues: string[] };
+      hub_spoke_coverage: { score: number; issues: string[] };
+    };
   }> => {
     if (!socialTransformSource) {
       throw new Error('No source data available for transformation');
@@ -469,7 +476,7 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
       const { error } = await supabase
         .from('social_posts')
         .update({
-          ...updates,
+          ...updates as any, // Type assertion for Supabase JSON compatibility
           updated_at: new Date().toISOString()
         })
         .eq('id', postId);
@@ -1906,20 +1913,20 @@ Article: ${brief.title}
 Total Campaigns: ${socialCampaigns.campaigns.length}
 ═══════════════════════════════════════════════════════════════════════════════
 
-${socialCampaigns.campaigns.map((campaign, ci) => `
+${socialCampaigns.campaigns.map((campaignItem, ci) => `
 ───────────────────────────────────────────────────────────────────────────────
-CAMPAIGN ${ci + 1}: ${campaign.name || 'Untitled Campaign'}
-Created: ${campaign.created_at ? new Date(campaign.created_at).toLocaleDateString() : 'Unknown'}
-Posts: ${campaign.posts?.length || 0}
+CAMPAIGN ${ci + 1}: ${campaignItem.campaign.campaign_name || 'Untitled Campaign'}
+Created: ${campaignItem.campaign.created_at ? new Date(campaignItem.campaign.created_at).toLocaleDateString() : 'Unknown'}
+Posts: ${campaignItem.posts?.length || 0}
 ───────────────────────────────────────────────────────────────────────────────
 
-${campaign.posts?.map((post, pi) => `
+${campaignItem.posts?.map((post, pi) => `
 [${post.platform?.toUpperCase() || 'UNKNOWN'}] Post ${pi + 1}
 ${'─'.repeat(40)}
-${post.content || 'No content'}
+${post.content_text || 'No content'}
 
 ${post.hashtags?.length ? `Hashtags: ${post.hashtags.join(' ')}` : ''}
-${post.media_urls?.length ? `Media: ${post.media_urls.join(', ')}` : ''}
+${post.image_instructions ? `Media: ${post.image_instructions.description || 'Image required'}` : ''}
 `).join('\n') || 'No posts in this campaign.'}
 `).join('\n\n')}
 
@@ -2419,7 +2426,7 @@ ${schemaScript}`;
         id: `contextual_${Date.now()}`,
         description: prompt,
         altTextSuggestion: contextualEditor.state.imagePromptResult?.altTextSuggestion || prompt.slice(0, 100),
-        type: style === 'diagram' ? 'DIAGRAM' : style === 'infographic' ? 'INFOGRAPHIC' : 'ILLUSTRATION',
+        type: style === 'diagram' ? 'DIAGRAM' : style === 'infographic' ? 'INFOGRAPHIC' : 'SECTION',
         status: 'placeholder',
         specs: {
           width: aspectRatio === '16:9' ? 1920 : aspectRatio === '4:3' ? 1600 : aspectRatio === '1:1' ? 1200 : 1200,
@@ -2428,13 +2435,15 @@ ${schemaScript}`;
           maxFileSize: 500000,
         },
         metadata: {
+          filename: `contextual_${Date.now()}.webp`,
           altText: contextualEditor.state.imagePromptResult?.altTextSuggestion || '',
         },
+        position: 0,
       };
 
       const result = await generateImageFromOrchestrator(
         tempPlaceholder,
-        { provider: 'auto' },
+        { altText: tempPlaceholder.altTextSuggestion || prompt },
         businessInfo,
         (progress) => {
           console.log('[Contextual Image] Progress:', progress.message);
@@ -4073,7 +4082,7 @@ ${schemaScript}`;
           topic={activeBriefTopic}
           articleDraft={draftContent}
           brief={brief}
-          brandKit={businessInfo?.brandKit}
+          brandKit={businessInfo?.brandKit as any}
           topicalMap={activeMap}
           supabaseUrl={businessInfo.supabaseUrl}
           supabaseAnonKey={businessInfo.supabaseAnonKey}
@@ -4094,7 +4103,7 @@ ${schemaScript}`;
           isOpen={showSocialModal}
           onClose={() => setShowSocialModal(false)}
           source={socialTransformSource}
-          onTransform={handleSocialTransform}
+          onTransform={handleSocialTransform as any}
           onComplete={(campaign, posts) => {
             dispatch({
               type: 'SET_NOTIFICATION',

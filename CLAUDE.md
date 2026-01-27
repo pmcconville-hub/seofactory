@@ -47,6 +47,35 @@ Multi-provider abstraction supporting Gemini, OpenAI, Anthropic, Perplexity, and
   - `contentGeneration/` - Multi-pass article generation system
 - Individual provider implementations: `geminiService.ts`, `openAiService.ts`, `anthropicService.ts`, etc.
 
+### Semantic SEO Core Services
+
+**Topical Authority Calculation** (`services/ai/analysis.ts`):
+- `calculateTopicalAuthority()` - AI-based holistic authority scoring (0-100)
+- Returns breakdown: contentDepth, contentBreadth, interlinking, semanticRichness
+- UI: "Authority" button in `AnalysisToolsPanel`
+- Prompt: `config/prompts.ts` → `CALCULATE_TOPICAL_AUTHORITY_PROMPT`
+
+**Semantic Distance & Clustering** (`lib/knowledgeGraph.ts` + `services/ai/clustering.ts`):
+- `calculateSemanticDistance(entityA, entityB)` - Formula: `1 - (CosineSimilarity × ContextWeight × CoOccurrence)`
+- Distance thresholds: <0.2 (cannibalization risk), 0.3-0.7 (linking sweet spot), >0.7 (different clusters)
+- `findLinkingCandidates(entity)` - Returns entities in optimal linking range
+- `clusterTopicsSemanticDistance()` - Hierarchical agglomerative clustering
+- `findCannibalizationRisks()` - Identifies topics too similar (<0.2 distance)
+- UI: `SemanticDistanceMatrix.tsx` (heatmap visualization)
+
+**Gap Analysis** (`services/ai/queryNetworkAudit.ts`):
+- `runQueryNetworkAudit()` - Full competitive gap analysis
+- Fetches SERP data, extracts competitor EAVs, identifies missing attributes
+- Returns: `{ contentGaps[], competitorEAVs[], recommendations[] }`
+- UI: `QueryNetworkAudit.tsx` + `CompetitorGapGraph.tsx` (network visualization)
+- Hook: `useCompetitorGapNetwork.ts`
+
+**EAV Services** (`services/ai/eavService.ts`, `eavClassifier.ts`, `eavAudit.ts`):
+- Industry-specific predicate suggestions (10+ industries)
+- Auto-classification with 70+ predicate patterns
+- Coverage scoring and gap detection
+- UI: `EavDiscoveryWizard.tsx`, `EavCompletenessCard.tsx`
+
 ### Multi-Pass Content Generation
 The `services/ai/contentGeneration/` module implements a 9-pass article generation system:
 
@@ -141,3 +170,5 @@ The `services/layout-engine/` module transforms content into design-agency quali
 **Semantic Triples (EAVs)**: Entity-Attribute-Value triples are central to the SEO strategy. See `SemanticTriple` interface in `types.ts` for the structure with categories (UNIQUE/ROOT/RARE/COMMON) and classifications (TYPE/COMPONENT/BENEFIT/RISK/PROCESS/SPECIFICATION).
 
 **Content Briefs**: Complex nested structure including `serpAnalysis`, `contextualBridge`, `structured_outline`, and `visual_semantics`. Always validate structure before rendering.
+
+**Disabled Features**: The "Analyze Existing Website" feature (edge function pipeline: `start-website-analysis` → `sitemap-discovery` → `crawl-worker` → `semantic-mapping-worker` → `gap-analysis-worker`) is temporarily disabled in UI. The edge functions exist but are stubs/placeholders awaiting implementation. See `MapSelectionScreen.tsx` for the disabled button.

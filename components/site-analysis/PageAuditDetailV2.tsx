@@ -405,7 +405,7 @@ export const PageAuditDetailV2: React.FC<PageAuditDetailV2Props> = ({
                 </div>
               </div>
             )}
-            {renderPhaseTasks('LinkStructure')}
+            {/* Phase tasks rendered via AuditTaskList below */}
             <AuditTaskList
               tasks={getTasksByPhase('LinkStructure')}
               expandedTaskIds={expandedTaskIds}
@@ -442,7 +442,7 @@ export const PageAuditDetailV2: React.FC<PageAuditDetailV2Props> = ({
                 </div>
               </div>
             )}
-            {renderPhaseTasks('ContentQuality')}
+            {/* Phase tasks rendered via AuditTaskList below */}
             <AuditTaskList
               tasks={getTasksByPhase('ContentQuality')}
               expandedTaskIds={expandedTaskIds}
@@ -500,7 +500,7 @@ export const PageAuditDetailV2: React.FC<PageAuditDetailV2Props> = ({
                 </div>
               </div>
             )}
-            {renderPhaseTasks('VisualSchema')}
+            {/* Phase tasks rendered via AuditTaskList below */}
             <AuditTaskList
               tasks={getTasksByPhase('VisualSchema')}
               expandedTaskIds={expandedTaskIds}

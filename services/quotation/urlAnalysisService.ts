@@ -133,13 +133,11 @@ async function analyzeTechnicalData(
 
   try {
     // Crawl the site
+    // Note: extractMultiplePagesTechnicalData doesn't support maxPagesToAnalyze option
+    // TODO: Consider adding pagination support if needed
     const pages = await extractMultiplePagesTechnicalData(
       [startUrl],
-      config.apifyToken,
-      {
-        maxPagesToAnalyze: config.maxPagesToAnalyze || 50,
-        proxyConfig: config.proxyConfig,
-      }
+      config.apifyToken
     );
 
     onProgress?.({
@@ -163,16 +161,16 @@ async function analyzeTechnicalData(
       if (page.metaDescription && page.metaDescription.length > 160) notices++;
 
       // Check for schema (simplified check)
-      if (page.jsonLdSchemas && page.jsonLdSchemas.length > 0) {
+      if (page.schemaMarkup && page.schemaMarkup.length > 0) {
         hasAnySchema = true;
       }
 
       // Check for critical issues
-      if (!page.canonicalUrl) warnings++;
+      if (!page.canonical) warnings++;
       if (page.statusCode && page.statusCode >= 400) critical++;
 
-      // Check mobile viewport
-      if (!page.metaViewport) {
+      // Check mobile viewport (approximation - check HTML for viewport meta)
+      if (page.html && !page.html.includes('viewport')) {
         allMobileOptimized = false;
       }
     }
@@ -226,11 +224,16 @@ async function analyzeSerpVisibility(
 
   // Create minimal business info if not provided
   const info: BusinessInfo = businessInfo || {
-    companyName: domain,
-    websiteUrl: `https://${domain}`,
+    domain: domain,
+    projectName: domain.replace(/\.[^.]+$/, ''),  // Remove TLD
+    industry: 'General',
+    model: 'Other',
+    valueProp: '',
+    audience: '',
+    expertise: '',
+    seedKeyword: '',
+    language: 'en',
     targetMarket: 'United States',
-    languageCode: 'en',
-    industryVertical: 'Business',
   };
 
   try {

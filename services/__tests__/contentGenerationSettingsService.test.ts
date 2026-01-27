@@ -213,6 +213,7 @@ describe('ContentGenerationSettingsService', () => {
         validationMode: 'hard' as const,
         storePassSnapshots: true,
         enableDebugExport: true,
+        enableDesignAnalysis: false,
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z'
       };
@@ -268,6 +269,7 @@ describe('ContentGenerationSettingsService', () => {
         validationMode: 'hard' as const,
         storePassSnapshots: true,
         enableDebugExport: true,
+        enableDesignAnalysis: false,
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z'
       };

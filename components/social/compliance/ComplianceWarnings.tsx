@@ -81,7 +81,9 @@ export const ComplianceWarnings: React.FC<ComplianceWarningsProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const warnings = processChecks(report.checks || []);
+  // Only PostComplianceReport has checks, CampaignComplianceReport doesn't
+  const checks = 'checks' in report ? report.checks : [];
+  const warnings = processChecks(checks || []);
   const displayWarnings = isExpanded ? warnings : warnings.slice(0, maxWarnings);
   const hiddenCount = warnings.length - maxWarnings;
 

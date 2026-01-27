@@ -232,7 +232,45 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
             size="sm"
             onClick={() => {
               if (preview) {
-                const bundle = `<style>\n${preview.css}\n</style>\n${preview.html}`;
+                // Generate complete HTML document (not just a fragment)
+                const bundle = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Styled Article</title>
+  <!-- Tailwind CSS for utility classes used in components -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+${preview.css}
+  </style>
+</head>
+<body>
+${preview.html}
+<script>
+// FAQ Accordion Toggle
+document.querySelectorAll('.ctc-faq-trigger').forEach(function(trigger) {
+  trigger.addEventListener('click', function() {
+    var answer = document.getElementById(trigger.getAttribute('aria-controls'));
+    var isExpanded = trigger.getAttribute('aria-expanded') === 'true';
+    trigger.setAttribute('aria-expanded', !isExpanded);
+    if (answer) answer.hidden = isExpanded;
+  });
+});
+
+// Smooth scroll for TOC links
+document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
+  link.addEventListener('click', function(e) {
+    var target = document.querySelector(this.getAttribute('href'));
+    if (target) {
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+</script>
+</body>
+</html>`;
                 navigator.clipboard.writeText(bundle);
                 if (onCopyHtml) onCopyHtml(bundle);
               }

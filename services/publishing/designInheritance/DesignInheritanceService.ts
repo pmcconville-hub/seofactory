@@ -131,55 +131,103 @@ export class DesignInheritanceService {
   // --------------------------------------------------------------------------
 
   /**
+   * Check if an error indicates a missing table (graceful degradation)
+   */
+  private isTableMissingError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const err = error as { code?: string; message?: string; status?: number };
+    // PGRST116 = relation does not exist, 406 = Not Acceptable (often RLS/table issues)
+    return err.code === 'PGRST116' || err.code === '42P01' || err.status === 406;
+  }
+
+  /**
    * Load the active design profile for a project
    */
   async getActiveDesignProfile(projectId: string): Promise<DesignProfileRow | null> {
-    const { data, error } = await this.supabase
-      .from('design_profiles')
-      .select('*')
-      .eq('project_id', projectId)
-      .eq('is_active', true)
-      .single();
+    try {
+      const { data, error } = await this.supabase
+        .from('design_profiles')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('is_active', true)
+        .single();
 
-    if (error || !data) {
+      if (error) {
+        if (this.isTableMissingError(error)) {
+          // Table doesn't exist yet - graceful degradation
+          return null;
+        }
+        // PGRST116 = no rows found is also OK
+        if ((error as { code?: string }).code === 'PGRST116') {
+          return null;
+        }
+        console.warn('[DesignInheritance] getActiveDesignProfile error:', error.message);
+        return null;
+      }
+
+      return data as DesignProfileRow;
+    } catch (err) {
+      console.warn('[DesignInheritance] getActiveDesignProfile exception:', err);
       return null;
     }
-
-    return data as DesignProfileRow;
   }
 
   /**
    * Load project design defaults
    */
   async getProjectDefaults(projectId: string): Promise<ProjectDesignDefaultsRow | null> {
-    const { data, error } = await this.supabase
-      .from('project_design_defaults')
-      .select('*')
-      .eq('project_id', projectId)
-      .single();
+    try {
+      const { data, error } = await this.supabase
+        .from('project_design_defaults')
+        .select('*')
+        .eq('project_id', projectId)
+        .single();
 
-    if (error || !data) {
+      if (error) {
+        if (this.isTableMissingError(error)) {
+          return null;
+        }
+        if ((error as { code?: string }).code === 'PGRST116') {
+          return null;
+        }
+        console.warn('[DesignInheritance] getProjectDefaults error:', error.message);
+        return null;
+      }
+
+      return data as ProjectDesignDefaultsRow;
+    } catch (err) {
+      console.warn('[DesignInheritance] getProjectDefaults exception:', err);
       return null;
     }
-
-    return data as ProjectDesignDefaultsRow;
   }
 
   /**
    * Load topical map design rules
    */
   async getTopicalMapRules(topicalMapId: string): Promise<TopicalMapDesignRulesRow | null> {
-    const { data, error } = await this.supabase
-      .from('topical_map_design_rules')
-      .select('*')
-      .eq('topical_map_id', topicalMapId)
-      .single();
+    try {
+      const { data, error } = await this.supabase
+        .from('topical_map_design_rules')
+        .select('*')
+        .eq('topical_map_id', topicalMapId)
+        .single();
 
-    if (error || !data) {
+      if (error) {
+        if (this.isTableMissingError(error)) {
+          return null;
+        }
+        if ((error as { code?: string }).code === 'PGRST116') {
+          return null;
+        }
+        console.warn('[DesignInheritance] getTopicalMapRules error:', error.message);
+        return null;
+      }
+
+      return data as TopicalMapDesignRulesRow;
+    } catch (err) {
+      console.warn('[DesignInheritance] getTopicalMapRules exception:', err);
       return null;
     }
-
-    return data as TopicalMapDesignRulesRow;
   }
 
   // --------------------------------------------------------------------------
@@ -283,23 +331,35 @@ export class DesignInheritanceService {
     projectId: string,
     defaults: Partial<ProjectDesignDefaultsRow>
   ): Promise<void> {
-    const existing = await this.getProjectDefaults(projectId);
+    try {
+      const existing = await this.getProjectDefaults(projectId);
 
-    if (existing) {
-      await this.supabase
-        .from('project_design_defaults')
-        .update({
-          ...defaults,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('project_id', projectId);
-    } else {
-      await this.supabase
-        .from('project_design_defaults')
-        .insert({
-          project_id: projectId,
-          ...defaults,
-        });
+      if (existing) {
+        const { error } = await this.supabase
+          .from('project_design_defaults')
+          .update({
+            ...defaults,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('project_id', projectId);
+
+        if (error && !this.isTableMissingError(error)) {
+          console.warn('[DesignInheritance] saveProjectDefaults update error:', error.message);
+        }
+      } else {
+        const { error } = await this.supabase
+          .from('project_design_defaults')
+          .insert({
+            project_id: projectId,
+            ...defaults,
+          });
+
+        if (error && !this.isTableMissingError(error)) {
+          console.warn('[DesignInheritance] saveProjectDefaults insert error:', error.message);
+        }
+      }
+    } catch (err) {
+      console.warn('[DesignInheritance] saveProjectDefaults exception:', err);
     }
   }
 
@@ -311,24 +371,36 @@ export class DesignInheritanceService {
     projectId: string,
     rules: Partial<TopicalMapDesignRulesRow>
   ): Promise<void> {
-    const existing = await this.getTopicalMapRules(topicalMapId);
+    try {
+      const existing = await this.getTopicalMapRules(topicalMapId);
 
-    if (existing) {
-      await this.supabase
-        .from('topical_map_design_rules')
-        .update({
-          ...rules,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('topical_map_id', topicalMapId);
-    } else {
-      await this.supabase
-        .from('topical_map_design_rules')
-        .insert({
-          topical_map_id: topicalMapId,
-          project_id: projectId,
-          ...rules,
-        });
+      if (existing) {
+        const { error } = await this.supabase
+          .from('topical_map_design_rules')
+          .update({
+            ...rules,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('topical_map_id', topicalMapId);
+
+        if (error && !this.isTableMissingError(error)) {
+          console.warn('[DesignInheritance] saveTopicalMapRules update error:', error.message);
+        }
+      } else {
+        const { error } = await this.supabase
+          .from('topical_map_design_rules')
+          .insert({
+            topical_map_id: topicalMapId,
+            project_id: projectId,
+            ...rules,
+          });
+
+        if (error && !this.isTableMissingError(error)) {
+          console.warn('[DesignInheritance] saveTopicalMapRules insert error:', error.message);
+        }
+      }
+    } catch (err) {
+      console.warn('[DesignInheritance] saveTopicalMapRules exception:', err);
     }
   }
 
@@ -339,27 +411,42 @@ export class DesignInheritanceService {
     projectId: string,
     feedback: DesignFeedback
   ): Promise<void> {
-    await this.supabase.from('design_preferences').upsert(
-      {
-        project_id: projectId,
-        preference_type: feedback.feedbackType,
-        context: `section_${feedback.sectionIndex}`,
-        choice: feedback.chosenComponent,
-        frequency: 1,
-        last_used: feedback.timestamp,
-      },
-      {
-        onConflict: 'project_id,preference_type,context',
-        ignoreDuplicates: false,
-      }
-    );
+    try {
+      const { error: upsertError } = await this.supabase.from('design_preferences').upsert(
+        {
+          project_id: projectId,
+          preference_type: feedback.feedbackType,
+          context: `section_${feedback.sectionIndex}`,
+          choice: feedback.chosenComponent,
+          frequency: 1,
+          last_used: feedback.timestamp,
+        },
+        {
+          onConflict: 'project_id,preference_type,context',
+          ignoreDuplicates: false,
+        }
+      );
 
-    // If conflict, increment frequency
-    await this.supabase.rpc('increment_design_preference_frequency', {
-      p_project_id: projectId,
-      p_preference_type: feedback.feedbackType,
-      p_context: `section_${feedback.sectionIndex}`,
-    });
+      if (upsertError && !this.isTableMissingError(upsertError)) {
+        console.warn('[DesignInheritance] recordFeedback upsert error:', upsertError.message);
+        return;
+      }
+
+      // If conflict, increment frequency (skip if table missing)
+      if (!upsertError) {
+        const { error: rpcError } = await this.supabase.rpc('increment_design_preference_frequency', {
+          p_project_id: projectId,
+          p_preference_type: feedback.feedbackType,
+          p_context: `section_${feedback.sectionIndex}`,
+        });
+
+        if (rpcError && !this.isTableMissingError(rpcError)) {
+          console.warn('[DesignInheritance] recordFeedback rpc error:', rpcError.message);
+        }
+      }
+    } catch (err) {
+      console.warn('[DesignInheritance] recordFeedback exception:', err);
+    }
   }
 
   // --------------------------------------------------------------------------

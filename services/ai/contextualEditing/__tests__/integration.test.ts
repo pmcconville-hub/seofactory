@@ -6,11 +6,11 @@ import { suggestImageStyle, generateAltText, determinePlacement } from '../image
 import { BusinessInfo, ContentBrief, SemanticTriple } from '../../../../types';
 
 describe('Contextual Editing Integration', () => {
-  const mockBusinessInfo: BusinessInfo = {
+  const mockBusinessInfo = {
     name: 'Test Company',
     offerings: ['Web Design', 'SEO Services'],
     location: 'Amsterdam',
-  } as BusinessInfo;
+  } as unknown as BusinessInfo;
 
   const mockBrief: ContentBrief = {
     title: 'Test Article',

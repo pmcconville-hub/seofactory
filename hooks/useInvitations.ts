@@ -79,7 +79,7 @@ export function useInvitations() {
         console.warn('Failed to log audit event:', auditError);
       }
 
-      return data;
+      return data as Invitation;
     } catch (err) {
       console.error('Failed to create invitation:', err);
       setError(err instanceof Error ? err.message : 'Failed to create invitation');
@@ -203,7 +203,7 @@ export function useInvitations() {
 
       if (queryError) throw queryError;
 
-      return data || [];
+      return (data || []) as InvitationWithInviter[];
     } catch (err) {
       console.error('Failed to get sent invitations:', err);
       setError(err instanceof Error ? err.message : 'Failed to get invitations');
@@ -237,7 +237,7 @@ export function useInvitations() {
 
       if (queryError) throw queryError;
 
-      return data || [];
+      return (data || []) as Invitation[];
     } catch (err) {
       console.error('Failed to get pending invitations:', err);
       setError(err instanceof Error ? err.message : 'Failed to get invitations');

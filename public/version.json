@@ -1,5 +1,5 @@
 {
-  "version": "1.0.20260126.0003",
-  "buildTime": "2026-01-26T00:03:00.000Z",
-  "note": "defensive-coding-designdna-ui"
+  "version": "1.0.20260126.2347",
+  "buildTime": "2026-01-26T22:47:28.848Z",
+  "note": "fix-brand-tokens-ignored-in-blueprint"
 }

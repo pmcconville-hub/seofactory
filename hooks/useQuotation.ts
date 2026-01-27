@@ -231,7 +231,7 @@ export function useQuotation(): UseQuotationReturn {
 
     try {
       const config: UrlAnalysisConfig = {
-        apifyToken: state.businessInfo.apifyApiToken,
+        apifyToken: state.businessInfo.apifyToken,
         jinaApiKey: state.businessInfo.jinaApiKey,
         serpMode: 'fast',
         maxPagesToAnalyze: 25,

@@ -84,7 +84,7 @@ export function useSocialTemplates({
 
       if (fetchError) throw fetchError;
 
-      setCustomTemplates((data || []) as SocialPostTemplate[]);
+      setCustomTemplates((data || []) as unknown as SocialPostTemplate[]);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch templates';
       setError(message);
@@ -142,15 +142,17 @@ export function useSocialTemplates({
         created_at: new Date().toISOString()
       };
 
+      // Cast to satisfy Supabase Json type requirements
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error: insertError } = await supabase
         .from('social_post_templates')
-        .insert(newTemplate)
+        .insert(newTemplate as any)
         .select()
         .single();
 
       if (insertError) throw insertError;
 
-      const template = data as SocialPostTemplate;
+      const template = data as unknown as SocialPostTemplate;
 
       // Add to local state
       setCustomTemplates(prev => [template, ...prev]);
@@ -177,9 +179,10 @@ export function useSocialTemplates({
         return false;
       }
 
+      // Cast to satisfy Supabase Json type requirements
       const { error: updateError } = await supabase
         .from('social_post_templates')
-        .update(updates)
+        .update(updates as Record<string, unknown>)
         .eq('id', templateId);
 
       if (updateError) throw updateError;
@@ -244,10 +247,10 @@ export function useSocialTemplates({
         templateName: newName,
         templateType: template.template_type,
         contentPattern: template.content_pattern,
-        hashtagStrategy: template.hashtag_strategy || undefined,
+        hashtagStrategy: template.hashtag_strategy as unknown as Record<string, unknown> | undefined,
         ctaTemplates: template.cta_templates || undefined,
-        characterLimits: template.character_limits || undefined,
-        imageSpecs: template.image_specs || undefined
+        characterLimits: template.character_limits as unknown as Record<string, number> | undefined,
+        imageSpecs: template.image_specs as unknown as Record<string, unknown> | undefined
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to duplicate template';

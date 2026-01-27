@@ -206,7 +206,7 @@ export function BlueprintEditorPanel({
       onProjectChange({
         defaults: {
           ...projectBlueprint.defaults,
-          ctaStrategy: { ...currentCta, intensity: value },
+          ctaStrategy: { ...currentCta, intensity: value } as any,
         },
       });
     } else if (level === 'topical_map' && onTopicalMapChange && topicalMapBlueprint) {
@@ -216,7 +216,7 @@ export function BlueprintEditorPanel({
       onTopicalMapChange({
         defaults: {
           ...topicalMapBlueprint.defaults,
-          ctaStrategy: { ...currentCta, intensity: value },
+          ctaStrategy: { ...currentCta, intensity: value } as any,
         },
       });
     }

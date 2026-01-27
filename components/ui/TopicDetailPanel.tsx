@@ -10,6 +10,7 @@ import { Select } from './Select';
 import { Label } from './Label';
 import { safeString } from '../../utils/parsers';
 import CompetitiveIntelligenceWrapper from '../analysis/CompetitiveIntelligenceWrapper';
+import { useFrameExpansionRecommendation, getRecommendationSummary } from '../../hooks/useFrameExpansionRecommendation';
 
 interface TopicDetailPanelProps {
   topic: EnrichedTopic;
@@ -47,6 +48,9 @@ const TopicDetailPanel: React.FC<TopicDetailPanelProps> = ({
 }) => {
   // State for competitive intelligence panel
   const [showCompetitiveAnalysis, setShowCompetitiveAnalysis] = useState(false);
+
+  // Frame expansion recommendation for core/outer topics
+  const frameRecommendation = useFrameExpansionRecommendation(topic, allTopics);
 
   const handleDelete = () => {
     if (window.confirm(`Are you sure you want to delete the topic "${topic.title}"?`)) {
@@ -295,6 +299,36 @@ const TopicDetailPanel: React.FC<TopicDetailPanelProps> = ({
                <span className="mr-2">🔍</span>
                Analyze Competitors
              </Button>
+           )}
+
+           {/* Frame Expansion Recommendation Indicator */}
+           {frameRecommendation?.shouldRecommend && (topic.type === 'core' || topic.type === 'outer') && (
+             <div className={`p-2 rounded border ${
+               frameRecommendation.confidence === 'high'
+                 ? 'bg-purple-900/30 border-purple-700/50'
+                 : 'bg-purple-900/20 border-purple-800/30'
+             }`}>
+               <div className="flex items-center gap-2">
+                 <span className="text-purple-400">🎭</span>
+                 <div className="flex-1">
+                   <p className="text-xs font-medium text-purple-300">
+                     Frame Expansion {frameRecommendation.confidence === 'high' ? 'Strongly ' : ''}Recommended
+                   </p>
+                   <p className="text-[10px] text-purple-400/80">
+                     {getRecommendationSummary(frameRecommendation)}
+                   </p>
+                 </div>
+               </div>
+               {frameRecommendation.reasons.length > 0 && (
+                 <div className="mt-1.5 flex flex-wrap gap-1">
+                   {frameRecommendation.reasons.slice(0, 2).map((reason, i) => (
+                     <span key={i} className="text-[9px] px-1.5 py-0.5 bg-purple-900/40 text-purple-300 rounded">
+                       {reason}
+                     </span>
+                   ))}
+                 </div>
+               )}
+             </div>
            )}
 
            {/* CORE TOPICS: Full expansion options (creates Outer topics) */}

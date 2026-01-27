@@ -260,8 +260,11 @@ export interface DashboardNavConfig {
   // Knowledge Panel (KP) Strategy
   onKPStrategy?: () => void;
   onEntityAuthority?: () => void;
+  onSocialSignals?: () => void;
   // Quality Analytics
   onQualityAnalytics?: () => void;
+  // Entity Health
+  onEntityHealth?: () => void;
 }
 
 export function createDashboardTabs(config: DashboardNavConfig): NavTab[] {
@@ -307,6 +310,19 @@ export function createDashboardTabs(config: DashboardNavConfig): NavTab[] {
           onClick: config.onKPStrategy,
           helpText: 'Define entity identity and track seed sources for Knowledge Panel',
           variant: 'primary' as const,
+        }] : []),
+        ...(config.onSocialSignals ? [{
+          id: 'social-signals',
+          label: 'Social Signals',
+          onClick: config.onSocialSignals,
+          helpText: 'Track social profiles for entity corroboration and KP eligibility',
+        }] : []),
+        ...(config.onEntityHealth ? [{
+          id: 'entity-health',
+          label: 'Entity Health',
+          onClick: config.onEntityHealth,
+          helpText: 'Check entity verification status against Wikipedia/Wikidata',
+          icon: NavIcons.analysis,
         }] : []),
       ],
     },

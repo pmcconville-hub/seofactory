@@ -115,7 +115,7 @@ const OrganizationManagement: React.FC = () => {
       const orgsWithDetails: OrganizationWithDetails[] = (orgs || []).map(org => ({
         ...org,
         settings: (org.settings || {}) as Record<string, unknown>,
-        type: org.type || 'personal',
+        type: (org.type || 'personal') as OrganizationType,
         cost_visibility: org.cost_visibility as unknown as Organization['cost_visibility'],
         branding: org.branding as unknown as Organization['branding'],
         member_count: org.organization_members?.[0]?.count || 0,

@@ -587,6 +587,20 @@ export function generateBlueprintHeuristicV2(
   // Generate sections with enhanced heuristics
   const sections = generateEnhancedHeuristicSections(analysis, contentSignals, visualStyle);
 
+  // DEBUG: Log component selection for verification
+  console.log('[Architect V2] Blueprint section components:', {
+    totalSections: sections.length,
+    components: sections.map(s => ({
+      heading: s.heading?.substring(0, 30) || '(intro)',
+      component: s.presentation.component,
+      emphasis: s.presentation.emphasis,
+    })),
+    componentDistribution: sections.reduce((acc, s) => {
+      acc[s.presentation.component] = (acc[s.presentation.component] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>),
+  });
+
   let blueprint: LayoutBlueprint = {
     version: '1.0',
     id: `blueprint-${Date.now()}`,
@@ -989,7 +1003,13 @@ function generateEnhancedHeuristicSections(
   const sections: SectionDesign[] = [];
   let lastWeight: 'light' | 'medium' | 'heavy' = 'light';
   let lastComponent: ComponentType | null = null;
-  let hasUsedCardGrid = false;
+
+  // DESIGN AGENCY QUALITY: Allow multiple card-grids with rhythm control
+  // Instead of boolean, use counter to allow 2-3 card-grids spaced apart
+  let cardGridCount = 0;
+  let sectionsSinceLastCardGrid = 0;
+  const maxCardGrids = visualStyle === 'minimal' ? 1 : 3;
+  const minSectionsBetweenCardGrids = 2;
 
   // First: Generate Key Takeaways from first 2-3 sections
   const keyTakeaways = extractKeyTakeawaysFromContent(analysis);
@@ -1013,123 +1033,218 @@ function generateEnhancedHeuristicSections(
     lastWeight = 'heavy';
   }
 
+  // Helper: Check if we can use another card-grid (rhythm-based)
+  const canUseCardGrid = () => {
+    return cardGridCount < maxCardGrids && sectionsSinceLastCardGrid >= minSectionsBetweenCardGrids;
+  };
+
+  // Helper: Detect pillar/column sections (common in service pages)
+  const isPillarSection = (heading: string, content: string): boolean => {
+    const pillarPatterns = [
+      /pijler/i, /pillar/i, /column/i, /kolom/i,
+      /drie\s+(onderdelen|aspecten|elementen)/i,
+      /three\s+(parts|aspects|elements|pillars)/i,
+      /totaalpakket/i, /complete\s+package/i,
+    ];
+    return pillarPatterns.some(p => p.test(heading) || p.test(content.substring(0, 500)));
+  };
+
+  // Helper: Detect benefits/features/advantages sections (expanded patterns)
+  const isBenefitsSection = (heading: string): boolean => {
+    const benefitPatterns = [
+      /voordel/i, /voordelen/i, /benefit/i, /benefits/i,
+      /kenmer/i, /features/i, /feature/i,
+      /waarom/i, /why\s+choose/i, /why\s+us/i,
+      /advantages/i, /pluspunt/i, /sterke\s+punt/i,
+      /wat\s+bieden/i, /what\s+we\s+offer/i,
+      /diensten/i, /services/i,
+      /expertise/i, /specialisatie/i,
+    ];
+    return benefitPatterns.some(p => p.test(heading));
+  };
+
+  // Helper: Detect process/steps/how-to sections (expanded patterns)
+  const isProcessSection = (heading: string): boolean => {
+    const processPatterns = [
+      /hoe\s+werk/i, /how\s+(it\s+)?work/i,
+      /stap/i, /step/i, /fase/i, /phase/i,
+      /proces/i, /process/i,
+      /werkwijze/i, /approach/i, /method/i,
+      /volgende\s+stap/i, /next\s+step/i,
+      /aan\s+de\s+slag/i, /get\s+started/i,
+      /verduurzaming/i, /sustainability/i, // Often process-based
+    ];
+    return processPatterns.some(p => p.test(heading));
+  };
+
+  // Helper: Detect comparison/pricing sections
+  const isComparisonSection = (heading: string, content: string): boolean => {
+    const comparisonPatterns = [
+      /vergelijk/i, /compar/i, /versus/i, /vs\./i,
+      /tariev/i, /tariff/i, /pricing/i, /kosten/i, /cost/i,
+      /verschil/i, /difference/i,
+    ];
+    // Also detect tables in content
+    const hasTable = content.includes('|') && (content.match(/\|/g) || []).length > 4;
+    return comparisonPatterns.some(p => p.test(heading)) || hasTable;
+  };
+
+  // Helper: Detect FAQ sections (expanded patterns)
+  const isFaqSection = (heading: string, content: string): boolean => {
+    const faqPatterns = [
+      /faq/i, /f\.a\.q/i,
+      /veelgesteld/i, /frequently\s+asked/i,
+      /vragen/i, /questions/i,
+    ];
+    // Also detect Q&A patterns in content
+    const hasQaPattern = /\?\s*\n/.test(content);
+    return faqPatterns.some(p => p.test(heading)) || (hasQaPattern && content.split('?').length >= 3);
+  };
+
   analysis.structure.sections.forEach((section, index) => {
     const sectionContent = section.content.toLowerCase();
     const headingLower = (section.heading || '').toLowerCase();
+    const headingOriginal = section.heading || '';
 
-    // Determine component based on content patterns (enhanced)
+    // Determine component based on content patterns (DESIGN AGENCY QUALITY)
     let component: ComponentType = 'prose';
     let variant = 'default';
     let emphasis: SectionEmphasis = 'normal';
     let reasoning = 'Standard prose section.';
 
-    // Check for list patterns
-    const hasBulletList = sectionContent.includes('- ') || sectionContent.includes('* ');
-    const hasNumberedList = /\d+\.\s/.test(sectionContent);
-    const listItemCount = (sectionContent.match(/(?:^|\n)[-*]\s/g) || []).length;
+    // Check for list patterns (improved detection)
+    const bulletMatches = sectionContent.match(/(?:^|\n)[-*•]\s/g) || [];
+    const numberedMatches = sectionContent.match(/(?:^|\n)\d+[\.\)]\s/g) || [];
+    const listItemCount = bulletMatches.length + numberedMatches.length;
+    const hasMultipleH3 = (section.content.match(/^###\s/gm) || []).length >= 2;
+    const hasStrongPoints = (section.content.match(/\*\*[^*]+\*\*/g) || []).length >= 3;
 
-    // Check for scenario/use-case patterns (expanded detection)
-    const isScenarioSection = detectScenarioSection(headingLower, sectionContent);
-    const hasMultipleH3 = (section.content.match(/^###\s/gm) || []).length >= 3;
+    // Track sections since last card-grid for rhythm
+    sectionsSinceLastCardGrid++;
 
-    // Intro section - becomes lead-paragraph
+    // === COMPONENT SELECTION (Priority Order) ===
+
+    // 1. Intro section - becomes lead-paragraph
     if (index === 0 && section.level === 0) {
       component = 'lead-paragraph';
       reasoning = 'Introduction receives lead paragraph treatment with accent border.';
     }
-    // Scenario/Use-case sections → Card Grid with icons
-    else if (isScenarioSection && !hasUsedCardGrid) {
+    // 2. Pillar sections (Three Pillars pattern) → ALWAYS card-grid
+    else if (isPillarSection(headingOriginal, section.content) && (hasMultipleH3 || listItemCount >= 3)) {
+      component = 'card-grid';
+      variant = 'icon';
+      reasoning = 'Pillar/service overview presented as premium card grid.';
+      emphasis = 'featured';
+      cardGridCount++;
+      sectionsSinceLastCardGrid = 0;
+    }
+    // 3. Benefits/Features sections → card-grid or feature-list
+    else if (isBenefitsSection(headingOriginal)) {
+      if (canUseCardGrid() && (listItemCount >= 3 || hasMultipleH3 || hasStrongPoints)) {
+        component = 'card-grid';
+        variant = 'icon';
+        cardGridCount++;
+        sectionsSinceLastCardGrid = 0;
+      } else {
+        component = 'feature-list';
+      }
+      reasoning = `Benefits presented as ${component} for visual impact.`;
+      emphasis = 'featured';
+    }
+    // 4. Process/Steps sections → timeline
+    else if (isProcessSection(headingOriginal)) {
+      if (lastComponent?.includes('timeline')) {
+        component = 'steps-numbered';
+      } else {
+        component = visualStyle === 'bold' ? 'timeline-zigzag' : 'timeline-vertical';
+      }
+      reasoning = `Process steps as ${component} for visual flow.`;
+      emphasis = 'featured';
+    }
+    // 5. Comparison/Pricing sections → comparison-table
+    else if (isComparisonSection(headingOriginal, section.content)) {
+      component = 'comparison-table';
+      reasoning = 'Comparison content as structured table for clarity.';
+      emphasis = 'featured';
+    }
+    // 6. FAQ sections → accordion
+    else if (isFaqSection(headingOriginal, section.content)) {
+      component = visualStyle === 'marketing' ? 'faq-cards' : 'faq-accordion';
+      reasoning = `FAQ as ${component} for interactive exploration.`;
+    }
+    // 7. Scenario/Use-case patterns
+    else if (detectScenarioSection(headingLower, sectionContent) && canUseCardGrid()) {
       component = 'card-grid';
       variant = 'icon';
       reasoning = 'Use-case scenarios as icon card grid for visual impact.';
       emphasis = 'featured';
-      hasUsedCardGrid = true;
+      cardGridCount++;
+      sectionsSinceLastCardGrid = 0;
     }
-    // H3 subsections → Card Grid (when content has multiple sub-items)
-    else if (hasMultipleH3 && !hasUsedCardGrid) {
+    // 8. H3 subsections → Card Grid
+    else if (hasMultipleH3 && canUseCardGrid()) {
       component = 'card-grid';
       variant = 'default';
       reasoning = 'Multiple sub-sections presented as card grid.';
       emphasis = 'featured';
-      hasUsedCardGrid = true;
+      cardGridCount++;
+      sectionsSinceLastCardGrid = 0;
     }
-    // Benefits section (enhanced component selection based on style)
-    else if (headingLower.includes('voordel') ||
-      headingLower.includes('benefit') ||
-      headingLower.includes('kenmer') ||
-      headingLower.includes('waarom')) {
-      if (visualStyle === 'minimal') {
-        component = 'bullet-list';
-      } else if (!hasUsedCardGrid && listItemCount >= 3) {
-        component = 'card-grid';
-        variant = 'icon';
-        hasUsedCardGrid = true;
-      } else {
-        component = 'icon-list';
-      }
-      reasoning = `Benefits presented as ${component} (${visualStyle} style).`;
-      emphasis = 'featured';
-    }
-    // Important tip/highlight detection → Callout box
+    // 9. Highlight/tip content
     else if (detectHighlightContent(sectionContent)) {
       component = 'highlight-box';
       variant = 'tip';
       reasoning = 'Important tip/highlight detected, using callout box.';
       emphasis = 'featured';
     }
-    // Process/how-to section (varied timeline components)
-    else if (headingLower.includes('hoe') ||
-      headingLower.includes('stap') ||
-      headingLower.includes('proces') ||
-      headingLower.includes('how') ||
-      headingLower.includes('werkwijze')) {
-      // Avoid repeating timeline if used recently
-      if (lastComponent?.includes('timeline')) {
-        component = 'steps-numbered';
-      } else {
-        component = visualStyle === 'bold' ? 'timeline-zigzag' : 'timeline-vertical';
-      }
-      reasoning = `Process steps as ${component} for visual variety.`;
-      emphasis = 'featured';
-    }
-    // FAQ section
-    else if (headingLower.includes('faq') ||
-      headingLower.includes('vraag') ||
-      headingLower.includes('question') ||
-      headingLower.includes('veelgesteld')) {
-      component = visualStyle === 'marketing' ? 'faq-cards' : 'faq-accordion';
-      reasoning = `FAQ as ${component} (${visualStyle} style).`;
-    }
-    // Important callout detection (inline tips, warnings)
+    // 10. Callout content
     else if (detectCalloutContent(sectionContent)) {
       component = 'callout';
       variant = detectCalloutType(sectionContent);
       reasoning = `Important callout detected (${variant}).`;
-      emphasis = 'normal';
     }
-    // List-heavy content - UPGRADED for beauty
+    // 11. List-heavy content → feature-list or icon-list (NOT prose)
     else if (listItemCount >= 3) {
-      if (!hasUsedCardGrid) {
+      if (canUseCardGrid() && listItemCount <= 6) {
         component = 'card-grid';
         variant = 'icon';
         reasoning = 'Content items presented as visual cards for premium feel.';
         emphasis = 'featured';
-        hasUsedCardGrid = true;
+        cardGridCount++;
+        sectionsSinceLastCardGrid = 0;
       } else {
-        component = 'icon-list';
-        reasoning = 'Structured list with icons for better scanning.';
+        component = 'feature-list';
+        reasoning = 'Structured list as feature list for better scanning.';
+      }
+    }
+    // 12. Strong points in prose → highlight with background
+    else if (hasStrongPoints && visualStyle !== 'minimal') {
+      component = 'prose';
+      emphasis = 'background';
+      reasoning = 'Content with key points highlighted with subtle background.';
+    }
+    // 13. Default prose (but with visual treatment for non-minimal styles)
+    else {
+      component = 'prose';
+      // For non-minimal styles, alternate background treatment for visual rhythm
+      if (visualStyle !== 'minimal' && index % 4 === 2) {
+        emphasis = 'background';
+        reasoning = 'Prose section with background treatment for visual rhythm.';
+      } else {
+        reasoning = 'Standard prose section.';
       }
     }
 
     // Apply visual weight rhythm
     const currentWeight = getWeightForComponent(component);
 
-    // Determine background based on rhythm (The "Z-Pattern" logic)
-    // 1. Featured sections always get background
-    // 2. Otherwise rotate background every ~3 sections to break monotony
+    // Determine background based on rhythm (DESIGN AGENCY Z-Pattern)
+    // 1. Featured/hero sections always get background
+    // 2. For visual interest, rotate backgrounds every few sections
     const hasBackground = emphasis === 'featured' ||
+      emphasis === 'background' ||
       emphasis === ('hero-moment' as SectionEmphasis) ||
-      (index % 3 === 2 && visualStyle !== 'minimal');
+      (visualStyle !== 'minimal' && index % 3 === 2);
 
     sections.push({
       id: `section-${index}`,

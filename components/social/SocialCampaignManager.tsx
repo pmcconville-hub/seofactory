@@ -259,7 +259,7 @@ export const SocialCampaignManager: React.FC<SocialCampaignManagerProps> = ({
 
           <PostPreviewCard
             post={hubPost}
-            compliance={complianceReport?.post_reports?.find(r => r.post_id === hubPost.id)}
+            complianceReport={complianceReport?.post_reports?.find(r => r.post_id === hubPost.id)}
             onEdit={onUpdatePost ? () => handleEditPost(hubPost) : undefined}
           />
 
@@ -341,7 +341,7 @@ export const SocialCampaignManager: React.FC<SocialCampaignManagerProps> = ({
                   <div key={post.id} className="space-y-2">
                     <PostPreviewCard
                       post={post}
-                      compliance={complianceReport?.post_reports?.find(r => r.post_id === post.id)}
+                      complianceReport={complianceReport?.post_reports?.find(r => r.post_id === post.id)}
                       onEdit={onUpdatePost ? () => handleEditPost(post) : undefined}
                     />
                     {/* Actions */}

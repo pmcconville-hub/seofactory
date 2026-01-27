@@ -154,9 +154,10 @@ export function useBrandDetection(config: UseBrandDetectionConfig) {
         updateStep('generate', 'complete');
         setState(prev => ({ ...prev, progress: 95 }));
 
-        // Save to database
+        // Save to database (best-effort - continues even if tables don't exist)
         if (config.projectId) {
           const dnaId = await saveDesignDNA(config.projectId, dnaResult);
+          // dnaId may be null if table doesn't exist yet
           await saveBrandDesignSystem(config.projectId, dnaId, designSystem);
         }
 

@@ -407,3 +407,100 @@ export function createExportService(
 ): ExportService {
   return new ExportService(supabase, userId);
 }
+
+// ============================================================================
+// Convenience functions for direct export (used by useSocialExport hook)
+// ============================================================================
+
+import type { SocialPost } from '../../../types/social';
+
+/**
+ * Export single post to clipboard
+ */
+export async function exportToClipboard(
+  post: SocialPost,
+  options: { includeHashtags?: boolean; includeLink?: boolean; includeMentions?: boolean } = {}
+): Promise<boolean> {
+  try {
+    const result = await clipboardExporter.copyToClipboard(post, {
+      includeHashtags: options.includeHashtags ?? true,
+      includeUtmLink: options.includeLink ?? true,
+      includeMentions: options.includeMentions ?? true,
+    });
+    return result.success;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Export posts to JSON
+ */
+export async function exportToJSON(
+  campaign: SocialCampaign,
+  posts: SocialPost[]
+): Promise<string> {
+  const result = await jsonExporter.export({
+    campaign,
+    posts,
+    options: {
+      pretty: true,
+      includeMetadata: true,
+      includeCompliance: true,
+      includeImageSpecs: true,
+    },
+  });
+  return result.content;
+}
+
+/**
+ * Export posts to text
+ */
+export async function exportToText(
+  posts: SocialPost[],
+  campaign?: SocialCampaign,
+  options: { includeInstructions?: boolean; includeImageSpecs?: boolean; format?: 'plain' | 'markdown' } = {}
+): Promise<string> {
+  const result = await textExporter.export({
+    posts,
+    campaign,
+    options: {
+      format: options.format || 'markdown',
+      includeInstructions: options.includeInstructions ?? true,
+      includeImageSpecs: options.includeImageSpecs ?? true,
+      includeUtmLinks: true,
+      includeCompliance: true,
+    },
+  });
+  return result.content;
+}
+
+/**
+ * Export campaign to ZIP package
+ */
+export async function exportToPackage(
+  campaign: SocialCampaign,
+  posts: SocialPost[],
+  options: {
+    includeInstructions?: boolean;
+    includeImageSpecs?: boolean;
+    includeUtmLinks?: boolean;
+    platformsToInclude?: SocialMediaPlatform[];
+    groupByPlatform?: boolean;
+  } = {}
+): Promise<Blob> {
+  const result = await packageExporter.createPackage({
+    campaign,
+    posts,
+    options: {
+      includeInstructions: options.includeInstructions ?? true,
+      includeImageSpecs: options.includeImageSpecs ?? true,
+      includeUtmLinks: options.includeUtmLinks ?? true,
+      includeJson: true,
+      includeMarkdown: true,
+      groupByPlatform: options.groupByPlatform ?? true,
+      platformsToInclude: options.platformsToInclude,
+    },
+  });
+  return result.blob;
+}

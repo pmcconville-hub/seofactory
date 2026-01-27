@@ -12,7 +12,7 @@
 import React from 'react';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'outline';
   size?: 'sm' | 'md' | 'lg';
   /** Full width button */
   fullWidth?: boolean;
@@ -39,6 +39,7 @@ export const Button: React.FC<ButtonProps> = ({
     primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 active:bg-blue-800',
     secondary: 'bg-gray-600 text-gray-200 hover:bg-gray-700 focus:ring-gray-500 active:bg-gray-800',
     ghost: 'bg-transparent text-gray-400 hover:bg-gray-800 hover:text-white focus:ring-gray-500 active:bg-gray-700',
+    outline: 'bg-transparent border border-gray-600 text-gray-300 hover:bg-gray-800 hover:border-gray-500 focus:ring-gray-500 active:bg-gray-700',
   };
 
   // Size classes with touch-friendly minimum heights

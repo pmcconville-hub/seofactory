@@ -616,7 +616,16 @@ export function useCosts() {
       }
 
       // The RPC returns a single row with aggregated data
-      const result = Array.isArray(data) ? data[0] : data;
+      const rawResult = Array.isArray(data) ? data[0] : data;
+      const result = rawResult as {
+        total_cost_usd?: number;
+        total_requests?: number;
+        total_tokens?: number;
+        by_provider?: { provider: string; cost: number; requests: number }[];
+        by_user?: { user_id: string; cost: number; requests: number }[];
+        by_project?: { project_id: string; cost: number; requests: number }[];
+        daily_trend?: { date: string; cost: number; requests: number }[];
+      } | null;
 
       return {
         totalCost: Number(result?.total_cost_usd) || 0,

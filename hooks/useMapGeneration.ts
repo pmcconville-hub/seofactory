@@ -1,4 +1,6 @@
-import { AppState, AppAction, AppStep, BlueprintConfig, BusinessInfo, EnrichedTopic, FreshnessProfile } from '../types';
+import { AppStep, BusinessInfo, EnrichedTopic, FreshnessProfile } from '../types';
+import { AppState, AppAction } from '../state/appState';
+import type { BlueprintConfig } from '../components/wizards/WebsiteBlueprintWizard';
 import { getSupabaseClient } from '../services/supabaseClient';
 import { verifiedBulkInsert, verifiedUpdate } from '../services/verifiedDatabaseService';
 import * as aiService from '../services/aiService';

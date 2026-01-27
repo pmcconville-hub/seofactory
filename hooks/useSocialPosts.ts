@@ -12,13 +12,14 @@ import type {
   SocialMediaPlatform,
   SocialPostType,
   UTMParameters,
-  EAVTriple
+  PostEAVTriple as EAVTriple
 } from '../types/social';
 
 interface UseSocialPostsProps {
   campaignId: string;
   supabaseUrl: string;
   supabaseAnonKey: string;
+  userId: string;
 }
 
 interface UseSocialPostsReturn {
@@ -60,7 +61,8 @@ interface CreatePostParams {
 export function useSocialPosts({
   campaignId,
   supabaseUrl,
-  supabaseAnonKey
+  supabaseAnonKey,
+  userId
 }: UseSocialPostsProps): UseSocialPostsReturn {
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -85,7 +87,7 @@ export function useSocialPosts({
 
       if (fetchError) throw fetchError;
 
-      setPosts((data || []) as SocialPost[]);
+      setPosts((data || []) as unknown as SocialPost[]);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch posts';
       setError(message);
@@ -111,6 +113,7 @@ export function useSocialPosts({
     try {
       const newPost = {
         campaign_id: campaignId,
+        user_id: userId,
         topic_id: params.topicId,
         job_id: params.jobId || null,
         platform: params.platform,
@@ -133,15 +136,17 @@ export function useSocialPosts({
         updated_at: new Date().toISOString()
       };
 
+      // Cast to satisfy Supabase Json type requirements (eav_triple type mismatch)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error: insertError } = await supabase
         .from('social_posts')
-        .insert(newPost)
+        .insert(newPost as any)
         .select()
         .single();
 
       if (insertError) throw insertError;
 
-      const post = data as SocialPost;
+      const post = data as unknown as SocialPost;
 
       // Add to local state
       setPosts(prev => {
@@ -161,7 +166,7 @@ export function useSocialPosts({
       console.error('[useSocialPosts] Error creating post:', err);
       return null;
     }
-  }, [campaignId, supabase]);
+  }, [campaignId, userId, supabase]);
 
   // Update a post
   const updatePost = useCallback(async (
@@ -169,12 +174,15 @@ export function useSocialPosts({
     updates: Partial<SocialPost>
   ): Promise<boolean> => {
     try {
+      // Cast updates to bypass ThreadSegment[] vs Json type mismatch
+      const dbUpdates = {
+        ...updates,
+        updated_at: new Date().toISOString()
+      } as Record<string, unknown>;
+
       const { error: updateError } = await supabase
         .from('social_posts')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
+        .update(dbUpdates)
         .eq('id', postId);
 
       if (updateError) throw updateError;

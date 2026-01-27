@@ -20,9 +20,11 @@ import {
 import type { LayoutBlueprint, SectionDesign, VisualStyle } from '../blueprintTypes';
 
 // Helper to create test blueprints
+// Note: Using `as unknown as` to bypass strict type checking in tests
+// since we're creating partial mock data for testing coherence rules
 function createTestBlueprint(
   visualStyle: VisualStyle,
-  sections: Partial<SectionDesign>[]
+  sections: Array<{ presentation?: Partial<SectionDesign['presentation']>; sourceContent?: string }>
 ): LayoutBlueprint {
   return {
     version: '1.0',
@@ -38,20 +40,22 @@ function createTestBlueprint(
     },
     sections: sections.map((s, i) => ({
       id: `section-${i}`,
-      sourceHeading: s.sourceHeading || `Section ${i}`,
+      heading: `Section ${i}`,
+      headingLevel: 2,
       sourceContent: s.sourceContent || '<p>Test content</p>',
       presentation: {
         component: s.presentation?.component || 'prose',
+        variant: 'default',
         emphasis: s.presentation?.emphasis || 'normal',
         spacing: s.presentation?.spacing || 'normal',
         hasBackground: s.presentation?.hasBackground || false,
-        showDivider: s.presentation?.showDivider || false,
+        hasDivider: false,
       },
       reasoning: 'Test section',
     })),
     generatedAt: new Date().toISOString(),
     generationTime: 100,
-  };
+  } as unknown as LayoutBlueprint;
 }
 
 describe('coherenceEngine', () => {
