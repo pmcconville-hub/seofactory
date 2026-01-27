@@ -277,9 +277,6 @@ export function useBrandExtraction(
         setPhase('extracting');
       }
 
-      // Close crawler
-      await crawler.close();
-
       // Complete
       setPhase('complete');
       setProgress({
@@ -289,7 +286,6 @@ export function useBrandExtraction(
         message: `Extraction complete! Extracted components from ${totalUrls} pages.`
       });
     } catch (err) {
-      await crawler.close();
       const message = err instanceof Error ? err.message : 'Extraction failed';
       setError(message);
       setPhase('error');
