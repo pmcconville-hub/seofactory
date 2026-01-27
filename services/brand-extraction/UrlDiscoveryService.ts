@@ -1,4 +1,6 @@
-import { PageCrawler, type PageCaptureResult } from './PageCrawler';
+// NOTE: PageCrawler uses Playwright (Node.js only) - NOT imported here for browser compatibility
+// Instead, we use a factory pattern that must be provided for server-side use
+import type { PageCaptureResult } from '../../types/brandExtraction';
 
 export interface UrlSuggestion {
   url: string;
@@ -14,16 +16,34 @@ interface ExtractedLink {
   anchorText: string;
 }
 
-interface PageCrawlerLike {
+export interface PageCrawlerLike {
   capturePage(url: string): Promise<PageCaptureResult>;
   close(): Promise<void>;
 }
 
+/**
+ * UrlDiscoveryService - Discovers URLs from a domain for brand extraction
+ *
+ * NOTE: This service requires a PageCrawler instance for full functionality.
+ * In browser environments, features that require crawling will be limited
+ * or must use server-side API endpoints.
+ */
 export class UrlDiscoveryService {
-  private crawlerFactory: () => PageCrawlerLike;
+  private crawlerFactory: (() => PageCrawlerLike) | null;
 
   constructor(crawlerFactory?: () => PageCrawlerLike) {
-    this.crawlerFactory = crawlerFactory || (() => new PageCrawler({ headless: true, timeout: 15000 }));
+    // In browser environments, crawlerFactory may be null
+    this.crawlerFactory = crawlerFactory || null;
+  }
+
+  private getCrawler(): PageCrawlerLike {
+    if (!this.crawlerFactory) {
+      throw new Error(
+        'UrlDiscoveryService requires a PageCrawler factory for this operation. ' +
+        'PageCrawler uses Playwright (Node.js only). Use server-side API endpoints.'
+      );
+    }
+    return this.crawlerFactory();
   }
 
   /**
@@ -112,11 +132,12 @@ export class UrlDiscoveryService {
 
   /**
    * Crawl homepage using PageCrawler and extract links
+   * NOTE: Requires PageCrawler factory (Node.js only)
    */
   async crawlHomepageLinks(domain: string): Promise<UrlSuggestion[]> {
     let crawler: PageCrawlerLike | null = null;
     try {
-      crawler = this.crawlerFactory();
+      crawler = this.getCrawler();
       const result = await crawler.capturePage(domain);
       const links = this.extractLinksWithContext(result.rawHtml, domain);
 

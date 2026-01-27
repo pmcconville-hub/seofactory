@@ -7,11 +7,22 @@
 
 import { useState, useCallback } from 'react';
 import { UrlDiscoveryService, type UrlSuggestion } from '../services/brand-extraction/UrlDiscoveryService';
-import { PageCrawler } from '../services/brand-extraction/PageCrawler';
+// NOTE: PageCrawler uses Playwright (Node.js only) - must be dynamically imported
+// import { PageCrawler } from '../services/brand-extraction/PageCrawler';
 import { ExtractionAnalyzer } from '../services/brand-extraction/ExtractionAnalyzer';
 import { ComponentLibrary } from '../services/brand-extraction/ComponentLibrary';
-import type { ExtractedComponent, BrandExtraction } from '../types/brandExtraction';
+import type { ExtractedComponent, BrandExtraction, PageCaptureResult } from '../types/brandExtraction';
 import { supabase } from '../lib/supabase';
+
+// Browser-compatible stub - actual crawling must happen server-side
+const PageCrawlerStub = {
+  async capturePage(url: string): Promise<PageCaptureResult> {
+    throw new Error(
+      'PageCrawler requires server-side execution (Playwright). ' +
+      'Use the /api/brand-extraction endpoint instead.'
+    );
+  }
+};
 
 // ============================================================================
 // TYPES
@@ -165,7 +176,8 @@ export function useBrandExtraction(
     setExtractedComponents([]);
 
     const totalUrls = selectedUrls.length;
-    const crawler = new PageCrawler({ headless: true, timeout: 30000 });
+    // PageCrawler uses Playwright (Node.js only) - must call server-side API
+    // const crawler = new PageCrawler({ headless: true, timeout: 30000 });
     const analyzer = new ExtractionAnalyzer({ provider: aiProvider, apiKey });
     const library = new ComponentLibrary(projectId);
 
@@ -182,8 +194,8 @@ export function useBrandExtraction(
           message: `Capturing page ${i + 1}/${totalUrls}: ${url}`
         });
 
-        // Capture page with PageCrawler
-        const captureResult = await crawler.capturePage(url);
+        // Capture page via server-side API (PageCrawler requires Playwright/Node.js)
+        const captureResult = await PageCrawlerStub.capturePage(url);
 
         // Save extraction to database
         const extractionId = crypto.randomUUID();

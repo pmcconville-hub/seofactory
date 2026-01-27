@@ -44,6 +44,19 @@ export interface ExtractedComponent {
 }
 
 // ============================================================================
+// PAGE CAPTURE RESULT (from PageCrawler - server-side only)
+// ============================================================================
+
+export interface PageCaptureResult {
+  sourceUrl: string;
+  pageType: 'homepage' | 'service' | 'article' | 'contact' | 'other';
+  rawHtml: string;
+  screenshotBase64: string;
+  computedStyles: Record<string, Record<string, string>>;
+  capturedAt: string;
+}
+
+// ============================================================================
 // PAGE EXTRACTION (full page capture)
 // ============================================================================
 
