@@ -188,6 +188,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   const [isLoadingSavedBrand, setIsLoadingSavedBrand] = useState(false);
   const [savedBrandSourceUrl, setSavedBrandSourceUrl] = useState<string | null>(null);
   const [savedBrandExtractedAt, setSavedBrandExtractedAt] = useState<string | null>(null);
+  const [skipBrandReload, setSkipBrandReload] = useState(false); // Flag to skip reload during regeneration
 
   // Layout Engine state (for new LayoutIntelligenceStep)
   const [layoutEngineBlueprint, setLayoutEngineBlueprint] = useState<LayoutEngineBlueprint | null>(null);
@@ -252,6 +253,8 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
       // Don't reset brand data on close - we want to preserve it for reuse
       // Only reset the "loaded" flag so we check for updates next time
       setSavedBrandDataLoaded(false);
+      // Reset skip flag so next open will load saved data
+      setSkipBrandReload(false);
     }
   }, [isOpen]);
 
@@ -328,7 +331,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
 
   // Load saved brand data when modal opens
   useEffect(() => {
-    if (!isOpen || !projectId || savedBrandDataLoaded) return;
+    if (!isOpen || !projectId || savedBrandDataLoaded || skipBrandReload) return;
 
     const loadSavedBrandData = async () => {
       setIsLoadingSavedBrand(true);
@@ -426,7 +429,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     };
 
     loadSavedBrandData();
-  }, [isOpen, projectId, savedBrandDataLoaded, supabaseUrl, supabaseAnonKey, style]);
+  }, [isOpen, projectId, savedBrandDataLoaded, skipBrandReload, supabaseUrl, supabaseAnonKey, style]);
 
   // Get current step index
   const currentStepIndex = useMemo(() =>
@@ -1285,6 +1288,8 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   // Handle brand regenerate - clears saved data and allows new detection
   const handleBrandRegenerate = useCallback(() => {
     console.log('[Style & Publish] Regenerating brand detection...');
+    // Set skip flag to prevent useEffect from reloading saved data
+    setSkipBrandReload(true);
     // Clear all brand-related state
     setDetectedDesignDna(null);
     setDetectedDesignSystem(null);
