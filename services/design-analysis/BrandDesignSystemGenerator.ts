@@ -772,30 +772,53 @@ CRITICAL: Return ONLY valid JSON. Make the CSS sophisticated and brand-specific,
   }
 
   /**
-   * Call Gemini for a single component
+   * Call Gemini for a single component with retry logic for rate limits
    */
-  private async callGeminiForComponent(prompt: string): Promise<{ baseCSS: string; variants: Record<string, string>; states: Record<string, string> }> {
+  private async callGeminiForComponent(prompt: string, maxRetries = 3): Promise<{ baseCSS: string; variants: Record<string, string>; states: Record<string, string> }> {
     const model = this.config.model || this.defaultModels.gemini;
     const apiUrl = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${this.config.apiKey}`;
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.4, maxOutputTokens: 4096 }
-      })
-    });
+    let lastError: Error | null = null;
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Gemini API error: ${response.status} - ${error}`);
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.4, maxOutputTokens: 4096 }
+          })
+        });
+
+        // Handle rate limiting with exponential backoff
+        if (response.status === 429) {
+          const waitTime = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+          console.log(`[BrandDesignSystemGenerator] Rate limited (429), waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        }
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Gemini API error: ${response.status} - ${error}`);
+        }
+
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+
+        return this.parseAIResponse(text) as { baseCSS: string; variants: Record<string, string>; states: Record<string, string> };
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (attempt < maxRetries - 1) {
+          const waitTime = Math.pow(2, attempt) * 1000;
+          console.log(`[BrandDesignSystemGenerator] API call failed, waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
     }
 
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-
-    return this.parseAIResponse(text) as { baseCSS: string; variants: Record<string, string>; states: Record<string, string> };
+    throw lastError || new Error('Failed after max retries');
   }
 
   /**

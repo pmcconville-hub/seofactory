@@ -399,6 +399,64 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
           console.log('[BrandIntelligenceStep] Full Extraction flow complete, notified parent');
         } catch (err) {
           console.error('[BrandIntelligenceStep] Failed to generate design system from tokens:', err);
+          console.log('[BrandIntelligenceStep] Using fallback design system with extracted DesignDNA');
+
+          // Create a minimal fallback design system so we can still proceed
+          const fallbackDesignSystem: BrandDesignSystem = {
+            id: `bds_fallback_${Date.now()}`,
+            brandName: 'Extracted Brand',
+            sourceUrl: brandExtraction.selectedUrls[0] || '',
+            generatedAt: new Date().toISOString(),
+            designDnaHash: 'fallback',
+            tokens: {
+              css: '',
+              json: {}
+            },
+            componentStyles: {} as BrandDesignSystem['componentStyles'],
+            decorative: {
+              dividers: { default: '', subtle: '', decorative: '' },
+              sectionBackgrounds: { default: '', accent: '', featured: '' }
+            },
+            interactions: {
+              buttonHover: '',
+              buttonActive: '',
+              buttonFocus: '',
+              cardHover: '',
+              linkHover: '',
+              focusRing: '',
+              keyframes: {}
+            },
+            typographyTreatments: {
+              headingDecoration: '',
+              dropCap: '',
+              pullQuote: '',
+              listMarker: '',
+              linkUnderline: '',
+              codeBlock: ''
+            },
+            imageTreatments: {
+              defaultFrame: '',
+              featured: '',
+              thumbnail: '',
+              gallery: ''
+            },
+            compiledCss: '', // Empty - will use legacy fallback
+            variantMappings: {
+              card: {},
+              hero: {},
+              button: {},
+              cta: {}
+            }
+          };
+
+          // Still notify parent with DesignDNA - renderer will use legacy fallback for CSS
+          onDetectionComplete({
+            designDna,
+            designSystem: fallbackDesignSystem,
+            screenshotBase64: brandExtraction.screenshotBase64 || '',
+          });
+
+          console.log('[BrandIntelligenceStep] Fallback design system passed to parent');
         }
       }
     };
