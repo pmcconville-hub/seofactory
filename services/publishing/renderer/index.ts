@@ -92,6 +92,12 @@ export interface RenderContentOptions {
     bio?: string;
     imageUrl?: string;
   };
+  /** Brand design system with AI-generated CSS */
+  brandDesignSystem?: {
+    brandName?: string;
+    compiledCss?: string;
+    designDnaHash?: string;
+  };
 }
 
 // ============================================================================
@@ -179,7 +185,9 @@ export async function renderContent(
     language: options.language,
     heroImage: options.heroImage,
     ctaConfig: options.ctaConfig,
-    author: options.author
+    author: options.author,
+    // Pass brandDesignSystem for AI-generated CSS
+    brandDesignSystem: options.brandDesignSystem
   });
 
   // Convert BlueprintRenderOutput to StyledContentOutput format

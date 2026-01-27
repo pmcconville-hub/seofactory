@@ -1050,7 +1050,9 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
                 primaryUrl: '#contact',
                 secondaryText: layout.components.ctaBanners.secondaryText || undefined,
                 secondaryUrl: '#',
-              }
+              },
+              // Pass brandDesignSystem for AI-generated CSS injection
+              brandDesignSystem: detectedDesignSystem || undefined
             });
 
             console.log('[Style & Publish] Unified renderer succeeded');
