@@ -231,6 +231,20 @@ export async function renderContent(
   // FALLBACK: Use existing blueprint renderer
   console.log('[Renderer] Using BlueprintRenderer fallback for project:', options.projectId);
 
+  // DEBUG: Log what brand data we're passing to the renderer
+  console.log('[Renderer] Brand data being passed to BlueprintRenderer:', {
+    hasBrandDesignSystem: !!options.brandDesignSystem,
+    hasCompiledCss: !!options.brandDesignSystem?.compiledCss,
+    compiledCssLength: options.brandDesignSystem?.compiledCss?.length || 0,
+    brandName: options.brandDesignSystem?.brandName,
+    designDnaHash: options.brandDesignSystem?.designDnaHash,
+    hasDesignTokens: !!options.designTokens,
+    designTokenColors: options.designTokens?.colors ? {
+      primary: options.designTokens.colors.primary,
+      secondary: options.designTokens.colors.secondary,
+    } : 'NO TOKENS',
+  });
+
   if (!options.blueprint) {
     throw new Error('No brand extraction and no blueprint provided');
   }
@@ -251,6 +265,13 @@ export async function renderContent(
     author: options.author,
     // Pass brandDesignSystem for AI-generated CSS
     brandDesignSystem: options.brandDesignSystem
+  });
+
+  // DEBUG: Log the output CSS info
+  console.log('[Renderer] BlueprintRenderer output:', {
+    htmlLength: blueprintResult.html.length,
+    cssLength: blueprintResult.css.length,
+    cssFirst200: blueprintResult.css.substring(0, 200),
   });
 
   // Convert BlueprintRenderOutput to StyledContentOutput format

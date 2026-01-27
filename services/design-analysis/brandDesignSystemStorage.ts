@@ -17,6 +17,16 @@ export async function saveDesignDNA(
 ): Promise<string | null> {
   if (!supabase) throw new Error('Storage not initialized');
 
+  console.log('[BrandDesignStorage] saveDesignDNA called:', {
+    projectId,
+    sourceUrl: result.sourceUrl,
+    hasScreenshot: !!result.screenshotBase64,
+    screenshotLength: result.screenshotBase64?.length || 0,
+    hasDesignDna: !!result.designDna,
+    aiModel: result.aiModel,
+    confidence: result.designDna?.confidence?.overall,
+  });
+
   try {
     const { data, error } = await supabase
       .from('brand_design_dna')
@@ -37,10 +47,11 @@ export async function saveDesignDNA(
         console.warn('[BrandDesignStorage] saveDesignDNA: Table not found, skipping persistence');
         return null;
       }
-      console.warn('[BrandDesignStorage] saveDesignDNA error:', error.message);
+      console.warn('[BrandDesignStorage] saveDesignDNA error:', error.message, error);
       return null;
     }
 
+    console.log('[BrandDesignStorage] saveDesignDNA SUCCESS - id:', data.id);
     return data.id;
   } catch (err) {
     console.warn('[BrandDesignStorage] saveDesignDNA exception:', err);
@@ -64,6 +75,8 @@ function isTableMissingError(error: unknown): boolean {
 export async function getDesignDNA(projectId: string): Promise<DesignDNAExtractionResult | null> {
   if (!supabase) throw new Error('Storage not initialized');
 
+  console.log('[BrandDesignStorage] getDesignDNA called for projectId:', projectId);
+
   try {
     const { data, error } = await supabase
       .from('brand_design_dna')
@@ -75,14 +88,25 @@ export async function getDesignDNA(projectId: string): Promise<DesignDNAExtracti
 
     if (error) {
       if (isTableMissingError(error)) {
-        // Table doesn't exist yet - graceful degradation
+        console.log('[BrandDesignStorage] getDesignDNA: Table not found - graceful degradation');
         return null;
       }
-      console.warn('[BrandDesignStorage] getDesignDNA error:', error.message);
+      console.warn('[BrandDesignStorage] getDesignDNA error:', error.message, error);
       return null;
     }
 
-    if (!data) return null;
+    if (!data) {
+      console.log('[BrandDesignStorage] getDesignDNA: No data found for project');
+      return null;
+    }
+
+    console.log('[BrandDesignStorage] getDesignDNA SUCCESS:', {
+      id: data.id,
+      sourceUrl: data.source_url,
+      hasScreenshot: !!data.screenshot_base64,
+      hasDesignDna: !!data.design_dna,
+      createdAt: data.created_at,
+    });
 
     return {
       designDna: data.design_dna as DesignDNA,
@@ -107,6 +131,17 @@ export async function saveBrandDesignSystem(
   system: BrandDesignSystem
 ): Promise<string | null> {
   if (!supabase) throw new Error('Storage not initialized');
+
+  console.log('[BrandDesignStorage] saveBrandDesignSystem called:', {
+    projectId,
+    designDnaId,
+    brandName: system.brandName,
+    designDnaHash: system.designDnaHash,
+    hasCompiledCss: !!system.compiledCss,
+    compiledCssLength: system.compiledCss?.length || 0,
+    hasTokens: !!system.tokens,
+    hasComponentStyles: !!system.componentStyles,
+  });
 
   try {
     const { data, error } = await supabase
@@ -135,10 +170,11 @@ export async function saveBrandDesignSystem(
         console.warn('[BrandDesignStorage] saveBrandDesignSystem: Table not found, skipping persistence');
         return null;
       }
-      console.warn('[BrandDesignStorage] saveBrandDesignSystem error:', error.message);
+      console.warn('[BrandDesignStorage] saveBrandDesignSystem error:', error.message, error);
       return null;
     }
 
+    console.log('[BrandDesignStorage] saveBrandDesignSystem SUCCESS - id:', data.id);
     return data.id;
   } catch (err) {
     console.warn('[BrandDesignStorage] saveBrandDesignSystem exception:', err);
@@ -152,6 +188,8 @@ export async function saveBrandDesignSystem(
 export async function getBrandDesignSystem(projectId: string): Promise<BrandDesignSystem | null> {
   if (!supabase) throw new Error('Storage not initialized');
 
+  console.log('[BrandDesignStorage] getBrandDesignSystem called for projectId:', projectId);
+
   try {
     const { data, error } = await supabase
       .from('brand_design_systems')
@@ -163,13 +201,26 @@ export async function getBrandDesignSystem(projectId: string): Promise<BrandDesi
 
     if (error) {
       if (isTableMissingError(error)) {
+        console.log('[BrandDesignStorage] getBrandDesignSystem: Table not found - graceful degradation');
         return null;
       }
-      console.warn('[BrandDesignStorage] getBrandDesignSystem error:', error.message);
+      console.warn('[BrandDesignStorage] getBrandDesignSystem error:', error.message, error);
       return null;
     }
 
-    if (!data) return null;
+    if (!data) {
+      console.log('[BrandDesignStorage] getBrandDesignSystem: No data found for project');
+      return null;
+    }
+
+    console.log('[BrandDesignStorage] getBrandDesignSystem SUCCESS:', {
+      id: data.id,
+      brandName: data.brand_name,
+      hasCompiledCss: !!data.compiled_css,
+      compiledCssLength: data.compiled_css?.length || 0,
+      designDnaHash: data.design_dna_hash,
+      createdAt: data.created_at,
+    });
 
     return {
       id: data.id,

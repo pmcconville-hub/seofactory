@@ -107,6 +107,7 @@ export class BrandDesignSystemGenerator {
     }
 
     // Compile all CSS
+    console.log('[BrandDesignSystemGenerator] Compiling CSS from all sections...');
     const rawCss = this.compileCSS(
       tokens.css,
       componentStyles,
@@ -115,6 +116,7 @@ export class BrandDesignSystemGenerator {
       typographyTreatments,
       imageTreatments
     );
+    console.log('[BrandDesignSystemGenerator] Raw CSS length:', rawCss.length, 'characters');
 
     // Post-process CSS to fix AI-generated issues
     console.log('[BrandDesignSystemGenerator] Post-processing CSS...');
@@ -134,6 +136,11 @@ export class BrandDesignSystemGenerator {
     if (postProcessResult.warnings.length > 0) {
       console.warn('[BrandDesignSystemGenerator] CSS warnings:', postProcessResult.warnings);
     }
+
+    const finalCssLength = postProcessResult.css.length;
+    console.log('[BrandDesignSystemGenerator] Final compiled CSS length:', finalCssLength, 'characters');
+    console.log('[BrandDesignSystemGenerator] First 500 chars of compiled CSS:', postProcessResult.css.substring(0, 500));
+    console.log('[BrandDesignSystemGenerator] BrandDesignSystem generation COMPLETE for:', brandName);
 
     return {
       id: `bds_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,

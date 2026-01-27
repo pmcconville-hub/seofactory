@@ -149,16 +149,33 @@ export function useBrandDetection(config: UseBrandDetectionConfig) {
         setState(prev => ({ ...prev, progress: 85 }));
 
         const domain = url.replace(/^https?:\/\//, '').split('/')[0];
+        console.log('[useBrandDetection] Generating brand design system for:', domain);
+        console.log('[useBrandDetection] Design DNA colors:', {
+          primary: dnaResult.designDna.colors?.primary,
+          secondary: dnaResult.designDna.colors?.secondary,
+        });
+
         designSystem = await generator.generate(dnaResult.designDna, domain, url);
+
+        console.log('[useBrandDetection] Brand design system generated:', {
+          brandName: designSystem.brandName,
+          hasCompiledCss: !!designSystem.compiledCss,
+          compiledCssLength: designSystem.compiledCss?.length || 0,
+          designDnaHash: designSystem.designDnaHash,
+          componentStyleKeys: designSystem.componentStyles ? Object.keys(designSystem.componentStyles) : [],
+        });
 
         updateStep('generate', 'complete');
         setState(prev => ({ ...prev, progress: 95 }));
 
         // Save to database (best-effort - continues even if tables don't exist)
         if (config.projectId) {
+          console.log('[useBrandDetection] Saving brand data to database for projectId:', config.projectId);
           const dnaId = await saveDesignDNA(config.projectId, dnaResult);
+          console.log('[useBrandDetection] Saved Design DNA with id:', dnaId || '(table not found)');
           // dnaId may be null if table doesn't exist yet
           await saveBrandDesignSystem(config.projectId, dnaId, designSystem);
+          console.log('[useBrandDetection] Saved Brand Design System');
         }
 
         setState(prev => ({ ...prev, progress: 100 }));
