@@ -1011,13 +1011,35 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
           fonts: style?.designTokens?.fonts,
         });
 
-        // DEBUG: Log brand design system state
-        console.log('[Style & Publish] generatePreview - brandDesignSystem state:', {
+        // ============================================================================
+        // STYLING PIPELINE LOGGING - Modal entry point
+        // ============================================================================
+        console.log('='.repeat(80));
+        console.log('[STYLING PIPELINE] MODAL ENTRY: generatePreview() called');
+        console.log('='.repeat(80));
+        console.log('[STYLING PIPELINE] Brand Detection State:', {
+          hasDetectedDesignDna: !!detectedDesignDna,
           hasDetectedDesignSystem: !!detectedDesignSystem,
           hasCompiledCss: !!detectedDesignSystem?.compiledCss,
           compiledCssLength: detectedDesignSystem?.compiledCss?.length || 0,
-          brandName: detectedDesignSystem?.brandName,
-          designDnaHash: detectedDesignSystem?.designDnaHash,
+          brandName: detectedDesignSystem?.brandName || '(not detected)',
+          designDnaHash: detectedDesignSystem?.designDnaHash || '(none)',
+          savedBrandSourceUrl: savedBrandSourceUrl || '(none)',
+        });
+        console.log('[STYLING PIPELINE] Style Configuration:', {
+          hasStyleTokens: !!style?.designTokens,
+          primaryColor: style?.designTokens?.colors?.primary || '(default)',
+          secondaryColor: style?.designTokens?.colors?.secondary || '(default)',
+          headingFont: style?.designTokens?.fonts?.heading || '(default)',
+          bodyFont: style?.designTokens?.fonts?.body || '(default)',
+        });
+        console.log('[STYLING PIPELINE] Content Info:', {
+          topicId: topic.id,
+          topicTitle: topic.title,
+          articleDraftLength: articleDraft.length,
+          projectId: projectId || '(none)',
+          hasBlueprint: !!blueprint,
+          blueprintSections: blueprint?.sections?.length || 0,
         });
 
         // NEW: Try unified renderer first (routes to BrandAwareComposer when extractions exist)
@@ -1037,15 +1059,24 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
             }> = [];
 
             if (topic.id) {
-              // Images are stored in content_generation_jobs.image_placeholders
-              const { data: jobData } = await supabase
-                .from('content_generation_jobs')
-                .select('image_placeholders')
+              // First get the brief_id for this topic
+              const { data: briefData } = await supabase
+                .from('content_briefs')
+                .select('id')
                 .eq('topic_id', topic.id)
-                .eq('status', 'completed')
-                .order('updated_at', { ascending: false })
                 .limit(1)
                 .single();
+
+              if (briefData?.id) {
+                // Images are stored in content_generation_jobs.image_placeholders
+                const { data: jobData } = await supabase
+                  .from('content_generation_jobs')
+                  .select('image_placeholders')
+                  .eq('brief_id', briefData.id)
+                  .eq('status', 'completed')
+                  .order('updated_at', { ascending: false })
+                  .limit(1)
+                  .single();
 
               if (jobData?.image_placeholders && Array.isArray(jobData.image_placeholders)) {
                 // Filter to only include generated or uploaded images
@@ -1074,6 +1105,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
                   }));
 
                 console.log('[Style & Publish] Found', generatedImages.length, 'generated/uploaded images for topic');
+              }
               }
             }
 

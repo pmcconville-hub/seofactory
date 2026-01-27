@@ -352,11 +352,14 @@ export function renderBlueprint(
   let css: string;
 
   // DEBUG: Log what brandDesignSystem we received
-  console.log('[BlueprintRenderer] CSS generation - options.brandDesignSystem:', {
+  console.log('-'.repeat(80));
+  console.log('[STYLING PIPELINE] STEP 4: BlueprintRenderer CSS GENERATION DECISION');
+  console.log('[STYLING PIPELINE] brandDesignSystem check:', {
     hasBrandDesignSystem: !!options.brandDesignSystem,
     hasCompiledCss: !!options.brandDesignSystem?.compiledCss,
     compiledCssLength: options.brandDesignSystem?.compiledCss?.length || 0,
-    brandName: options.brandDesignSystem?.brandName,
+    brandName: options.brandDesignSystem?.brandName || '(none)',
+    designDnaHash: options.brandDesignSystem?.designDnaHash || '(none)',
   });
 
   if (options.brandDesignSystem?.compiledCss) {
@@ -375,10 +378,23 @@ export function renderBlueprint(
 
 ${brandCss}`;
 
-    console.log('[BlueprintRenderer] Using BrandDesignSystem.compiledCss');
-    console.log('[BlueprintRenderer] Brand CSS length:', brandCss.length);
+    console.log('[STYLING PIPELINE] CSS DECISION: Using BrandDesignSystem.compiledCss (AI-GENERATED)');
+    console.log('[STYLING PIPELINE] Brand CSS stats:', {
+      length: brandCss.length,
+      brandName: options.brandDesignSystem.brandName,
+      hasCtcHeroTitle: brandCss.includes('.ctc-hero-title'),
+      hasCtcHeroSubtitle: brandCss.includes('.ctc-hero-subtitle'),
+      hasBEMNotation: brandCss.includes('__'), // Check for BEM which we should NOT have
+      cssPreview: brandCss.substring(0, 500),
+    });
+    if (brandCss.includes('__')) {
+      console.warn('[STYLING PIPELINE] WARNING: BEM __ notation detected in brand CSS! This may cause class mismatch!');
+    }
   } else {
-    console.log('[BlueprintRenderer] FALLBACK: No compiledCss - using legacy generateDesignSystemCss');
+    console.log('[STYLING PIPELINE] CSS DECISION: FALLBACK to generateDesignSystemCss (TEMPLATE)');
+    console.log('[STYLING PIPELINE] FALLBACK REASON:', !options.brandDesignSystem
+      ? 'No brandDesignSystem provided'
+      : 'brandDesignSystem exists but compiledCss is empty/missing');
     // Legacy fallback: use designTokens with generateDesignSystemCss
     const customOverrides = options.designTokens ? convertDesignTokensToOverrides(options.designTokens) : undefined;
 

@@ -1,11 +1,12 @@
 // services/design-analysis/brandDesignSystemStorage.ts
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { getSupabaseClient } from '../supabaseClient';
 import type { DesignDNA, DesignDNAExtractionResult, BrandDesignSystem } from '../../types/designDna';
 
 let supabase: SupabaseClient | null = null;
 
 export function initBrandDesignSystemStorage(url: string, key: string) {
-  supabase = createClient(url, key);
+  supabase = getSupabaseClient(url, key);
 }
 
 /**

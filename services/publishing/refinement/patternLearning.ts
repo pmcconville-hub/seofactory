@@ -7,7 +7,8 @@
  * @module services/publishing/refinement/patternLearning
  */
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { getSupabaseClient } from '../../supabaseClient';
 import type {
   ComponentType,
   SectionEmphasis,
@@ -70,7 +71,7 @@ export interface SuggestionContext {
 let supabase: SupabaseClient | null = null;
 
 export function initPatternLearningClient(url: string, anonKey: string): void {
-  supabase = createClient(url, anonKey);
+  supabase = getSupabaseClient(url, anonKey);
 }
 
 function getClient(): SupabaseClient {

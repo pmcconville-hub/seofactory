@@ -2185,6 +2185,50 @@ function generateComponentStyles(): string {
   color: var(--ctc-text-secondary);
 }
 
+/* ========== TABLE COMPONENT ========== */
+.ctc-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--ctc-space-8, 2rem) 0;
+  font-size: var(--ctc-text-base, 1rem);
+  background: var(--ctc-background, white);
+  border-radius: var(--ctc-radius-md, 8px);
+  overflow: hidden;
+  box-shadow: var(--ctc-shadow-sm, 0 1px 2px rgba(0,0,0,0.05));
+}
+
+.ctc-table-head {
+  background: var(--ctc-surface, #f9fafb);
+}
+
+.ctc-table-header {
+  padding: var(--ctc-space-4, 1rem) var(--ctc-space-6, 1.5rem);
+  font-weight: 600;
+  color: var(--ctc-text, #111827);
+  border-bottom: 2px solid var(--ctc-border, #e5e7eb);
+}
+
+.ctc-table-cell {
+  padding: var(--ctc-space-4, 1rem) var(--ctc-space-6, 1.5rem);
+  border-bottom: 1px solid var(--ctc-border-subtle, #f3f4f6);
+  color: var(--ctc-text-secondary, #374151);
+}
+
+.ctc-table-body .ctc-table-row:last-child .ctc-table-cell {
+  border-bottom: none;
+}
+
+.ctc-table-body .ctc-table-row:hover {
+  background: var(--ctc-surface, #f9fafb);
+}
+
+@media (max-width: 768px) {
+  .ctc-table {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
 /* ========== HERO CLASSES ========== */
 .ctc-hero {
   position: relative;

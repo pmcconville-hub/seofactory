@@ -538,6 +538,28 @@ Motion: --ctc-transition-speed, --ctc-easing
 5. Match the brand's personality - ${personality.overall || 'corporate'} means ${this.getPersonalityDescription(personality.overall || 'corporate')}
 6. DO NOT include :root declarations - variables are already defined
 
+## CRITICAL: Class Naming Convention (DO NOT USE BEM __ NOTATION)
+- Base class: .ctc-${componentType}
+- Child elements: .ctc-${componentType}-{element} (SINGLE HYPHEN)
+- Variants: .ctc-${componentType}--{variant} (double hyphen OK for variants)
+- States: .ctc-${componentType}:hover, :active, :focus-visible
+
+REQUIRED child class names for each component:
+- hero: .ctc-hero-title, .ctc-hero-subtitle, .ctc-hero-content, .ctc-hero-badge, .ctc-hero-actions, .ctc-hero-decor, .ctc-hero-decor-orb
+- card: .ctc-card-title, .ctc-card-desc, .ctc-card-content
+- faq: .ctc-faq-header, .ctc-faq-list, .ctc-faq-item, .ctc-faq-question, .ctc-faq-answer, .ctc-faq-answer-content
+- prose: .ctc-prose-content, .ctc-section-header, .ctc-section-heading, .ctc-section-heading-accent
+- toc: .ctc-toc-header, .ctc-toc-title, .ctc-toc-list, .ctc-toc-item, .ctc-toc-link, .ctc-toc-arrow
+- cta: .ctc-cta-banner-content, .ctc-cta-banner-title, .ctc-cta-banner-text, .ctc-cta-banner-actions, .ctc-cta-banner-decor
+- bullet-list: .ctc-bullet-list-items, .ctc-bullet-list-item, .ctc-bullet-list-marker
+- key-takeaways: .ctc-key-takeaways-grid, .ctc-key-takeaways-item, .ctc-key-takeaways-icon, .ctc-key-takeaways-text
+- highlight-box: .ctc-highlight-box-inner, .ctc-highlight-box-icon, .ctc-highlight-box-content, .ctc-highlight-box-heading, .ctc-highlight-box-text
+- timeline: .ctc-timeline-track, .ctc-timeline-line, .ctc-timeline-step, .ctc-timeline-marker, .ctc-timeline-step-content
+- table: .ctc-table, .ctc-table-head, .ctc-table-body, .ctc-table-row, .ctc-table-header, .ctc-table-cell
+- btn: .ctc-btn, .ctc-btn-primary, .ctc-btn-secondary, .ctc-btn-arrow
+
+NEVER use BEM double underscore (__) notation like .ctc-hero__title - ALWAYS use single hyphen like .ctc-hero-title
+
 ## Output Format (JSON only)
 {
   "baseCSS": ".ctc-${componentType} { ... complete CSS ... }",

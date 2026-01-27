@@ -198,6 +198,46 @@ function markdownToHtml(markdown: string, imageUrlMap?: Map<string, string>): st
   // Blockquotes
   html = html.replace(/^>\s+(.+)$/gm, '<blockquote class="ctc-blockquote border-l-4 border-[var(--ctc-primary)] pl-4 italic text-[var(--ctc-text-secondary)] my-4">$1</blockquote>');
 
+  // Markdown tables
+  // Format: | Header1 | Header2 |
+  //         |---------|---------|
+  //         | Cell1   | Cell2   |
+  html = html.replace(
+    /(?:^|\n)(\|[^\n]+\|)\r?\n(\|[-:\s|]+\|)\r?\n((?:\|[^\n]+\|\r?\n?)+)/g,
+    (match, headerRow, separatorRow, bodyRows) => {
+      // Parse header cells
+      const headers = headerRow.split('|').map((h: string) => h.trim()).filter(Boolean);
+
+      // Parse alignment from separator row
+      const alignments = separatorRow.split('|').map((sep: string) => {
+        const trimmed = sep.trim();
+        if (trimmed.startsWith(':') && trimmed.endsWith(':')) return 'center';
+        if (trimmed.endsWith(':')) return 'right';
+        return 'left';
+      }).filter(Boolean);
+
+      // Parse body rows
+      const rows = bodyRows.trim().split('\n').map((row: string) =>
+        row.split('|').map((cell: string) => cell.trim()).filter(Boolean)
+      );
+
+      return `<table class="ctc-table">
+      <thead class="ctc-table-head">
+        <tr class="ctc-table-row">${headers.map((h: string, i: number) =>
+          `<th class="ctc-table-header" style="text-align: ${alignments[i] || 'left'}">${h}</th>`
+        ).join('')}</tr>
+      </thead>
+      <tbody class="ctc-table-body">
+        ${rows.map((row: string[]) =>
+          `<tr class="ctc-table-row">${row.map((cell: string, i: number) =>
+            `<td class="ctc-table-cell" style="text-align: ${alignments[i] || 'left'}">${cell}</td>`
+          ).join('')}</tr>`
+        ).join('')}
+      </tbody>
+    </table>`;
+    }
+  );
+
   return html;
 }
 
