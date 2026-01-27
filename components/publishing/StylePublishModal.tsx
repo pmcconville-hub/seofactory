@@ -1454,6 +1454,15 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
             onDetectionComplete={handleBrandDetectionComplete}
             onDesignDnaChange={setDetectedDesignDna}
             onRegenerate={handleBrandRegenerate}
+            onReset={() => {
+              // Clear all cached brand data to allow entering a new URL
+              setDetectedDesignDna(null);
+              setDetectedDesignSystem(null);
+              setDetectedScreenshot(null);
+              setSavedBrandSourceUrl(null);
+              setSavedBrandExtractedAt(null);
+              console.log('[Style & Publish] Brand data reset - ready for new URL');
+            }}
           />
         );
 

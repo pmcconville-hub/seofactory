@@ -59,6 +59,8 @@ interface BrandIntelligenceStepProps {
   }) => void;
   onDesignDnaChange?: (dna: DesignDNA) => void;
   onRegenerate?: () => void;
+  /** Called when user wants to reset and enter a new brand URL */
+  onReset?: () => void;
 }
 
 // ============================================================================
@@ -138,6 +140,7 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
   onDetectionComplete,
   onDesignDnaChange,
   onRegenerate,
+  onReset,
 }) => {
   const [targetUrl, setTargetUrl] = useState(defaultDomain || '');
   const [isExpanded, setIsExpanded] = useState(false);
@@ -524,7 +527,10 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
             <div className="flex-1 space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="font-semibold text-white">Brand Summary</h4>
-                <Button variant="secondary" size="sm" onClick={() => detection.reset()}>
+                <Button variant="secondary" size="sm" onClick={() => {
+                  detection.reset();
+                  onReset?.(); // Clear parent's cached state
+                }}>
                   Re-detect
                 </Button>
               </div>
