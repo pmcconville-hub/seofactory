@@ -106,39 +106,37 @@ export class CleanArticleRenderer {
     parts.push('</article>');
     parts.push('</main>');
 
-    // CTA - built dynamically
-    parts.push(this.buildCTA());
+    // CTA - only if configured (no hardcoded content)
+    // CTA content should come from the brief/business info, not hardcoded here
+    // For now, we skip the CTA - it can be added when proper content is available
+    // parts.push(this.buildCTA());
 
     return parts.join('\n');
   }
 
   /**
-   * Build hero section - no template, just dynamic HTML
+   * Build hero section - minimal semantic HTML, NO badges or decorative elements
    */
   private buildHero(title: string): string {
-    const primaryColor = this.getColor('primary');
-    const primaryDark = this.getColor('primaryDark');
-
+    // Simple, semantic hero - just the title, no badges, no decorations
     return `
-<header class="hero">
-  <div class="hero-inner">
-    <span class="hero-badge">${this.brandName}</span>
-    <h1>${this.escapeHtml(title)}</h1>
-  </div>
+<header class="article-header">
+  <h1>${this.escapeHtml(title)}</h1>
 </header>`;
   }
 
   /**
-   * Build table of contents from actual headings - no template
+   * Build table of contents from actual headings - semantic navigation
+   * NO hardcoded text, NO numbered badges
    */
-  private buildTableOfContents(items: { id: string; heading: string }[]): string {
-    const listItems = items.map((item, i) =>
-      `<li><a href="#${item.id}"><span class="toc-num">${i + 1}</span>${this.escapeHtml(item.heading)}</a></li>`
+  private buildTableOfContents(items: { id: string; heading: string }[], language: string = 'en'): string {
+    const listItems = items.map((item) =>
+      `<li><a href="#${item.id}">${this.escapeHtml(item.heading)}</a></li>`
     ).join('\n');
 
+    // Minimal semantic TOC - let CSS handle any styling
     return `
-<nav class="toc">
-  <h2>In dit artikel</h2>
+<nav class="article-toc" aria-label="Table of contents">
   <ul>
 ${listItems}
   </ul>
@@ -354,20 +352,38 @@ ${listItems}
   }
 
   /**
-   * Build CTA section - dynamic, not templated
+   * Build CTA section - ONLY if CTA content is provided
+   * NO hardcoded text whatsoever
    */
-  private buildCTA(): string {
-    return `
-<aside class="cta">
-  <div class="cta-inner">
-    <h2>Klaar om te beginnen?</h2>
-    <p>Neem contact met ons op voor meer informatie.</p>
-    <div class="cta-buttons">
-      <a href="#contact" class="btn btn-primary">Contact opnemen</a>
-      <a href="#info" class="btn btn-secondary">Meer informatie</a>
-    </div>
-  </div>
-</aside>`;
+  private buildCTA(ctaConfig?: { heading?: string; text?: string; primaryText?: string; primaryUrl?: string; secondaryText?: string; secondaryUrl?: string }): string {
+    // If no CTA config provided, return empty - don't inject hardcoded content
+    if (!ctaConfig || (!ctaConfig.heading && !ctaConfig.primaryText)) {
+      return '';
+    }
+
+    const parts: string[] = ['<aside class="article-cta">'];
+
+    if (ctaConfig.heading) {
+      parts.push(`<h2>${this.escapeHtml(ctaConfig.heading)}</h2>`);
+    }
+    if (ctaConfig.text) {
+      parts.push(`<p>${this.escapeHtml(ctaConfig.text)}</p>`);
+    }
+
+    const hasButtons = ctaConfig.primaryText || ctaConfig.secondaryText;
+    if (hasButtons) {
+      parts.push('<div class="cta-actions">');
+      if (ctaConfig.primaryText && ctaConfig.primaryUrl) {
+        parts.push(`<a href="${ctaConfig.primaryUrl}" class="cta-primary">${this.escapeHtml(ctaConfig.primaryText)}</a>`);
+      }
+      if (ctaConfig.secondaryText && ctaConfig.secondaryUrl) {
+        parts.push(`<a href="${ctaConfig.secondaryUrl}" class="cta-secondary">${this.escapeHtml(ctaConfig.secondaryText)}</a>`);
+      }
+      parts.push('</div>');
+    }
+
+    parts.push('</aside>');
+    return parts.join('\n');
   }
 
   // ============================================================================
@@ -438,102 +454,50 @@ a:hover { color: ${primaryDark}; text-decoration: underline; }
 
 strong { font-weight: 600; color: ${primaryDark}; }
 
-/* Hero */
-.hero {
-  background: linear-gradient(135deg, ${primary} 0%, ${primaryDark} 100%);
-  color: #ffffff;
-  padding: 5rem 2rem;
-  text-align: center;
-  position: relative;
+/* Article Header - clean, semantic */
+.article-header {
+  padding: 3rem 2rem;
+  background: ${bgLight};
+  border-bottom: 3px solid ${primary};
 }
 
-.hero-inner {
+.article-header h1 {
   max-width: 900px;
   margin: 0 auto;
+  font-size: 2.5rem;
+  color: ${primaryDark};
 }
 
-.hero h1 {
-  color: #ffffff;
-  font-size: 3rem;
-  margin-bottom: 1rem;
-}
-
-.hero-badge {
-  display: inline-block;
-  background: rgba(255,255,255,0.2);
-  color: #ffffff;
-  padding: 0.5rem 1.5rem;
-  border-radius: 50px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  margin-bottom: 1.5rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-/* Table of Contents */
-.toc {
-  background: #ffffff;
+/* Table of Contents - minimal semantic styling */
+.article-toc {
   max-width: 900px;
-  margin: -3rem auto 3rem;
-  padding: 2rem;
-  border-radius: ${radiusMd};
-  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-  position: relative;
-  z-index: 10;
-}
-
-.toc h2 {
-  font-size: 1.25rem;
-  margin-bottom: 1.5rem;
-  padding-bottom: 1rem;
-  border-bottom: 2px solid ${bgLight};
-  margin-top: 0;
-}
-
-.toc ul {
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 0.75rem;
-}
-
-.toc li a {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
+  margin: 2rem auto;
+  padding: 1.5rem 2rem;
+  border-left: 3px solid ${primary};
   background: ${bgLight};
-  border-radius: ${radiusSm};
+}
+
+.article-toc ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.article-toc li a {
   color: ${textDark};
-  font-size: 0.9rem;
+  padding: 0.5rem 0;
+  display: block;
+  border-bottom: 1px solid transparent;
   transition: all 0.2s;
 }
 
-.toc li a:hover {
-  background: ${primary};
-  color: #ffffff;
-  text-decoration: none;
-  transform: translateX(4px);
-}
-
-.toc-num {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  background: ${primaryLight};
-  color: ${primaryDark};
-  border-radius: 50%;
-  font-size: 0.8rem;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.toc li a:hover .toc-num {
-  background: #ffffff;
+.article-toc li a:hover {
   color: ${primary};
+  border-bottom-color: ${primary};
+  text-decoration: none;
 }
 
 /* Main Content */
@@ -652,89 +616,65 @@ blockquote p {
   margin-bottom: 0;
 }
 
-/* CTA */
-.cta {
-  background: linear-gradient(135deg, ${primary} 0%, ${primaryDark} 100%);
-  color: #ffffff;
-  padding: 4rem 2rem;
+/* CTA - only rendered if content provided */
+.article-cta {
+  max-width: 900px;
+  margin: 3rem auto;
+  padding: 2rem;
+  background: ${bgLight};
+  border-radius: ${radiusMd};
   text-align: center;
-  margin-top: 3rem;
 }
 
-.cta-inner {
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-.cta h2 {
-  color: #ffffff;
-  font-size: 2rem;
-  margin-bottom: 1rem;
+.article-cta h2 {
+  color: ${primaryDark};
   margin-top: 0;
 }
 
-.cta p {
-  color: rgba(255,255,255,0.9);
-  font-size: 1.125rem;
-  margin-bottom: 2rem;
-  max-width: 100%;
-}
-
-.cta-buttons {
+.cta-actions {
   display: flex;
   gap: 1rem;
   justify-content: center;
   flex-wrap: wrap;
+  margin-top: 1.5rem;
 }
 
-/* Buttons */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.875rem 1.75rem;
-  border-radius: ${radiusMd};
-  font-family: ${bodyFont};
-  font-size: 1rem;
+.cta-primary, .cta-secondary {
+  padding: 0.75rem 1.5rem;
+  border-radius: ${radiusSm};
   font-weight: 600;
   text-decoration: none;
-  cursor: pointer;
   transition: all 0.2s;
-  border: 2px solid transparent;
 }
 
-.btn-primary {
-  background: ${accent};
-  color: ${primaryDark};
+.cta-primary {
+  background: ${primary};
+  color: #ffffff;
 }
 
-.btn-primary:hover {
-  background: #ffffff;
-  color: ${primary};
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+.cta-primary:hover {
+  background: ${primaryDark};
   text-decoration: none;
 }
 
-.btn-secondary {
+.cta-secondary {
   background: transparent;
-  color: #ffffff;
-  border-color: #ffffff;
+  color: ${primary};
+  border: 1px solid ${primary};
 }
 
-.btn-secondary:hover {
-  background: #ffffff;
-  color: ${primary};
+.cta-secondary:hover {
+  background: ${primary};
+  color: #ffffff;
   text-decoration: none;
 }
 
 /* Responsive */
 @media (max-width: 768px) {
-  .hero { padding: 3rem 1.5rem; }
-  .hero h1 { font-size: 2rem; }
+  .article-header { padding: 2rem 1rem; }
+  .article-header h1 { font-size: 1.75rem; }
 
-  .toc { margin: -2rem 1rem 2rem; padding: 1.5rem; }
-  .toc ul { grid-template-columns: 1fr; }
+  .article-toc { margin: 1.5rem 1rem; padding: 1rem; }
 
   main { padding: 0 1rem; }
 
@@ -743,11 +683,10 @@ blockquote p {
   h2 { font-size: 1.5rem; }
   h3 { font-size: 1.25rem; }
 
-  .cta { padding: 3rem 1.5rem; }
-  .cta h2 { font-size: 1.5rem; }
+  .article-cta { margin: 2rem 1rem; padding: 1.5rem; }
 
-  .cta-buttons { flex-direction: column; align-items: center; }
-  .btn { width: 100%; justify-content: center; max-width: 280px; }
+  .cta-actions { flex-direction: column; }
+  .cta-primary, .cta-secondary { width: 100%; text-align: center; }
 }
 `;
   }
