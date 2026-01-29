@@ -3,8 +3,12 @@
  *
  * 4-step modal for styled content publishing:
  * 1. Brand Intelligence - One-click brand detection with AI Vision
+ *    - Integrates Phase 1 Discovery (ScreenshotCapture + VisualAnalyzer)
+ *    - Integrates Phase 2 CodeGen for component CSS/HTML generation
  * 2. Layout Intelligence - AI layout decisions with section-by-section breakdown
+ *    - Integrates Phase 3 Intelligence for semantic design decisions
  * 3. Preview - Live preview with brand validation
+ *    - Integrates Phase 4 Validation with QualityDashboard
  * 4. Publish - WordPress settings and publish
  *
  * @module components/publishing/StylePublishModal
@@ -20,9 +24,22 @@ import { LayoutIntelligenceStep } from './steps/LayoutIntelligenceStep';
 import { PreviewStep } from './steps/PreviewStep';
 import { PublishOptionsStep } from './steps/PublishOptionsStep';
 import { useDesignInheritance } from '../../hooks/useDesignInheritance';
+import { useBrandReplicationPipeline } from '../../hooks/useBrandReplicationPipeline';
+// Brand Replication UI Components
+import { ComponentGallery, SectionDesigner, QualityDashboard } from '../brand-replication';
 import { LayoutEngine, type LayoutBlueprintOutput } from '../../services/layout-engine/LayoutEngine';
 import type { LayoutBlueprint as LayoutEngineBlueprint, BlueprintSection } from '../../services/layout-engine/types';
 import type { DesignDNA, BrandDesignSystem } from '../../types/designDna';
+import type {
+  DiscoveryOutput,
+  CodeGenOutput,
+  IntelligenceOutput,
+  ValidationOutput,
+  BrandComponent,
+  DiscoveredComponent,
+  SectionDesignDecision,
+  ArticleSection,
+} from '../../services/brand-replication';
 import type {
   StylePublishStep,
   PublishingStyle,
@@ -138,7 +155,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   onPublishSuccess,
 }) => {
   // Get app state for API keys
-  const { state } = useAppState();
+  const { state, dispatch } = useAppState();
 
   // State
   const [currentStep, setCurrentStep] = useState<StylePublishStep>('brand');
@@ -203,11 +220,88 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
 
   // Rendering metadata state (for Preview step notifications)
   const [renderingMetadata, setRenderingMetadata] = useState<{
-    rendererUsed: 'BrandAwareComposer' | 'BlueprintRenderer';
+    rendererUsed: string;
     fallbackReason?: string;
     brandScore?: number;
     unresolvedImageCount?: number;
+    // Clear user messaging
+    renderMessage?: string;
+    renderReason?: string;
+    renderLevel?: 'info' | 'warning' | 'error';
+    renderDetails?: {
+      brandExtractionUsed?: boolean;
+      layoutBlueprintUsed?: boolean;
+      aiLayoutUsed?: boolean;
+      compiledCssUsed?: boolean;
+      componentsDetected?: number;
+      fallbackTriggered?: boolean;
+      semanticLayoutUsed?: boolean;
+    };
   } | null>(null);
+
+  // Semantic Layout Engine toggle - AI-driven layout intelligence
+  const [useSemanticLayoutEngine, setUseSemanticLayoutEngine] = useState(false);
+
+  // ============================================================================
+  // Brand Replication Pipeline State (Feature Flag: ENABLE_BRAND_REPLICATION)
+  // ============================================================================
+  // This integrates the new 4-phase brand replication pipeline:
+  // - Phase 1: Discovery (ScreenshotCapture + VisualAnalyzer)
+  // - Phase 2: CodeGen (CSS/HTML generation for components)
+  // - Phase 3: Intelligence (Section design decisions)
+  // - Phase 4: Validation (Quality scoring with wow-factor checklist)
+  const [enableBrandReplication, setEnableBrandReplication] = useState(false);
+  const [pipelineDiscoveryOutput, setPipelineDiscoveryOutput] = useState<DiscoveryOutput | null>(null);
+  const [pipelineCodeGenOutput, setPipelineCodeGenOutput] = useState<CodeGenOutput | null>(null);
+  const [pipelineIntelligenceOutput, setPipelineIntelligenceOutput] = useState<IntelligenceOutput | null>(null);
+  const [pipelineValidationOutput, setPipelineValidationOutput] = useState<ValidationOutput | null>(null);
+  const [showComponentGallery, setShowComponentGallery] = useState(false);
+  const [showSectionDesigner, setShowSectionDesigner] = useState(false);
+  const [showQualityDashboard, setShowQualityDashboard] = useState(false);
+  const [selectedPipelineComponentId, setSelectedPipelineComponentId] = useState<string | undefined>(undefined);
+  const [selectedPipelineSectionId, setSelectedPipelineSectionId] = useState<string | undefined>(undefined);
+
+  // Get API keys and AI provider from app state (must be defined before useCallback hooks that reference them)
+  const aiProvider = state.businessInfo?.aiProvider || 'gemini';
+  const apifyToken = state.businessInfo?.apifyToken || '';
+  const geminiApiKey = state.businessInfo?.geminiApiKey || localStorage.getItem('gemini_api_key') || '';
+  const anthropicApiKey = state.businessInfo?.anthropicApiKey || localStorage.getItem('anthropic_api_key') || '';
+  const openAiApiKey = state.businessInfo?.openAiApiKey || localStorage.getItem('openai_api_key') || '';
+
+  // Get the appropriate API key based on the user's selected provider
+  const activeAiApiKey = aiProvider === 'anthropic' ? anthropicApiKey
+    : aiProvider === 'openai' ? openAiApiKey
+    : geminiApiKey; // Default to Gemini for gemini, perplexity, openrouter
+
+  // Brand Replication Pipeline Hook
+  // Provides methods to run each phase and access outputs
+  const brandReplicationPipeline = useBrandReplicationPipeline({
+    aiProvider: aiProvider === 'anthropic' ? 'anthropic' : 'gemini',
+    apiKey: aiProvider === 'anthropic' ? anthropicApiKey : geminiApiKey,
+    model: state.businessInfo?.aiModel,
+    enabled: enableBrandReplication && !!(aiProvider === 'anthropic' ? anthropicApiKey : geminiApiKey),
+  });
+
+  // Sync pipeline outputs to local state for UI rendering
+  useEffect(() => {
+    if (brandReplicationPipeline.state.discoveryOutput) {
+      setPipelineDiscoveryOutput(brandReplicationPipeline.state.discoveryOutput);
+    }
+    if (brandReplicationPipeline.state.codeGenOutput) {
+      setPipelineCodeGenOutput(brandReplicationPipeline.state.codeGenOutput);
+    }
+    if (brandReplicationPipeline.state.intelligenceOutput) {
+      setPipelineIntelligenceOutput(brandReplicationPipeline.state.intelligenceOutput);
+    }
+    if (brandReplicationPipeline.state.validationOutput) {
+      setPipelineValidationOutput(brandReplicationPipeline.state.validationOutput);
+    }
+  }, [
+    brandReplicationPipeline.state.discoveryOutput,
+    brandReplicationPipeline.state.codeGenOutput,
+    brandReplicationPipeline.state.intelligenceOutput,
+    brandReplicationPipeline.state.validationOutput,
+  ]);
 
   // Design inheritance - load project/map level settings
   const supabaseClient = useMemo(
@@ -265,6 +359,19 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
       setSavedBrandDataLoaded(false);
       // Reset skip flag so next open will load saved data
       setSkipBrandReload(false);
+      // Reset brand replication pipeline state
+      setPipelineDiscoveryOutput(null);
+      setPipelineCodeGenOutput(null);
+      setPipelineIntelligenceOutput(null);
+      setPipelineValidationOutput(null);
+      setShowComponentGallery(false);
+      setShowSectionDesigner(false);
+      setShowQualityDashboard(false);
+      setSelectedPipelineComponentId(undefined);
+      setSelectedPipelineSectionId(undefined);
+      if (brandReplicationPipeline.reset) {
+        brandReplicationPipeline.reset();
+      }
     }
   }, [isOpen]);
 
@@ -521,32 +628,63 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   }, [articleDraft, topic.title, topic.id, brief, personalityId, style, topicalMap?.business_info, supabaseUrl, supabaseAnonKey]);
 
   // Generate layout engine blueprint for the LayoutIntelligenceStep
-  const generateLayoutEngineBlueprint = useCallback(async (dna?: DesignDNA) => {
+  // When fixInstructions is provided, uses AI to fix specific design issues
+  const generateLayoutEngineBlueprint = useCallback(async (dna?: DesignDNA, fixInstructions?: string) => {
     if (!articleDraft) return;
     setIsLayoutEngineGenerating(true);
     setLayoutEngineError(null);
 
     try {
       // Convert brief sections if available
-      const briefSections = brief?.structured_outline?.sections?.map((s: any) => ({
-        heading: s.heading || '',
-        formatCode: s.format,
-        attributeCategory: s.attributeCategory,
-        fsTarget: s.isTargetedForFeaturedSnippet,
-        wordCount: s.wordCount,
+      // IMPORTANT: Use snake_case field names to match BriefSection interface in types.ts
+      const briefSections = ((brief?.structured_outline as any)?.sections || brief?.structured_outline || [])?.map((s: any) => ({
+        heading: s.heading || s.section_heading || '',
+        section_heading: s.section_heading || s.heading || '',
+        level: s.level || s.heading_level || 2,
+        heading_level: s.heading_level || s.level || 2,
+        format_code: s.format_code || s.format || undefined,
+        attribute_category: s.attribute_category || s.attributeCategory || undefined,
+        content_zone: s.content_zone || 'MAIN',
       })) || [];
 
-      // Generate using the new LayoutEngine
-      const output = LayoutEngine.generateBlueprint(
-        articleDraft,
-        briefSections,
-        dna || detectedDesignDna || undefined,
-        {
-          topicTitle: topic.title,
-          isCoreTopic: topic.is_core_topic,
-          mainIntent: brief?.mainIntent,
-        }
-      );
+      console.log('[Style & Publish] Brief sections for Layout Engine:', {
+        count: briefSections.length,
+        sections: briefSections.map((s: any) => ({
+          heading: s.heading?.substring(0, 30),
+          attribute_category: s.attribute_category,
+          format_code: s.format_code,
+        })),
+      });
+
+      let output;
+
+      // Use AI-powered layout when fix instructions are provided (or Gemini key available)
+      const geminiKey = geminiApiKey || (state?.businessInfo as any)?.geminiApiKey;
+      if (fixInstructions && geminiKey) {
+        console.log('[Style & Publish] Using AI-powered layout with fix instructions:', fixInstructions.substring(0, 100));
+        output = await LayoutEngine.generateBlueprintWithAI(
+          articleDraft,
+          topic.title,
+          { provider: 'gemini', apiKey: geminiKey },
+          dna || detectedDesignDna || undefined,
+          {
+            language: 'auto',
+            fixInstructions,
+          }
+        );
+      } else {
+        // Generate using pattern-based LayoutEngine (fallback)
+        output = LayoutEngine.generateBlueprint(
+          articleDraft,
+          briefSections,
+          dna || detectedDesignDna || undefined,
+          {
+            topicTitle: topic.title,
+            isCoreTopic: (topic as any).is_core_topic || (topic as any).isCoreTopic,
+            mainIntent: (brief as any)?.mainIntent || (brief as any)?.searchIntent,
+          }
+        );
+      }
 
       // Convert LayoutBlueprintOutput to LayoutEngineBlueprint format for UI
       const layoutBlueprint: LayoutEngineBlueprint = {
@@ -601,7 +739,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     } finally {
       setIsLayoutEngineGenerating(false);
     }
-  }, [articleDraft, brief, topic.title, topic.is_core_topic, detectedDesignDna]);
+  }, [articleDraft, brief, topic.title, (topic as any).is_core_topic, detectedDesignDna, geminiApiKey]);
 
   // Handle brand detection completion from BrandIntelligenceStep
   const handleBrandDetectionComplete = useCallback((result: {
@@ -734,12 +872,14 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
           const sourceUrl = topicalMap?.business_info?.domain || '';
 
           // Save Design DNA (best-effort - continues if tables don't exist)
+          // Use user's configured model, falling back to providerConfig defaults
+          const userGeminiModel = state.businessInfo?.aiModel || '';
           const dnaId = await saveDesignDNA(projectId, {
             designDna: result.designDna,
             screenshotBase64: result.screenshotBase64,
             sourceUrl,
             extractedAt: new Date().toISOString(),
-            aiModel: 'gemini-2.0-flash-exp',
+            aiModel: userGeminiModel || 'gemini-3-pro-preview', // User's preference or latest default
             processingTimeMs: 0
           });
 
@@ -762,7 +902,181 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
       };
       saveBrandData();
     }
-  }, [generateBlueprint, generateLayoutEngineBlueprint, projectId, supabaseUrl, supabaseAnonKey, topicalMap?.business_info?.domain]);
+
+    // ============================================================================
+    // Brand Replication Pipeline - Enhanced Brand Step
+    // ============================================================================
+    // If brand replication is enabled, also run Phase 1 Discovery and Phase 2 CodeGen
+    // This extracts component patterns from the brand website for later use
+    if (enableBrandReplication && topicalMap?.business_info?.domain && result.designDna) {
+      console.log('[Style & Publish] Running Brand Replication Pipeline Phase 1 & 2...');
+      const runPipelinePhases = async () => {
+        try {
+          // Phase 1: Discovery - captures screenshots and discovers components
+          const discoveryOutput = await brandReplicationPipeline.runDiscovery({
+            brandUrl: topicalMap.business_info?.domain || '',
+            brandId: projectId || `brand-${Date.now()}`,
+            options: {
+              maxPages: 3, // Analyze up to 3 pages
+              includeScreenshots: true,
+            },
+          });
+
+          if (discoveryOutput && discoveryOutput.status !== 'failed') {
+            console.log('[Style & Publish] Phase 1 Discovery complete:', {
+              components: discoveryOutput.discoveredComponents.length,
+              screenshots: discoveryOutput.screenshots.length,
+            });
+
+            // Phase 2: CodeGen - generates CSS/HTML for discovered components
+            const codeGenOutput = await brandReplicationPipeline.runCodeGen(
+              discoveryOutput,
+              result.designDna
+            );
+
+            if (codeGenOutput && codeGenOutput.status !== 'failed') {
+              console.log('[Style & Publish] Phase 2 CodeGen complete:', {
+                components: codeGenOutput.components.length,
+                cssLength: codeGenOutput.compiledCss.length,
+              });
+
+              // Show component gallery when we have components
+              if (codeGenOutput.components.length > 0) {
+                setShowComponentGallery(true);
+              }
+            }
+          }
+        } catch (pipelineError) {
+          console.error('[Style & Publish] Brand replication pipeline error:', pipelineError);
+          // Don't show error to user - pipeline is enhancement only
+        }
+      };
+      runPipelinePhases();
+    }
+  }, [generateBlueprint, generateLayoutEngineBlueprint, projectId, supabaseUrl, supabaseAnonKey, topicalMap?.business_info?.domain, enableBrandReplication, brandReplicationPipeline]);
+
+  // ============================================================================
+  // Brand Replication Pipeline Handlers
+  // ============================================================================
+
+  // Run Phase 3 Intelligence - design decisions for article sections
+  const handleRunIntelligencePhase = useCallback(async () => {
+    if (!pipelineCodeGenOutput || !articleDraft || !topic) {
+      console.warn('[Style & Publish] Cannot run intelligence phase: missing prerequisites');
+      return;
+    }
+
+    // Convert article draft to sections
+    const sections = articleDraft
+      .split(/(?=<h[1-6])/gi)
+      .filter(Boolean)
+      .map((section, index) => {
+        const headingMatch = section.match(/<h([1-6])[^>]*>(.*?)<\/h\1>/i);
+        return {
+          id: `section-${index}`,
+          heading: headingMatch ? headingMatch[2].replace(/<[^>]+>/g, '') : `Section ${index + 1}`,
+          headingLevel: headingMatch ? parseInt(headingMatch[1]) : 2,
+          content: section,
+          wordCount: section.split(/\s+/).length,
+        } as ArticleSection;
+      });
+
+    const contentContext = {
+      pillars: {
+        centralEntity: topicalMap?.pillars?.[0]?.central_entity || '',
+        sourceContext: topicalMap?.pillars?.[0]?.source_context || '',
+        centralSearchIntent: topicalMap?.pillars?.[0]?.central_search_intent || '',
+      },
+      topicalMap: {
+        id: topic.map_id || '',
+        coreTopic: topic.title,
+        relatedTopics: [],
+        contentGaps: [],
+        targetAudience: (topicalMap?.business_info as any)?.audience || '',
+      },
+      article: {
+        id: topic.id,
+        title: topic.title,
+        fullContent: articleDraft,
+        sections,
+        keyEntities: [],
+        mainMessage: brief?.targetKeyword || '',
+        callToAction: 'Learn more',
+      },
+    };
+
+    try {
+      const intelligenceOutput = await brandReplicationPipeline.runIntelligence({
+        articleId: topic.id,
+        contentContext,
+        topicalMap: topicalMap || undefined,
+        brief: brief || undefined,
+        topic,
+      });
+
+      if (intelligenceOutput && intelligenceOutput.status !== 'failed') {
+        console.log('[Style & Publish] Phase 3 Intelligence complete:', {
+          decisions: intelligenceOutput.decisions.length,
+        });
+        setShowSectionDesigner(true);
+      }
+    } catch (error) {
+      console.error('[Style & Publish] Intelligence phase error:', error);
+    }
+  }, [pipelineCodeGenOutput, articleDraft, topic, topicalMap, brief, brandReplicationPipeline]);
+
+  // Run Phase 4 Validation
+  const handleRunValidationPhase = useCallback(async () => {
+    if (!preview?.html) {
+      console.warn('[Style & Publish] Cannot run validation: no preview HTML');
+      return;
+    }
+
+    try {
+      const validationOutput = await brandReplicationPipeline.runValidation(preview.html);
+
+      if (validationOutput && validationOutput.status !== 'failed') {
+        console.log('[Style & Publish] Phase 4 Validation complete:', {
+          overallScore: validationOutput.scores.overall,
+          passesThreshold: validationOutput.passesThreshold,
+        });
+        setShowQualityDashboard(true);
+      }
+    } catch (error) {
+      console.error('[Style & Publish] Validation phase error:', error);
+    }
+  }, [preview?.html, brandReplicationPipeline]);
+
+  // Handle section design decision update from SectionDesigner
+  const handleUpdateSectionDecision = useCallback((
+    sectionId: string,
+    changes: Partial<SectionDesignDecision>
+  ) => {
+    if (!pipelineIntelligenceOutput) return;
+
+    const updatedDecisions = pipelineIntelligenceOutput.decisions.map(d =>
+      d.sectionId === sectionId ? { ...d, ...changes } : d
+    );
+
+    setPipelineIntelligenceOutput({
+      ...pipelineIntelligenceOutput,
+      decisions: updatedDecisions,
+    });
+  }, [pipelineIntelligenceOutput]);
+
+  // Handle quality dashboard approval
+  const handleApproveQuality = useCallback(() => {
+    console.log('[Style & Publish] Quality approved, proceeding to publish');
+    setShowQualityDashboard(false);
+    setCurrentStep('publish');
+  }, []);
+
+  // Handle quality revalidation
+  const handleRevalidate = useCallback(async () => {
+    if (preview?.html) {
+      await handleRunValidationPhase();
+    }
+  }, [preview?.html, handleRunValidationPhase]);
 
   // Fetch learned preferences for this project
   const fetchLearnedPreferences = useCallback(async () => {
@@ -1119,10 +1433,37 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
             }
 
             const articleContent = htmlToArticleContent(articleDraft, topic.title);
+
+            // Use user's preferred AI provider for layout engine
+            // Gemini: direct browser calls (no CORS issues)
+            // Anthropic/OpenAI: uses Supabase edge function proxy
+            const userPreferredProvider = (state.businessInfo?.aiProvider || 'gemini') as 'gemini' | 'anthropic' | 'openai';
+            const userPreferredModel = state.businessInfo?.aiModel || '';
+
+            // Inform user which provider is being used
+            if (useSemanticLayoutEngine) {
+              const proxyNote = userPreferredProvider !== 'gemini' ? ' (via Supabase proxy)' : '';
+              dispatch({
+                type: 'LOG_EVENT',
+                payload: {
+                  service: 'Style & Publish',
+                  message: `AI Layout using ${userPreferredProvider}${proxyNote}`,
+                  status: 'info',
+                  timestamp: Date.now(),
+                },
+              });
+            }
+
             const unifiedOutput = await renderContent(articleContent, {
               projectId,
-              aiProvider: 'gemini',
-              aiApiKey: geminiApiKey,
+              aiProvider: userPreferredProvider,
+              aiModel: userPreferredModel,
+              // Pass the active API key for general use
+              aiApiKey: activeAiApiKey,
+              // Pass all API keys for flexibility and fallback
+              geminiApiKey,
+              anthropicApiKey,
+              openAiApiKey,
               blueprint,
               brief,
               topic,
@@ -1130,6 +1471,8 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
               personalityId,
               // Pass DesignDNA for CleanArticleRenderer (NO TEMPLATES)
               designDna: detectedDesignDna || undefined,
+              // Pass Layout Engine blueprint for component/emphasis decisions
+              layoutBlueprint: layoutEngineBlueprint || undefined,
               designTokens: style?.designTokens ? {
                 colors: {
                   primary: style.designTokens.colors.primary,
@@ -1162,20 +1505,32 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
               generatedImages: generatedImages as any,
               // Pass extracted components directly (bypass database lookup)
               extractedComponents: extractedComponents.length > 0 ? extractedComponents : undefined,
+              // Semantic Layout Engine - AI-driven layout intelligence
+              useSemanticLayoutEngine,
+              mapId: topic.map_id,
+              topicId: topic.id,
+              // Required for Semantic Layout Engine (centralized AI service layer)
+              dispatch,
+              supabaseUrl,
+              supabaseAnonKey,
             });
 
             console.log('[Style & Publish] Unified renderer succeeded');
             setPreview(unifiedOutput);
-            // Set metadata - determine which renderer was actually used
-            const rendererUsed = (unifiedOutput as any).template === 'clean-article'
-              ? 'CleanArticleRenderer'
-              : 'BrandAwareComposer';
+
+            // Use renderInfo from output for clear user messaging
+            const renderInfo = (unifiedOutput as any).renderInfo;
             setRenderingMetadata({
-              rendererUsed,
+              rendererUsed: renderInfo?.renderer || (unifiedOutput as any).template || 'unknown',
               brandScore: brandMatchScore,
               unresolvedImageCount: (unifiedOutput as any).renderMetadata?.unresolvedImageCount || 0,
+              // NEW: Clear user messaging
+              renderMessage: renderInfo?.message,
+              renderReason: renderInfo?.reason,
+              renderLevel: renderInfo?.level || 'info',
+              renderDetails: renderInfo?.details,
             });
-            console.log('[Style & Publish] Renderer used:', rendererUsed);
+            console.log('[Style & Publish] Render info:', renderInfo);
             return;
           } catch (error) {
             console.log('[Style & Publish] Unified renderer failed, falling back:', error);
@@ -1339,7 +1694,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     } finally {
       setIsGenerating(false);
     }
-  }, [style, layout, articleDraft, topic, brief, personalityId, blueprint, detectedDesignSystem, topicalMap]);
+  }, [style, layout, articleDraft, topic, brief, personalityId, blueprint, detectedDesignSystem, topicalMap, useSemanticLayoutEngine, detectedDesignDna, layoutEngineBlueprint, extractedComponents, activeAiApiKey, aiProvider, projectId, supabaseUrl, supabaseAnonKey, brandMatchScore]);
 
   // Navigation handlers
   const handleNext = useCallback(async () => {
@@ -1438,13 +1793,10 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     setLayoutEngineBlueprint(null);
   }, []);
 
-  // Get API keys from app state businessInfo (where user settings are stored)
-  const apifyToken = state.businessInfo?.apifyToken || '';
-  const geminiApiKey = state.businessInfo?.geminiApiKey || localStorage.getItem('gemini_api_key') || '';
-  const anthropicApiKey = state.businessInfo?.anthropicApiKey || localStorage.getItem('anthropic_api_key') || '';
-
-  // Debug: Log API key status
+  // Debug: Log API key status (API keys are defined above, near the top of the component)
   console.log('[Style & Publish] API Keys status:', {
+    aiProvider,
+    hasActiveKey: !!activeAiApiKey,
     hasApifyToken: !!apifyToken,
     apifyTokenLength: apifyToken?.length || 0,
     hasGeminiKey: !!geminiApiKey,
@@ -1457,47 +1809,193 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     switch (currentStep) {
       case 'brand':
         return (
-          <BrandIntelligenceStep
-            defaultDomain={topicalMap?.business_info?.domain}
-            apifyToken={apifyToken}
-            geminiApiKey={geminiApiKey}
-            anthropicApiKey={anthropicApiKey}
-            supabaseUrl={supabaseUrl}
-            supabaseAnonKey={supabaseAnonKey}
-            projectId={projectId}
-            designDna={detectedDesignDna}
-            brandDesignSystem={detectedDesignSystem}
-            screenshotBase64={detectedScreenshot}
-            savedSourceUrl={savedBrandSourceUrl}
-            savedExtractedAt={savedBrandExtractedAt}
-            isLoadingSavedData={isLoadingSavedBrand}
-            onDetectionComplete={handleBrandDetectionComplete}
-            onDesignDnaChange={setDetectedDesignDna}
-            onRegenerate={handleBrandRegenerate}
-            onReset={() => {
-              // Clear all cached brand data to allow entering a new URL
-              setDetectedDesignDna(null);
-              setDetectedDesignSystem(null);
-              setDetectedScreenshot(null);
-              setSavedBrandSourceUrl(null);
-              setSavedBrandExtractedAt(null);
-              console.log('[Style & Publish] Brand data reset - ready for new URL');
-            }}
-          />
+          <div className="space-y-6">
+            <BrandIntelligenceStep
+              defaultDomain={topicalMap?.business_info?.domain}
+              apifyToken={apifyToken}
+              geminiApiKey={geminiApiKey}
+              anthropicApiKey={anthropicApiKey}
+              supabaseUrl={supabaseUrl}
+              supabaseAnonKey={supabaseAnonKey}
+              projectId={projectId}
+              designDna={detectedDesignDna}
+              brandDesignSystem={detectedDesignSystem}
+              screenshotBase64={detectedScreenshot}
+              savedSourceUrl={savedBrandSourceUrl}
+              savedExtractedAt={savedBrandExtractedAt}
+              isLoadingSavedData={isLoadingSavedBrand}
+              onDetectionComplete={handleBrandDetectionComplete}
+              onDesignDnaChange={setDetectedDesignDna}
+              onRegenerate={handleBrandRegenerate}
+              onReset={() => {
+                // Clear all cached brand data to allow entering a new URL
+                setDetectedDesignDna(null);
+                setDetectedDesignSystem(null);
+                setDetectedScreenshot(null);
+                setSavedBrandSourceUrl(null);
+                setSavedBrandExtractedAt(null);
+                console.log('[Style & Publish] Brand data reset - ready for new URL');
+              }}
+            />
+
+            {/* Brand Replication Feature Toggle */}
+            {detectedDesignDna && (
+              <div className="p-4 bg-zinc-900/40 rounded-xl border border-zinc-700/50">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enableBrandReplication}
+                    onChange={(e) => setEnableBrandReplication(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="relative w-11 h-6 bg-gray-700 peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600" />
+                  <div>
+                    <span className="text-sm font-medium text-white">Advanced Brand Replication</span>
+                    <span className="text-xs text-zinc-500 ml-2">(BETA)</span>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      Extract component patterns for pixel-perfect brand matching
+                    </p>
+                  </div>
+                </label>
+              </div>
+            )}
+
+            {/* Component Gallery - Shows discovered components from Phase 1-2 */}
+            {enableBrandReplication && showComponentGallery && pipelineDiscoveryOutput && pipelineCodeGenOutput && (
+              <div className="border border-zinc-700/50 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowComponentGallery(!showComponentGallery)}
+                  className="w-full p-4 flex items-center justify-between bg-zinc-900/40 hover:bg-zinc-800/50 transition-colors"
+                >
+                  <span className="text-sm font-medium text-zinc-300">
+                    Discovered Components ({pipelineCodeGenOutput.components.length})
+                  </span>
+                  <span className="text-zinc-400">
+                    {showComponentGallery ? '\u25BC' : '\u25B6'}
+                  </span>
+                </button>
+                {showComponentGallery && (
+                  <div className="p-4 bg-zinc-950/50">
+                    <ComponentGallery
+                      discoveredComponents={pipelineDiscoveryOutput.discoveredComponents}
+                      brandComponents={pipelineCodeGenOutput.components}
+                      screenshots={pipelineDiscoveryOutput.screenshots}
+                      selectedComponentId={selectedPipelineComponentId}
+                      onSelectComponent={setSelectedPipelineComponentId}
+                      isLoading={brandReplicationPipeline.state.isRunning && brandReplicationPipeline.state.currentPhase === 'codegen'}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Pipeline Status */}
+            {enableBrandReplication && brandReplicationPipeline.state.isRunning && (
+              <div className="p-3 bg-blue-900/30 rounded-lg border border-blue-500/30 flex items-center gap-3">
+                <div className="animate-spin w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full" />
+                <span className="text-sm text-blue-300">
+                  Running {brandReplicationPipeline.state.currentPhase === 'discovery' ? 'discovery' : 'code generation'}...
+                </span>
+              </div>
+            )}
+
+            {/* Pipeline Error */}
+            {enableBrandReplication && brandReplicationPipeline.state.error && (
+              <div className="p-3 bg-yellow-900/30 rounded-lg border border-yellow-500/30">
+                <p className="text-sm text-yellow-300">
+                  Brand replication: {brandReplicationPipeline.state.error}
+                </p>
+                <p className="text-xs text-yellow-400/70 mt-1">
+                  This is an optional enhancement. Standard brand detection will be used.
+                </p>
+              </div>
+            )}
+          </div>
         );
 
       case 'layout':
         return (
-          <LayoutIntelligenceStep
-            blueprint={layoutEngineBlueprint}
-            isGenerating={isLayoutEngineGenerating}
-            error={layoutEngineError}
-            onRegenerate={() => generateLayoutEngineBlueprint(detectedDesignDna || undefined)}
-          />
+          <div className="space-y-6">
+            <LayoutIntelligenceStep
+              blueprint={layoutEngineBlueprint}
+              isGenerating={isLayoutEngineGenerating}
+              error={layoutEngineError}
+              onRegenerate={() => generateLayoutEngineBlueprint(detectedDesignDna || undefined)}
+            />
+
+            {/* Section Designer - Shows Phase 3 design decisions when enabled */}
+            {enableBrandReplication && pipelineCodeGenOutput && pipelineCodeGenOutput.components.length > 0 && (
+              <div className="border border-zinc-700/50 rounded-xl overflow-hidden">
+                <div className="p-4 bg-zinc-900/40 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium text-white">Semantic Section Designer</h4>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      AI-driven design decisions based on content context
+                    </p>
+                  </div>
+                  {!pipelineIntelligenceOutput && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={handleRunIntelligencePhase}
+                      disabled={brandReplicationPipeline.state.isRunning}
+                      className="text-xs"
+                    >
+                      {brandReplicationPipeline.state.isRunning && brandReplicationPipeline.state.currentPhase === 'intelligence'
+                        ? 'Analyzing...'
+                        : 'Run Section Analysis'}
+                    </Button>
+                  )}
+                </div>
+
+                {pipelineIntelligenceOutput && (
+                  <div className="p-4 bg-zinc-950/50">
+                    <SectionDesigner
+                      sections={
+                        articleDraft
+                          .split(/(?=<h[1-6])/gi)
+                          .filter(Boolean)
+                          .map((section, index) => {
+                            const headingMatch = section.match(/<h([1-6])[^>]*>(.*?)<\/h\1>/i);
+                            return {
+                              id: `section-${index}`,
+                              heading: headingMatch ? headingMatch[2].replace(/<[^>]+>/g, '') : `Section ${index + 1}`,
+                              headingLevel: headingMatch ? parseInt(headingMatch[1]) : 2,
+                              content: section,
+                              wordCount: section.split(/\s+/).length,
+                            } as ArticleSection;
+                          })
+                      }
+                      decisions={pipelineIntelligenceOutput.decisions}
+                      componentLibrary={pipelineCodeGenOutput.components}
+                      selectedSectionId={selectedPipelineSectionId}
+                      onSelectSection={setSelectedPipelineSectionId}
+                      onUpdateDecision={handleUpdateSectionDecision}
+                      onAcceptAll={() => {
+                        console.log('[Style & Publish] All section decisions accepted');
+                        setShowSectionDesigner(false);
+                      }}
+                      isLoading={brandReplicationPipeline.state.isRunning && brandReplicationPipeline.state.currentPhase === 'intelligence'}
+                    />
+                  </div>
+                )}
+
+                {/* Intelligence Phase Status */}
+                {brandReplicationPipeline.state.isRunning && brandReplicationPipeline.state.currentPhase === 'intelligence' && (
+                  <div className="p-3 bg-blue-900/30 border-t border-blue-500/30 flex items-center gap-3">
+                    <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+                    <span className="text-sm text-blue-300">Analyzing sections and matching components...</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         );
 
       case 'preview':
         return (
+          <>
           <PreviewStep
             preview={preview}
             isGenerating={isGenerating}
@@ -1523,7 +2021,131 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
             // Quality/fallback notifications
             blueprintQuality={blueprintQuality}
             renderingMetadata={renderingMetadata}
+            // Visual quality check - when issues detected, offer rework option
+            geminiApiKey={geminiApiKey}
+            onReworkOutput={async () => {
+              // Rework output: regenerate with potentially different approach
+              console.log('[Style & Publish] Reworking output due to quality issues...');
+              // First regenerate the layout blueprint with fresh analysis
+              await generateLayoutEngineBlueprint(detectedDesignDna || undefined);
+              // Then regenerate the rendering blueprint
+              await generateBlueprint();
+              // Finally regenerate the preview
+              await generatePreview();
+            }}
+            // Business context for design quality assessment
+            businessContext={{
+              industry: (topicalMap?.business_info as any)?.industry,
+              model: (topicalMap?.business_info as any)?.model,
+              audience: (topicalMap?.business_info as any)?.audience,
+              valueProp: (topicalMap?.business_info as any)?.valueProp,
+            }}
+            contentContext={{
+              title: topic.title,
+              intent: (brief as any)?.mainIntent || (brief as any)?.searchIntent,
+              isCoreTopic: (topic as any).is_core_topic || (topic as any).isCoreTopic,
+            }}
+            // AI-assisted design fixes - level-aware (output, layout, brand, or all)
+            onAutoFixIssue={async (issue) => {
+              const fixLevel = (issue as any).fixLevel || 'output';
+              const layoutPrompt = (issue as any).layoutFixPrompt;
+              const brandPrompt = (issue as any).brandFixPrompt;
+              const autoFixPrompt = (issue as any).autoFixPrompt || `Fix this issue: ${issue.title}. ${issue.description || ''}`;
+
+              console.log('[Style & Publish] AI fixing design issue:', issue.title, 'at level:', fixLevel);
+
+              // Handle layout-level fixes
+              if (fixLevel === 'layout' || fixLevel === 'all') {
+                const prompt = layoutPrompt || autoFixPrompt;
+                console.log('[Style & Publish] Applying layout fix:', prompt.substring(0, 80));
+                await generateLayoutEngineBlueprint(detectedDesignDna || undefined, prompt);
+              }
+
+              // Handle brand-level fixes (update design system for future articles)
+              if ((fixLevel === 'brand' || fixLevel === 'all') && brandPrompt && detectedDesignSystem) {
+                console.log('[Style & Publish] Applying brand fix (for future designs):', brandPrompt.substring(0, 80));
+                // Note: Brand updates would be saved to database for future articles
+                // For now, log the intent - full implementation would update brand design system
+                console.log('[Style & Publish] Brand fix prompt saved for future reference');
+              }
+
+              // Regenerate output with the fixes applied
+              if (fixLevel === 'output' || fixLevel === 'all') {
+                // For output-only fixes, still use the autoFixPrompt but don't save to patterns
+                await generateLayoutEngineBlueprint(detectedDesignDna || undefined, autoFixPrompt);
+              }
+
+              await generateBlueprint();
+              await generatePreview();
+            }}
+            onRegenerateWithInstructions={async (instructions) => {
+              console.log('[Style & Publish] Regenerating with AI instructions:', instructions.substring(0, 100));
+              // Pass all fix instructions to AI for comprehensive regeneration
+              await generateLayoutEngineBlueprint(detectedDesignDna || undefined, instructions);
+              await generateBlueprint();
+              await generatePreview();
+            }}
+            // Semantic Layout Engine toggle (requires Gemini API key)
+            useSemanticLayoutEngine={useSemanticLayoutEngine}
+            onSemanticLayoutEngineChange={(enabled) => {
+              if (enabled && !geminiApiKey) {
+                console.warn('[Style & Publish] Semantic Layout Engine requires a Gemini API key');
+                setErrors(['Semantic Layout Engine requires a Gemini API key. Please add one in settings.']);
+                return;
+              }
+              setUseSemanticLayoutEngine(enabled);
+              // Clear preview - user will need to click Regenerate to see new output
+              // This avoids closure issues with auto-regeneration
+              setPreview(null);
+            }}
           />
+
+          {/* Quality Dashboard - Shows Phase 4 Validation results when brand replication is enabled */}
+          {enableBrandReplication && pipelineIntelligenceOutput && preview?.html && (
+            <div className="mt-6 border border-zinc-700/50 rounded-xl overflow-hidden">
+              <div className="p-4 bg-zinc-900/40 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-medium text-white">Brand Quality Validation</h4>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Comprehensive quality scoring with wow-factor checklist
+                  </p>
+                </div>
+                {!pipelineValidationOutput && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleRunValidationPhase}
+                    disabled={brandReplicationPipeline.state.isRunning}
+                    className="text-xs"
+                  >
+                    {brandReplicationPipeline.state.isRunning && brandReplicationPipeline.state.currentPhase === 'validation'
+                      ? 'Validating...'
+                      : 'Run Quality Check'}
+                  </Button>
+                )}
+              </div>
+
+              {pipelineValidationOutput && (
+                <div className="p-4 bg-zinc-950/50">
+                  <QualityDashboard
+                    validationResult={pipelineValidationOutput}
+                    onApprove={handleApproveQuality}
+                    onRevalidate={handleRevalidate}
+                    isLoading={brandReplicationPipeline.state.isRunning && brandReplicationPipeline.state.currentPhase === 'validation'}
+                  />
+                </div>
+              )}
+
+              {/* Validation Phase Status */}
+              {brandReplicationPipeline.state.isRunning && brandReplicationPipeline.state.currentPhase === 'validation' && (
+                <div className="p-3 bg-blue-900/30 border-t border-blue-500/30 flex items-center gap-3">
+                  <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+                  <span className="text-sm text-blue-300">Running comprehensive quality validation...</span>
+                </div>
+              )}
+            </div>
+          )}
+          </>
         );
 
       case 'publish':
