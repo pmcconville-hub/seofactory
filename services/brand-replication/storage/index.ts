@@ -12,6 +12,7 @@ import { ComponentStore } from './ComponentStore';
 import { DecisionStore } from './DecisionStore';
 import { ValidationStore } from './ValidationStore';
 import type { PipelineState } from './types';
+import type { SectionDesignDecision, ValidationOutput } from '../interfaces';
 
 export class PipelineStorage {
   public discovery: DiscoveryStore;
@@ -31,8 +32,8 @@ export class PipelineStorage {
     const components = await this.components.getAll(brandId);
     const articleIds = await this.decisions.listArticles(brandId);
 
-    const decisions: Record<string, any[]> = {};
-    const validations: Record<string, any> = {};
+    const decisions: Record<string, SectionDesignDecision[]> = {};
+    const validations: Record<string, ValidationOutput> = {};
 
     for (const articleId of articleIds) {
       const d = await this.decisions.get(brandId, articleId);
