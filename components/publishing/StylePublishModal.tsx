@@ -89,6 +89,7 @@ import {
 } from '../../services/design-analysis/brandDesignSystemStorage';
 import { renderContent } from '../../services/publishing/renderer';
 import { htmlToArticleContent } from '../../services/publishing/renderer/contentAdapter';
+import { ComponentLibrary } from '../../services/brand-extraction/ComponentLibrary';
 
 // Map ContentTypeTemplate to PageTemplate
 function mapTemplateToPageTemplate(template: ContentTypeTemplate): PageTemplate {
@@ -201,6 +202,10 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   const [detectedScreenshot, setDetectedScreenshot] = useState<string | null>(null);
   // Extracted components with literal HTML/CSS from target site (for BrandAwareComposer)
   const [extractedComponents, setExtractedComponents] = useState<import('../../types/brandExtraction').ExtractedComponent[]>([]);
+
+  // Saved brand extraction data (URL suggestions + components from DB)
+  const [savedComponents, setSavedComponents] = useState<import('../../types/brandExtraction').ExtractedComponent[]>([]);
+  const [savedUrlSuggestions, setSavedUrlSuggestions] = useState<import('../../services/brand-extraction/UrlDiscoveryService').UrlSuggestion[]>([]);
 
   // Saved brand data state (persistence)
   const [savedBrandDataLoaded, setSavedBrandDataLoaded] = useState(false);
@@ -359,6 +364,9 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
       setSavedBrandDataLoaded(false);
       // Reset skip flag so next open will load saved data
       setSkipBrandReload(false);
+      // Clear saved extraction data so it reloads fresh on next open
+      setSavedComponents([]);
+      setSavedUrlSuggestions([]);
       // Reset brand replication pipeline state
       setPipelineDiscoveryOutput(null);
       setPipelineCodeGenOutput(null);
@@ -533,6 +541,49 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
             });
             setDetectedDesignSystem(savedSystem);
           }
+        }
+
+        // Fetch saved components and URL suggestions in parallel
+        const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
+        const [componentsResult, urlSuggestionsResult] = await Promise.all([
+          new ComponentLibrary(projectId).getAll().catch((err) => {
+            console.warn('[Style & Publish] Failed to load saved components:', err);
+            return [] as import('../../types/brandExtraction').ExtractedComponent[];
+          }),
+          (async () => {
+            try {
+              const { data, error: qErr } = await supabase
+                .from('brand_url_suggestions')
+                .select('*')
+                .eq('project_id', projectId)
+                .order('prominence_score', { ascending: false });
+              if (qErr) {
+                console.warn('[Style & Publish] Failed to load saved URL suggestions:', qErr);
+                return [] as import('../../services/brand-extraction/UrlDiscoveryService').UrlSuggestion[];
+              }
+              return (data || []).map((row: { suggested_url: string; page_type: string; discovered_from: string; prominence_score: number | null; visual_context: string | null }) => ({
+                url: row.suggested_url,
+                pageType: row.page_type as 'homepage' | 'service' | 'article' | 'contact' | 'other',
+                discoveredFrom: row.discovered_from as 'sitemap' | 'nav_link' | 'hero_cta' | 'featured_content' | 'footer',
+                prominenceScore: (row.prominence_score ?? 0.5) * 100,
+                visualContext: row.visual_context || '',
+              }));
+            } catch (err) {
+              console.warn('[Style & Publish] Failed to load saved URL suggestions:', err);
+              return [] as import('../../services/brand-extraction/UrlDiscoveryService').UrlSuggestion[];
+            }
+          })(),
+        ]);
+
+        if (componentsResult.length > 0) {
+          setSavedComponents(componentsResult);
+          // Also populate extractedComponents so the renderer has them immediately
+          setExtractedComponents(componentsResult);
+          console.log('[Style & Publish] Loaded', componentsResult.length, 'saved components');
+        }
+        if (urlSuggestionsResult.length > 0) {
+          setSavedUrlSuggestions(urlSuggestionsResult);
+          console.log('[Style & Publish] Loaded', urlSuggestionsResult.length, 'saved URL suggestions');
         }
 
         setSavedBrandDataLoaded(true);
@@ -1801,6 +1852,10 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     setSavedBrandSourceUrl(null);
     setSavedBrandExtractedAt(null);
     setSavedBrandDataLoaded(false);
+    // Clear saved extraction data
+    setSavedComponents([]);
+    setSavedUrlSuggestions([]);
+    setExtractedComponents([]);
     // Clear preview and blueprints that depend on brand
     setPreview(null);
     setLayoutEngineBlueprint(null);
@@ -1837,6 +1892,8 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
               savedSourceUrl={savedBrandSourceUrl}
               savedExtractedAt={savedBrandExtractedAt}
               isLoadingSavedData={isLoadingSavedBrand}
+              savedUrlSuggestions={savedUrlSuggestions}
+              savedComponents={savedComponents}
               onDetectionComplete={handleBrandDetectionComplete}
               onDesignDnaChange={setDetectedDesignDna}
               onRegenerate={handleBrandRegenerate}
@@ -1847,6 +1904,9 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
                 setDetectedScreenshot(null);
                 setSavedBrandSourceUrl(null);
                 setSavedBrandExtractedAt(null);
+                setSavedComponents([]);
+                setSavedUrlSuggestions([]);
+                setExtractedComponents([]);
                 console.log('[Style & Publish] Brand data reset - ready for new URL');
               }}
             />

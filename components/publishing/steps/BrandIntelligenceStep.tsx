@@ -26,6 +26,8 @@ import { useBrandExtraction } from '../../../hooks/useBrandExtraction';
 import { BrandUrlDiscovery, BrandExtractionProgress, BrandComponentPreview } from '../brand';
 import { BrandDesignSystemGenerator } from '../../../services/design-analysis/BrandDesignSystemGenerator';
 import type { DesignDNA, BrandDesignSystem } from '../../../types/designDna';
+import type { UrlSuggestion } from '../../../services/brand-extraction/UrlDiscoveryService';
+import type { ExtractedComponent } from '../../../types/brandExtraction';
 
 // ============================================================================
 // Types
@@ -50,6 +52,10 @@ interface BrandIntelligenceStepProps {
   savedSourceUrl?: string | null;
   savedExtractedAt?: string | null;
   isLoadingSavedData?: boolean;
+
+  // Saved extraction data (URL suggestions + components from DB)
+  savedUrlSuggestions?: UrlSuggestion[];
+  savedComponents?: ExtractedComponent[];
 
   // Callbacks
   onDetectionComplete: (result: {
@@ -139,6 +145,8 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
   savedSourceUrl,
   savedExtractedAt,
   isLoadingSavedData,
+  savedUrlSuggestions,
+  savedComponents,
   onDetectionComplete,
   onDesignDnaChange,
   onRegenerate,
@@ -655,6 +663,19 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
     }
   }, [projectId, brandExtraction.checkStoredExtractions]);
 
+  // Load saved URL suggestions into extraction hook when available
+  useEffect(() => {
+    if (
+      savedUrlSuggestions &&
+      savedUrlSuggestions.length > 0 &&
+      brandExtraction.phase === 'idle' &&
+      brandExtraction.suggestions.length === 0
+    ) {
+      brandExtraction.loadSavedSuggestions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only run when savedUrlSuggestions changes
+  }, [savedUrlSuggestions]);
+
   // State for re-analysis in progress
   const [isReanalyzing, setIsReanalyzing] = useState(false);
 
@@ -760,6 +781,24 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
               </Button>
             </div>
           </div>
+
+          {/* Saved extraction stats */}
+          {(savedUrlSuggestions && savedUrlSuggestions.length > 0) || (savedComponents && savedComponents.length > 0) ? (
+            <div className="flex gap-3 mt-3 pt-3 border-t border-green-500/20">
+              {savedUrlSuggestions && savedUrlSuggestions.length > 0 && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/50 rounded-lg">
+                  <span className="text-xs text-zinc-400">Discovered Pages</span>
+                  <span className="text-sm font-semibold text-zinc-200">{savedUrlSuggestions.length}</span>
+                </div>
+              )}
+              {savedComponents && savedComponents.length > 0 && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-800/50 rounded-lg">
+                  <span className="text-xs text-zinc-400">Extracted Components</span>
+                  <span className="text-sm font-semibold text-zinc-200">{savedComponents.length}</span>
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
       )}
 

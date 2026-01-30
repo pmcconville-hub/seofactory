@@ -57,6 +57,7 @@ export interface UseBrandExtractionResult {
   startExtraction: () => Promise<void>;
   reanalyze: () => Promise<void>;
   checkStoredExtractions: () => Promise<boolean>;
+  loadSavedSuggestions: () => Promise<boolean>;
   reset: () => void;
 }
 
@@ -131,6 +132,30 @@ export function useBrandExtraction(
       // Auto-select top 5 suggestions
       const topUrls = discovered.slice(0, 5).map(s => s.url);
       setSelectedUrls(topUrls);
+
+      // Persist discovered suggestions to database (best-effort)
+      try {
+        const supabase = useSupabase();
+        // Delete old suggestions for this project first
+        await supabase.from('brand_url_suggestions').delete().eq('project_id', projectId);
+        // Insert new ones
+        if (discovered.length > 0) {
+          const rows = discovered.map(s => ({
+            project_id: projectId,
+            suggested_url: s.url,
+            page_type: s.pageType,
+            discovered_from: s.discoveredFrom,
+            prominence_score: Math.round(s.prominenceScore) / 100, // 0-100 → 0.00-1.00
+            visual_context: s.visualContext || null,
+            selected: topUrls.includes(s.url),
+            extracted: false,
+          }));
+          await supabase.from('brand_url_suggestions').insert(rows);
+          console.log(`[useBrandExtraction] Saved ${rows.length} URL suggestions to database`);
+        }
+      } catch (saveErr) {
+        console.warn('[useBrandExtraction] Failed to save URL suggestions:', saveErr);
+      }
 
       setPhase('selecting');
       setProgress({
@@ -485,6 +510,21 @@ export function useBrandExtraction(
         }
       }
 
+      // Mark extracted URLs in database (best-effort)
+      try {
+        const supabase = useSupabase();
+        for (const url of selectedUrls) {
+          await supabase
+            .from('brand_url_suggestions')
+            .update({ selected: true, extracted: true })
+            .eq('project_id', projectId)
+            .eq('suggested_url', url);
+        }
+        console.log('[useBrandExtraction] Marked', selectedUrls.length, 'URLs as extracted in database');
+      } catch (markErr) {
+        console.warn('[useBrandExtraction] Failed to mark extracted URLs:', markErr);
+      }
+
       // Complete
       setPhase('complete');
       setProgress({
@@ -666,6 +706,59 @@ export function useBrandExtraction(
   }, [projectId, aiProvider, apiKey]);
 
   /**
+   * Load previously saved URL suggestions from the database.
+   * Populates suggestions and selectedUrls state from persisted data.
+   * Returns true if saved suggestions were found.
+   */
+  const loadSavedSuggestions = useCallback(async (): Promise<boolean> => {
+    try {
+      const { data, error: queryError } = await useSupabase()
+        .from('brand_url_suggestions')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('prominence_score', { ascending: false });
+
+      if (queryError) {
+        console.warn('[useBrandExtraction] Failed to load saved suggestions:', queryError);
+        return false;
+      }
+
+      if (!data || data.length === 0) {
+        return false;
+      }
+
+      // Convert DB rows back to UrlSuggestion[]
+      const loaded: UrlSuggestion[] = data.map(row => ({
+        url: row.suggested_url,
+        pageType: row.page_type as UrlSuggestion['pageType'],
+        discoveredFrom: row.discovered_from as UrlSuggestion['discoveredFrom'],
+        prominenceScore: (row.prominence_score ?? 0.5) * 100, // 0.00-1.00 → 0-100
+        visualContext: row.visual_context || '',
+      }));
+
+      const selected = data
+        .filter(row => row.selected)
+        .map(row => row.suggested_url);
+
+      setSuggestions(loaded);
+      setSelectedUrls(selected);
+      setPhase('selecting');
+      setProgress({
+        phase: 'selecting',
+        completedUrls: 0,
+        totalUrls: loaded.length,
+        message: `Loaded ${loaded.length} previously discovered pages`,
+      });
+
+      console.log('[useBrandExtraction] Loaded', loaded.length, 'saved suggestions from database');
+      return true;
+    } catch (err) {
+      console.warn('[useBrandExtraction] Error loading saved suggestions:', err);
+      return false;
+    }
+  }, [projectId]);
+
+  /**
    * Reset to idle state
    */
   const reset = useCallback(() => {
@@ -700,6 +793,7 @@ export function useBrandExtraction(
     startExtraction,
     reanalyze,
     checkStoredExtractions,
+    loadSavedSuggestions,
     reset
   };
 }
