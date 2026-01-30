@@ -18,6 +18,10 @@ export interface Screenshot {
   path: string;
   timestamp: string;
   viewport: { width: number; height: number };
+  /** Base64-encoded image data for browser compatibility */
+  base64Data?: string;
+  /** MIME type of the image (default: image/png) */
+  mimeType?: string;
 }
 
 export interface DiscoveredComponent {

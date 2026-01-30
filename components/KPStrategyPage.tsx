@@ -81,6 +81,7 @@ export const KPStrategyPage: React.FC<KPStrategyPageProps> = ({
 
   // Selected statements for export
   const [selectedStatements, setSelectedStatements] = useState<Set<string>>(new Set());
+  const [copyNotification, setCopyNotification] = useState(false);
 
   if (!isOpen) return null;
 
@@ -137,7 +138,8 @@ export const KPStrategyPage: React.FC<KPStrategyPageProps> = ({
       .join('\n\n');
 
     navigator.clipboard.writeText(statements);
-    alert('Statements copied to clipboard!');
+    setCopyNotification(true);
+    setTimeout(() => setCopyNotification(false), 3000);
   };
 
   return (
@@ -465,6 +467,16 @@ export const KPStrategyPage: React.FC<KPStrategyPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Copy Notification */}
+      {copyNotification && (
+        <div className="fixed bottom-4 right-4 px-4 py-3 bg-green-900/90 border border-green-700 rounded-lg shadow-xl z-50 flex items-center gap-2">
+          <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <span className="text-sm text-green-100">Statements copied to clipboard!</span>
+        </div>
+      )}
     </div>
   );
 };

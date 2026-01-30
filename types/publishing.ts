@@ -126,6 +126,10 @@ export interface BrandDiscoveryReport {
     suggestions: string[];
   };
 
+  // Google Fonts detected on the target website
+  googleFontsUrl?: string | null;
+  googleFonts?: string[];
+
   // Derived design tokens (ready to use)
   derivedTokens: DesignTokens;
 }
@@ -549,6 +553,30 @@ export interface DetectedComponent {
 }
 
 /**
+ * Render information for user visibility
+ * This provides clear messaging about what rendering approach was used
+ */
+export interface RenderInfo {
+  /** Which renderer was used */
+  renderer: 'brand-aware' | 'clean-article' | 'blueprint' | 'fallback';
+  /** Human-readable description of what happened */
+  message: string;
+  /** Why this renderer was chosen */
+  reason: string;
+  /** Warning level: info (normal), warning (degraded), error (failed) */
+  level: 'info' | 'warning' | 'error';
+  /** Technical details for debugging (optional) */
+  details?: {
+    brandExtractionUsed?: boolean;
+    layoutBlueprintUsed?: boolean;
+    aiLayoutUsed?: boolean;
+    compiledCssUsed?: boolean;
+    componentsDetected?: number;
+    fallbackTriggered?: boolean;
+  };
+}
+
+/**
  * Styled HTML output
  */
 export interface StyledContentOutput {
@@ -558,6 +586,8 @@ export interface StyledContentOutput {
   components: DetectedComponent[];
   seoValidation: SeoValidationResult;
   template: ContentTypeTemplate;
+  /** Clear information about rendering for user visibility */
+  renderInfo?: RenderInfo;
 }
 
 /**

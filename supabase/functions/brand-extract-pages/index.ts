@@ -145,17 +145,59 @@ async function extractBrandFromPages(urls: string[], apifyToken: string): Promis
         await page.waitForLoadState('domcontentloaded', { timeout: 30000 });
         await page.waitForTimeout(2000);
 
-        // Dismiss cookie banners
+        // CRITICAL: Dismiss cookie consent dialogs comprehensively
+        // Without this, ALL extracted components will be cookie dialog HTML
         const cookieSelectors = [
+          // Cookiebot (NFIR and many EU sites)
           '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
+          '#CybotCookiebotDialogBodyButtonAccept',
+          '[id*="CookiebotDialog"] button[id*="Allow"]',
+          '[id*="CookiebotDialog"] button[id*="Accept"]',
+          // OneTrust
           '#onetrust-accept-btn-handler',
+          '.onetrust-close-btn-handler',
+          // CookieYes
+          '.cky-btn-accept',
+          // Generic patterns (English)
           'button[id*="accept"]',
           '.cc-accept',
+          'button:has-text("Accept all")',
+          'button:has-text("Accept All")',
+          'button:has-text("Allow all")',
+          'button:has-text("Allow All")',
+          'button:has-text("Accept cookies")',
+          'button:has-text("I agree")',
+          'button:has-text("Got it")',
+          // Dutch (critical for .nl sites)
+          'button:has-text("Accepteren")',
+          'button:has-text("Alles accepteren")',
+          'button:has-text("Alle cookies accepteren")',
+          'button:has-text("Akkoord")',
+          'button:has-text("Toestaan")',
+          'button:has-text("Alles toestaan")',
+          // German
+          'button:has-text("Alle akzeptieren")',
+          'button:has-text("Akzeptieren")',
+          // French
+          'button:has-text("Tout accepter")',
+          'button:has-text("Accepter")',
+          // Broad fallback
+          '[class*="cookie"] button',
+          '[id*="cookie"] button',
+          '[class*="consent"] button',
         ];
         for (const selector of cookieSelectors) {
           try {
             const btn = await page.$(selector);
-            if (btn) { await btn.click(); await page.waitForTimeout(500); break; }
+            if (btn) {
+              const isVisible = await btn.isVisible().catch(() => false);
+              if (isVisible) {
+                await btn.click();
+                log.info('Dismissed cookie dialog via: ' + selector);
+                await page.waitForTimeout(1000);
+                break;
+              }
+            }
           } catch {}
         }
 

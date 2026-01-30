@@ -555,8 +555,8 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   );
 
   // Generate blueprint using the heuristic approach
-  const generateBlueprint = useCallback(async (styleOverride?: DesignTokens, personalityOverride?: DesignPersonalityId) => {
-    if (!articleDraft) return;
+  const generateBlueprint = useCallback(async (styleOverride?: DesignTokens, personalityOverride?: DesignPersonalityId): Promise<typeof blueprint | undefined> => {
+    if (!articleDraft) return undefined;
     setIsBlueprintGenerating(true);
     setErrors([]);
 
@@ -619,9 +619,12 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
 
       // Fetch learned preferences in the background
       fetchLearnedPreferences();
+
+      return generatedBlueprint;
     } catch (error) {
       console.error('Error generating blueprint:', error);
       setErrors(['Failed to generate layout blueprint. Please try again.']);
+      return undefined;
     } finally {
       setIsBlueprintGenerating(false);
     }
@@ -1307,18 +1310,22 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   }, [learnedPreferences]);
 
   // Generate preview when entering preview step
-  const generatePreview = useCallback(async () => {
+  const generatePreview = useCallback(async (blueprintOverride?: typeof blueprint) => {
     if (!style || !layout) {
       setErrors(['Style and layout configuration required']);
       return;
     }
+
+    // Use blueprint override (from handleNext) to avoid React state timing issues,
+    // or fall back to the state blueprint
+    const effectiveBlueprint = blueprintOverride || blueprint;
 
     setIsGenerating(true);
     setErrors([]);
 
     try {
       // If we have a blueprint, use the new blueprint renderer
-      if (blueprint) {
+      if (effectiveBlueprint) {
         // Extract language from topical map context
         const language = topicalMap?.business_info?.language || 'en';
 
@@ -1361,8 +1368,8 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
           topicTitle: topic.title,
           articleDraftLength: articleDraft.length,
           projectId: projectId || '(none)',
-          hasBlueprint: !!blueprint,
-          blueprintSections: blueprint?.sections?.length || 0,
+          hasBlueprint: !!effectiveBlueprint,
+          blueprintSections: effectiveBlueprint?.sections?.length || 0,
         });
 
         // NEW: Try unified renderer first (routes to BrandAwareComposer when extractions exist)
@@ -1464,7 +1471,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
               geminiApiKey,
               anthropicApiKey,
               openAiApiKey,
-              blueprint,
+              blueprint: effectiveBlueprint,
               brief,
               topic,
               topicalMap,
@@ -1513,6 +1520,9 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
               dispatch,
               supabaseUrl,
               supabaseAnonKey,
+              // Pipeline decisions from Phase 3 Intelligence (when available)
+              pipelineDecisions: pipelineIntelligenceOutput?.decisions,
+              pipelineComponents: pipelineCodeGenOutput?.components,
             });
 
             console.log('[Style & Publish] Unified renderer succeeded');
@@ -1545,7 +1555,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
 
         // EXISTING: Direct blueprint rendering as fallback
         const output = renderBlueprint(
-          blueprint,
+          effectiveBlueprint,
           topic.title,
           {
             brief,
@@ -1708,13 +1718,16 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
       }
 
       // Generate rendering blueprint if not already generated when moving to preview
+      let newBlueprint: typeof blueprint | undefined;
       if (nextStep === 'preview' && !blueprint) {
-        await generateBlueprint();
+        newBlueprint = await generateBlueprint();
       }
 
       // Generate preview when entering preview step
+      // Pass newBlueprint directly to avoid React state timing issue
+      // (setBlueprint in generateBlueprint hasn't flushed yet)
       if (nextStep === 'preview') {
-        await generatePreview();
+        await generatePreview(newBlueprint || blueprint || undefined);
       }
 
       setCurrentStep(nextStep);
@@ -1904,10 +1917,10 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
             {enableBrandReplication && brandReplicationPipeline.state.error && (
               <div className="p-3 bg-yellow-900/30 rounded-lg border border-yellow-500/30">
                 <p className="text-sm text-yellow-300">
-                  Brand replication: {brandReplicationPipeline.state.error}
+                  Brand replication: {brandReplicationPipeline.state.error.message}
                 </p>
                 <p className="text-xs text-yellow-400/70 mt-1">
-                  This is an optional enhancement. Standard brand detection will be used.
+                  {brandReplicationPipeline.state.error.suggestion || 'This is an optional enhancement. Standard brand detection will be used.'}
                 </p>
               </div>
             )}

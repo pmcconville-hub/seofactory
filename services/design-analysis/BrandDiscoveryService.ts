@@ -22,6 +22,11 @@ export const BrandDiscoveryService = {
       throw new Error('Apify API token is required');
     }
 
+    // Ensure URL has protocol - Apify requires full URLs
+    if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+
     const pageFunction = `
       async function pageFunction(context) {
         const { request, page, log } = context;
@@ -34,6 +39,77 @@ export const BrandDiscoveryService = {
 
           // Additional wait for JS-heavy sites
           await page.waitForTimeout(2000);
+
+          // CRITICAL: Dismiss cookie consent dialogs before capturing screenshots
+          // Without this, extracted components are contaminated with cookie dialog HTML
+          log.info('Dismissing cookie consent dialogs...');
+          try {
+            // Try common cookie consent accept buttons (multi-language)
+            const cookieAcceptSelectors = [
+              // Cookiebot (NFIR and many EU sites)
+              '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
+              '#CybotCookiebotDialogBodyButtonAccept',
+              '[id*="CookiebotDialog"] button[id*="Allow"]',
+              '[id*="CookiebotDialog"] button[id*="Accept"]',
+              // OneTrust
+              '#onetrust-accept-btn-handler',
+              '.onetrust-close-btn-handler',
+              // CookieYes
+              '.cky-btn-accept',
+              // Generic patterns (English)
+              'button:has-text("Accept all")',
+              'button:has-text("Accept All")',
+              'button:has-text("Allow all")',
+              'button:has-text("Allow All")',
+              'button:has-text("Accept cookies")',
+              'button:has-text("Accept Cookies")',
+              'button:has-text("I agree")',
+              'button:has-text("Got it")',
+              'button:has-text("OK")',
+              // Generic patterns (Dutch - common for .nl sites)
+              'button:has-text("Accepteren")',
+              'button:has-text("Alles accepteren")',
+              'button:has-text("Alle cookies accepteren")',
+              'button:has-text("Akkoord")',
+              'button:has-text("Toestaan")',
+              'button:has-text("Alles toestaan")',
+              // Generic patterns (German)
+              'button:has-text("Alle akzeptieren")',
+              'button:has-text("Akzeptieren")',
+              'button:has-text("Zustimmen")',
+              // Generic patterns (French)
+              'button:has-text("Tout accepter")',
+              'button:has-text("Accepter")',
+              // Broad fallback
+              '[class*="cookie"] button:has-text("Accept")',
+              '[class*="cookie"] button:has-text("OK")',
+              '[class*="consent"] button:has-text("Accept")',
+              '[id*="cookie"] button:has-text("Accept")',
+              '[id*="consent"] button:has-text("Accept")',
+            ];
+
+            for (const selector of cookieAcceptSelectors) {
+              try {
+                const btn = await page.$(selector);
+                if (btn) {
+                  const isVisible = await btn.isVisible().catch(() => false);
+                  if (isVisible) {
+                    await btn.click({ timeout: 3000 });
+                    log.info('Dismissed cookie consent via:', selector);
+                    await page.waitForTimeout(1000); // Wait for dialog to close
+                    break;
+                  }
+                }
+              } catch (e) {
+                // Selector not found or not clickable, try next
+              }
+            }
+          } catch (e) {
+            log.info('Cookie consent dismissal attempt completed (may not have been present)');
+          }
+
+          // Wait for any animations/transitions after cookie dismissal
+          await page.waitForTimeout(500);
 
           log.info('Page loaded, capturing screenshot...');
 
@@ -108,7 +184,9 @@ export const BrandDiscoveryService = {
                     vars[name] = val;
                   }
                 });
-              } catch (e) {}
+              } catch (e) {
+                console.warn('[BrandDiscovery] CSS variable extraction failed:', e?.message || e);
+              }
               return vars;
             };
 
@@ -155,7 +233,9 @@ export const BrandDiscoveryService = {
                       break;
                     }
                   }
-                } catch (e) {}
+                } catch (e) {
+                  console.warn('[BrandDiscovery] Button selector failed:', sel, e?.message || e);
+                }
               }
             }
 
@@ -241,6 +321,56 @@ export const BrandDiscoveryService = {
               body: 'body_element'
             };
 
+            // Google Fonts detection - extract actual web font imports
+            const googleFontsUrls = [];
+            try {
+              // Check <link> tags for Google Fonts
+              const links = document.querySelectorAll('link[href*="fonts.googleapis.com"], link[href*="fonts.gstatic.com"]');
+              links.forEach(link => {
+                const href = link.getAttribute('href');
+                if (href) googleFontsUrls.push(href);
+              });
+              // Check <style> tags for @import Google Fonts
+              const styles = document.querySelectorAll('style');
+              styles.forEach(style => {
+                const text = style.textContent || '';
+                const importMatches = text.match(/@import\\s+url\\(['"]?(https?:\\/\\/fonts\\.googleapis\\.com[^'")]+)['"]?\\)/g);
+                if (importMatches) {
+                  importMatches.forEach(m => {
+                    const urlMatch = m.match(/url\\(['"]?(https?:\\/\\/fonts\\.googleapis\\.com[^'")]+)['"]?\\)/);
+                    if (urlMatch) googleFontsUrls.push(urlMatch[1]);
+                  });
+                }
+              });
+              // Extract font family names from Google Fonts URLs
+              const fontFamilies = [];
+              googleFontsUrls.forEach(url => {
+                const familyMatches = url.match(/family=([^&]+)/g);
+                if (familyMatches) {
+                  familyMatches.forEach(fm => {
+                    const name = fm.replace('family=', '').split(':')[0].replace(/\\+/g, ' ');
+                    if (name && !fontFamilies.includes(name)) fontFamilies.push(name);
+                  });
+                }
+              });
+              if (fontFamilies.length > 0) {
+                // Override computed fonts with actual Google Fonts
+                typography.googleFonts = fontFamilies;
+                typography.googleFontsUrl = googleFontsUrls[0]; // Primary URL for @import
+                // Map detected Google Fonts to heading/body
+                if (fontFamilies.length >= 2) {
+                  typography.heading = "'" + fontFamilies[0] + "', sans-serif";
+                  typography.body = "'" + fontFamilies[1] + "', sans-serif";
+                } else if (fontFamilies.length === 1) {
+                  typography.heading = "'" + fontFamilies[0] + "', sans-serif";
+                  typography.body = "'" + fontFamilies[0] + "', sans-serif";
+                }
+                console.log('[BrandDiscovery] Google Fonts detected:', fontFamilies.join(', '));
+              }
+            } catch (e) {
+              console.warn('[BrandDiscovery] Google Fonts detection failed:', e?.message || e);
+            }
+
             // Component extraction
             const btn = document.querySelector('button, .btn, a.button, [class*="button"]');
             const card = document.querySelector('.card, [class*="card"], article, .wp-block-group');
@@ -260,7 +390,9 @@ export const BrandDiscoveryService = {
               colorSources: sources,
               typography,
               typographySources,
-              components
+              components,
+              googleFontsUrl: typography.googleFontsUrl || null,
+              googleFonts: typography.googleFonts || []
             };
           });
 
@@ -273,6 +405,8 @@ export const BrandDiscoveryService = {
             typography: designData.typography,
             typographySources: designData.typographySources,
             components: designData.components,
+            googleFontsUrl: designData.googleFontsUrl || null,
+            googleFonts: designData.googleFonts || [],
             url: request.url
           };
         } catch (error) {
@@ -338,7 +472,7 @@ export const BrandDiscoveryService = {
    * Calculate confidence level based on extraction source
    */
   calculateConfidence(field: string, source: string): ExtractionConfidence {
-    const highConfidenceSources = ['button', 'button_element', 'h1_element', 'body_element', 'heading'];
+    const highConfidenceSources = ['button', 'button_element', 'h1_element', 'body_element', 'heading', 'css_variable', 'link_color'];
     const mediumConfidenceSources = ['frequency', 'card_element', 'element'];
 
     if (highConfidenceSources.includes(source)) return 'found';
@@ -440,7 +574,9 @@ export const BrandDiscoveryService = {
       analyzedAt: new Date().toISOString(),
       findings,
       overallConfidence,
-      derivedTokens
+      derivedTokens,
+      googleFontsUrl: data.googleFontsUrl || null,
+      googleFonts: data.googleFonts || [],
     };
   }
 };

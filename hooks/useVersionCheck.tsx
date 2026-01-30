@@ -46,9 +46,9 @@ export function useVersionCheck(checkIntervalMs: number = 60000) {
         setUpdateAvailable(true);
         setNewVersion(data.version);
       }
-    } catch (error) {
+    } catch {
       // Silently fail - version check is not critical
-      console.debug('[VersionCheck] Check failed:', error);
+      // Don't log - this creates too much console noise in development
     }
   }, []);
 

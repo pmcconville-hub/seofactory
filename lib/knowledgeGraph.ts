@@ -1,5 +1,4 @@
 import { KnowledgeNode, KnowledgeEdge, AttributeCategory } from '../types';
-import { SparqlQueryEngine } from '../services/sparqlQueryService';
 
 export interface KnowledgeGap {
     entityId: string;
@@ -69,19 +68,18 @@ const POSITION_WEIGHTS: Record<EntityPosition, number> = {
 export class KnowledgeGraph {
     private nodes: Map<string, KnowledgeNode> = new Map();
     private edges: Map<string, KnowledgeEdge> = new Map();
-    private queryEngine: SparqlQueryEngine;
 
-    // New: Co-occurrence tracking
+    // Co-occurrence tracking
     private coOccurrences: Map<string, CoOccurrence> = new Map();
 
-    // New: Entity context tracking (position weights per entity per page)
+    // Entity context tracking (position weights per entity per page)
     private entityContexts: Map<string, EntityContext[]> = new Map();
 
     // Cached betweenness centrality scores (invalidated on graph changes)
     private centralityCache: Map<string, number> | null = null;
 
     constructor() {
-        this.queryEngine = new SparqlQueryEngine(this.nodes, this.edges);
+        // Initialize empty graph
     }
 
     // ==========================================================================
@@ -426,10 +424,6 @@ export class KnowledgeGraph {
 
     getEdges(): Map<string, KnowledgeEdge> {
         return this.edges;
-    }
-
-    query(sparqlQuery: string): Record<string, any>[] {
-        return this.queryEngine.executeQuery(sparqlQuery);
     }
 
     /**

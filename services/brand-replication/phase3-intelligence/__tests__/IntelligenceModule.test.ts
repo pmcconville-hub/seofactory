@@ -24,23 +24,20 @@ vi.mock('@anthropic-ai/sdk', () => ({
   })),
 }));
 
-vi.mock('@google/generative-ai', () => ({
-  GoogleGenerativeAI: vi.fn().mockImplementation(() => ({
-    getGenerativeModel: vi.fn().mockReturnValue({
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: vi.fn().mockImplementation(() => ({
+    models: {
       generateContent: vi.fn().mockResolvedValue({
-        response: {
-          text: () =>
-            JSON.stringify({
-              componentId: 'hero-banner',
-              componentName: 'Hero Banner',
-              variant: 'default',
-              layout: { columns: 1, width: 'full', emphasis: 'hero' },
-              contentMapping: { title: 'Welcome' },
-              reasoning: 'Best fit for introduction',
-            }),
-        },
+        text: JSON.stringify({
+          componentId: 'hero-banner',
+          componentName: 'Hero Banner',
+          variant: 'default',
+          layout: { columns: 1, width: 'full', emphasis: 'hero' },
+          contentMapping: { title: 'Welcome' },
+          reasoning: 'Best fit for introduction',
+        }),
       }),
-    }),
+    },
   })),
 }));
 

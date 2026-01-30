@@ -50,13 +50,16 @@ export class ScreenshotCapture {
           const filename = `${input.brandId}_${timestamp}_${this.urlToFilename(url)}.png`;
           const path = `${this.config.outputDir}/${filename}`;
 
-          await page.screenshot({ path, fullPage: this.config.fullPage });
+          // Capture screenshot and get buffer for base64 encoding
+          const buffer = await page.screenshot({ path, fullPage: this.config.fullPage });
 
           screenshots.push({
             url,
             path,
             timestamp: new Date().toISOString(),
             viewport: this.config.viewport,
+            base64Data: buffer.toString('base64'),
+            mimeType: 'image/png',
           });
 
           await page.close();

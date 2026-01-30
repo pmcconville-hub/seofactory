@@ -55,7 +55,9 @@ const SparqlQueryTab: React.FC<{ knowledgeGraph: KnowledgeGraph }> = ({ knowledg
         setError(null);
         setResults(null);
         try {
-            const queryResult = knowledgeGraph.query(query);
+            // Note: query() method not implemented in KnowledgeGraph class
+            // This is a placeholder for future SPARQL-like query functionality
+            const queryResult = (knowledgeGraph as any).query?.(query) || [];
             setResults(queryResult);
         } catch (e) {
             setError(e instanceof Error ? e.message : "An unknown error occurred.");

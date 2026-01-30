@@ -13,6 +13,7 @@
 
 import type { DesignPersonality } from '../../config/designTokens/personalities';
 import { resolvePersonalityToTokens, tokensToCSS, type ResolvedTokens } from './tokenResolver';
+import { generateComponentStyles as generateAgencyComponentStyles } from './renderer/ComponentStyles';
 
 // ============================================================================
 // TYPES
@@ -91,6 +92,10 @@ export function generateDesignSystemCss(options: CssGenerationOptions): Generate
 
   // 9. Interactive elements (FAQ, ToC)
   cssBlocks.push(generateInteractiveStyles());
+
+  // 10. Agency-quality component styles (.card, .feature-grid, .timeline, etc.)
+  // These complement the ctc-* prefixed styles with non-prefixed component CSS
+  cssBlocks.push(generateAgencyComponentStyles());
 
   const css = cssBlocks.join('\n\n');
   const finalCss = minify ? minifyCss(css) : css;

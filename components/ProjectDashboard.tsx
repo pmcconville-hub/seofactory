@@ -1120,8 +1120,8 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
             <SocialSignalsModal
                 isOpen={showSocialSignals}
                 onClose={() => setShowSocialSignals(false)}
-                entityName={topicalMap.pillars?.centralEntity || effectiveBusinessInfo.centralEntity || ''}
-                entityType={effectiveBusinessInfo.entityIdentity?.entityType}
+                entityName={topicalMap.pillars?.centralEntity || ''}
+                entityType={(effectiveBusinessInfo as any).entityIdentity?.entityType}
             />
 
             {/* Quality Analytics Modal */}

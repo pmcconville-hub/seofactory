@@ -6,68 +6,72 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useBrandReplicationPipeline } from '../useBrandReplicationPipeline';
 
-// Mock the brand replication pipeline
-vi.mock('../../services/brand-replication', () => ({
-  BrandReplicationPipeline: vi.fn().mockImplementation(() => ({
-    runDiscovery: vi.fn().mockResolvedValue({
-      brandId: 'test-brand',
-      brandUrl: 'https://example.com',
-      analyzedPages: ['https://example.com'],
-      screenshots: [{ url: 'https://example.com', path: '/tmp/screenshot.png', timestamp: '2024-01-01', viewport: { width: 1200, height: 800 } }],
-      discoveredComponents: [
-        { id: 'comp-1', name: 'Hero Section', purpose: 'Main hero', visualDescription: 'Large hero', usageContext: 'homepage', sourceScreenshots: ['/tmp/screenshot.png'], occurrences: 2, confidence: 0.9 }
-      ],
-      rawAnalysis: 'Analysis data',
-      timestamp: '2024-01-01',
-      status: 'success',
-    }),
-    runCodeGen: vi.fn().mockResolvedValue({
-      brandId: 'test-brand',
-      components: [
-        { id: 'comp-1', brandId: 'test-brand', name: 'Hero Section', purpose: 'Main hero', usageContext: 'homepage', css: '.hero { }', htmlTemplate: '<div class="hero"></div>', previewHtml: '<div>Preview</div>', matchScore: 0.85, variants: [], createdAt: '2024-01-01', updatedAt: '2024-01-01' }
-      ],
-      compiledCss: '.hero { color: blue; }',
-      timestamp: '2024-01-01',
-      status: 'success',
-      matchScores: [{ componentId: 'comp-1', score: 0.85, details: 'Good match' }],
-    }),
-    runIntelligence: vi.fn().mockResolvedValue({
-      brandId: 'test-brand',
-      articleId: 'article-1',
-      decisions: [
-        { sectionId: 'sec-1', sectionHeading: 'Introduction', component: 'Hero Section', componentId: 'comp-1', variant: 'default', layout: { columns: 1, width: 'full', emphasis: 'hero' }, reasoning: 'Good for intro', semanticRole: 'introduction', confidence: 0.9 }
-      ],
-      overallStrategy: 'Use hero for intro',
-      timestamp: '2024-01-01',
-      status: 'success',
-    }),
-    runValidation: vi.fn().mockResolvedValue({
-      brandId: 'test-brand',
-      articleId: 'article-1',
-      scores: {
-        brandMatch: { score: 85, maxScore: 100, percentage: 85, details: [], suggestions: [] },
-        designQuality: { score: 80, maxScore: 100, percentage: 80, details: [], suggestions: [] },
-        userExperience: { score: 90, maxScore: 100, percentage: 90, details: [], suggestions: [] },
-        overall: 85,
-      },
-      wowFactorChecklist: [
-        { id: 'wow-1', label: 'Visual Impact', description: 'Strong visual presence', required: true, passed: true }
-      ],
-      passesThreshold: true,
-      suggestions: [],
-      timestamp: '2024-01-01',
-      status: 'success',
-    }),
-    getStatus: vi.fn().mockReturnValue({
-      phase1: { phase: 'discovery', status: 'pending', progress: 0 },
-      phase2: { phase: 'codegen', status: 'pending', progress: 0 },
-      phase3: { phase: 'intelligence', status: 'pending', progress: 0 },
-      phase4: { phase: 'validation', status: 'pending', progress: 0 },
-      overall: 'idle',
-    }),
-    storage: {},
-  })),
-}));
+// Mock the brand replication pipeline - class must be inline in vi.mock due to hoisting
+vi.mock('../../services/brand-replication', () => {
+  const mockFn = vi.fn;
+
+  return {
+    BrandReplicationPipeline: class {
+      runDiscovery = mockFn().mockResolvedValue({
+        brandId: 'test-brand',
+        brandUrl: 'https://example.com',
+        analyzedPages: ['https://example.com'],
+        screenshots: [{ url: 'https://example.com', path: '/tmp/screenshot.png', timestamp: '2024-01-01', viewport: { width: 1200, height: 800 } }],
+        discoveredComponents: [
+          { id: 'comp-1', name: 'Hero Section', purpose: 'Main hero', visualDescription: 'Large hero', usageContext: 'homepage', sourceScreenshots: ['/tmp/screenshot.png'], occurrences: 2, confidence: 0.9 }
+        ],
+        rawAnalysis: 'Analysis data',
+        timestamp: '2024-01-01',
+        status: 'success',
+      });
+      runCodeGen = mockFn().mockResolvedValue({
+        brandId: 'test-brand',
+        components: [
+          { id: 'comp-1', brandId: 'test-brand', name: 'Hero Section', purpose: 'Main hero', usageContext: 'homepage', css: '.hero { }', htmlTemplate: '<div class="hero"></div>', previewHtml: '<div>Preview</div>', matchScore: 0.85, variants: [], createdAt: '2024-01-01', updatedAt: '2024-01-01' }
+        ],
+        compiledCss: '.hero { color: blue; }',
+        timestamp: '2024-01-01',
+        status: 'success',
+        matchScores: [{ componentId: 'comp-1', score: 0.85, details: 'Good match' }],
+      });
+      runIntelligence = mockFn().mockResolvedValue({
+        brandId: 'test-brand',
+        articleId: 'article-1',
+        decisions: [
+          { sectionId: 'sec-1', sectionHeading: 'Introduction', component: 'Hero Section', componentId: 'comp-1', variant: 'default', layout: { columns: 1, width: 'full', emphasis: 'hero' }, reasoning: 'Good for intro', semanticRole: 'introduction', confidence: 0.9 }
+        ],
+        overallStrategy: 'Use hero for intro',
+        timestamp: '2024-01-01',
+        status: 'success',
+      });
+      runValidation = mockFn().mockResolvedValue({
+        brandId: 'test-brand',
+        articleId: 'article-1',
+        scores: {
+          brandMatch: { score: 85, maxScore: 100, percentage: 85, details: [], suggestions: [] },
+          designQuality: { score: 80, maxScore: 100, percentage: 80, details: [], suggestions: [] },
+          userExperience: { score: 90, maxScore: 100, percentage: 90, details: [], suggestions: [] },
+          overall: 85,
+        },
+        wowFactorChecklist: [
+          { id: 'wow-1', label: 'Visual Impact', description: 'Strong visual presence', required: true, passed: true }
+        ],
+        passesThreshold: true,
+        suggestions: [],
+        timestamp: '2024-01-01',
+        status: 'success',
+      });
+      getStatus = mockFn().mockReturnValue({
+        phase1: { phase: 'discovery', status: 'pending', progress: 0 },
+        phase2: { phase: 'codegen', status: 'pending', progress: 0 },
+        phase3: { phase: 'intelligence', status: 'pending', progress: 0 },
+        phase4: { phase: 'validation', status: 'pending', progress: 0 },
+        overall: 'idle',
+      });
+      storage = {};
+    },
+  };
+});
 
 describe('useBrandReplicationPipeline', () => {
   beforeEach(() => {
@@ -195,20 +199,6 @@ describe('useBrandReplicationPipeline', () => {
   });
 
   it('should handle errors gracefully', async () => {
-    // Override mock to throw error
-    const mockPipeline = require('../../services/brand-replication').BrandReplicationPipeline;
-    mockPipeline.mockImplementationOnce(() => ({
-      runDiscovery: vi.fn().mockRejectedValue(new Error('Discovery failed')),
-      getStatus: vi.fn().mockReturnValue({
-        phase1: { phase: 'discovery', status: 'pending', progress: 0 },
-        phase2: { phase: 'codegen', status: 'pending', progress: 0 },
-        phase3: { phase: 'intelligence', status: 'pending', progress: 0 },
-        phase4: { phase: 'validation', status: 'pending', progress: 0 },
-        overall: 'idle',
-      }),
-      storage: {},
-    }));
-
     const { result } = renderHook(() =>
       useBrandReplicationPipeline({
         aiProvider: 'gemini',
@@ -217,6 +207,11 @@ describe('useBrandReplicationPipeline', () => {
       })
     );
 
+    // Override the runDiscovery to throw an error for this test
+    if (result.current.pipeline) {
+      result.current.pipeline.runDiscovery = vi.fn().mockRejectedValue(new Error('Discovery failed'));
+    }
+
     await act(async () => {
       await result.current.runDiscovery({
         brandUrl: 'https://example.com',
@@ -224,7 +219,12 @@ describe('useBrandReplicationPipeline', () => {
       });
     });
 
-    expect(result.current.state.error).toBe('Discovery failed');
+    // Error is now a structured object with actionable information
+    expect(result.current.state.error).toMatchObject({
+      phase: 'discovery',
+      details: 'Discovery failed',
+      recoverable: true,
+    });
   });
 
   it('should use correct AI provider based on config', () => {

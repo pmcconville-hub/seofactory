@@ -12,6 +12,7 @@ import { getComponentRenderer, type RenderContext } from './componentLibrary';
 import { generateDesignSystemCss, type GeneratedCss } from '../cssGenerator';
 import { extractSemanticData, type SemanticContentData } from '../semanticExtractor';
 import { generateJsonLd, type JsonLdOptions } from '../jsonLdGenerator';
+import { generateComponentStyles } from './ComponentStyles';
 import type { ContentBrief, EnrichedTopic, TopicalMap } from '../../../types';
 import type { DesignPersonality } from '../../../config/designTokens/personalities';
 import { designPersonalities } from '../../../config/designTokens/personalities';
@@ -469,6 +470,38 @@ ${brandCss}`;
     // Debug: Log a sample of the generated CSS
     console.log('[BlueprintRenderer] Generated CSS sample (first 500 chars):', css.substring(0, 500));
   }
+
+  // CRITICAL FIX: Always add ComponentStyles CSS for visual components (.card, .feature-grid, etc.)
+  // The ComponentRenderer uses these classes, not the ctc- prefixed ones
+  const componentStyleOptions = options.brandDesignSystem?.designDna?.colors
+    ? {
+        primaryColor: options.brandDesignSystem.designDna.colors.primary,
+        primaryDark: options.brandDesignSystem.designDna.colors.primaryDark,
+        secondaryColor: options.brandDesignSystem.designDna.colors.secondary,
+        accentColor: options.brandDesignSystem.designDna.colors.accent,
+        textColor: options.brandDesignSystem.designDna.colors.text,
+        textMuted: options.brandDesignSystem.designDna.colors.textMuted,
+        backgroundColor: options.brandDesignSystem.designDna.colors.background,
+        surfaceColor: options.brandDesignSystem.designDna.colors.surface,
+        borderColor: options.brandDesignSystem.designDna.colors.border,
+        headingFont: options.brandDesignSystem.designDna.typography?.headingFont?.family || 'system-ui, sans-serif',
+        bodyFont: options.brandDesignSystem.designDna.typography?.bodyFont?.family || 'system-ui, sans-serif',
+      }
+    : options.designTokens?.colors
+      ? {
+          primaryColor: options.designTokens.colors.primary,
+          primaryDark: options.designTokens.colors.primary,
+          secondaryColor: options.designTokens.colors.secondary,
+          accentColor: options.designTokens.colors.accent,
+          textColor: options.designTokens.colors.text,
+          backgroundColor: options.designTokens.colors.background,
+          surfaceColor: options.designTokens.colors.surface,
+        }
+      : undefined;
+
+  const componentStylesCss = generateComponentStyles(componentStyleOptions);
+  css = css + '\n\n/* ============================================\n   Component Styles - Visual Components\n   (.card, .feature-grid, .timeline, etc.)\n   ============================================ */\n\n' + componentStylesCss;
+  console.log('[BlueprintRenderer] Added ComponentStyles CSS for visual components');
 
   // Generate JSON-LD
   let jsonLd = '';

@@ -18,7 +18,7 @@ vi.mock('playwright', () => ({
           goto: vi.fn().mockResolvedValue(undefined),
           waitForSelector: vi.fn().mockResolvedValue(undefined),
           waitForTimeout: vi.fn().mockResolvedValue(undefined),
-          screenshot: vi.fn().mockResolvedValue(undefined),
+          screenshot: vi.fn().mockResolvedValue(Buffer.from('fake-screenshot-data')),
           close: vi.fn().mockResolvedValue(undefined),
           $$eval: vi.fn().mockResolvedValue([]),
         }),
@@ -89,18 +89,14 @@ const mockGeminiResponse = JSON.stringify({
   brandObservations: 'Clean modern design',
 });
 
-vi.mock('@google/generative-ai', () => {
+vi.mock('@google/genai', () => {
   return {
-    GoogleGenerativeAI: class MockGoogleGenerativeAI {
-      getGenerativeModel() {
-        return {
-          generateContent: vi.fn().mockResolvedValue({
-            response: {
-              text: () => mockGeminiResponse,
-            },
-          }),
-        };
-      }
+    GoogleGenAI: class MockGoogleGenAI {
+      models = {
+        generateContent: vi.fn().mockResolvedValue({
+          text: mockGeminiResponse,
+        }),
+      };
     },
   };
 })
@@ -133,6 +129,8 @@ const createMockScreenshot = (url: string): Screenshot => ({
   path: `/tmp/screenshots/test_${Date.now()}_home.png`,
   timestamp: new Date().toISOString(),
   viewport: { width: 1400, height: 900 },
+  base64Data: Buffer.from('fake-screenshot-data').toString('base64'),
+  mimeType: 'image/png',
 });
 
 const createMockDiscoveredComponent = (id: string): DiscoveredComponent => ({

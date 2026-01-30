@@ -112,7 +112,12 @@ export async function getProjectBlueprint(projectId: string): Promise<ProjectBlu
     .eq('project_id', projectId)
     .single();
 
-  if (error && error.code !== 'PGRST116') {
+  if (error) {
+    // PGRST116 = no rows found, 406 = table doesn't exist (migration not deployed)
+    // Both are expected and should return null
+    if (error.code === 'PGRST116' || error.code === '406' || error.message?.includes('406')) {
+      return null;
+    }
     console.error('Error fetching project blueprint:', error);
     throw error;
   }
@@ -183,7 +188,12 @@ export async function getTopicalMapBlueprint(topicalMapId: string): Promise<Topi
     .eq('topical_map_id', topicalMapId)
     .single();
 
-  if (error && error.code !== 'PGRST116') {
+  if (error) {
+    // PGRST116 = no rows found, 406 = table doesn't exist (migration not deployed)
+    // Both are expected and should return null
+    if (error.code === 'PGRST116' || error.code === '406' || error.message?.includes('406')) {
+      return null;
+    }
     console.error('Error fetching topical map blueprint:', error);
     throw error;
   }
@@ -256,7 +266,12 @@ export async function getArticleBlueprint(topicId: string): Promise<ArticleBluep
     .eq('topic_id', topicId)
     .single();
 
-  if (error && error.code !== 'PGRST116') {
+  if (error) {
+    // PGRST116 = no rows found, 406 = table doesn't exist (migration not deployed)
+    // Both are expected and should return null
+    if (error.code === 'PGRST116' || error.code === '406' || error.message?.includes('406')) {
+      return null;
+    }
     console.error('Error fetching article blueprint:', error);
     throw error;
   }

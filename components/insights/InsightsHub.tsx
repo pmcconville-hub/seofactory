@@ -525,7 +525,12 @@ export const InsightsHub: React.FC<InsightsHubProps> = ({
           break;
 
         default:
-          setActionMessage({ type: 'error', text: `Action "${actionType}" not implemented yet` });
+          // Provide helpful guidance for unknown action types
+          console.warn(`[InsightsHub] Unknown action type: ${actionType}`);
+          setActionMessage({
+            type: 'error',
+            text: `Action "${actionType}" is not available in this view. Try using the Action Center tab for manual actions.`
+          });
       }
     } catch (e) {
       console.error(`[InsightsHub] Action ${actionType} failed:`, e);

@@ -55,12 +55,18 @@ export class ContentMatcher {
   }
 
   /**
-   * Match content to the most appropriate component
+   * Match content to the most appropriate component.
+   * Also infers the best component TYPE based on content analysis,
+   * which may override the extracted component's original type.
    */
   async matchContentToComponent(content: ContentBlock): Promise<ComponentMatch | null> {
     if (this.components.length === 0) {
       return null;
     }
+
+    // FIRST: Determine what component type this content SHOULD use
+    // This is critical for design-agency quality output
+    const inferredType = this.inferComponentType(content);
 
     const scores = this.components.map(component => ({
       component,
@@ -77,11 +83,104 @@ export class ContentMatcher {
       return null;
     }
 
-    return {
-      component: best.component,
-      confidence: best.score.total,
-      matchReason: this.buildMatchReason(best.score),
+    // CRITICAL: Override the component type with inferred type for better output
+    // This ensures we get variety instead of all "hero" components
+    const matchedComponent = {
+      ...best.component,
+      componentType: inferredType || best.component.componentType || 'section'
     };
+
+    return {
+      component: matchedComponent,
+      confidence: best.score.total,
+      matchReason: `${this.buildMatchReason(best.score)} (inferred: ${inferredType})`,
+    };
+  }
+
+  /**
+   * Infer the best component type based on content analysis.
+   * This provides variety in output even if extracted components are all same type.
+   */
+  private inferComponentType(content: ContentBlock): string {
+    const heading = (content.heading || '').toLowerCase();
+    const body = (content.body || '').toLowerCase();
+    const hasItems = content.items && content.items.length > 0;
+    const headingLevel = content.headingLevel || 2;
+
+    // H1 or explicit hero indicators
+    if (headingLevel === 1) {
+      return 'hero';
+    }
+
+    // FAQ detection
+    if (
+      heading.includes('faq') ||
+      heading.includes('vraag') ||
+      heading.includes('question') ||
+      heading.includes('veelgesteld') ||
+      body.includes('?') && body.split('?').length > 3 // Multiple questions
+    ) {
+      return 'faq';
+    }
+
+    // CTA detection
+    if (
+      heading.includes('contact') ||
+      heading.includes('neem contact') ||
+      heading.includes('get started') ||
+      heading.includes('aan de slag') ||
+      heading.includes('offerte') ||
+      heading.includes('quote') ||
+      body.includes('neem contact') ||
+      body.includes('bel ons') ||
+      body.includes('call us')
+    ) {
+      return 'cta';
+    }
+
+    // List detection
+    if (
+      hasItems ||
+      content.type === 'list' ||
+      heading.includes('voordelen') ||
+      heading.includes('benefits') ||
+      heading.includes('kenmerken') ||
+      heading.includes('features') ||
+      body.includes('<ul>') ||
+      body.includes('<ol>')
+    ) {
+      return 'list';
+    }
+
+    // Quote/testimonial detection
+    if (
+      content.type === 'quote' ||
+      heading.includes('quote') ||
+      heading.includes('testimonial') ||
+      heading.includes('review') ||
+      body.includes('<blockquote')
+    ) {
+      return 'quote';
+    }
+
+    // Card/feature detection (for subsections)
+    if (headingLevel >= 3) {
+      return 'card';
+    }
+
+    // Highlight/callout detection
+    if (
+      heading.includes('belangrijk') ||
+      heading.includes('important') ||
+      heading.includes('let op') ||
+      heading.includes('tip') ||
+      heading.includes('note')
+    ) {
+      return 'highlight';
+    }
+
+    // Default to section
+    return 'section';
   }
 
   /**

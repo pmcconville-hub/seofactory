@@ -11,6 +11,8 @@ import {
   QuoteActivity,
   QuoteActivityType,
 } from '../types/quotation';
+import { getSupabaseClient } from '../services/supabaseClient';
+import { useAppState } from '../state/appState';
 
 export interface UseQuoteStatusReturn {
   // Status management
@@ -41,6 +43,8 @@ const STATUS_TRANSITIONS: Record<QuoteStatus, QuoteStatus[]> = {
 
 export function useQuoteStatus(): UseQuoteStatusReturn {
   const [isUpdating, setIsUpdating] = useState(false);
+  const { state } = useAppState();
+  const supabase = getSupabaseClient();
 
   /**
    * Check if a status transition is valid
@@ -61,29 +65,75 @@ export function useQuoteStatus(): UseQuoteStatusReturn {
   }, []);
 
   /**
+   * Log activity for a quote
+   */
+  const logActivity = useCallback(
+    async (
+      quoteId: string,
+      activityType: QuoteActivityType,
+      details?: Record<string, unknown>
+    ): Promise<void> => {
+      try {
+        const { error } = await supabase
+          .from('quote_activities')
+          .insert({
+            quote_id: quoteId,
+            activity_type: activityType,
+            details,
+            created_by: state.user?.id || null,
+          });
+
+        if (error) {
+          console.error('[useQuoteStatus] Supabase activity insert error:', error);
+          // Don't throw - activity logging shouldn't break the main flow
+          return;
+        }
+
+        console.log(`[useQuoteStatus] Logged activity for quote ${quoteId}: ${activityType}`);
+      } catch (error) {
+        console.error('[useQuoteStatus] Failed to log activity:', error);
+        // Don't throw - activity logging shouldn't break the main flow
+      }
+    },
+    [supabase, state.user?.id]
+  );
+
+  /**
    * Update quote status
    */
   const updateStatus = useCallback(
     async (quoteId: string, newStatus: QuoteStatus): Promise<void> => {
       setIsUpdating(true);
       try {
-        // TODO: Implement Supabase update
-        // const { error } = await supabase
-        //   .from('quotes')
-        //   .update({
-        //     status: newStatus,
-        //     ...(newStatus === 'sent' ? { sent_at: new Date().toISOString() } : {}),
-        //     ...(newStatus === 'viewed' ? { viewed_at: new Date().toISOString() } : {}),
-        //     ...(newStatus === 'accepted' || newStatus === 'rejected'
-        //       ? { responded_at: new Date().toISOString() }
-        //       : {}),
-        //   })
-        //   .eq('id', quoteId);
+        // Build the update payload with status-specific timestamps
+        const updatePayload: Record<string, string> = {
+          status: newStatus,
+        };
+
+        const now = new Date().toISOString();
+
+        if (newStatus === 'sent') {
+          updatePayload.sent_at = now;
+        } else if (newStatus === 'viewed') {
+          updatePayload.viewed_at = now;
+        } else if (newStatus === 'accepted' || newStatus === 'rejected') {
+          updatePayload.responded_at = now;
+        }
+
+        const { error } = await supabase
+          .from('quotes')
+          .update(updatePayload)
+          .eq('id', quoteId);
+
+        if (error) {
+          console.error('[useQuoteStatus] Supabase update error:', error);
+          throw new Error(`Failed to update quote status: ${error.message}`);
+        }
 
         // Log the activity
         await logActivity(quoteId, 'status_changed', {
           newStatus,
-          timestamp: new Date().toISOString(),
+          timestamp: now,
         });
 
         console.log(`[useQuoteStatus] Updated quote ${quoteId} to status: ${newStatus}`);
@@ -94,36 +144,7 @@ export function useQuoteStatus(): UseQuoteStatusReturn {
         setIsUpdating(false);
       }
     },
-    []
-  );
-
-  /**
-   * Log activity for a quote
-   */
-  const logActivity = useCallback(
-    async (
-      quoteId: string,
-      activityType: QuoteActivityType,
-      details?: Record<string, unknown>
-    ): Promise<void> => {
-      try {
-        // TODO: Implement Supabase insert
-        // const { error } = await supabase
-        //   .from('quote_activities')
-        //   .insert({
-        //     quote_id: quoteId,
-        //     activity_type: activityType,
-        //     details,
-        //     created_by: user?.id,
-        //   });
-
-        console.log(`[useQuoteStatus] Logged activity for quote ${quoteId}: ${activityType}`);
-      } catch (error) {
-        console.error('[useQuoteStatus] Failed to log activity:', error);
-        // Don't throw - activity logging shouldn't break the main flow
-      }
-    },
-    []
+    [supabase, logActivity]
   );
 
   /**

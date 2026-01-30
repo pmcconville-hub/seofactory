@@ -328,10 +328,14 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
               width: type === 'HERO' ? 1200 : 800,
               height: type === 'HERO' ? 630 : 600,
               format: 'webp',
+              maxFileSize: 500000,
             },
             metadata: {
               altText,
               filename: url.split('/').pop() || 'image',
+              exif: { author: '', copyright: '', software: 'CoR Generator', description: altText || '' },
+              iptc: { creator: '', rights: '', source: '', keywords: [] },
+              schema: { "@type": "ImageObject" as const, url, width: 0, height: 0, caption: altText || '' },
             },
           });
         }
@@ -2494,6 +2498,9 @@ ${schemaScript}`;
         metadata: {
           filename: `contextual_${Date.now()}.webp`,
           altText: contextualEditor.state.imagePromptResult?.altTextSuggestion || '',
+          exif: { author: '', copyright: '', software: 'CoR Generator', description: '' },
+          iptc: { creator: '', rights: '', source: '', keywords: [] },
+          schema: { "@type": "ImageObject" as const, url: '', width: 0, height: 0, caption: '' },
         },
         position: 0,
       };
@@ -3512,7 +3519,7 @@ ${schemaScript}`;
                                         }}
                                         onEdit={() => setActiveTab('edit')}
                                         onRegenerate={() => {
-                                            dispatch({ type: 'SET_NOTIFICATION', payload: 'Regeneration not yet implemented in this view' });
+                                            dispatch({ type: 'SET_NOTIFICATION', payload: 'To regenerate content, close this modal and click "Generate Draft" in the Brief panel. This will start a fresh content generation with your current settings.' });
                                         }}
                                     />
                                 );

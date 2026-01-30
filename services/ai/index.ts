@@ -13,6 +13,9 @@ export * from './briefOptimization';
 // Provider dispatcher utility (centralizes AI provider switching logic)
 export * from './providerDispatcher';
 
+// Layout intelligence AI service (Semantic Layout Engine)
+export * from './layoutIntelligence';
+
 // Bridge suggestion service for structural hole analysis
 export * from './bridgeSuggestionService';
 

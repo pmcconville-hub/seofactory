@@ -223,8 +223,9 @@ const generateFullHelpMarkdown = (categories: HelpCategoryWithArticles[]): strin
 
 /**
  * Open print dialog for all documentation (for PDF export)
+ * Returns a message if fallback was used (popup blocked), null otherwise
  */
-const openPrintAllDocumentation = (categories: HelpCategoryWithArticles[]) => {
+const openPrintAllDocumentation = (categories: HelpCategoryWithArticles[]): string | null => {
   const html = generateFullHelpHTML(categories);
 
   // Create a blob URL for the HTML content
@@ -245,11 +246,12 @@ const openPrintAllDocumentation = (categories: HelpCategoryWithArticles[]) => {
         }, 1000);
       }, 800);
     };
+    return null;
   } else {
     // Fallback: if popup was blocked, offer direct download
     URL.revokeObjectURL(url);
     downloadAsFile(html, 'holistic-seo-help-documentation-print.html', 'text/html');
-    alert('Pop-up blocked. The HTML file has been downloaded instead. Open it in a browser and use Print > Save as PDF.');
+    return 'Pop-up blocked. The HTML file has been downloaded instead. Open it in a browser and use Print > Save as PDF.';
   }
 };
 
@@ -263,6 +265,7 @@ interface ExportDropdownProps {
 
 const ExportDropdown: React.FC<ExportDropdownProps> = ({ categories }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [notification, setNotification] = useState<string | null>(null);
 
   const handleExportMarkdown = () => {
     const md = generateFullHelpMarkdown(categories);
@@ -277,7 +280,12 @@ const ExportDropdown: React.FC<ExportDropdownProps> = ({ categories }) => {
   };
 
   const handlePrintAllPDF = () => {
-    openPrintAllDocumentation(categories);
+    const message = openPrintAllDocumentation(categories);
+    if (message) {
+      setNotification(message);
+      // Auto-dismiss after 8 seconds
+      setTimeout(() => setNotification(null), 8000);
+    }
     setIsOpen(false);
   };
 
@@ -352,6 +360,26 @@ const ExportDropdown: React.FC<ExportDropdownProps> = ({ categories }) => {
             </div>
           </div>
         </>
+      )}
+
+      {/* Notification Banner */}
+      {notification && (
+        <div className="fixed bottom-4 right-4 max-w-md p-4 bg-blue-900/90 border border-blue-700 rounded-lg shadow-xl z-50">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm text-blue-100 flex-1">{notification}</p>
+            <button
+              onClick={() => setNotification(null)}
+              className="text-blue-400 hover:text-blue-300"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

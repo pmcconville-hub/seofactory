@@ -215,14 +215,13 @@ export class SectionAnalyzer {
       const textBlock = response.content.find(block => block.type === 'text');
       return textBlock?.type === 'text' ? textBlock.text : '';
     } else {
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
-      const genAI = new GoogleGenerativeAI(this.config.apiKey);
-      const model = genAI.getGenerativeModel({
+      const { GoogleGenAI } = await import('@google/genai');
+      const genAI = new GoogleGenAI({ apiKey: this.config.apiKey });
+      const response = await genAI.models.generateContent({
         model: this.config.model ?? 'gemini-2.0-flash',
+        contents: prompt,
       });
-
-      const result = await model.generateContent(prompt);
-      return result.response.text();
+      return response.text ?? '';
     }
   }
 

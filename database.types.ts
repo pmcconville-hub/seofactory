@@ -651,6 +651,320 @@ export type Database = {
           },
         ]
       }
+      brand_components: {
+        Row: {
+          bounding_box: Json | null
+          component_type: string | null
+          content_slots: Json
+          created_at: string | null
+          extraction_id: string
+          id: string
+          literal_css: string
+          literal_html: string
+          project_id: string
+          their_class_names: string[] | null
+          visual_description: string
+        }
+        Insert: {
+          bounding_box?: Json | null
+          component_type?: string | null
+          content_slots?: Json
+          created_at?: string | null
+          extraction_id: string
+          id?: string
+          literal_css: string
+          literal_html: string
+          project_id: string
+          their_class_names?: string[] | null
+          visual_description: string
+        }
+        Update: {
+          bounding_box?: Json | null
+          component_type?: string | null
+          content_slots?: Json
+          created_at?: string | null
+          extraction_id?: string
+          id?: string
+          literal_css?: string
+          literal_html?: string
+          project_id?: string
+          their_class_names?: string[] | null
+          visual_description?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_components_extraction_id_fkey"
+            columns: ["extraction_id"]
+            isOneToOne: false
+            referencedRelation: "brand_extractions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_components_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      brand_design_dna: {
+        Row: {
+          ai_model: string | null
+          confidence_score: number | null
+          created_at: string | null
+          design_dna: Json
+          id: string
+          processing_time_ms: number | null
+          project_id: string | null
+          screenshot_base64: string | null
+          screenshot_url: string | null
+          source_url: string
+          updated_at: string | null
+        }
+        Insert: {
+          ai_model?: string | null
+          confidence_score?: number | null
+          created_at?: string | null
+          design_dna: Json
+          id?: string
+          processing_time_ms?: number | null
+          project_id?: string | null
+          screenshot_base64?: string | null
+          screenshot_url?: string | null
+          source_url: string
+          updated_at?: string | null
+        }
+        Update: {
+          ai_model?: string | null
+          confidence_score?: number | null
+          created_at?: string | null
+          design_dna?: Json
+          id?: string
+          processing_time_ms?: number | null
+          project_id?: string | null
+          screenshot_base64?: string | null
+          screenshot_url?: string | null
+          source_url?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_design_dna_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      brand_design_systems: {
+        Row: {
+          ai_model: string | null
+          brand_name: string
+          compiled_css: string
+          component_styles: Json
+          created_at: string | null
+          decorative_elements: Json | null
+          design_dna_hash: string
+          design_dna_id: string | null
+          id: string
+          image_treatments: Json | null
+          interactions: Json | null
+          project_id: string | null
+          tokens: Json
+          typography_treatments: Json | null
+          variant_mappings: Json | null
+        }
+        Insert: {
+          ai_model?: string | null
+          brand_name: string
+          compiled_css: string
+          component_styles: Json
+          created_at?: string | null
+          decorative_elements?: Json | null
+          design_dna_hash: string
+          design_dna_id?: string | null
+          id?: string
+          image_treatments?: Json | null
+          interactions?: Json | null
+          project_id?: string | null
+          tokens: Json
+          typography_treatments?: Json | null
+          variant_mappings?: Json | null
+        }
+        Update: {
+          ai_model?: string | null
+          brand_name?: string
+          compiled_css?: string
+          component_styles?: Json
+          created_at?: string | null
+          decorative_elements?: Json | null
+          design_dna_hash?: string
+          design_dna_id?: string | null
+          id?: string
+          image_treatments?: Json | null
+          interactions?: Json | null
+          project_id?: string | null
+          tokens?: Json
+          typography_treatments?: Json | null
+          variant_mappings?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_design_systems_design_dna_id_fkey"
+            columns: ["design_dna_id"]
+            isOneToOne: false
+            referencedRelation: "brand_design_dna"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_design_systems_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      brand_extractions: {
+        Row: {
+          computed_styles: Json | null
+          extracted_at: string | null
+          id: string
+          page_type: string
+          project_id: string
+          raw_html: string
+          screenshot_base64: string | null
+          screenshot_url: string | null
+          source_url: string
+        }
+        Insert: {
+          computed_styles?: Json | null
+          extracted_at?: string | null
+          id?: string
+          page_type: string
+          project_id: string
+          raw_html: string
+          screenshot_base64?: string | null
+          screenshot_url?: string | null
+          source_url: string
+        }
+        Update: {
+          computed_styles?: Json | null
+          extracted_at?: string | null
+          id?: string
+          page_type?: string
+          project_id?: string
+          raw_html?: string
+          screenshot_base64?: string | null
+          screenshot_url?: string | null
+          source_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_extractions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      brand_tokens: {
+        Row: {
+          borders: Json
+          colors: Json
+          extracted_at: string | null
+          extracted_from: string[] | null
+          gradients: Json | null
+          id: string
+          project_id: string
+          shadows: Json
+          spacing: Json
+          typography: Json
+        }
+        Insert: {
+          borders: Json
+          colors: Json
+          extracted_at?: string | null
+          extracted_from?: string[] | null
+          gradients?: Json | null
+          id?: string
+          project_id: string
+          shadows: Json
+          spacing: Json
+          typography: Json
+        }
+        Update: {
+          borders?: Json
+          colors?: Json
+          extracted_at?: string | null
+          extracted_from?: string[] | null
+          gradients?: Json | null
+          id?: string
+          project_id?: string
+          shadows?: Json
+          spacing?: Json
+          typography?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_tokens_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      brand_url_suggestions: {
+        Row: {
+          created_at: string | null
+          discovered_from: string
+          extracted: boolean | null
+          id: string
+          page_type: string
+          project_id: string
+          prominence_score: number | null
+          selected: boolean | null
+          suggested_url: string
+          visual_context: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          discovered_from: string
+          extracted?: boolean | null
+          id?: string
+          page_type: string
+          project_id: string
+          prominence_score?: number | null
+          selected?: boolean | null
+          suggested_url: string
+          visual_context?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          discovered_from?: string
+          extracted?: boolean | null
+          id?: string
+          page_type?: string
+          project_id?: string
+          prominence_score?: number | null
+          selected?: boolean | null
+          suggested_url?: string
+          visual_context?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_url_suggestions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       brief_compliance_checks: {
         Row: {
           applied_at: string | null
@@ -1689,6 +2003,97 @@ export type Database = {
           },
         ]
       }
+      design_preferences: {
+        Row: {
+          choice: string
+          context: string
+          created_at: string | null
+          frequency: number | null
+          id: string
+          last_used: string | null
+          preference_type: string
+          project_id: string
+        }
+        Insert: {
+          choice: string
+          context: string
+          created_at?: string | null
+          frequency?: number | null
+          id?: string
+          last_used?: string | null
+          preference_type: string
+          project_id: string
+        }
+        Update: {
+          choice?: string
+          context?: string
+          created_at?: string | null
+          frequency?: number | null
+          id?: string
+          last_used?: string | null
+          preference_type?: string
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "design_preferences_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      design_profiles: {
+        Row: {
+          brand_discovery: Json
+          created_at: string | null
+          final_tokens: Json
+          id: string
+          is_active: boolean | null
+          name: string
+          project_id: string
+          screenshot_url: string | null
+          target_url: string | null
+          updated_at: string | null
+          user_overrides: Json | null
+        }
+        Insert: {
+          brand_discovery: Json
+          created_at?: string | null
+          final_tokens: Json
+          id?: string
+          is_active?: boolean | null
+          name: string
+          project_id: string
+          screenshot_url?: string | null
+          target_url?: string | null
+          updated_at?: string | null
+          user_overrides?: Json | null
+        }
+        Update: {
+          brand_discovery?: Json
+          created_at?: string | null
+          final_tokens?: Json
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          project_id?: string
+          screenshot_url?: string | null
+          target_url?: string | null
+          updated_at?: string | null
+          user_overrides?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "design_profiles_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       eat_scanner_audits: {
         Row: {
           authority_score: number | null
@@ -2427,6 +2832,88 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          assigned_to: string | null
+          company: string | null
+          context_data: Json | null
+          created_at: string | null
+          email: string
+          id: string
+          name: string
+          notes: string | null
+          organization_id: string | null
+          phone: string | null
+          referrer: string | null
+          source: string | null
+          status: string | null
+          updated_at: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          company?: string | null
+          context_data?: Json | null
+          created_at?: string | null
+          email: string
+          id?: string
+          name: string
+          notes?: string | null
+          organization_id?: string | null
+          phone?: string | null
+          referrer?: string | null
+          source?: string | null
+          status?: string | null
+          updated_at?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          company?: string | null
+          context_data?: Json | null
+          created_at?: string | null
+          email?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          organization_id?: string | null
+          phone?: string | null
+          referrer?: string | null
+          source?: string | null
+          status?: string | null
+          updated_at?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization_quality_metrics"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "leads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -3644,6 +4131,57 @@ export type Database = {
           },
         ]
       }
+      project_design_defaults: {
+        Row: {
+          component_preferences: Json | null
+          created_at: string | null
+          default_personality: string | null
+          design_profile_id: string | null
+          id: string
+          project_id: string
+          spacing_preference: string | null
+          updated_at: string | null
+          visual_intensity: string | null
+        }
+        Insert: {
+          component_preferences?: Json | null
+          created_at?: string | null
+          default_personality?: string | null
+          design_profile_id?: string | null
+          id?: string
+          project_id: string
+          spacing_preference?: string | null
+          updated_at?: string | null
+          visual_intensity?: string | null
+        }
+        Update: {
+          component_preferences?: Json | null
+          created_at?: string | null
+          default_personality?: string | null
+          design_profile_id?: string | null
+          id?: string
+          project_id?: string
+          spacing_preference?: string | null
+          updated_at?: string | null
+          visual_intensity?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_design_defaults_design_profile_id_fkey"
+            columns: ["design_profile_id"]
+            isOneToOne: false
+            referencedRelation: "design_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_design_defaults_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_members: {
         Row: {
           accepted_at: string | null
@@ -4112,6 +4650,273 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quotation_packages: {
+        Row: {
+          base_price: number
+          created_at: string | null
+          description: string | null
+          discount_percent: number | null
+          display_order: number | null
+          id: string
+          included_modules: Json
+          is_active: boolean | null
+          name: string
+          target_site_sizes: string[] | null
+          updated_at: string | null
+        }
+        Insert: {
+          base_price: number
+          created_at?: string | null
+          description?: string | null
+          discount_percent?: number | null
+          display_order?: number | null
+          id: string
+          included_modules?: Json
+          is_active?: boolean | null
+          name: string
+          target_site_sizes?: string[] | null
+          updated_at?: string | null
+        }
+        Update: {
+          base_price?: number
+          created_at?: string | null
+          description?: string | null
+          discount_percent?: number | null
+          display_order?: number | null
+          id?: string
+          included_modules?: Json
+          is_active?: boolean | null
+          name?: string
+          target_site_sizes?: string[] | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      quotation_service_modules: {
+        Row: {
+          base_price_max: number
+          base_price_min: number
+          category: string
+          created_at: string | null
+          deliverables: Json | null
+          description: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean | null
+          is_recurring: boolean | null
+          kpi_contributions: Json | null
+          name: string
+          recurring_interval: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          base_price_max: number
+          base_price_min: number
+          category: string
+          created_at?: string | null
+          deliverables?: Json | null
+          description?: string | null
+          display_order?: number | null
+          id: string
+          is_active?: boolean | null
+          is_recurring?: boolean | null
+          kpi_contributions?: Json | null
+          name: string
+          recurring_interval?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          base_price_max?: number
+          base_price_min?: number
+          category?: string
+          created_at?: string | null
+          deliverables?: Json | null
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          is_recurring?: boolean | null
+          kpi_contributions?: Json | null
+          name?: string
+          recurring_interval?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      quote_activities: {
+        Row: {
+          activity_type: string
+          created_at: string | null
+          created_by: string | null
+          details: Json | null
+          id: string
+          quote_id: string | null
+        }
+        Insert: {
+          activity_type: string
+          created_at?: string | null
+          created_by?: string | null
+          details?: Json | null
+          id?: string
+          quote_id?: string | null
+        }
+        Update: {
+          activity_type?: string
+          created_at?: string | null
+          created_by?: string | null
+          details?: Json | null
+          id?: string
+          quote_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_activities_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_activities_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quotes: {
+        Row: {
+          analysis_data: Json | null
+          client_company: string | null
+          client_domain: string | null
+          client_email: string | null
+          client_name: string | null
+          created_at: string | null
+          created_by: string | null
+          discount_percent: number | null
+          id: string
+          internal_notes: string | null
+          kpi_projections: Json | null
+          line_items: Json
+          notes: string | null
+          organization_id: string | null
+          parent_quote_id: string | null
+          pricing_factors: Json | null
+          questionnaire_responses: Json | null
+          responded_at: string | null
+          roi_calculation: Json | null
+          selected_package_id: string | null
+          sent_at: string | null
+          status: string | null
+          subtotal: number | null
+          total_max: number | null
+          total_min: number | null
+          updated_at: string | null
+          valid_until: string | null
+          version: number | null
+          viewed_at: string | null
+        }
+        Insert: {
+          analysis_data?: Json | null
+          client_company?: string | null
+          client_domain?: string | null
+          client_email?: string | null
+          client_name?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          discount_percent?: number | null
+          id?: string
+          internal_notes?: string | null
+          kpi_projections?: Json | null
+          line_items?: Json
+          notes?: string | null
+          organization_id?: string | null
+          parent_quote_id?: string | null
+          pricing_factors?: Json | null
+          questionnaire_responses?: Json | null
+          responded_at?: string | null
+          roi_calculation?: Json | null
+          selected_package_id?: string | null
+          sent_at?: string | null
+          status?: string | null
+          subtotal?: number | null
+          total_max?: number | null
+          total_min?: number | null
+          updated_at?: string | null
+          valid_until?: string | null
+          version?: number | null
+          viewed_at?: string | null
+        }
+        Update: {
+          analysis_data?: Json | null
+          client_company?: string | null
+          client_domain?: string | null
+          client_email?: string | null
+          client_name?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          discount_percent?: number | null
+          id?: string
+          internal_notes?: string | null
+          kpi_projections?: Json | null
+          line_items?: Json
+          notes?: string | null
+          organization_id?: string | null
+          parent_quote_id?: string | null
+          pricing_factors?: Json | null
+          questionnaire_responses?: Json | null
+          responded_at?: string | null
+          roi_calculation?: Json | null
+          selected_package_id?: string | null
+          sent_at?: string | null
+          status?: string | null
+          subtotal?: number | null
+          total_max?: number | null
+          total_min?: number | null
+          updated_at?: string | null
+          valid_until?: string | null
+          version?: number | null
+          viewed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organization_quality_metrics"
+            referencedColumns: ["organization_id"]
+          },
+          {
+            foreignKeyName: "quotes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_parent_quote_id_fkey"
+            columns: ["parent_quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_selected_package_id_fkey"
+            columns: ["selected_package_id"]
+            isOneToOne: false
+            referencedRelation: "quotation_packages"
             referencedColumns: ["id"]
           },
         ]
@@ -5392,6 +6197,54 @@ export type Database = {
           },
           {
             foreignKeyName: "topical_map_blueprints_topical_map_id_fkey"
+            columns: ["topical_map_id"]
+            isOneToOne: true
+            referencedRelation: "topical_maps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      topical_map_design_rules: {
+        Row: {
+          cluster_rules: Json | null
+          created_at: string | null
+          id: string
+          inherit_from_project: boolean | null
+          overrides: Json | null
+          project_id: string
+          topical_map_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          cluster_rules?: Json | null
+          created_at?: string | null
+          id?: string
+          inherit_from_project?: boolean | null
+          overrides?: Json | null
+          project_id: string
+          topical_map_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          cluster_rules?: Json | null
+          created_at?: string | null
+          id?: string
+          inherit_from_project?: boolean | null
+          overrides?: Json | null
+          project_id?: string
+          topical_map_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topical_map_design_rules_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topical_map_design_rules_topical_map_id_fkey"
             columns: ["topical_map_id"]
             isOneToOne: true
             referencedRelation: "topical_maps"

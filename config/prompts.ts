@@ -661,8 +661,9 @@ Respond with a JSON object containing "responseCode" and "reasoning".
 `;
 
 export const GENERATE_CONTENT_BRIEF_PROMPT = (info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, knowledgeGraph: KnowledgeGraph, responseCode: ResponseCode, marketPatterns?: MarketPatterns): string => {
+    // Extract first 15 node terms from knowledge graph (simplified from SPARQL query)
     const kgContext = knowledgeGraph
-        ? JSON.stringify(knowledgeGraph.query(`SELECT ?term WHERE { ?node term ?term . } LIMIT 15`), null, 2)
+        ? JSON.stringify(Array.from(knowledgeGraph.getNodes().values()).slice(0, 15).map(n => ({ term: n.term })), null, 2)
         : "No Knowledge Graph available.";
 
     const userContextInstruction = topic.metadata?.userContext ? `\n**USER GUIDANCE:** The user specifically requested: "${topic.metadata.userContext}". Ensure the brief aligns with this intent.` : "";

@@ -90,7 +90,9 @@ export const DesignAnalyzer = {
                 vars[name] = val;
               }
             });
-          } catch (e) {}
+          } catch (e) {
+            console.warn('[DesignAnalyzer] CSS variable extraction failed:', e?.message || e);
+          }
           return vars;
         };
 
@@ -122,7 +124,9 @@ export const DesignAnalyzer = {
                   return el;
                 }
               }
-            } catch (e) {}
+            } catch (e) {
+              console.warn('[DesignAnalyzer] Button selector failed:', sel, e?.message || e);
+            }
           }
           return null;
         };

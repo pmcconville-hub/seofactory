@@ -43,6 +43,7 @@ const UserManagement: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<UserData | null>(null);
     const [formData, setFormData] = useState({ email: '', password: '', role: 'user' });
+    const [formErrors, setFormErrors] = useState<{ email?: string; password?: string }>({});
 
     const fetchUsers = async () => {
         setIsLoading(true);
@@ -99,6 +100,7 @@ const UserManagement: React.FC = () => {
     const openCreateModal = () => {
         setEditingUser(null);
         setFormData({ email: '', password: '', role: 'user' });
+        setFormErrors({});
         setIsModalOpen(true);
     };
 
@@ -106,13 +108,44 @@ const UserManagement: React.FC = () => {
         setEditingUser(user);
         // Don't fill password on edit
         setFormData({ email: user.email || '', password: '', role: user.role || 'user' });
+        setFormErrors({});
         setIsModalOpen(true);
+    };
+
+    const validateEmail = (email: string): string | undefined => {
+        if (!email.trim()) return 'Email is required';
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) return 'Please enter a valid email address';
+        return undefined;
+    };
+
+    const validatePassword = (password: string, isEditing: boolean): string | undefined => {
+        if (isEditing && !password) return undefined; // Password optional when editing
+        if (!password) return 'Password is required';
+        if (password.length < 8) return 'Password must be at least 8 characters';
+        if (!/[A-Z]/.test(password)) return 'Password must contain at least one uppercase letter';
+        if (!/[a-z]/.test(password)) return 'Password must contain at least one lowercase letter';
+        if (!/[0-9]/.test(password)) return 'Password must contain at least one number';
+        return undefined;
+    };
+
+    const validateForm = (): boolean => {
+        const errors: { email?: string; password?: string } = {};
+        errors.email = validateEmail(formData.email);
+        errors.password = validatePassword(formData.password, !!editingUser);
+        setFormErrors(errors);
+        return !errors.email && !errors.password;
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setIsSubmitting(true);
         setError(null);
+
+        if (!validateForm()) {
+            return;
+        }
+
+        setIsSubmitting(true);
 
         try {
             const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
@@ -249,28 +282,52 @@ const UserManagement: React.FC = () => {
                         <h2 className="text-xl font-bold text-white mb-4">{editingUser ? 'Edit User' : 'Create User'}</h2>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
-                                <Label>Email Address</Label>
-                                <Input 
-                                    type="email" 
-                                    value={formData.email} 
-                                    onChange={e => setFormData({...formData, email: e.target.value})}
-                                    required
+                                <Label htmlFor="user-email">Email Address</Label>
+                                <Input
+                                    id="user-email"
+                                    type="email"
+                                    value={formData.email}
+                                    onChange={e => {
+                                        setFormData({...formData, email: e.target.value});
+                                        if (formErrors.email) setFormErrors({...formErrors, email: undefined});
+                                    }}
+                                    aria-invalid={!!formErrors.email}
+                                    aria-describedby={formErrors.email ? 'email-error' : undefined}
+                                    className={formErrors.email ? 'border-red-500' : ''}
                                 />
+                                {formErrors.email && (
+                                    <p id="email-error" className="mt-1 text-sm text-red-400">{formErrors.email}</p>
+                                )}
                             </div>
                             <div>
-                                <Label>Password {editingUser && '(Leave blank to keep current)'}</Label>
-                                <Input 
-                                    type="password" 
-                                    value={formData.password} 
-                                    onChange={e => setFormData({...formData, password: e.target.value})}
-                                    required={!editingUser}
-                                    placeholder={editingUser ? "••••••••" : "Secure Password"}
+                                <Label htmlFor="user-password">Password {editingUser && '(Leave blank to keep current)'}</Label>
+                                <Input
+                                    id="user-password"
+                                    type="password"
+                                    value={formData.password}
+                                    onChange={e => {
+                                        setFormData({...formData, password: e.target.value});
+                                        if (formErrors.password) setFormErrors({...formErrors, password: undefined});
+                                    }}
+                                    placeholder={editingUser ? "••••••••" : "Min 8 chars, upper, lower, number"}
+                                    aria-invalid={!!formErrors.password}
+                                    aria-describedby={formErrors.password ? 'password-error' : undefined}
+                                    className={formErrors.password ? 'border-red-500' : ''}
                                 />
+                                {formErrors.password && (
+                                    <p id="password-error" className="mt-1 text-sm text-red-400">{formErrors.password}</p>
+                                )}
+                                {!editingUser && !formErrors.password && (
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        Must contain uppercase, lowercase, and number
+                                    </p>
+                                )}
                             </div>
                             <div>
-                                <Label>Role</Label>
-                                <Select 
-                                    value={formData.role} 
+                                <Label htmlFor="user-role">Role</Label>
+                                <Select
+                                    id="user-role"
+                                    value={formData.role}
                                     onChange={e => setFormData({...formData, role: e.target.value})}
                                 >
                                     <option value="user">User</option>

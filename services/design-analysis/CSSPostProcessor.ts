@@ -21,6 +21,7 @@ export interface PostProcessResult {
   warnings: string[];
   normalizedCount: number;
   strippedRootCount: number;
+  deduplicatedCount: number;
 }
 
 /**
@@ -161,6 +162,7 @@ export class CSSPostProcessor {
     this.warnings = [];
     let normalizedCount = 0;
     let strippedRootCount = 0;
+    let deduplicatedCount = 0;
 
     // Step 1: Strip rogue :root declarations (keep only the first one)
     const rootStrippedResult = this.stripExtraRootDeclarations(css);
@@ -172,7 +174,12 @@ export class CSSPostProcessor {
     css = normalizeResult.css;
     normalizedCount = normalizeResult.normalizedCount;
 
-    // Step 3: Find and warn about undefined variables
+    // Step 3: Deduplicate CSS selectors (merge identical selectors)
+    const dedupeResult = this.deduplicateSelectors(css);
+    css = dedupeResult.css;
+    deduplicatedCount = dedupeResult.deduplicatedCount;
+
+    // Step 4: Find and warn about undefined variables
     this.findUndefinedVariables(css);
 
     return {
@@ -180,7 +187,161 @@ export class CSSPostProcessor {
       warnings: this.warnings,
       normalizedCount,
       strippedRootCount,
+      deduplicatedCount,
     };
+  }
+
+  /**
+   * Deduplicate CSS selectors by merging blocks with the same selector.
+   * AI often generates multiple blocks for .section, .card, etc. across component styles.
+   * Later properties override earlier ones (CSS cascade preserved).
+   */
+  private deduplicateSelectors(css: string): { css: string; deduplicatedCount: number } {
+    // Parse CSS into blocks: { selector, properties, comment }
+    // Handles comments before blocks and @media queries (kept as-is)
+    const blocks: Array<{ selector: string; properties: string; raw: string; isAtRule: boolean; comment?: string }> = [];
+
+    // Split into rule blocks - handles nested braces for @media
+    let remaining = css;
+    let deduplicatedCount = 0;
+
+    while (remaining.trim()) {
+      remaining = remaining.trim();
+
+      // Preserve comments
+      if (remaining.startsWith('/*')) {
+        const endComment = remaining.indexOf('*/');
+        if (endComment === -1) break;
+        const comment = remaining.substring(0, endComment + 2);
+        remaining = remaining.substring(endComment + 2).trim();
+        blocks.push({ selector: '', properties: '', raw: comment, isAtRule: false, comment });
+        continue;
+      }
+
+      // Find the opening brace
+      const braceIdx = remaining.indexOf('{');
+      if (braceIdx === -1) {
+        // No more blocks, preserve remaining text
+        if (remaining.trim()) {
+          blocks.push({ selector: '', properties: '', raw: remaining.trim(), isAtRule: false });
+        }
+        break;
+      }
+
+      const selector = remaining.substring(0, braceIdx).trim();
+
+      // Handle @media and other at-rules (don't deduplicate these)
+      if (selector.startsWith('@')) {
+        // Find matching closing brace (handle nesting)
+        let depth = 0;
+        let endIdx = braceIdx;
+        for (let i = braceIdx; i < remaining.length; i++) {
+          if (remaining[i] === '{') depth++;
+          else if (remaining[i] === '}') {
+            depth--;
+            if (depth === 0) {
+              endIdx = i;
+              break;
+            }
+          }
+        }
+        const raw = remaining.substring(0, endIdx + 1);
+        blocks.push({ selector, properties: '', raw, isAtRule: true });
+        remaining = remaining.substring(endIdx + 1);
+        continue;
+      }
+
+      // Regular selector - find closing brace
+      const closeIdx = remaining.indexOf('}', braceIdx);
+      if (closeIdx === -1) break;
+
+      const properties = remaining.substring(braceIdx + 1, closeIdx).trim();
+      const raw = remaining.substring(0, closeIdx + 1);
+      blocks.push({ selector, properties, raw, isAtRule: false });
+      remaining = remaining.substring(closeIdx + 1);
+    }
+
+    // Group non-at-rule blocks by selector and merge
+    const selectorMap = new Map<string, { properties: Map<string, string>; firstIndex: number }>();
+    const output: string[] = [];
+    const merged = new Set<number>();
+
+    // First pass: identify duplicates
+    blocks.forEach((block, idx) => {
+      if (block.isAtRule || block.comment || !block.selector) return;
+
+      const normalizedSelector = block.selector.replace(/\s+/g, ' ');
+      if (selectorMap.has(normalizedSelector)) {
+        // Merge properties into existing entry
+        const existing = selectorMap.get(normalizedSelector)!;
+        this.parseProperties(block.properties).forEach((value, prop) => {
+          existing.properties.set(prop, value);
+        });
+        merged.add(idx);
+        deduplicatedCount++;
+      } else {
+        selectorMap.set(normalizedSelector, {
+          properties: this.parseProperties(block.properties),
+          firstIndex: idx,
+        });
+      }
+    });
+
+    if (deduplicatedCount === 0) {
+      return { css, deduplicatedCount: 0 };
+    }
+
+    // Second pass: output blocks in order, with merged properties at first occurrence
+    blocks.forEach((block, idx) => {
+      if (merged.has(idx)) return; // Skip duplicate blocks
+
+      if (block.isAtRule || block.comment || !block.selector) {
+        output.push(block.raw);
+        return;
+      }
+
+      const normalizedSelector = block.selector.replace(/\s+/g, ' ');
+      const entry = selectorMap.get(normalizedSelector);
+      if (entry && entry.firstIndex === idx) {
+        // Output merged properties
+        const propsStr = Array.from(entry.properties.entries())
+          .map(([prop, val]) => `  ${prop}: ${val};`)
+          .join('\n');
+        output.push(`${block.selector} {\n${propsStr}\n}`);
+      } else {
+        output.push(block.raw);
+      }
+    });
+
+    if (deduplicatedCount > 0 && this.config.logWarnings) {
+      this.warnings.push(`Deduplicated ${deduplicatedCount} CSS selector blocks`);
+    }
+
+    return {
+      css: output.join('\n\n'),
+      deduplicatedCount,
+    };
+  }
+
+  /**
+   * Parse CSS properties from a block body into a Map
+   */
+  private parseProperties(propertiesStr: string): Map<string, string> {
+    const props = new Map<string, string>();
+    if (!propertiesStr) return props;
+
+    // Split by semicolons, handling multi-line values
+    const declarations = propertiesStr.split(';').filter(d => d.trim());
+    for (const decl of declarations) {
+      const colonIdx = decl.indexOf(':');
+      if (colonIdx === -1) continue;
+      const prop = decl.substring(0, colonIdx).trim();
+      const value = decl.substring(colonIdx + 1).trim();
+      if (prop && value) {
+        props.set(prop, value);
+      }
+    }
+    return props;
   }
 
   /**

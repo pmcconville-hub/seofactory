@@ -338,6 +338,7 @@ export function OrganizationApiKeysModal({ isOpen, onClose }: OrganizationApiKey
   const [configuringProvider, setConfiguringProvider] = useState<AIProvider | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Load key statuses when modal opens
   useEffect(() => {
@@ -404,7 +405,7 @@ export function OrganizationApiKeysModal({ isOpen, onClose }: OrganizationApiKey
       setKeyStatuses(statuses);
     } catch (err) {
       console.error('Failed to remove key:', err);
-      alert(`Failed to remove API key: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setActionError(`Failed to remove API key: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setIsSaving(false);
     }
@@ -448,7 +449,7 @@ export function OrganizationApiKeysModal({ isOpen, onClose }: OrganizationApiKey
       setKeyStatuses(statuses);
     } catch (err) {
       console.error('Failed to save key:', err);
-      alert(`Failed to save API key: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setActionError(`Failed to save API key: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setIsSaving(false);
     }
@@ -498,9 +499,19 @@ export function OrganizationApiKeysModal({ isOpen, onClose }: OrganizationApiKey
           )}
 
           {/* Error State */}
-          {error && !statusLoading && (
+          {(error || actionError) && !statusLoading && (
             <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-              <p className="text-sm text-red-400">{error}</p>
+              <div className="flex items-start justify-between">
+                <p className="text-sm text-red-400">{actionError || error}</p>
+                {actionError && (
+                  <button
+                    onClick={() => setActionError(null)}
+                    className="text-red-400 hover:text-red-300 text-lg leading-none ml-2"
+                  >
+                    &times;
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

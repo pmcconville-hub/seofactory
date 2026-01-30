@@ -36,6 +36,7 @@ export const ProjectSetupV2: React.FC<ProjectSetupV2Props> = ({
   const [inputData, setInputData] = useState('');
   const [linkedMapId, setLinkedMapId] = useState<string>('');
   const [gscFile, setGscFile] = useState<File | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const handleMethodSelect = (method: 'url' | 'sitemap' | 'gsc' | 'single_page') => {
     setInputMethod(method);
@@ -56,10 +57,11 @@ export const ProjectSetupV2: React.FC<ProjectSetupV2Props> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setValidationError(null);
 
     // Validate
     if (!projectName.trim()) {
-      alert('Please enter a project name');
+      setValidationError('Please enter a project name');
       return;
     }
 
@@ -223,6 +225,13 @@ export const ProjectSetupV2: React.FC<ProjectSetupV2Props> = ({
         </div>
 
         <div className="space-y-4">
+          {/* Validation Error */}
+          {validationError && (
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+              <p className="text-sm text-red-400">{validationError}</p>
+            </div>
+          )}
+
           {/* Project Name */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -231,9 +240,14 @@ export const ProjectSetupV2: React.FC<ProjectSetupV2Props> = ({
             <input
               type="text"
               value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
+              onChange={(e) => {
+                setProjectName(e.target.value);
+                if (validationError) setValidationError(null);
+              }}
               placeholder="My Site Audit"
-              className="w-full px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
+              className={`w-full px-4 py-2 rounded-lg bg-gray-800 border text-white placeholder-gray-500 focus:outline-none ${
+                validationError ? 'border-red-500 focus:border-red-500' : 'border-gray-700 focus:border-purple-500'
+              }`}
               required
             />
           </div>

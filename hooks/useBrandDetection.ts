@@ -119,6 +119,34 @@ export function useBrandDetection(config: UseBrandDetectionConfig) {
       updateStep('dna', 'complete');
       setState(prev => ({ ...prev, progress: 70 }));
 
+      // Merge DOM-extracted colors into AI DesignDNA when DOM has high confidence
+      // DOM extraction gets actual CSS values (precise), AI gets approximations from screenshots
+      const findings = discoveryReport.findings;
+      if (findings) {
+        const dna = dnaResult.designDna;
+        if (findings.primaryColor?.confidence === 'found' && findings.primaryColor.value) {
+          console.log('[useBrandDetection] Overriding AI primary color', dna.colors.primary.hex, '→', findings.primaryColor.value, '(source:', findings.primaryColor.source, ')');
+          dna.colors.primary = { ...dna.colors.primary, hex: findings.primaryColor.value, confidence: 95 };
+        }
+        if (findings.secondaryColor?.confidence === 'found' && findings.secondaryColor.value) {
+          console.log('[useBrandDetection] Overriding AI secondary color', dna.colors.secondary.hex, '→', findings.secondaryColor.value);
+          dna.colors.secondary = { ...dna.colors.secondary, hex: findings.secondaryColor.value, confidence: 95 };
+        }
+        if (findings.accentColor?.confidence === 'found' && findings.accentColor.value) {
+          console.log('[useBrandDetection] Overriding AI accent color', dna.colors.accent.hex, '→', findings.accentColor.value);
+          dna.colors.accent = { ...dna.colors.accent, hex: findings.accentColor.value, confidence: 95 };
+        }
+        // Also apply DOM fonts if detected from Google Fonts (more reliable than screenshot inference)
+        if (findings.headingFont?.confidence === 'found' && findings.headingFont.value) {
+          console.log('[useBrandDetection] Overriding AI heading font →', findings.headingFont.value);
+          dna.typography.headingFont.family = findings.headingFont.value;
+        }
+        if (findings.bodyFont?.confidence === 'found' && findings.bodyFont.value) {
+          console.log('[useBrandDetection] Overriding AI body font →', findings.bodyFont.value);
+          dna.typography.bodyFont.family = findings.bodyFont.value;
+        }
+      }
+
       // Step 3: Check cache before generating
       const generator = new BrandDesignSystemGenerator({
         provider: aiProvider,
@@ -155,7 +183,7 @@ export function useBrandDetection(config: UseBrandDetectionConfig) {
           secondary: dnaResult.designDna.colors?.secondary,
         });
 
-        designSystem = await generator.generate(dnaResult.designDna, domain, url);
+        designSystem = await generator.generate(dnaResult.designDna, domain, url, discoveryReport.screenshotBase64, discoveryReport.googleFontsUrl);
 
         console.log('[useBrandDetection] Brand design system generated:', {
           brandName: designSystem.brandName,

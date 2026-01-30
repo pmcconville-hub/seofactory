@@ -519,9 +519,11 @@ For each component, provide:
       }
     }
 
-    // Last resort: return empty section template for injection
-    console.warn('[ExtractionAnalyzer] Could not extract HTML for:', selectorHint.substring(0, 50));
-    return `<section class="brand-content" data-extraction-hint="${selectorHint.substring(0, 50).replace(/"/g, "'")}"></section>`;
+    // CRITICAL: Do NOT return a template - return empty string to signal extraction failed
+    // The BrandAwareComposer will use the extracted CSS with semantic HTML
+    console.warn('[ExtractionAnalyzer] Could not extract literal HTML for:', selectorHint.substring(0, 50));
+    console.warn('[ExtractionAnalyzer] Will rely on extracted CSS + semantic HTML instead');
+    return '';
   }
 
   /**
@@ -572,7 +574,37 @@ For each component, provide:
     // Remove noscript tags
     cleaned = cleaned.replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '');
 
-    // Remove common cookie consent elements
+    // CRITICAL FIX: Remove Cybot cookie dialog elements specifically
+    // These use CamelCase class names that the original patterns missed
+    const cybotPatterns = [
+      // Cybot Cookiebot - the main offender
+      /<div[^>]*(?:class|id)="[^"]*Cybot[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+      /<div[^>]*(?:class|id)="[^"]*CookiebotDialog[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+      /<div[^>]*(?:class|id)="[^"]*Cookiebot[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+      // OneTrust
+      /<div[^>]*(?:class|id)="[^"]*onetrust[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+      /<div[^>]*(?:class|id)="[^"]*ot-sdk[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+      // CookieYes
+      /<div[^>]*(?:class|id)="[^"]*cookieyes[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+      // Generic cookie consent wrappers
+      /<div[^>]*(?:class|id)="[^"]*cc-window[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+      /<div[^>]*(?:class|id)="[^"]*cookie-notice[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+      /<div[^>]*(?:class|id)="[^"]*cookie-banner[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+      /<div[^>]*(?:class|id)="[^"]*cookie-consent[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+      /<div[^>]*(?:class|id)="[^"]*gdpr-[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+      // Tarteaucitron (French cookie manager)
+      /<div[^>]*(?:class|id)="[^"]*tarteaucitron[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
+    ];
+
+    for (const pattern of cybotPatterns) {
+      const before = cleaned.length;
+      cleaned = cleaned.replace(pattern, '');
+      if (cleaned.length !== before) {
+        console.log(`[ExtractionAnalyzer] Removed cookie consent element: ${pattern.source.substring(0, 50)}...`);
+      }
+    }
+
+    // Remove common cookie consent elements (original patterns)
     const cookieSelectors = [
       /id="[^"]*cookie[^"]*"/gi,
       /id="[^"]*consent[^"]*"/gi,

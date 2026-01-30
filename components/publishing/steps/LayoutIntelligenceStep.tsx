@@ -122,8 +122,16 @@ export const LayoutIntelligenceStep: React.FC<LayoutIntelligenceStepProps> = ({
                 )}
               </div>
               {onRegenerate && (
-                <Button variant="secondary" size="sm" onClick={onRegenerate}>
-                  Regenerate
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    console.log('[LayoutIntelligenceStep] Regenerate clicked');
+                    onRegenerate();
+                  }}
+                  disabled={isGenerating}
+                >
+                  {isGenerating ? 'Regenerating...' : 'Regenerate'}
                 </Button>
               )}
             </div>

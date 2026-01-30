@@ -13,6 +13,7 @@ import { Button } from '../../ui/Button';
 import { LayoutPanel } from '../panels/LayoutPanel';
 import { BlueprintPanel } from '../panels/BlueprintPanel';
 import { BrandMatchIndicator } from '../BrandMatchIndicator';
+import { DesignQualityAssessment, type DesignIssue } from '../DesignQualityAssessment';
 import type {
   StyledContentOutput,
   DevicePreview,
@@ -54,10 +55,33 @@ interface BlueprintQuality {
  * Rendering metadata about how content was rendered
  */
 interface RenderingMetadata {
-  rendererUsed: 'BrandAwareComposer' | 'BlueprintRenderer';
+  rendererUsed: string;
   fallbackReason?: string;
   brandScore?: number;
   unresolvedImageCount?: number;
+  // Clear user messaging
+  renderMessage?: string;
+  renderReason?: string;
+  renderLevel?: 'info' | 'warning' | 'error';
+  renderDetails?: {
+    brandExtractionUsed?: boolean;
+    layoutBlueprintUsed?: boolean;
+    aiLayoutUsed?: boolean;
+    compiledCssUsed?: boolean;
+    componentsDetected?: number;
+    fallbackTriggered?: boolean;
+  };
+}
+
+/**
+ * Visual quality check result from AI analysis
+ */
+interface VisualQualityCheck {
+  score: number; // 0-100
+  isAcceptable: boolean;
+  issues: string[];
+  recommendation: 'publish' | 'review' | 'rework';
+  details: string;
 }
 
 interface PreviewStepProps {
@@ -83,6 +107,29 @@ interface PreviewStepProps {
   // Quality/fallback notifications
   blueprintQuality?: BlueprintQuality | null;
   renderingMetadata?: RenderingMetadata | null;
+  // Visual quality check
+  onRequestQualityCheck?: () => Promise<VisualQualityCheck>;
+  onReworkOutput?: () => void;
+  // API key for quality check
+  geminiApiKey?: string;
+  // Business/content context for design assessment
+  businessContext?: {
+    industry?: string;
+    model?: string;
+    audience?: string;
+    valueProp?: string;
+  };
+  contentContext?: {
+    title?: string;
+    intent?: string;
+    isCoreTopic?: boolean;
+  };
+  // AI-assisted fix handlers
+  onAutoFixIssue?: (issue: DesignIssue) => Promise<void>;
+  onRegenerateWithInstructions?: (instructions: string) => Promise<void>;
+  // Semantic Layout Engine toggle
+  useSemanticLayoutEngine?: boolean;
+  onSemanticLayoutEngineChange?: (enabled: boolean) => void;
 }
 
 interface DeviceFrameProps {
@@ -193,9 +240,47 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
   // Quality/fallback props
   blueprintQuality,
   renderingMetadata,
+  // Quality check props
+  onRequestQualityCheck,
+  onReworkOutput,
+  geminiApiKey,
+  // Business/content context
+  businessContext,
+  contentContext,
+  // AI fix handlers
+  onAutoFixIssue,
+  onRegenerateWithInstructions,
+  // Semantic Layout Engine toggle
+  useSemanticLayoutEngine,
+  onSemanticLayoutEngineChange,
 }) => {
   const [device, setDevice] = useState<DevicePreview>('desktop');
   const [showRawHtml, setShowRawHtml] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFixingDesign, setIsFixingDesign] = useState(false);
+  const iframeRef = React.useRef<HTMLIFrameElement>(null);
+
+  // Handle AI fix for individual design issue
+  const handleAutoFixIssue = useCallback(async (issue: DesignIssue) => {
+    if (!onAutoFixIssue) return;
+    setIsFixingDesign(true);
+    try {
+      await onAutoFixIssue(issue);
+    } finally {
+      setIsFixingDesign(false);
+    }
+  }, [onAutoFixIssue]);
+
+  // Handle regenerate with all fix instructions
+  const handleRegenerateWithInstructions = useCallback(async (instructions: string) => {
+    if (!onRegenerateWithInstructions) return;
+    setIsFixingDesign(true);
+    try {
+      await onRegenerateWithInstructions(instructions);
+    } finally {
+      setIsFixingDesign(false);
+    }
+  }, [onRegenerateWithInstructions]);
 
   // SEO warning counts
   const warningCounts = useMemo(() => ({
@@ -230,25 +315,43 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
     <div className="space-y-4">
       {/* Controls */}
       <div className="flex items-center justify-between">
-        {/* Device selector */}
-        <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-1">
-          {(Object.keys(DEVICE_SIZES) as DevicePreview[]).map(d => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => setDevice(d)}
-              className={`
-                px-3 py-1.5 text-sm rounded-md transition-colors
-                ${device === d
-                  ? 'bg-zinc-700 text-white'
-                  : 'text-zinc-400 hover:text-white'
-                }
-              `}
-            >
-              {d === 'desktop' ? '💻' : d === 'tablet' ? '📱' : '📱'}
-              <span className="ml-1 hidden sm:inline">{DEVICE_SIZES[d].label}</span>
-            </button>
-          ))}
+        {/* Device selector and Semantic Layout toggle */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-1">
+            {(Object.keys(DEVICE_SIZES) as DevicePreview[]).map(d => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDevice(d)}
+                className={`
+                  px-3 py-1.5 text-sm rounded-md transition-colors
+                  ${device === d
+                    ? 'bg-zinc-700 text-white'
+                    : 'text-zinc-400 hover:text-white'
+                  }
+                `}
+              >
+                {d === 'desktop' ? '💻' : d === 'tablet' ? '📱' : '📱'}
+                <span className="ml-1 hidden sm:inline">{DEVICE_SIZES[d].label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Semantic Layout Engine toggle */}
+          {onSemanticLayoutEngineChange && (
+            <label className="flex items-center gap-2 cursor-pointer group" title="AI-driven layout that transforms prose into visual components (cards, timelines, stats) based on content analysis">
+              <input
+                type="checkbox"
+                checked={useSemanticLayoutEngine || false}
+                onChange={(e) => onSemanticLayoutEngineChange(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="relative w-9 h-5 bg-gray-700 peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+              <span className="text-xs text-gray-400 group-hover:text-gray-200 transition-colors">
+                ✨ AI Layout <span className="hidden sm:inline text-gray-500">(BETA)</span>
+              </span>
+            </label>
+          )}
         </div>
 
         {/* View toggles */}
@@ -272,21 +375,13 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
             size="sm"
             onClick={() => {
               if (preview) {
-                // Generate complete HTML document (not just a fragment)
-                const bundle = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Styled Article</title>
-  <!-- Tailwind CSS for utility classes used in components -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-${preview.css}
-  </style>
-</head>
-<body>
-${preview.html}
+                // Check if preview.html is already a complete document
+                const isFullDocument = preview.html.trim().startsWith('<!DOCTYPE') || preview.html.trim().startsWith('<html');
+
+                let bundle: string;
+                if (isFullDocument) {
+                  // Already a complete document, use as-is (add interactivity scripts)
+                  bundle = preview.html.replace('</body>', `
 <script>
 // FAQ Accordion Toggle
 document.querySelectorAll('.ctc-faq-trigger').forEach(function(trigger) {
@@ -297,20 +392,49 @@ document.querySelectorAll('.ctc-faq-trigger').forEach(function(trigger) {
     if (answer) answer.hidden = isExpanded;
   });
 });
-
 // Smooth scroll for TOC links
 document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
   link.addEventListener('click', function(e) {
     var target = document.querySelector(this.getAttribute('href'));
-    if (target) {
-      e.preventDefault();
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  });
+});
+</script>
+</body>`);
+                } else {
+                  // Fragment - wrap in document structure
+                  bundle = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Styled Article</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+${preview.css}
+  </style>
+</head>
+<body>
+${preview.html}
+<script>
+document.querySelectorAll('.ctc-faq-trigger').forEach(function(trigger) {
+  trigger.addEventListener('click', function() {
+    var answer = document.getElementById(trigger.getAttribute('aria-controls'));
+    var isExpanded = trigger.getAttribute('aria-expanded') === 'true';
+    trigger.setAttribute('aria-expanded', !isExpanded);
+    if (answer) answer.hidden = isExpanded;
+  });
+});
+document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
+  link.addEventListener('click', function(e) {
+    var target = document.querySelector(this.getAttribute('href'));
+    if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   });
 });
 </script>
 </body>
 </html>`;
+                }
                 navigator.clipboard.writeText(bundle);
                 if (onCopyHtml) onCopyHtml(bundle);
               }
@@ -319,9 +443,108 @@ document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
             📋 Copy Bundle
           </Button>
 
+          {/* Download HTML Bundle */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (preview) {
+                // Check if preview.html is already a complete document
+                const isFullDocument = preview.html.trim().startsWith('<!DOCTYPE') || preview.html.trim().startsWith('<html');
+                const title = contentContext?.title || 'Styled Article';
+
+                let bundle: string;
+                if (isFullDocument) {
+                  // Already a complete document - add interactivity scripts
+                  bundle = preview.html.replace('</body>', `
+<script>
+document.querySelectorAll('.ctc-faq-trigger').forEach(function(trigger) {
+  trigger.addEventListener('click', function() {
+    var answer = document.getElementById(trigger.getAttribute('aria-controls'));
+    var isExpanded = trigger.getAttribute('aria-expanded') === 'true';
+    trigger.setAttribute('aria-expanded', !isExpanded);
+    if (answer) answer.hidden = isExpanded;
+  });
+});
+document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
+  link.addEventListener('click', function(e) {
+    var target = document.querySelector(this.getAttribute('href'));
+    if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  });
+});
+</script>
+</body>`);
+                } else {
+                  // Fragment - wrap in document structure
+                  bundle = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+${preview.css}
+  </style>
+</head>
+<body class="bg-white">
+${preview.html}
+<script>
+document.querySelectorAll('.ctc-faq-trigger').forEach(function(trigger) {
+  trigger.addEventListener('click', function() {
+    var answer = document.getElementById(trigger.getAttribute('aria-controls'));
+    var isExpanded = trigger.getAttribute('aria-expanded') === 'true';
+    trigger.setAttribute('aria-expanded', !isExpanded);
+    if (answer) answer.hidden = isExpanded;
+  });
+});
+document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
+  link.addEventListener('click', function(e) {
+    var target = document.querySelector(this.getAttribute('href'));
+    if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  });
+});
+</script>
+</body>
+</html>`;
+                }
+
+                // Generate filename from title
+                const filename = (contentContext?.title || 'article')
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]+/g, '-')
+                  .replace(/^-|-$/g, '')
+                  .substring(0, 50) + '.html';
+
+                // Create and trigger download
+                const blob = new Blob([bundle], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }
+            }}
+          >
+            ⬇️ Download HTML
+          </Button>
+
           <Button variant="ghost" size="sm" onClick={onRegenerate}>
             Regenerate
           </Button>
+
+          {/* Expand/Fullscreen Button */}
+          <button
+            type="button"
+            onClick={() => setIsFullscreen(true)}
+            className="px-3 py-1.5 text-sm rounded-md transition-colors bg-zinc-700 text-white hover:bg-zinc-600 flex items-center gap-1"
+            title="Open fullscreen preview"
+          >
+            ⛶ Expand
+          </button>
         </div>
       </div>
 
@@ -334,8 +557,65 @@ document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
         />
       )}
 
-      {/* Rendering Fallback Warning */}
-      {renderingMetadata?.rendererUsed === 'BlueprintRenderer' && renderingMetadata.fallbackReason && (
+      {/* Rendering Status Notification - Always show to keep user informed */}
+      {renderingMetadata?.renderMessage && (
+        <div className={`p-3 rounded-lg border ${
+          renderingMetadata.renderLevel === 'error'
+            ? 'bg-red-900/30 border-red-500/30'
+            : renderingMetadata.renderLevel === 'warning'
+            ? 'bg-yellow-900/30 border-yellow-500/30'
+            : 'bg-blue-900/30 border-blue-500/30'
+        }`}>
+          <div className="flex items-start gap-2">
+            <span className={
+              renderingMetadata.renderLevel === 'error' ? 'text-red-400' :
+              renderingMetadata.renderLevel === 'warning' ? 'text-yellow-400' : 'text-blue-400'
+            }>
+              {renderingMetadata.renderLevel === 'error' ? '❌' :
+               renderingMetadata.renderLevel === 'warning' ? '⚠️' : 'ℹ️'}
+            </span>
+            <div className="flex-1">
+              <p className={`text-sm font-medium ${
+                renderingMetadata.renderLevel === 'error' ? 'text-red-300' :
+                renderingMetadata.renderLevel === 'warning' ? 'text-yellow-300' : 'text-blue-300'
+              }`}>
+                {renderingMetadata.renderMessage}
+              </p>
+              {renderingMetadata.renderReason && (
+                <p className={`text-xs mt-0.5 ${
+                  renderingMetadata.renderLevel === 'error' ? 'text-red-400/80' :
+                  renderingMetadata.renderLevel === 'warning' ? 'text-yellow-400/80' : 'text-blue-400/80'
+                }`}>
+                  {renderingMetadata.renderReason}
+                </p>
+              )}
+              {/* Technical details for transparency */}
+              {renderingMetadata.renderDetails && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {renderingMetadata.renderDetails.brandExtractionUsed && (
+                    <span className="px-2 py-0.5 bg-green-500/20 text-green-300 text-xs rounded">Brand Extraction</span>
+                  )}
+                  {renderingMetadata.renderDetails.compiledCssUsed && (
+                    <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 text-xs rounded">AI-Generated CSS</span>
+                  )}
+                  {renderingMetadata.renderDetails.layoutBlueprintUsed && (
+                    <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-xs rounded">Layout Blueprint</span>
+                  )}
+                  {renderingMetadata.renderDetails.aiLayoutUsed && (
+                    <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 text-xs rounded">AI Layout Planning</span>
+                  )}
+                  {renderingMetadata.renderDetails.fallbackTriggered && (
+                    <span className="px-2 py-0.5 bg-orange-500/20 text-orange-300 text-xs rounded">Fallback Used</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Legacy Rendering Fallback Warning - for backwards compatibility */}
+      {!renderingMetadata?.renderMessage && renderingMetadata?.rendererUsed === 'BlueprintRenderer' && renderingMetadata.fallbackReason && (
         <div className="p-3 bg-yellow-900/30 rounded-lg border border-yellow-500/30">
           <div className="flex items-start gap-2">
             <span className="text-yellow-400">⚠️</span>
@@ -391,6 +671,29 @@ document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
                 </ul>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Design Quality Assessment - Comprehensive evaluation with actionable suggestions */}
+      {preview?.html && (
+        <DesignQualityAssessment
+          html={preview.html}
+          css={preview.css || ''}
+          businessContext={businessContext}
+          contentContext={contentContext}
+          onAutoFix={onAutoFixIssue ? handleAutoFixIssue : undefined}
+          onRegenerateWithInstructions={onRegenerateWithInstructions ? handleRegenerateWithInstructions : undefined}
+          isFixing={isFixingDesign}
+        />
+      )}
+
+      {/* Fixing in progress */}
+      {isFixingDesign && (
+        <div className="p-3 bg-blue-900/30 rounded-lg border border-blue-500/30">
+          <div className="flex items-center gap-2">
+            <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+            <span className="text-sm text-blue-300">AI is improving your design... This may take a moment.</span>
           </div>
         </div>
       )}
@@ -514,6 +817,67 @@ document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
           {preview.seoValidation.schemaPreserved ? '✓' : '✗'} Schema
         </span>
       </div>
+
+      {/* Fullscreen Preview Modal */}
+      {isFullscreen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex flex-col"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsFullscreen(false);
+          }}
+        >
+          {/* Fullscreen header */}
+          <div className="flex items-center justify-between p-4 bg-zinc-900 border-b border-zinc-800">
+            <div className="flex items-center gap-4">
+              <h3 className="text-lg font-semibold text-white">Full Preview</h3>
+              <span className="text-sm text-zinc-400">
+                View at actual size to check layout and design quality
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {onReworkOutput && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setIsFullscreen(false);
+                    onReworkOutput();
+                  }}
+                  className="bg-blue-600 hover:bg-blue-500 text-white"
+                >
+                  🔄 Regenerate
+                </Button>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsFullscreen(false)}
+                className="px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white transition-colors"
+              >
+                ✕ Close
+              </button>
+            </div>
+          </div>
+
+          {/* Fullscreen content */}
+          <div className="flex-1 overflow-auto p-4 bg-white">
+            <div className="max-w-[1200px] mx-auto">
+              <style dangerouslySetInnerHTML={{ __html: preview.css }} />
+              <div dangerouslySetInnerHTML={{ __html: preview.html }} />
+            </div>
+          </div>
+
+          {/* Fullscreen footer with instructions */}
+          <div className="p-3 bg-zinc-900 border-t border-zinc-800">
+            <div className="flex items-center justify-center gap-4 max-w-[1200px] mx-auto text-sm text-zinc-400">
+              <span>👆 Scroll to review the full article</span>
+              <span>•</span>
+              <span>📐 Check layout, typography, and visual hierarchy</span>
+              <span>•</span>
+              <span>🎯 Verify CTAs and engagement elements are present</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

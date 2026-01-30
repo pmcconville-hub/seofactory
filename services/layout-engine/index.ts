@@ -16,5 +16,8 @@ export { VisualEmphasizer } from './VisualEmphasizer';
 export { ImageHandler } from './ImageHandler';
 export { LayoutEngine, LayoutBlueprintOutput } from './LayoutEngine';
 
+// AI-powered layout planning (for agency-quality results)
+export { generateAILayoutBlueprint } from './AILayoutPlanner';
+
 // Component Mappings
 export * from './componentMappings';

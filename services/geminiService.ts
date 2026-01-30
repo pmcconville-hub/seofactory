@@ -98,8 +98,9 @@ const extractMarkdownFromResponse = (text: string): string => {
     return text;
 };
 
-// Valid Gemini models (December 2025)
+// Valid Gemini models (January 2026)
 // Reference: https://ai.google.dev/gemini-api/docs/models
+// NOTE: Keep in sync with services/ai/providerConfig.ts
 const validGeminiModels = [
     // Gemini 3 series (Latest - November 2025)
     'gemini-3-pro-preview',        // Latest reasoning model
@@ -114,9 +115,7 @@ const validGeminiModels = [
     'gemini-2.0-flash',
     'gemini-2.0-flash-exp',
     'gemini-2.0-flash-lite',
-    // Gemini 1.5 series (Legacy)
-    'gemini-1.5-flash',
-    'gemini-1.5-pro',
+    // NOTE: Gemini 1.5 models removed - API returns 404 for these
 ];
 
 // Default to gemini-3-pro-preview as the latest model (November 2025)

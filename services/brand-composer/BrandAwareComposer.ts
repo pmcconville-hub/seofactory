@@ -2,8 +2,9 @@
  * BrandAwareComposer
  *
  * Composes article content using extracted brand components.
- * Produces styled HTML that matches the brand's visual identity
- * while preserving all SEO semantic markup.
+ * Uses LITERAL HTML/CSS from the target site - NO TEMPLATES.
+ *
+ * The key principle: we use THEIR HTML structure and CSS, not ours.
  */
 
 import { ComponentLibrary } from '../brand-extraction/ComponentLibrary';
@@ -87,49 +88,26 @@ const FALLBACK_TOKENS: ExtractedTokens = {
 };
 
 /**
- * Fallback CSS for when no components are available
+ * Minimal fallback CSS - only used when NO brand extraction exists.
+ * This should rarely be used - the extracted CSS is the primary styling.
  */
 const FALLBACK_CSS = `
-/* Fallback Brand Styles */
+/* Minimal Fallback - Extracted CSS should override */
 .brand-article {
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: system-ui, sans-serif;
   line-height: 1.6;
-  color: #1a1a2e;
+  color: #333;
   max-width: 800px;
   margin: 0 auto;
   padding: 2rem;
 }
-
-.brand-article h1 {
-  font-size: 2.5rem;
+.brand-article h1, .brand-article h2, .brand-article h3 {
   font-weight: 700;
-  margin-bottom: 1.5rem;
-  color: #1a1a2e;
+  line-height: 1.3;
+  margin: 1.5rem 0 1rem;
 }
-
-.brand-article h2 {
-  font-size: 1.75rem;
-  font-weight: 600;
-  margin-top: 2rem;
-  margin-bottom: 1rem;
-  color: #1a1a2e;
-}
-
-.brand-article h3 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin-top: 1.5rem;
-  margin-bottom: 0.75rem;
-  color: #4a4a68;
-}
-
-.brand-article p {
-  margin-bottom: 1rem;
-}
-
-.brand-article .brand-section {
-  margin-bottom: 2rem;
-}
+.brand-article p { margin-bottom: 1rem; }
+.brand-article a { color: #0066cc; }
 `;
 
 export class BrandAwareComposer {
@@ -149,14 +127,13 @@ export class BrandAwareComposer {
 
   /**
    * Convert markdown content to HTML.
-   * Simple markdown parser for common patterns.
    */
   private markdownToHtml(markdown: string): string {
     if (!markdown) return '';
 
     let html = markdown;
 
-    // Convert markdown headings (but preserve heading structure)
+    // Convert markdown headings
     html = html.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>');
     html = html.replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>');
     html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
@@ -164,33 +141,29 @@ export class BrandAwareComposer {
     html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
     html = html.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
 
-    // Convert bold (**text** or __text__)
+    // Convert bold
     html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
 
-    // Convert italic (*text* or _text_) - be careful not to match already converted bold
+    // Convert italic
     html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
     html = html.replace(/(?<!_)_([^_]+)_(?!_)/g, '<em>$1</em>');
 
-    // Convert links [text](url)
+    // Convert links
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 
-    // Convert unordered lists
+    // Convert lists
     html = html.replace(/^[\-\*]\s+(.+)$/gm, '<li>$1</li>');
-    // Wrap consecutive li elements in ul
     html = html.replace(/(<li>[\s\S]*?<\/li>)(\n<li>[\s\S]*?<\/li>)*/g, (match) => {
       return '<ul>' + match + '</ul>';
     });
-
-    // Convert ordered lists
     html = html.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
 
-    // Convert paragraphs (double newlines)
+    // Convert paragraphs
     const paragraphs = html.split(/\n\n+/);
     html = paragraphs
       .map(p => {
         const trimmed = p.trim();
-        // Don't wrap if already wrapped in block elements
         if (
           trimmed.startsWith('<h') ||
           trimmed.startsWith('<ul') ||
@@ -216,11 +189,9 @@ export class BrandAwareComposer {
   }
 
   /**
-   * Compose article content into brand-styled HTML.
+   * Compose article content using extracted brand components.
    *
-   * @param content - The article content to compose
-   * @param directComponents - Optional: components passed directly (bypasses database)
-   * @returns Brand-styled HTML with standalone CSS
+   * CRITICAL: Uses LITERAL HTML/CSS from target site, NOT templates.
    */
   async compose(
     content: ArticleContent,
@@ -238,7 +209,7 @@ export class BrandAwareComposer {
 
     const contentMatcher = new ContentMatcher(components);
 
-    // Track components used and extractions
+    // Track components used
     const componentsUsed: BrandReplicationOutput['componentsUsed'] = [];
     const extractionsUsed = new Set<string>();
     let synthesizedCount = 0;
@@ -247,21 +218,20 @@ export class BrandAwareComposer {
     const htmlSections: string[] = [];
 
     // Add title as H1
-    htmlSections.push(this.renderTitle(content.title));
+    htmlSections.push(`  <h1>${this.escapeHtml(content.title)}</h1>`);
 
     // Process each section
     for (const section of content.sections) {
-      // CRITICAL: Convert markdown content to HTML before composing
+      // Convert markdown to HTML
       const htmlContent = this.markdownToHtml(section.content);
 
       const contentBlock: ContentBlock = {
         type: 'section',
         heading: section.heading,
         headingLevel: section.headingLevel,
-        body: htmlContent // Use converted HTML
+        body: htmlContent
       };
 
-      // Create a copy of the section with HTML content
       const htmlSection: ArticleSection = {
         ...section,
         content: htmlContent
@@ -270,31 +240,45 @@ export class BrandAwareComposer {
       // Try to match to a component
       const match = await contentMatcher.matchContentToComponent(contentBlock);
 
-      if (match) {
-        // Use extracted component
-        const renderedSection = this.renderWithComponent(htmlSection, match.component);
+      if (match && match.component.literalHtml && this.isUsableLiteralHtml(match.component.literalHtml)) {
+        // USE LITERAL HTML from target site
+        const renderedSection = this.renderWithLiteralHtml(htmlSection, match.component);
         htmlSections.push(renderedSection);
 
         componentsUsed.push({
           id: match.component.id,
           type: 'extracted',
           theirClasses: match.component.theirClassNames,
-          ourClasses: match.component.theirClassNames.map(c => `brand-${c}`)
+          ourClasses: match.component.theirClassNames // Use their classes directly
+        });
+
+        extractionsUsed.add(match.component.extractionId);
+      } else if (match) {
+        // Have component but no usable literal HTML
+        // Use semantic HTML with their extracted class names
+        const renderedSection = this.renderSemanticWithTheirClasses(htmlSection, match.component);
+        htmlSections.push(renderedSection);
+
+        componentsUsed.push({
+          id: match.component.id,
+          type: 'extracted',
+          theirClasses: match.component.theirClassNames,
+          ourClasses: match.component.theirClassNames
         });
 
         extractionsUsed.add(match.component.extractionId);
       } else {
-        // Use fallback styling
-        const renderedSection = this.renderWithFallback(htmlSection);
+        // No match at all - use minimal semantic HTML
+        const renderedSection = this.renderMinimalSemantic(htmlSection);
         htmlSections.push(renderedSection);
         synthesizedCount++;
       }
     }
 
-    // Wrap in brand-article
+    // Wrap in article
     const html = `<article class="brand-article">\n${htmlSections.join('\n')}\n</article>`;
 
-    // Generate CSS
+    // Generate CSS - primarily from extracted literal CSS
     const standaloneCss = components.length > 0
       ? this.cssGenerator.generate(components, [], FALLBACK_TOKENS)
       : FALLBACK_CSS;
@@ -315,98 +299,39 @@ export class BrandAwareComposer {
   }
 
   /**
-   * Render the article title as H1.
+   * Check if literal HTML is usable (not cookie content, not too short/long)
    */
-  private renderTitle(title: string): string {
-    return `  <h1>${this.escapeHtml(title)}</h1>`;
+  private isUsableLiteralHtml(html: string): boolean {
+    if (!html || html.trim() === '') return false;
+    if (html.trim().startsWith('<!--')) return false;
+    if (html.length < 50) return false;
+    if (html.length > 50000) return false;
+    if (!html.includes('<') || !html.includes('>')) return false;
+    if (this.containsCookieContent(html)) return false;
+    return true;
   }
 
   /**
-   * Render a section using LITERAL HTML from extracted component.
-   * This is the key to design-agency quality output - we use the ACTUAL
-   * HTML structure from the target website, not a template.
+   * Render a section using LITERAL HTML from the extracted component.
+   * This is the key to design-agency quality - we use THEIR HTML, not ours.
    */
-  private renderWithComponent(section: ArticleSection, component: ExtractedComponent): string {
-    // CRITICAL: Use the literal HTML from the extracted component
-    // This preserves the exact structure and styling from the target site
-    const html = component.literalHtml;
-
-    // Check if we have usable literal HTML (not just a comment or placeholder)
-    const hasUsableLiteralHtml = html &&
-      html.trim() !== '' &&
-      !html.trim().startsWith('<!--') &&
-      html.length > 100 && // Must be substantial HTML
-      html.length < 50000 && // Not too large (would indicate full page extraction)
-      (html.includes('<') && html.includes('>')) &&
-      !this.containsCookieContent(html); // Must not be cookie consent content
-
-    if (!hasUsableLiteralHtml) {
-      // Fallback if no literal HTML available
-      // But still apply brand class names for styling
-      console.log('[BrandAwareComposer] No usable literal HTML for component:', component.componentType);
-      return this.renderWithBrandStyling(section, component);
-    }
-
-    // Inject content into the literal HTML structure
-    // Strategy: Find the content areas and replace them
-    let result = this.injectContentIntoLiteralHtml(html, section, component);
-
-    // Add SEO semantic layer (wrap in semantic element if not already)
-    if (!result.includes('<section') && !result.includes('<article')) {
-      const classNames = component.theirClassNames.join(' ');
-      result = `<section class="${classNames} brand-section" data-brand-component="${component.componentType}">\n${result}\n</section>`;
-    }
-
-    return result;
-  }
-
-  /**
-   * Render a section with brand styling classes but without literal HTML.
-   * This is used when component extraction succeeded (got classes) but
-   * literal HTML extraction failed.
-   */
-  private renderWithBrandStyling(section: ArticleSection, component: ExtractedComponent): string {
-    const headingTag = `h${section.headingLevel}`;
-    const classNames = component.theirClassNames.filter(c => c && c.trim()).join(' ');
-    const componentType = component.componentType || 'section';
-
-    // Use brand classes but with semantic HTML structure
-    return `<section class="${classNames} brand-section brand-${componentType}" data-brand-component="${componentType}">
-    <${headingTag} class="brand-heading">${this.escapeHtml(section.heading)}</${headingTag}>
-    <div class="brand-content">
-      ${section.content}
-    </div>
-  </section>`;
-  }
-
-  /**
-   * Inject article content into literal HTML structure.
-   * Uses multiple strategies to find and replace content areas.
-   */
-  private injectContentIntoLiteralHtml(html: string, section: ArticleSection, component: ExtractedComponent): string {
+  private renderWithLiteralHtml(section: ArticleSection, component: ExtractedComponent): string {
+    let html = component.literalHtml;
     const headingTag = `h${section.headingLevel}`;
 
-    // Strategy 1: Use content slots if defined
-    if (component.contentSlots && component.contentSlots.length > 0) {
-      html = this.injectUsingSlots(html, section, component.contentSlots);
-    }
-
-    // Strategy 2: Replace heading patterns
-    // Match any h1-h6 and replace with our heading (preserving the tag level from original)
+    // Inject our content into their HTML structure
+    // Replace headings
     const headingPattern = /<h([1-6])([^>]*)>([^<]*)<\/h\1>/gi;
     let headingReplaced = false;
-
     html = html.replace(headingPattern, (match, level, attrs, _text) => {
       if (!headingReplaced) {
         headingReplaced = true;
-        // Use the component's heading level for structure, our content
         return `<h${level}${attrs}>${this.escapeHtml(section.heading)}</h${level}>`;
       }
-      // Remove subsequent headings (they're from the source page's content)
-      return '';
+      return ''; // Remove other headings
     });
 
-    // If no heading was found, prepend one
+    // If no heading found, prepend one
     if (!headingReplaced) {
       const firstTag = html.match(/^(\s*<[^>]+>)/);
       if (firstTag) {
@@ -414,23 +339,18 @@ export class BrandAwareComposer {
       }
     }
 
-    // Strategy 3: Replace paragraph content
-    // Find the main content area (after heading) and inject our content
+    // Replace paragraph content
     const paragraphPattern = /<p([^>]*)>[\s\S]*?<\/p>/gi;
     let contentInjected = false;
-
     html = html.replace(paragraphPattern, (match, attrs) => {
       if (!contentInjected) {
         contentInjected = true;
-        // Replace first paragraph with our content
-        // Our content may contain multiple paragraphs, preserve structure
         return section.content;
       }
-      // Remove subsequent paragraphs (they're from the source page's content)
-      return '';
+      return ''; // Remove other paragraphs
     });
 
-    // If no paragraph was replaced, append content before closing tag
+    // If no paragraph, append content
     if (!contentInjected) {
       const closingTag = html.match(/<\/(section|div|article)>\s*$/i);
       if (closingTag) {
@@ -444,63 +364,34 @@ export class BrandAwareComposer {
   }
 
   /**
-   * Inject content using defined content slots.
+   * Render semantic HTML using their extracted class names.
+   * Used when literal HTML extraction failed but we have their CSS.
    */
-  private injectUsingSlots(html: string, section: ArticleSection, slots: import('../../types/brandExtraction').ContentSlot[]): string {
-    for (const slot of slots) {
-      // Find the slot selector in HTML and inject content
-      if (slot.selector && slot.selector !== '*') {
-        // If slot has a specific selector, try to find and fill it
-        const selectorPattern = new RegExp(
-          `(<[^>]*class="[^"]*${this.escapeRegex(slot.selector)}[^"]*"[^>]*>)([\\s\\S]*?)(<\\/[^>]+>)`,
-          'i'
-        );
-
-        html = html.replace(selectorPattern, (match, openTag, _content, closeTag) => {
-          let replacement = '';
-          switch (slot.name) {
-            case 'heading':
-            case 'title':
-              replacement = this.escapeHtml(section.heading);
-              break;
-            case 'content':
-            case 'body':
-            case 'text':
-              replacement = section.content;
-              break;
-            default:
-              replacement = section.content;
-          }
-          return `${openTag}${replacement}${closeTag}`;
-        });
-      }
-    }
-    return html;
-  }
-
-  /**
-   * Escape regex special characters.
-   */
-  private escapeRegex(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
-  /**
-   * Render a section with fallback styling.
-   * Preserves SEO semantic markup from the content.
-   */
-  private renderWithFallback(section: ArticleSection): string {
+  private renderSemanticWithTheirClasses(section: ArticleSection, component: ExtractedComponent): string {
     const headingTag = `h${section.headingLevel}`;
+    const classNames = component.theirClassNames.filter(c => c && c.trim()).join(' ');
 
-    return `  <section class="brand-section">
+    // Minimal semantic HTML with their class names - their CSS styles it
+    return `<section class="${classNames}">
     <${headingTag}>${this.escapeHtml(section.heading)}</${headingTag}>
     ${section.content}
   </section>`;
   }
 
   /**
-   * Escape HTML special characters in text.
-   * Used for headings and titles to prevent XSS.
+   * Render minimal semantic HTML when no brand extraction available.
+   */
+  private renderMinimalSemantic(section: ArticleSection): string {
+    const headingTag = `h${section.headingLevel}`;
+
+    return `  <section>
+    <${headingTag}>${this.escapeHtml(section.heading)}</${headingTag}>
+    ${section.content}
+  </section>`;
+  }
+
+  /**
+   * Escape HTML special characters.
    */
   private escapeHtml(text: string): string {
     const escapeMap: Record<string, string> = {
@@ -510,47 +401,53 @@ export class BrandAwareComposer {
       '"': '&quot;',
       "'": '&#39;'
     };
-
     return text.replace(/[&<>"']/g, char => escapeMap[char]);
   }
 
   /**
-   * Check if HTML content contains cookie consent / privacy policy content.
-   * These should not be used as component templates.
+   * Check if HTML contains cookie consent content.
+   * Detects both content keywords AND consent manager class patterns.
    */
   private containsCookieContent(html: string): boolean {
-    const lowerHtml = html.toLowerCase();
-
-    // Keywords that indicate cookie consent / privacy policy content
-    const cookieKeywords = [
-      'cookie policy',
-      'cookie consent',
-      'gdpr',
-      'privacy policy',
-      'storage duration',
-      'http cookie',
-      'maximum storage',
-      'learn more about this provider',
-      'onetrust',
-      'cookieyes',
-      'cookie banner',
-      'consent manager',
-      'tracking pixel',
-      'local storage',
-      'session storage',
+    // CRITICAL FIX: Check for known consent manager class/id patterns FIRST
+    // These are class names, not content - the original check missed them
+    const cookieClassPatterns = [
+      /CybotCookiebot/i,
+      /CookiebotDialog/i,
+      /onetrust/i,
+      /cookieyes/i,
+      /cc-window/i,           // Cookie Consent library
+      /cookie-notice/i,
+      /cookie-banner/i,
+      /cookie-consent/i,
+      /gdpr-cookie/i,
+      /cookie-law/i,
+      /eupopup/i,             // EU Cookie Law popup
+      /tarteaucitron/i,       // French cookie manager
     ];
 
-    let keywordCount = 0;
-    for (const keyword of cookieKeywords) {
-      if (lowerHtml.includes(keyword)) {
-        keywordCount++;
+    for (const pattern of cookieClassPatterns) {
+      if (pattern.test(html)) {
+        console.log(`[BrandAwareComposer] Detected cookie class pattern: ${pattern}`);
+        return true;
       }
     }
 
-    // If 3+ cookie keywords found, this is likely cookie consent content
-    if (keywordCount >= 3) {
-      console.log('[BrandAwareComposer] Detected cookie consent content, skipping literal HTML');
-      return true;
+    // Check for content keywords (lowered threshold from 3 to 1)
+    const lowerHtml = html.toLowerCase();
+    const cookieKeywords = [
+      'cookie policy', 'cookie consent', 'gdpr', 'privacy policy',
+      'storage duration', 'http cookie', 'consent manager', 'tracking pixel',
+      'accept cookies', 'reject cookies', 'manage cookies', 'cookie preferences',
+      'necessary cookies', 'functional cookies', 'analytics cookies',
+      'marketing cookies', 'cookie settings'
+    ];
+
+    for (const keyword of cookieKeywords) {
+      if (lowerHtml.includes(keyword)) {
+        console.log(`[BrandAwareComposer] Detected cookie keyword: ${keyword}`);
+        return true;
+      }
     }
 
     return false;

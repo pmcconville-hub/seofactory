@@ -5,13 +5,25 @@
  *
  * KEY PRINCIPLES:
  * - NO template classes (no ctc-*, no preset components)
- * - HTML structure is derived from CONTENT (sections, headings, lists, tables)
+ * - HTML structure is derived from CONTENT SEMANTICS + Layout Engine decisions
  * - CSS uses ACTUAL brand values (hex colors, font names, pixels)
  * - Each brand produces UNIQUE output
+ * - Layout Engine decisions (component, variant, emphasis) affect rendered output
  * - Standalone HTML that works without external dependencies
  */
 
 import type { DesignDNA } from '../../../types/designDna';
+import type {
+  BlueprintSection,
+  ContentType,
+  EmphasisLevel,
+  LayoutBlueprint,
+  ComponentType,
+  LayoutParameters,
+  VisualEmphasis,
+} from '../../layout-engine/types';
+import { ComponentRenderer } from './ComponentRenderer';
+import { generateComponentStyles } from './ComponentStyles';
 
 // ============================================================================
 // TYPES
@@ -35,6 +47,13 @@ export interface CleanRenderOutput {
   fullDocument: string; // Complete standalone HTML document
 }
 
+/**
+ * Layout blueprint input for connecting Layout Engine decisions to rendering
+ */
+export interface LayoutBlueprintInput {
+  sections: BlueprintSection[];
+}
+
 interface ParsedContent {
   type: 'paragraph' | 'heading' | 'list' | 'table' | 'image' | 'blockquote';
   level?: number; // for headings
@@ -54,18 +73,47 @@ interface ParsedContent {
 export class CleanArticleRenderer {
   private designDna: DesignDNA;
   private brandName: string;
+  private layoutBlueprint?: LayoutBlueprintInput;
+  /**
+   * THE KEY FIX: AI-generated CSS unique to this brand
+   * When provided, this CSS is used directly instead of generating from DesignDNA
+   * This is what makes output "design-agency quality" - using the AI's brand-specific CSS
+   */
+  private compiledCss?: string;
+  /** Track which content types are actually used for CSS generation */
+  private usedContentTypes: Set<ContentType> = new Set();
+  private usedEmphasisLevels: Set<EmphasisLevel> = new Set();
 
-  constructor(designDna: DesignDNA, brandName: string = 'Brand') {
+  constructor(
+    designDna: DesignDNA,
+    brandName: string = 'Brand',
+    layoutBlueprint?: LayoutBlueprintInput,
+    compiledCss?: string
+  ) {
     this.designDna = designDna;
     this.brandName = brandName;
+    this.layoutBlueprint = layoutBlueprint;
+    this.compiledCss = compiledCss;
   }
 
   /**
    * Render article content to clean, professional HTML
+   * When layoutBlueprint is provided, uses Layout Engine decisions for:
+   * - Content type → semantic HTML structure
+   * - Emphasis level → visual styling
+   * - Component selection → CSS classes
    */
   render(article: ArticleInput): CleanRenderOutput {
-    const css = this.generateCSS();
+    // Reset tracking for this render
+    this.usedContentTypes.clear();
+    this.usedEmphasisLevels.clear();
+
+    // Generate HTML first (this populates usedContentTypes and usedEmphasisLevels)
     const html = this.generateHTML(article);
+
+    // Generate CSS with only the needed content type styles
+    const css = this.generateCSS();
+
     const fullDocument = this.wrapInDocument(html, css, article.title);
 
     return { html, css, fullDocument };
@@ -95,12 +143,36 @@ export class CleanArticleRenderer {
     parts.push('<article>');
 
     // Each section - HTML built from parsing the actual content
+    // When Layout Blueprint is available, use its decisions for structure and styling
+    console.log('[CleanArticleRenderer] Starting section rendering with layout blueprint:', {
+      hasBlueprint: !!this.layoutBlueprint,
+      blueprintSections: this.layoutBlueprint?.sections?.length || 0,
+      articleSections: article.sections.length,
+      blueprintEmphasisLevels: this.layoutBlueprint?.sections?.map(s => ({ id: s.id, emphasis: s.emphasis?.level })) || [],
+    });
+
+    // Track matched blueprint sections to avoid double-matching
+    const usedBlueprintIndices = new Set<number>();
+
     for (let i = 0; i < article.sections.length; i++) {
       const section = article.sections[i];
       const isFirst = i === 0;
       const isAlternate = i % 2 === 1;
 
-      parts.push(this.buildSection(section, isFirst, isAlternate));
+      // Find corresponding layout blueprint section using multiple strategies:
+      // 1. Exact ID match
+      // 2. Heading text similarity match
+      // 3. Order-based match (accounting for intro sections)
+      const layoutSection = this.findMatchingLayoutSection(section, i, usedBlueprintIndices);
+
+      console.log(`[CleanArticleRenderer] Section ${i} (${section.id}) matched:`, {
+        sectionHeading: section.heading?.substring(0, 40),
+        matchedLayoutId: layoutSection?.id || 'NONE',
+        matchedEmphasis: layoutSection?.emphasis?.level || 'DEFAULT',
+        matchedContentType: layoutSection?.contentType || 'INFERRED',
+      });
+
+      parts.push(this.buildSection(section, isFirst, isAlternate, layoutSection));
     }
 
     parts.push('</article>');
@@ -144,30 +216,504 @@ ${listItems}
   }
 
   /**
-   * Build a content section - HTML structure from PARSING the content
+   * Build a content section - HTML structure from Layout Engine decisions + content parsing
+   *
+   * When layoutSection is provided:
+   * - Uses component.primaryComponent to select visually distinct component renderer
+   * - Uses emphasis for visual styling (hero, featured, etc.)
+   * - Uses layout for columns, width, spacing
+   *
+   * Without layoutSection, falls back to simple prose rendering.
    */
-  private buildSection(section: ArticleSection, isFirst: boolean, isAlternate: boolean): string {
-    const sectionClass = isAlternate ? 'section section-alt' : 'section';
+  private buildSection(
+    section: ArticleSection,
+    isFirst: boolean,
+    isAlternate: boolean,
+    layoutSection?: BlueprintSection
+  ): string {
     const sectionId = section.id || '';
 
-    // Parse the content to understand its structure
-    const parsedBlocks = this.parseContent(section.content);
+    // Determine content type and emphasis from Layout Engine or infer from content
+    const contentType = layoutSection?.contentType || this.inferContentType(section);
+    const emphasisLevel = layoutSection?.emphasis?.level || (isFirst ? 'featured' : 'standard');
+    const component = layoutSection?.component?.primaryComponent || this.inferComponent(contentType);
+    const variant = layoutSection?.component?.componentVariant || 'default';
 
-    // Build HTML from parsed content
-    const contentHtml = parsedBlocks.map(block => this.renderBlock(block)).join('\n');
+    // Track used types for CSS generation
+    this.usedContentTypes.add(contentType);
+    this.usedEmphasisLevels.add(emphasisLevel);
+
+    // =========================================================================
+    // USE COMPONENT RENDERER for rich, agency-quality visual components
+    // =========================================================================
+    // This is what creates the "wow factor" - not generic prose but
+    // purposefully designed visual components (feature grids, timelines, etc.)
+    if (layoutSection && layoutSection.component && layoutSection.layout && layoutSection.emphasis) {
+      console.log(`[CleanArticleRenderer] Using ComponentRenderer for ${component}`);
+      return ComponentRenderer.render({
+        sectionId,
+        heading: section.heading || '',
+        headingLevel: section.headingLevel || 2,
+        content: section.content,
+        component: component as ComponentType,
+        variant,
+        layout: layoutSection.layout,
+        emphasis: layoutSection.emphasis,
+        cssClasses: layoutSection.cssClasses,
+      });
+    }
+
+    // =========================================================================
+    // FALLBACK: Simple prose rendering when no Layout Engine blueprint
+    // =========================================================================
+    console.log(`[CleanArticleRenderer] Fallback prose rendering for ${sectionId}`);
+
+    // Build CSS classes based on inferred content type
+    const classes = [
+      'section',
+      `section-${contentType}`,
+      `emphasis-${emphasisLevel}`,
+      isAlternate && emphasisLevel === 'standard' ? 'section-alt' : '',
+    ].filter(Boolean).join(' ');
+
+    // Build semantic HTML based on content type
+    const contentHtml = this.buildSemanticHtml(section, contentType);
 
     // Build section with heading if present
+    const headingLevel = section.headingLevel || 2;
     const headingHtml = section.heading
-      ? `<h${section.headingLevel || 2}>${this.escapeHtml(section.heading)}</h${section.headingLevel || 2}>`
+      ? `<h${headingLevel} class="section-heading">${this.escapeHtml(section.heading)}</h${headingLevel}>`
       : '';
 
     return `
-<section id="${sectionId}" class="${sectionClass}">
+<section id="${sectionId}" class="${classes}" data-component="${component}" data-variant="${variant}">
   <div class="section-inner">
     ${headingHtml}
     ${contentHtml}
   </div>
 </section>`;
+  }
+
+  /**
+   * Infer appropriate component type from content type
+   */
+  private inferComponent(contentType: ContentType): ComponentType {
+    const componentMap: Record<ContentType, ComponentType> = {
+      'introduction': 'prose',
+      'explanation': 'prose',
+      'steps': 'step-list',
+      'faq': 'faq-accordion',
+      'comparison': 'comparison-table',
+      'summary': 'key-takeaways',
+      'testimonial': 'testimonial-card',
+      'definition': 'definition-box',
+      'list': 'checklist',
+      'data': 'stat-highlight',
+    };
+    return componentMap[contentType] || 'prose';
+  }
+
+  /**
+   * Find the matching layout blueprint section using multiple strategies.
+   * Strategies (in order of priority):
+   * 1. Exact ID match
+   * 2. Heading text similarity (case-insensitive, normalized)
+   * 3. Order-based match (accounting for intro sections offset)
+   */
+  private findMatchingLayoutSection(
+    section: ArticleSection,
+    articleIndex: number,
+    usedIndices: Set<number>
+  ): BlueprintSection | undefined {
+    if (!this.layoutBlueprint?.sections || this.layoutBlueprint.sections.length === 0) {
+      return undefined;
+    }
+
+    const blueprintSections = this.layoutBlueprint.sections;
+
+    // Strategy 1: Exact ID match
+    for (let i = 0; i < blueprintSections.length; i++) {
+      if (usedIndices.has(i)) continue;
+      if (blueprintSections[i].id === section.id) {
+        usedIndices.add(i);
+        return blueprintSections[i];
+      }
+    }
+
+    // Strategy 2: Heading similarity match
+    if (section.heading) {
+      const normalizedHeading = this.normalizeForComparison(section.heading);
+      for (let i = 0; i < blueprintSections.length; i++) {
+        if (usedIndices.has(i)) continue;
+        const bpHeading = this.normalizeForComparison(blueprintSections[i].heading);
+        if (normalizedHeading && bpHeading && this.headingsAreSimilar(normalizedHeading, bpHeading)) {
+          usedIndices.add(i);
+          return blueprintSections[i];
+        }
+      }
+    }
+
+    // Strategy 3: Order-based match
+    // Account for intro sections: if section.id starts with 'section-intro', don't offset
+    // Otherwise, check if there's an offset due to intro content
+    const isIntroSection = section.id.includes('intro');
+    if (isIntroSection) {
+      // Intro sections might not have a blueprint match - that's OK
+      return undefined;
+    }
+
+    // For non-intro sections, try matching by extracting the numeric part of the ID
+    const sectionNumMatch = section.id.match(/section-(\d+)/);
+    if (sectionNumMatch) {
+      const sectionNum = parseInt(sectionNumMatch[1], 10);
+      for (let i = 0; i < blueprintSections.length; i++) {
+        if (usedIndices.has(i)) continue;
+        if (blueprintSections[i].order === sectionNum) {
+          usedIndices.add(i);
+          return blueprintSections[i];
+        }
+      }
+    }
+
+    // Last resort: match by article index (only if within blueprint bounds)
+    if (articleIndex < blueprintSections.length && !usedIndices.has(articleIndex)) {
+      usedIndices.add(articleIndex);
+      return blueprintSections[articleIndex];
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Normalize a string for comparison (lowercase, remove special chars, collapse whitespace)
+   */
+  private normalizeForComparison(s: string): string {
+    return s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Check if two normalized headings are similar (word overlap >= 70%)
+   */
+  private headingsAreSimilar(h1: string, h2: string): boolean {
+    if (h1 === h2) return true;
+
+    const words1 = h1.split(' ').filter(w => w.length > 0);
+    const words2 = h2.split(' ').filter(w => w.length > 0);
+
+    if (words1.length === 0 || words2.length === 0) return false;
+
+    const set1 = new Set(words1);
+    const set2 = new Set(words2);
+    const overlap = [...set1].filter(w => set2.has(w)).length;
+    const total = Math.max(set1.size, set2.size);
+
+    return overlap / total >= 0.7;
+  }
+
+  /**
+   * Infer content type from section content when Layout Engine blueprint not available
+   */
+  private inferContentType(section: ArticleSection): ContentType {
+    const heading = (section.heading || '').toLowerCase();
+    const content = section.content.toLowerCase();
+
+    // Check for steps/how-to
+    if (/step|how to|tutorial|guide|process/i.test(heading) ||
+        /^\d+\.\s+/m.test(section.content)) {
+      return 'steps';
+    }
+
+    // Check for FAQ
+    if (/faq|question|q&a/i.test(heading) ||
+        /\?[\s]*$/m.test(section.content)) {
+      return 'faq';
+    }
+
+    // Check for comparison
+    if (/compare|vs\.|versus|comparison|difference/i.test(heading) ||
+        section.content.includes('|') && section.content.split('\n').filter(l => l.includes('|')).length > 2) {
+      return 'comparison';
+    }
+
+    // Check for list content
+    if (content.includes('- ') || /^\*\s+/m.test(content) ||
+        /benefit|feature|advantage|tip/i.test(heading)) {
+      return 'list';
+    }
+
+    // Check for summary/key takeaways
+    if (/summary|conclusion|takeaway|key point/i.test(heading)) {
+      return 'summary';
+    }
+
+    // Check for introduction
+    if (/intro|overview|what is/i.test(heading) || !section.heading) {
+      return 'introduction';
+    }
+
+    // Check for definition
+    if (/definition|meaning|what does/i.test(heading)) {
+      return 'definition';
+    }
+
+    // Default to explanation
+    return 'explanation';
+  }
+
+  /**
+   * Build semantic HTML structure based on content type
+   * This is the core of the "no-template" approach - HTML structure comes from
+   * content semantics, not from predefined templates.
+   */
+  private buildSemanticHtml(section: ArticleSection, contentType: ContentType): string {
+    switch (contentType) {
+      case 'steps':
+        return this.buildStepsHtml(section);
+      case 'faq':
+        return this.buildFaqHtml(section);
+      case 'comparison':
+        return this.buildComparisonHtml(section);
+      case 'list':
+        return this.buildListHtml(section);
+      case 'summary':
+        return this.buildSummaryHtml(section);
+      case 'testimonial':
+        return this.buildTestimonialHtml(section);
+      case 'definition':
+        return this.buildDefinitionHtml(section);
+      case 'data':
+        return this.buildDataHtml(section);
+      case 'introduction':
+      case 'explanation':
+      default:
+        return this.buildProseHtml(section);
+    }
+  }
+
+  /**
+   * Build steps/timeline HTML structure
+   * Uses ordered list with step indicators
+   */
+  private buildStepsHtml(section: ArticleSection): string {
+    const parsedBlocks = this.parseContent(section.content);
+
+    // Extract numbered items or list items
+    const steps: string[] = [];
+    let currentStepContent = '';
+
+    for (const block of parsedBlocks) {
+      if (block.type === 'list' && block.items) {
+        steps.push(...block.items);
+      } else if (block.type === 'heading') {
+        // Sub-heading might be a step title
+        if (currentStepContent) {
+          steps.push(currentStepContent);
+          currentStepContent = '';
+        }
+        currentStepContent = `<strong>${this.processInlineMarkdown(block.text || '')}</strong>`;
+      } else if (block.type === 'paragraph' && block.text) {
+        if (currentStepContent) {
+          currentStepContent += ' ' + this.processInlineMarkdown(block.text);
+        } else {
+          currentStepContent = this.processInlineMarkdown(block.text);
+        }
+      }
+    }
+    if (currentStepContent) {
+      steps.push(currentStepContent);
+    }
+
+    // If no steps extracted, fall back to prose rendering
+    if (steps.length === 0) {
+      return this.buildProseHtml(section);
+    }
+
+    const stepsHtml = steps.map((step, index) =>
+      `<li class="step-item">
+        <span class="step-number">${index + 1}</span>
+        <div class="step-content">${step}</div>
+      </li>`
+    ).join('\n');
+
+    return `<ol class="steps-list">${stepsHtml}</ol>`;
+  }
+
+  /**
+   * Build FAQ HTML structure
+   * Uses definition list with question/answer pairs
+   */
+  private buildFaqHtml(section: ArticleSection): string {
+    const parsedBlocks = this.parseContent(section.content);
+
+    // Extract Q&A pairs
+    const faqItems: { question: string; answer: string }[] = [];
+    let currentQuestion = '';
+    let currentAnswer = '';
+
+    for (const block of parsedBlocks) {
+      if (block.type === 'heading' && block.text) {
+        // If we have a previous Q&A, save it
+        if (currentQuestion && currentAnswer) {
+          faqItems.push({ question: currentQuestion, answer: currentAnswer });
+        }
+        currentQuestion = block.text;
+        currentAnswer = '';
+      } else if (block.type === 'paragraph' && block.text) {
+        // Check if this looks like a question
+        if (block.text.endsWith('?') && !currentAnswer) {
+          if (currentQuestion && currentAnswer) {
+            faqItems.push({ question: currentQuestion, answer: currentAnswer });
+          }
+          currentQuestion = block.text;
+          currentAnswer = '';
+        } else {
+          currentAnswer += (currentAnswer ? ' ' : '') + this.processInlineMarkdown(block.text);
+        }
+      } else {
+        // Accumulate other content as part of answer
+        currentAnswer += (currentAnswer ? ' ' : '') + this.renderBlock(block);
+      }
+    }
+
+    // Save last Q&A
+    if (currentQuestion && currentAnswer) {
+      faqItems.push({ question: currentQuestion, answer: currentAnswer });
+    }
+
+    // If no FAQ items extracted, fall back to prose
+    if (faqItems.length === 0) {
+      return this.buildProseHtml(section);
+    }
+
+    const faqHtml = faqItems.map((item, index) =>
+      `<div class="faq-item">
+        <dt class="faq-question">
+          <span class="faq-icon">Q</span>
+          ${this.escapeHtml(item.question)}
+        </dt>
+        <dd class="faq-answer">${item.answer}</dd>
+      </div>`
+    ).join('\n');
+
+    return `<dl class="faq-list">${faqHtml}</dl>`;
+  }
+
+  /**
+   * Build comparison HTML structure
+   * Uses table with styled header
+   */
+  private buildComparisonHtml(section: ArticleSection): string {
+    const parsedBlocks = this.parseContent(section.content);
+
+    // Look for table in parsed blocks
+    const tableBlock = parsedBlocks.find(b => b.type === 'table');
+    if (tableBlock && tableBlock.headers && tableBlock.rows) {
+      return this.renderTable(tableBlock.headers, tableBlock.rows);
+    }
+
+    // Fall back to prose if no table found
+    return this.buildProseHtml(section);
+  }
+
+  /**
+   * Build list HTML structure
+   * Uses unordered list with styled markers
+   */
+  private buildListHtml(section: ArticleSection): string {
+    const parsedBlocks = this.parseContent(section.content);
+    const parts: string[] = [];
+
+    for (const block of parsedBlocks) {
+      if (block.type === 'list' && block.items) {
+        const listItems = block.items.map(item =>
+          `<li class="list-item">
+            <span class="list-marker"></span>
+            <span class="list-content">${this.processInlineMarkdown(item)}</span>
+          </li>`
+        ).join('\n');
+        parts.push(`<ul class="styled-list">${listItems}</ul>`);
+      } else {
+        parts.push(this.renderBlock(block));
+      }
+    }
+
+    return parts.join('\n');
+  }
+
+  /**
+   * Build summary/key takeaways HTML structure
+   * Uses aside with highlighted key points
+   */
+  private buildSummaryHtml(section: ArticleSection): string {
+    const parsedBlocks = this.parseContent(section.content);
+
+    return `<aside class="summary-box">
+      <div class="summary-icon">💡</div>
+      <div class="summary-content">
+        ${parsedBlocks.map(block => this.renderBlock(block)).join('\n')}
+      </div>
+    </aside>`;
+  }
+
+  /**
+   * Build testimonial HTML structure
+   * Uses blockquote with citation
+   */
+  private buildTestimonialHtml(section: ArticleSection): string {
+    const parsedBlocks = this.parseContent(section.content);
+    const parts: string[] = [];
+
+    for (const block of parsedBlocks) {
+      if (block.type === 'blockquote') {
+        parts.push(`<blockquote class="testimonial">
+          <p class="testimonial-text">${this.processInlineMarkdown(block.text || '')}</p>
+        </blockquote>`);
+      } else {
+        parts.push(this.renderBlock(block));
+      }
+    }
+
+    return parts.join('\n');
+  }
+
+  /**
+   * Build definition HTML structure
+   * Uses definition list for term/definition
+   */
+  private buildDefinitionHtml(section: ArticleSection): string {
+    const parsedBlocks = this.parseContent(section.content);
+
+    return `<div class="definition-box">
+      <div class="definition-icon">📖</div>
+      <div class="definition-content">
+        ${parsedBlocks.map(block => this.renderBlock(block)).join('\n')}
+      </div>
+    </div>`;
+  }
+
+  /**
+   * Build data/statistics HTML structure
+   * Uses figure with highlighted stats
+   */
+  private buildDataHtml(section: ArticleSection): string {
+    const parsedBlocks = this.parseContent(section.content);
+
+    return `<figure class="data-highlight">
+      ${parsedBlocks.map(block => this.renderBlock(block)).join('\n')}
+    </figure>`;
+  }
+
+  /**
+   * Build prose (introduction/explanation) HTML structure
+   * Standard paragraphs with proper formatting
+   */
+  private buildProseHtml(section: ArticleSection): string {
+    const parsedBlocks = this.parseContent(section.content);
+    return parsedBlocks.map(block => this.renderBlock(block)).join('\n');
   }
 
   /**
@@ -391,7 +937,21 @@ ${listItems}
   // ============================================================================
 
   private generateCSS(): string {
-    // Extract ACTUAL values from DesignDNA
+    // ==========================================================================
+    // THE KEY FIX: Use AI-generated compiledCss when available
+    // ==========================================================================
+    // This is what makes output "design-agency quality" - the AI generates unique
+    // CSS per brand that captures their exact style, not generic fallback styles.
+    if (this.compiledCss) {
+      console.log('[CleanArticleRenderer] Using AI-generated compiledCss (design-agency quality)');
+      // Return the AI-generated CSS with minimal supplementary styles for our components
+      return `${this.compiledCss}\n\n${this.generateSupplementaryCSS()}`;
+    }
+
+    console.log('[CleanArticleRenderer] Generating fallback CSS from DesignDNA');
+
+    // FALLBACK: Generate CSS from DesignDNA when no compiledCss available
+    // This produces acceptable but not "agency quality" output
     const primary = this.getColor('primary');
     const primaryLight = this.getColor('primaryLight');
     const primaryDark = this.getColor('primaryDark');
@@ -412,6 +972,515 @@ ${listItems}
     const radiusLg = this.getRadius('large');
 
     // Generate CSS with ACTUAL values embedded
+    // Include base CSS + content type CSS + emphasis CSS
+    const cssParts = [
+      this.generateBaseCSS(primary, primaryDark, textDark, textMedium, bgLight, border, headingFont, bodyFont, radiusSm, radiusMd, radiusLg),
+      this.generateEmphasisCSS(primary, primaryDark, accent, bgLight, headingFont, radiusMd, radiusLg),
+      this.generateStepsCSS(primary, primaryDark, bgLight, headingFont, radiusMd),
+      this.generateFaqCSS(primary, primaryDark, textDark, bgLight, headingFont, radiusMd),
+      this.generateComparisonCSS(primary, bgLight, radiusMd),
+      this.generateListCSS(primary, textDark, textMedium),
+      this.generateSummaryCSS(primary, primaryDark, bgLight, radiusMd),
+      this.generateDefinitionCSS(primary, bgLight, radiusMd),
+      this.generateTestimonialCSS(primary, textMedium, bgLight, radiusMd),
+      // AGENCY-QUALITY COMPONENTS: Include rich component styles
+      generateComponentStyles({
+        primaryColor: primary,
+        primaryDark: primaryDark,
+        secondaryColor: secondary,
+        accentColor: accent,
+        textColor: textDark,
+        textMuted: textMedium,
+        backgroundColor: bgLight,
+        surfaceColor: bgLight,
+        borderColor: border,
+        headingFont: headingFont,
+        bodyFont: bodyFont,
+        radiusSmall: radiusSm,
+        radiusMedium: radiusMd,
+        radiusLarge: radiusLg,
+      }),
+    ];
+
+    return cssParts.join('\n');
+  }
+
+  /**
+   * Generate supplementary CSS for our semantic HTML structure.
+   * When compiledCss is available, this should be STRUCTURAL ONLY -
+   * no visual template CSS. The AI-generated compiledCss handles all visual styling.
+   *
+   * Only includes:
+   * - Layout structure (grid, flexbox, max-width)
+   * - Class aliases mapping non-prefixed → ctc-prefixed (backward compat for cached compiledCss)
+   * - Responsive breakpoints
+   */
+  private generateSupplementaryCSS(): string {
+    return `
+/* ==========================================================================
+   Supplementary Styles - Structure + Visual styling using brand CSS variables
+   The AI-generated compiledCss sets --ctc-* custom properties.
+   This CSS uses those properties to style ALL semantic class names
+   that the CleanArticleRenderer generates in HTML.
+   ========================================================================== */
+
+/* Article structure */
+.article-header { margin-bottom: 2rem; text-align: center; }
+.article-toc { margin: 1.5rem auto; max-width: 860px; padding: 1.5rem; background: var(--ctc-secondary, #f9fafb); border-radius: var(--ctc-radius-md, 8px); }
+.article-toc a { color: var(--ctc-primary, #2563eb); text-decoration: none; }
+.article-toc a:hover { text-decoration: underline; }
+.section-inner { max-width: 100%; margin-top: 1.5rem; }
+
+/* Section layout structure */
+.section { position: relative; margin: 0; padding: 2rem 0; }
+.section-container { max-width: 860px; margin: 0 auto; padding: 0 1.5rem; }
+.section-content { margin-top: 1.5rem; }
+.section-heading {
+  font-family: var(--ctc-font-heading, sans-serif);
+  font-weight: var(--ctc-heading-weight, 700);
+  color: var(--ctc-text-darkest, #0f172a);
+  margin-bottom: 1rem;
+  line-height: 1.3;
+}
+
+/* Heading size variants */
+.heading-xl { font-size: var(--ctc-font-size-3xl, 2.1rem); }
+.heading-lg { font-size: var(--ctc-font-size-2xl, 1.75rem); }
+.heading-md { font-size: var(--ctc-font-size-xl, 1.45rem); }
+.heading-sm { font-size: var(--ctc-font-size-lg, 1.2rem); }
+
+/* Heading decoration */
+.heading-decorated { position: relative; }
+.heading-accent {
+  display: inline-block;
+  width: 40px;
+  height: 4px;
+  background: var(--ctc-primary, #2563eb);
+  margin-right: 0.75rem;
+  vertical-align: middle;
+  border-radius: 2px;
+}
+
+/* Layout width classes */
+.layout-narrow .section-container { max-width: 680px; }
+.layout-medium .section-container { max-width: 860px; }
+.layout-wide .section-container { max-width: 1100px; }
+.layout-full .section-container { max-width: 100%; padding: 0 2rem; }
+
+/* Column layout */
+.columns-2-column .section-content { column-count: 2; column-gap: 2rem; }
+.columns-3-column .section-content { column-count: 3; column-gap: 1.5rem; }
+.columns-asymmetric-left .section-content { display: grid; grid-template-columns: 1fr 2fr; gap: 2rem; }
+.columns-asymmetric-right .section-content { display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; }
+
+/* Spacing utilities */
+.spacing-before-tight { padding-top: 1rem; }
+.spacing-before-normal { padding-top: 2rem; }
+.spacing-before-generous { padding-top: 3rem; }
+.spacing-before-dramatic { padding-top: 5rem; }
+.spacing-after-tight { padding-bottom: 1rem; }
+.spacing-after-normal { padding-bottom: 2rem; }
+.spacing-after-generous { padding-bottom: 3rem; }
+.spacing-after-dramatic { padding-bottom: 5rem; }
+
+/* Emphasis levels - visual differentiation using brand colors */
+.emphasis-hero {
+  background: linear-gradient(135deg, var(--ctc-primary, #2563eb), var(--ctc-primary-dark, #1e40af));
+  color: var(--ctc-neutral-lightest, #ffffff);
+  padding: 3rem 0;
+  border-radius: var(--ctc-radius-lg, 12px);
+  margin: 1rem 0;
+}
+.emphasis-hero .section-heading { color: var(--ctc-neutral-lightest, #ffffff); }
+.emphasis-hero .section-content { color: rgba(255,255,255,0.9); }
+
+.emphasis-featured {
+  background: var(--ctc-secondary, #f9fafb);
+  padding: 2.5rem 0;
+  border-radius: var(--ctc-radius-md, 8px);
+  margin: 0.5rem 0;
+}
+
+.emphasis-standard { padding: 2rem 0; }
+.emphasis-supporting { padding: 1.5rem 0; }
+.emphasis-minimal { padding: 1rem 0; }
+
+/* Background and accent utilities */
+.has-background { background-color: var(--ctc-secondary, #f9fafb); }
+.bg-gradient { background: linear-gradient(135deg, var(--ctc-secondary, #f9fafb) 0%, var(--ctc-neutral-lightest, #ffffff) 100%); }
+.has-accent-border { border-left: 4px solid var(--ctc-primary, #2563eb); }
+.accent-left { border-left: 4px solid var(--ctc-primary, #2563eb); padding-left: 1.5rem; }
+.accent-top { border-top: 4px solid var(--ctc-primary, #2563eb); padding-top: 1.5rem; }
+
+/* Elevation (box shadows) */
+.elevation-1 { box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06); }
+.elevation-2 { box-shadow: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06); }
+.elevation-3 { box-shadow: 0 10px 15px rgba(0,0,0,0.1), 0 4px 6px rgba(0,0,0,0.05); }
+.card-elevation-1 {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+  border-radius: var(--ctc-radius-md, 8px);
+  background: var(--ctc-neutral-lightest, #ffffff);
+  border: 1px solid var(--ctc-borders-dividers, #e2e8f0);
+}
+.card-elevation-2 {
+  box-shadow: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
+  border-radius: var(--ctc-radius-md, 8px);
+  background: var(--ctc-neutral-lightest, #ffffff);
+}
+
+/* Prose typography */
+.prose { line-height: 1.7; color: var(--ctc-text-dark, #1e293b); }
+.prose p { margin-bottom: 1.25rem; }
+.prose a { color: var(--ctc-primary, #2563eb); text-decoration: underline; text-decoration-color: transparent; transition: text-decoration-color 0.2s; }
+.prose a:hover { text-decoration-color: currentColor; }
+.prose strong { font-weight: 600; color: var(--ctc-text-darkest, #0f172a); }
+.prose h2, .prose h3, .prose h4 { font-family: var(--ctc-font-heading, sans-serif); color: var(--ctc-text-darkest, #0f172a); margin-top: 2rem; margin-bottom: 0.75rem; }
+
+/* Card component */
+.card {
+  background: var(--ctc-neutral-lightest, #ffffff);
+  border-radius: var(--ctc-radius-md, 8px);
+  border: 1px solid var(--ctc-borders-dividers, #e2e8f0);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); transform: translateY(-1px); }
+.card-body { padding: 1.5rem; }
+.card-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--ctc-borders-dividers, #e2e8f0); font-weight: 600; }
+
+/* Feature grid component */
+.feature-grid { display: grid; gap: 1.5rem; }
+.feature-grid.columns-2 { grid-template-columns: repeat(2, 1fr); }
+.feature-grid.columns-3 { grid-template-columns: repeat(3, 1fr); }
+.feature-card {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1.25rem;
+  background: var(--ctc-neutral-lightest, #ffffff);
+  border: 1px solid var(--ctc-borders-dividers, #e2e8f0);
+  border-radius: var(--ctc-radius-md, 8px);
+  transition: box-shadow 0.2s ease;
+}
+.feature-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.feature-icon {
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ctc-secondary, #f0f4ff);
+  color: var(--ctc-primary, #2563eb);
+  border-radius: var(--ctc-radius-sm, 6px);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.feature-content { flex: 1; min-width: 0; }
+.feature-title { font-weight: 600; color: var(--ctc-text-darkest, #0f172a); margin-bottom: 0.35rem; font-size: 0.95rem; line-height: 1.4; }
+.feature-desc { font-size: 0.9rem; color: var(--ctc-text-medium, #475569); line-height: 1.5; }
+
+/* Step list component */
+.steps-list { list-style: none; padding: 0; counter-reset: step-counter; }
+.step-item {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--ctc-neutral-lightest, #ffffff);
+  border-radius: var(--ctc-radius-md, 8px);
+  border: 1px solid var(--ctc-borders-dividers, #e2e8f0);
+}
+.step-number {
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--ctc-primary, #2563eb);
+  color: var(--ctc-neutral-lightest, #ffffff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.875rem;
+}
+.step-content { flex: 1; }
+.step-content strong { display: block; margin-bottom: 0.25rem; color: var(--ctc-text-darkest, #0f172a); }
+
+/* FAQ component */
+.faq-list { list-style: none; padding: 0; }
+.faq-accordion { display: flex; flex-direction: column; gap: 0; }
+.faq-item {
+  border-bottom: 1px solid var(--ctc-borders-dividers, #e2e8f0);
+  padding: 1rem 0;
+}
+.faq-question {
+  font-weight: 600;
+  color: var(--ctc-text-darkest, #0f172a);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.05rem;
+}
+.faq-icon { color: var(--ctc-primary, #2563eb); font-size: 1.1rem; flex-shrink: 0; }
+.faq-answer { margin-top: 0.75rem; color: var(--ctc-text-medium, #475569); line-height: 1.6; padding-left: 1.75rem; }
+
+/* Styled list component */
+.styled-list { list-style: none; padding: 0; }
+.list-item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0;
+}
+.list-marker {
+  flex-shrink: 0;
+  color: var(--ctc-primary, #2563eb);
+  font-weight: 700;
+  font-size: 1.1rem;
+  line-height: 1.5;
+}
+.list-content { flex: 1; line-height: 1.6; }
+
+/* Summary box component */
+.summary-box {
+  background: var(--ctc-secondary, #f9fafb);
+  border-radius: var(--ctc-radius-md, 8px);
+  padding: 1.5rem;
+  border-left: 4px solid var(--ctc-primary, #2563eb);
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  margin: 1.5rem 0;
+}
+.summary-icon {
+  flex-shrink: 0;
+  font-size: 1.5rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ctc-primary, #2563eb);
+  color: white;
+  border-radius: var(--ctc-radius-sm, 6px);
+}
+.summary-content { flex: 1; line-height: 1.6; }
+
+/* Definition box component */
+.definition-box {
+  background: var(--ctc-neutral-lightest, #ffffff);
+  border-radius: var(--ctc-radius-md, 8px);
+  padding: 1.5rem;
+  border: 1px solid var(--ctc-borders-dividers, #e2e8f0);
+  border-left: 4px solid var(--ctc-accent, #3b82f6);
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  margin: 1.5rem 0;
+}
+.definition-icon { flex-shrink: 0; font-size: 1.5rem; color: var(--ctc-accent, #3b82f6); }
+.definition-content { flex: 1; line-height: 1.6; }
+
+/* Data highlight component */
+.data-highlight {
+  background: var(--ctc-secondary, #f9fafb);
+  border-radius: var(--ctc-radius-md, 8px);
+  padding: 2rem;
+  text-align: center;
+  margin: 1.5rem 0;
+}
+
+/* Testimonial component */
+.testimonial {
+  background: var(--ctc-secondary, #f9fafb);
+  border-radius: var(--ctc-radius-md, 8px);
+  padding: 2rem;
+  border-left: 4px solid var(--ctc-primary, #2563eb);
+  margin: 1.5rem 0;
+  font-style: italic;
+}
+.testimonial-text { font-size: 1.1rem; line-height: 1.7; color: var(--ctc-text-dark, #1e293b); }
+.testimonial-author { margin-top: 1rem; font-style: normal; font-weight: 600; color: var(--ctc-text-medium, #475569); }
+
+/* Stat grid component */
+.stat-grid { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.stat-card {
+  text-align: center;
+  padding: 1.5rem;
+  background: var(--ctc-neutral-lightest, #ffffff);
+  border: 1px solid var(--ctc-borders-dividers, #e2e8f0);
+  border-radius: var(--ctc-radius-md, 8px);
+}
+.stat-value { font-size: 2rem; font-weight: 700; color: var(--ctc-primary, #2563eb); }
+.stat-label { font-size: 0.875rem; color: var(--ctc-text-medium, #475569); margin-top: 0.25rem; }
+
+/* Key takeaways component */
+.key-takeaways-grid { display: grid; gap: 1rem; }
+.key-takeaways-item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 1rem;
+  background: var(--ctc-secondary, #f9fafb);
+  border-radius: var(--ctc-radius-sm, 6px);
+}
+.key-takeaways-icon { flex-shrink: 0; color: var(--ctc-primary, #2563eb); font-size: 1.1rem; }
+
+/* Timeline component */
+.timeline { position: relative; padding-left: 2rem; }
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 0.5rem;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--ctc-borders-dividers, #e2e8f0);
+}
+.timeline-item { position: relative; margin-bottom: 1.5rem; padding-left: 1.5rem; }
+.timeline-marker {
+  position: absolute;
+  left: -1.5rem;
+  top: 0.25rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--ctc-primary, #2563eb);
+  border: 2px solid var(--ctc-neutral-lightest, #ffffff);
+  box-shadow: 0 0 0 2px var(--ctc-primary, #2563eb);
+}
+.timeline-content { padding-bottom: 0.5rem; }
+
+/* Checklist component */
+.checklist { list-style: none; padding: 0; }
+.checklist-item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0;
+}
+.checklist-icon { flex-shrink: 0; color: var(--ctc-success, #10b981); font-size: 1.1rem; }
+
+/* CTA section */
+.article-cta {
+  background: linear-gradient(135deg, var(--ctc-primary, #2563eb), var(--ctc-primary-dark, #1e40af));
+  color: var(--ctc-neutral-lightest, #ffffff);
+  padding: 3rem;
+  border-radius: var(--ctc-radius-lg, 12px);
+  text-align: center;
+  margin: 2rem 0;
+}
+.cta-actions { margin-top: 1.5rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+.cta-primary {
+  display: inline-block;
+  padding: 0.75rem 2rem;
+  background: var(--ctc-neutral-lightest, #ffffff);
+  color: var(--ctc-primary, #2563eb);
+  border-radius: var(--ctc-radius-md, 8px);
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.cta-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+.cta-secondary {
+  display: inline-block;
+  padding: 0.75rem 2rem;
+  background: transparent;
+  color: var(--ctc-neutral-lightest, #ffffff);
+  border: 2px solid rgba(255,255,255,0.5);
+  border-radius: var(--ctc-radius-md, 8px);
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 0.2s;
+}
+.cta-secondary:hover { border-color: rgba(255,255,255,0.9); }
+
+/* Table styling */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  font-size: 0.95rem;
+}
+th {
+  background: var(--ctc-primary, #2563eb);
+  color: var(--ctc-neutral-lightest, #ffffff);
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+  text-align: left;
+}
+td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--ctc-borders-dividers, #e2e8f0);
+}
+tr:nth-child(even) td { background: var(--ctc-secondary, #f9fafb); }
+
+/* Blockquote */
+blockquote {
+  border-left: 4px solid var(--ctc-primary, #2563eb);
+  padding: 1rem 1.5rem;
+  margin: 1.5rem 0;
+  background: var(--ctc-secondary, #f9fafb);
+  border-radius: 0 var(--ctc-radius-md, 8px) var(--ctc-radius-md, 8px) 0;
+  font-style: italic;
+  color: var(--ctc-text-dark, #1e293b);
+}
+
+/* Image placeholders */
+.ctc-image-placeholder {
+  background: var(--ctc-secondary, #f0f4f8);
+  border: 2px dashed var(--ctc-borders-dividers, #cbd5e1);
+  border-radius: var(--ctc-radius-md, 8px);
+  padding: 2rem;
+  text-align: center;
+  color: var(--ctc-text-medium, #64748b);
+  font-style: italic;
+  margin: 1.5rem 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .feature-grid.columns-2,
+  .feature-grid.columns-3 { grid-template-columns: 1fr; }
+  .columns-2-column .section-content,
+  .columns-3-column .section-content { column-count: 1; }
+  .columns-asymmetric-left .section-content,
+  .columns-asymmetric-right .section-content { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .article-cta { padding: 2rem 1.5rem; }
+  .emphasis-hero { padding: 2rem 0; }
+  .step-item { flex-direction: column; }
+  .summary-box, .definition-box { flex-direction: column; }
+}
+
+@media (max-width: 480px) {
+  .stat-grid { grid-template-columns: 1fr; }
+  .section-container { padding: 0 1rem; }
+}
+`;
+  }
+
+  /**
+   * Generate base CSS styles - typography, layout, basic elements
+   */
+  private generateBaseCSS(
+    primary: string,
+    primaryDark: string,
+    textDark: string,
+    textMedium: string,
+    bgLight: string,
+    border: string,
+    headingFont: string,
+    bodyFont: string,
+    radiusSm: string,
+    radiusMd: string,
+    radiusLg: string
+  ): string {
     return `
 /* ==========================================================================
    Clean Article Styles - Generated for ${this.brandName}
@@ -691,6 +1760,554 @@ blockquote p {
 `;
   }
 
+  /**
+   * Generate CSS for emphasis levels (hero, featured, standard, supporting, minimal)
+   * Maps Layout Engine emphasis decisions to visual styling
+   */
+  private generateEmphasisCSS(
+    primary: string,
+    primaryDark: string,
+    accent: string,
+    bgLight: string,
+    headingFont: string,
+    radiusMd: string,
+    radiusLg: string
+  ): string {
+    return `
+/* ==========================================================================
+   EMPHASIS LEVELS - Visual styling from Layout Engine decisions
+   ========================================================================== */
+
+/* Hero emphasis - Maximum visual impact */
+.emphasis-hero {
+  padding: 4rem 2rem;
+  background: linear-gradient(135deg, ${bgLight} 0%, #ffffff 100%);
+  border-radius: ${radiusLg};
+  margin: 2rem 0;
+  position: relative;
+}
+
+.emphasis-hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, ${primary}, ${accent});
+  border-radius: ${radiusLg} ${radiusLg} 0 0;
+}
+
+.emphasis-hero .section-heading {
+  font-size: 2.25rem;
+  color: ${primaryDark};
+  margin-bottom: 1.5rem;
+}
+
+/* Featured emphasis - Strong visual presence */
+.emphasis-featured {
+  padding: 3rem 2rem;
+  background: ${bgLight};
+  border-radius: ${radiusMd};
+  margin: 1.5rem 0;
+  border-left: 4px solid ${primary};
+}
+
+.emphasis-featured .section-heading {
+  font-size: 1.75rem;
+  color: ${primaryDark};
+}
+
+/* Standard emphasis - Default styling */
+.emphasis-standard {
+  padding: 2rem 0;
+}
+
+.emphasis-standard .section-heading {
+  font-size: 1.5rem;
+}
+
+/* Supporting emphasis - Reduced visual weight */
+.emphasis-supporting {
+  padding: 1.5rem 0;
+}
+
+.emphasis-supporting .section-heading {
+  font-size: 1.25rem;
+  color: ${primaryDark};
+}
+
+/* Minimal emphasis - Lightweight styling */
+.emphasis-minimal {
+  padding: 1rem 0;
+}
+
+.emphasis-minimal .section-heading {
+  font-size: 1.125rem;
+}
+
+/* Emphasis responsive */
+@media (max-width: 768px) {
+  .emphasis-hero { padding: 2.5rem 1.5rem; }
+  .emphasis-hero .section-heading { font-size: 1.75rem; }
+  .emphasis-featured { padding: 2rem 1.5rem; }
+  .emphasis-featured .section-heading { font-size: 1.5rem; }
+}
+`;
+  }
+
+  /**
+   * Generate CSS for steps/timeline content type
+   */
+  private generateStepsCSS(
+    primary: string,
+    primaryDark: string,
+    bgLight: string,
+    headingFont: string,
+    radiusMd: string
+  ): string {
+    return `
+/* ==========================================================================
+   STEPS/TIMELINE - Numbered process/how-to sections
+   ========================================================================== */
+
+.section-steps .steps-list {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0;
+  counter-reset: step-counter;
+}
+
+.section-steps .step-item {
+  display: flex;
+  gap: 1.5rem;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid ${bgLight};
+  align-items: flex-start;
+}
+
+.section-steps .step-item:last-child {
+  border-bottom: none;
+}
+
+.section-steps .step-number {
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  background: ${primary};
+  color: #ffffff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: ${headingFont};
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.section-steps .step-content {
+  flex: 1;
+  padding-top: 0.25rem;
+}
+
+/* Steps with featured emphasis */
+.emphasis-featured.section-steps {
+  background: ${bgLight};
+  padding: 2rem;
+  border-radius: ${radiusMd};
+}
+
+.emphasis-featured.section-steps .step-number {
+  width: 3rem;
+  height: 3rem;
+  font-size: 1.25rem;
+  background: ${primaryDark};
+}
+
+/* Steps with hero emphasis */
+.emphasis-hero.section-steps .step-number {
+  width: 3.5rem;
+  height: 3.5rem;
+  font-size: 1.5rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Steps responsive */
+@media (max-width: 768px) {
+  .section-steps .step-item { gap: 1rem; padding: 1rem 0; }
+  .section-steps .step-number { width: 2rem; height: 2rem; font-size: 0.875rem; }
+}
+`;
+  }
+
+  /**
+   * Generate CSS for FAQ content type
+   */
+  private generateFaqCSS(
+    primary: string,
+    primaryDark: string,
+    textDark: string,
+    bgLight: string,
+    headingFont: string,
+    radiusMd: string
+  ): string {
+    return `
+/* ==========================================================================
+   FAQ - Question/Answer pairs
+   ========================================================================== */
+
+.section-faq .faq-list {
+  margin: 1.5rem 0;
+}
+
+.section-faq .faq-item {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid ${bgLight};
+}
+
+.section-faq .faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.section-faq .faq-question {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  font-family: ${headingFont};
+  font-weight: 600;
+  font-size: 1.125rem;
+  color: ${primaryDark};
+  margin-bottom: 0.75rem;
+}
+
+.section-faq .faq-icon {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  background: ${primary};
+  color: #ffffff;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.section-faq .faq-answer {
+  margin-left: 2.5rem;
+  color: ${textDark};
+  line-height: 1.7;
+}
+
+/* FAQ with featured emphasis */
+.emphasis-featured.section-faq .faq-item {
+  background: #ffffff;
+  padding: 1.5rem;
+  border-radius: ${radiusMd};
+  border-bottom: none;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.emphasis-featured.section-faq .faq-answer {
+  margin-left: 0;
+  margin-top: 1rem;
+}
+
+/* FAQ responsive */
+@media (max-width: 768px) {
+  .section-faq .faq-answer { margin-left: 0; margin-top: 0.75rem; }
+}
+`;
+  }
+
+  /**
+   * Generate CSS for comparison/table content type
+   */
+  private generateComparisonCSS(
+    primary: string,
+    bgLight: string,
+    radiusMd: string
+  ): string {
+    return `
+/* ==========================================================================
+   COMPARISON - Tables with visual enhancements
+   ========================================================================== */
+
+.section-comparison .table-wrapper {
+  margin: 1.5rem 0;
+  border-radius: ${radiusMd};
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.section-comparison table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.section-comparison thead {
+  background: ${primary};
+  color: #ffffff;
+}
+
+.section-comparison th {
+  padding: 1rem 1.25rem;
+  text-align: left;
+  font-weight: 600;
+}
+
+.section-comparison td {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid ${bgLight};
+}
+
+.section-comparison tbody tr:hover {
+  background: ${bgLight};
+}
+
+.section-comparison tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Comparison with featured emphasis */
+.emphasis-featured.section-comparison .table-wrapper {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+
+.emphasis-featured.section-comparison th {
+  padding: 1.25rem 1.5rem;
+  font-size: 1.05rem;
+}
+`;
+  }
+
+  /**
+   * Generate CSS for list content type
+   */
+  private generateListCSS(
+    primary: string,
+    textDark: string,
+    textMedium: string
+  ): string {
+    return `
+/* ==========================================================================
+   LIST - Styled bullet/feature lists
+   ========================================================================== */
+
+.section-list .styled-list {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0;
+}
+
+.section-list .list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.section-list .list-marker {
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: ${primary};
+  border-radius: 50%;
+  margin-top: 0.5rem;
+}
+
+.section-list .list-content {
+  flex: 1;
+  color: ${textDark};
+}
+
+/* List with featured emphasis - card style */
+.emphasis-featured.section-list .list-item {
+  padding: 1rem;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  border-left: 3px solid ${primary};
+}
+
+.emphasis-featured.section-list .list-marker {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+`;
+  }
+
+  /**
+   * Generate CSS for summary/key takeaways content type
+   */
+  private generateSummaryCSS(
+    primary: string,
+    primaryDark: string,
+    bgLight: string,
+    radiusMd: string
+  ): string {
+    return `
+/* ==========================================================================
+   SUMMARY - Key takeaways, conclusions
+   ========================================================================== */
+
+.section-summary .summary-box {
+  display: flex;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  background: ${bgLight};
+  border-radius: ${radiusMd};
+  border-left: 4px solid ${primary};
+  margin: 1.5rem 0;
+}
+
+.section-summary .summary-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.section-summary .summary-content {
+  flex: 1;
+}
+
+.section-summary .summary-content ul {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+
+.section-summary .summary-content li {
+  margin-bottom: 0.5rem;
+}
+
+/* Summary with featured emphasis */
+.emphasis-featured.section-summary .summary-box {
+  padding: 2rem;
+  background: linear-gradient(135deg, ${bgLight} 0%, #ffffff 100%);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.emphasis-featured.section-summary .summary-icon {
+  font-size: 2rem;
+}
+
+/* Summary with hero emphasis */
+.emphasis-hero.section-summary .summary-box {
+  padding: 2.5rem;
+  text-align: center;
+  flex-direction: column;
+  align-items: center;
+}
+
+.emphasis-hero.section-summary .summary-icon {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+`;
+  }
+
+  /**
+   * Generate CSS for definition content type
+   */
+  private generateDefinitionCSS(
+    primary: string,
+    bgLight: string,
+    radiusMd: string
+  ): string {
+    return `
+/* ==========================================================================
+   DEFINITION - Term definitions, glossary entries
+   ========================================================================== */
+
+.section-definition .definition-box {
+  display: flex;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: ${bgLight};
+  border-radius: ${radiusMd};
+  margin: 1.5rem 0;
+}
+
+.section-definition .definition-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.section-definition .definition-content {
+  flex: 1;
+}
+
+/* Definition with featured emphasis */
+.emphasis-featured.section-definition .definition-box {
+  border: 2px solid ${primary};
+  background: #ffffff;
+}
+`;
+  }
+
+  /**
+   * Generate CSS for testimonial content type
+   */
+  private generateTestimonialCSS(
+    primary: string,
+    textMedium: string,
+    bgLight: string,
+    radiusMd: string
+  ): string {
+    return `
+/* ==========================================================================
+   TESTIMONIAL - Quotes, reviews, social proof
+   ========================================================================== */
+
+.section-testimonial .testimonial {
+  position: relative;
+  padding: 2rem;
+  background: ${bgLight};
+  border-radius: ${radiusMd};
+  margin: 1.5rem 0;
+  border-left: 4px solid ${primary};
+}
+
+.section-testimonial .testimonial::before {
+  content: '"';
+  position: absolute;
+  top: -0.5rem;
+  left: 1rem;
+  font-size: 4rem;
+  color: ${primary};
+  opacity: 0.2;
+  font-family: Georgia, serif;
+  line-height: 1;
+}
+
+.section-testimonial .testimonial-text {
+  font-size: 1.125rem;
+  font-style: italic;
+  color: ${textMedium};
+  margin: 0;
+  position: relative;
+  z-index: 1;
+}
+
+/* Testimonial with featured emphasis */
+.emphasis-featured.section-testimonial .testimonial {
+  padding: 2.5rem;
+  text-align: center;
+  border-left: none;
+  border-top: 4px solid ${primary};
+}
+
+.emphasis-featured.section-testimonial .testimonial::before {
+  left: 50%;
+  transform: translateX(-50%);
+}
+`;
+  }
+
   // ============================================================================
   // DOCUMENT WRAPPER
   // ============================================================================
@@ -827,13 +2444,17 @@ ${html}
  * @param article - Article content (title + sections)
  * @param designDna - Brand design DNA (colors, fonts, etc.)
  * @param brandName - Name of the brand (for display)
+ * @param layoutBlueprint - Optional Layout Engine blueprint for component/emphasis decisions
+ * @param compiledCss - THE KEY FIX: AI-generated CSS unique to this brand (from BrandDesignSystem)
  * @returns Complete standalone HTML document
  */
 export function renderCleanArticle(
   article: ArticleInput,
   designDna: DesignDNA,
-  brandName: string = 'Brand'
+  brandName: string = 'Brand',
+  layoutBlueprint?: LayoutBlueprintInput,
+  compiledCss?: string
 ): CleanRenderOutput {
-  const renderer = new CleanArticleRenderer(designDna, brandName);
+  const renderer = new CleanArticleRenderer(designDna, brandName, layoutBlueprint, compiledCss);
   return renderer.render(article);
 }

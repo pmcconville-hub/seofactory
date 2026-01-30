@@ -21,6 +21,7 @@ import { LayoutPlanner } from './LayoutPlanner';
 import { ComponentSelector } from './ComponentSelector';
 import { VisualEmphasizer } from './VisualEmphasizer';
 import { ImageHandler } from './ImageHandler';
+import { generateAILayoutBlueprint, type AIProvider } from './AILayoutPlanner';
 import {
   BlueprintSection,
   ComponentSelection,
@@ -466,7 +467,86 @@ export class LayoutEngine implements ILayoutEngine {
   }
 
   /**
+   * Generate a LayoutBlueprint using AI-based semantic analysis.
+   *
+   * Unlike pattern-based detection, this uses AI to understand content meaning,
+   * making intelligent layout decisions like a professional designer would.
+   *
+   * Benefits:
+   * - Understands the PURPOSE of each section, not just keywords
+   * - Context-aware: considers how sections relate to each other
+   * - Language-aware: works correctly with Dutch, German, etc.
+   * - Produces visual VARIETY instead of monotonous layouts
+   *
+   * @param content - Full article content (markdown or HTML)
+   * @param title - Article title
+   * @param aiOptions - AI provider configuration
+   * @param designDna - Optional brand design DNA for personality matching
+   * @param options.fixInstructions - When provided, AI focuses on these specific improvements
+   */
+  static async generateBlueprintWithAI(
+    content: string,
+    title: string,
+    aiOptions: {
+      provider: AIProvider;
+      apiKey: string;
+    },
+    designDna?: DesignDNA,
+    options?: {
+      language?: string;
+      fixInstructions?: string; // Design quality fix instructions
+    }
+  ): Promise<LayoutBlueprintOutput & { aiReasoning?: { overallStrategy: string; keyDesignDecisions: string[] } }> {
+    console.log('[LayoutEngine] Using AI-based layout planning');
+    if (options?.fixInstructions) {
+      console.log('[LayoutEngine] Fix instructions:', options.fixInstructions.substring(0, 100));
+    }
+
+    try {
+      const { sections, aiReasoning } = await generateAILayoutBlueprint(content, title, {
+        aiProvider: aiOptions.provider,
+        apiKey: aiOptions.apiKey,
+        designDna,
+        language: options?.language,
+        fixInstructions: options?.fixInstructions,
+      });
+
+      // Validate the AI-generated blueprint
+      const validation = LayoutEngine.validateBlueprint(sections, designDna);
+
+      // Build page settings
+      const pageSettings = buildPageSettings(designDna);
+
+      return {
+        id: generateId(),
+        articleId: `article-${Date.now()}`,
+        generatedAt: new Date().toISOString(),
+        pageSettings,
+        sections,
+        reasoning: {
+          layoutStrategy: aiReasoning.overallStrategy,
+          keyDecisions: aiReasoning.keyDesignDecisions,
+          suggestionsApplied: [],
+          suggestionsSkipped: [],
+        },
+        validation,
+        aiReasoning: {
+          overallStrategy: aiReasoning.overallStrategy,
+          keyDesignDecisions: aiReasoning.keyDesignDecisions,
+        },
+      };
+    } catch (error) {
+      console.error('[LayoutEngine] AI layout planning failed, falling back to pattern-based:', error);
+      // Fall back to pattern-based
+      return LayoutEngine.generateBlueprint(content, undefined, designDna);
+    }
+  }
+
+  /**
    * Build BlueprintSections by orchestrating all services
+   *
+   * NOTE: This is pattern-based component selection. For agency-quality results,
+   * use AI-based layout planning via LayoutEngine.generateBlueprintWithAI()
    */
   private static buildBlueprintSections(
     analyses: SectionAnalysis[],
@@ -476,12 +556,36 @@ export class LayoutEngine implements ILayoutEngine {
     // Split content into section contents for image handler
     const sectionContents = content ? LayoutEngine.splitContentBySections(content, analyses) : [];
 
+    // Track consecutive same-component sections for variety
+    let lastComponent: string | null = null;
+    let consecutiveCount = 0;
+
     return analyses.map((analysis, index) => {
       // Get layout parameters
       const layout = LayoutPlanner.planLayout(analysis, dna);
 
       // Get component selection
-      const component = ComponentSelector.selectComponent(analysis, dna);
+      let component = ComponentSelector.selectComponent(analysis, dna);
+
+      // VARIETY MECHANISM: Alternate between primary and alternatives for visual interest
+      // If we have 2+ consecutive sections with same component, use alternatives
+      if (component.primaryComponent === lastComponent) {
+        consecutiveCount++;
+        if (consecutiveCount >= 2 && component.alternativeComponents.length > 0) {
+          // Use an alternative for variety
+          const altIndex = (consecutiveCount - 2) % component.alternativeComponents.length;
+          const alternativeComponent = component.alternativeComponents[altIndex];
+          console.log(`[LayoutEngine] Variety: Switching from ${component.primaryComponent} to ${alternativeComponent} for section ${index}`);
+          component = {
+            ...component,
+            primaryComponent: alternativeComponent,
+            reasoning: `${component.reasoning} (Alternative selected for visual variety)`,
+          };
+        }
+      } else {
+        lastComponent = component.primaryComponent;
+        consecutiveCount = 1;
+      }
 
       // Get visual emphasis
       const emphasis = VisualEmphasizer.calculateEmphasis(analysis, dna);

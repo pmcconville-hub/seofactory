@@ -5,6 +5,7 @@ export * from './DiscoveryStore';
 export * from './ComponentStore';
 export * from './DecisionStore';
 export * from './ValidationStore';
+export * from './SupabaseStorageAdapter';
 
 import type { StorageAdapter } from './types';
 import { DiscoveryStore } from './DiscoveryStore';

@@ -40,65 +40,126 @@ const CATEGORY_BONUSES: Record<AttributeCategory, number> = {
 const CORE_TOPIC_BONUS = 0.5;
 const FS_TARGET_BONUS = 0.5;
 const MAIN_INTENT_BONUS = 0.5;
+/** First section in MAIN zone gets featured status (bonus +1) */
+const FIRST_MAIN_SECTION_BONUS = 1;
+/** Introduction sections get a small boost */
+const INTRO_CONTENT_BONUS = 0.5;
 
 // =============================================================================
 // HEADING PATTERNS
 // =============================================================================
 
 const INTRODUCTION_PATTERNS = [
+  // English
   /^introduction$/i,
   /^overview/i,
   /^getting\s+started/i,
   /^what\s+you('ll)?\s+(need|learn)/i,
   /^about\s+this/i,
+  // Dutch
+  /^inleiding$/i,
+  /^introductie/i,
+  /^overzicht/i,
+  /^wat\s+is\b/i,
+  /^over\s+dit/i,
+  /^welkom\b/i,
 ];
 
 const FAQ_PATTERNS = [
+  // English
   /^faq/i,
   /^frequently\s+asked/i,
   /^common\s+questions/i,
   /^q\s*&\s*a/i,
+  // Dutch
+  /^veelgestelde\s+vragen/i,
+  /^vraag\s+(en|&)\s+antwoord/i,
+  /^vragen\s+over/i,
+  /^meest\s+gestelde/i,
 ];
 
 const COMPARISON_PATTERNS = [
+  // English
   /\bvs\.?\b/i,
   /\bversus\b/i,
   /\bcomparison\b/i,
   /\bcomparing\b/i,
   /\bdifference(s)?\s+between\b/i,
   /\bpros\s+(and|&)\s+cons\b/i,
+  // Dutch
+  /\bvergelijking\b/i,
+  /\bvergelijken\b/i,
+  /\bverschil(len)?\s+tussen\b/i,
+  /\bvoor(\s*-?\s*)?en\s*-?\s*nadelen\b/i,
 ];
 
 const SUMMARY_PATTERNS = [
+  // English
   /^summary$/i,
   /^conclusion/i,
   /^final\s+thoughts/i,
   /^wrap(\s|-)?up/i,
   /^key\s+takeaways/i,
   /^in\s+summary/i,
+  // Dutch
+  /^samenvatting$/i,
+  /^conclusie/i,
+  /^tot\s+slot/i,
+  /^afsluit(end|ing)/i,
+  /^belangrijkste\s+punten/i,
 ];
 
 const DEFINITION_PATTERNS = [
+  // English
   /^what\s+is\b/i,
   /^what\s+are\b/i,
   /^definition\s+of/i,
   /^meaning\s+of/i,
   /^understanding\b/i,
+  // Dutch
+  /^wat\s+is\b/i,
+  /^wat\s+zijn\b/i,
+  /^definitie\s+van/i,
+  /^betekenis\s+van/i,
+  /^begrijpen\b/i,
 ];
 
 const STEPS_PATTERNS = [
+  // English
   /^how\s+to\b/i,
   /^step(\s|-)?by(\s|-)?step/i,
   /^guide\s+to/i,
   /^tutorial/i,
   /\bprocess\b/i,
+  /\bphase\s*\d/i,
+  /\bstage\s*\d/i,
+  // Dutch
+  /^hoe\s+(te|u|je)\b/i,
+  /^stap(\s|-)?voor(\s|-)?stap/i,
+  /^handleiding/i,
+  /^proces\b/i,
+  /^werkwijze\b/i,
+  /^aanpak\b/i,
+  /\bfase\s*\d/i,
+  /\bfase\b/i,
+  // Numbered sections like "Kwetsbaarheid 1-3:" or "Stap 1:"
+  /^\d+[\.\-\)]?\s+/,
+  /^(stap|step|fase|phase)\s*\d+/i,
+  // Numbered ranges like "Items 1-5" or "Sections 3-7"
+  /\d+\s*[-–]\s*\d+/,
 ];
 
 const TESTIMONIAL_PATTERNS = [
+  // English
   /^testimonial/i,
   /^review/i,
   /^customer\s+(stories|feedback)/i,
   /^what\s+(people|customers|users)\s+say/i,
+  // Dutch
+  /^ervar(ing(en)?|en)\b/i,
+  /^review/i,
+  /^klant(en)?\s*(verhalen|reacties)/i,
+  /^wat\s+(mensen|klanten)\s+zeggen/i,
 ];
 
 // =============================================================================
@@ -113,6 +174,9 @@ const IMAGE_PATTERN = /!\[.*?\]\(.*?\)|<img\s/;
 const HTML_LIST_PATTERN = /<[ou]l[\s>]/i;
 const HTML_TABLE_PATTERN = /<table[\s>]/i;
 const HTML_QUOTE_PATTERN = /<blockquote[\s>]/i;
+// Statistics/data patterns
+const STATISTICS_PATTERN = /\b\d{1,3}[,.]?\d*\s*%|\b\d+\s*(miljoen|billion|million|duizend|thousand)\b/i;
+const NUMBERED_ITEMS_PATTERN = /<li>\s*<strong>[^<]*\d+[^<]*<\/strong>|<li>\s*\d+[\.\)]/;
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -315,6 +379,26 @@ export class SectionAnalyzer implements ISectionAnalyzer {
       return 'list';
     }
 
+    // Statistics/data section detection
+    if (STATISTICS_PATTERN.test(content) || NUMBERED_ITEMS_PATTERN.test(content)) {
+      return 'data';
+    }
+
+    // Quote/testimonial detection from content
+    if (QUOTE_PATTERN.test(content) || HTML_QUOTE_PATTERN.test(content)) {
+      return 'testimonial';
+    }
+
+    // Section with numbered items in heading (like "Top 10", "5 Ways", "3 Reasons")
+    if (/\b(top\s*)?\d+\b/i.test(heading) && content.length > 200) {
+      return 'list';
+    }
+
+    // Key takeaways / summary detection from content
+    if (/key\s+takeaways?|belangrijkste\s+punten|samenvatting/i.test(content)) {
+      return 'summary';
+    }
+
     // Default to explanation
     return 'explanation';
   }
@@ -434,7 +518,7 @@ export class SectionAnalyzer implements ISectionAnalyzer {
     const usedBriefIndices = new Set<number>();
 
     // Analyze each section
-    return sections.map((section, index) => {
+    const analyses = sections.map((section, index) => {
       // Try to match with brief section (with tracking to avoid duplicates)
       const briefSection = briefSections
         ? SectionAnalyzer.findBestMatchingBriefSection(
@@ -453,6 +537,63 @@ export class SectionAnalyzer implements ISectionAnalyzer {
         mainIntent: options?.mainIntent,
       });
     });
+
+    // Apply position-based bonuses for variety
+    // First section in MAIN zone gets featured status
+    let foundFirstMainSection = false;
+    for (let i = 0; i < analyses.length; i++) {
+      const analysis = analyses[i];
+
+      // First MAIN section bonus: +1 (makes weight 4 = featured)
+      if (!foundFirstMainSection && analysis.contentZone === 'MAIN') {
+        foundFirstMainSection = true;
+        const newWeight = Math.min(MAX_WEIGHT, analysis.semanticWeight + FIRST_MAIN_SECTION_BONUS);
+        analyses[i] = {
+          ...analysis,
+          semanticWeight: newWeight,
+          semanticWeightFactors: {
+            ...analysis.semanticWeightFactors,
+            totalWeight: newWeight,
+          },
+        };
+        console.log(`[SectionAnalyzer] First MAIN section "${analysis.heading?.substring(0, 30)}" boosted: ${analysis.semanticWeight} -> ${newWeight}`);
+        continue;
+      }
+
+      // Introduction/overview content bonus: +0.5
+      if (analysis.contentType === 'introduction') {
+        const newWeight = Math.min(MAX_WEIGHT, analysis.semanticWeight + INTRO_CONTENT_BONUS);
+        analyses[i] = {
+          ...analysis,
+          semanticWeight: newWeight,
+          semanticWeightFactors: {
+            ...analysis.semanticWeightFactors,
+            totalWeight: newWeight,
+          },
+        };
+        console.log(`[SectionAnalyzer] Intro section "${analysis.heading?.substring(0, 30)}" boosted: ${analysis.semanticWeight} -> ${newWeight}`);
+      }
+    }
+
+    // Log final analysis summary
+    console.log('[SectionAnalyzer] Analysis complete:', {
+      sectionCount: analyses.length,
+      emphasisDistribution: {
+        hero: analyses.filter(a => a.semanticWeight >= 5).length,
+        featured: analyses.filter(a => a.semanticWeight >= 4 && a.semanticWeight < 5).length,
+        standard: analyses.filter(a => a.semanticWeight >= 3 && a.semanticWeight < 4).length,
+        supporting: analyses.filter(a => a.semanticWeight >= 2 && a.semanticWeight < 3).length,
+        minimal: analyses.filter(a => a.semanticWeight < 2).length,
+      },
+      sections: analyses.map(a => ({
+        id: a.sectionId,
+        heading: a.heading?.substring(0, 30),
+        weight: a.semanticWeight,
+        type: a.contentType,
+      })),
+    });
+
+    return analyses;
   }
 
   /**

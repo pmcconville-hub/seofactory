@@ -2331,13 +2331,176 @@ Follow existing component patterns in `components/` directory.
 
 ---
 
-## P3: Integration (Summary)
+## P3: Integration
 
-### Task 13-14: Integration
+### Task 9: Supabase Edge Function for Screenshot Capture
 
-- Update `StylePublishModal.tsx` to use new pipeline
-- Add database tables for persistent storage
-- Migration script for existing brand extractions
+Phase 1 Discovery uses Playwright which cannot run in the browser. Create an Edge Function that handles screenshot capture server-side.
+
+**Files:**
+- Create: `supabase/functions/brand-discovery/index.ts`
+
+**Step 1: Create the Edge Function**
+
+```typescript
+// supabase/functions/brand-discovery/index.ts
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+
+serve(async (req) => {
+  // Accept brandUrl, brandId, pagesToAnalyze
+  // Use Puppeteer/Playwright to capture screenshots
+  // Return base64-encoded screenshots
+  // Call AI vision API for component discovery
+  // Return DiscoveryOutput
+});
+```
+
+**Step 2: Update useBrandReplicationPipeline hook to call Edge Function**
+
+Instead of running ScreenshotCapture in browser, call the Edge Function.
+
+**Step 3: Deploy and test**
+
+Run: `supabase functions deploy brand-discovery --no-verify-jwt --use-api`
+
+---
+
+### Task 10: Database Tables for Persistence
+
+Create Supabase tables to persist pipeline outputs per brand.
+
+**Files:**
+- Create: `supabase/migrations/YYYYMMDD_brand_replication_tables.sql`
+
+**Step 1: Create migration**
+
+```sql
+-- Brand discovered components
+CREATE TABLE brand_components (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  purpose TEXT,
+  usage_context TEXT,
+  css TEXT,
+  html_template TEXT,
+  preview_html TEXT,
+  match_score NUMERIC,
+  variants JSONB DEFAULT '[]',
+  source_component JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Design decisions per article
+CREATE TABLE design_decisions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
+  article_id TEXT NOT NULL,
+  section_id TEXT NOT NULL,
+  component_id UUID REFERENCES brand_components(id),
+  layout JSONB NOT NULL,
+  reasoning TEXT,
+  semantic_role TEXT,
+  content_mapping JSONB,
+  confidence NUMERIC,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(brand_id, article_id, section_id)
+);
+
+-- Validation results
+CREATE TABLE validation_results (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  brand_id UUID REFERENCES brands(id) ON DELETE CASCADE,
+  article_id TEXT NOT NULL,
+  scores JSONB NOT NULL,
+  wow_factor_checklist JSONB,
+  passes_threshold BOOLEAN,
+  suggestions JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- RLS policies
+ALTER TABLE brand_components ENABLE ROW LEVEL SECURITY;
+ALTER TABLE design_decisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE validation_results ENABLE ROW LEVEL SECURITY;
+
+-- Users can access their organization's brand data
+CREATE POLICY "Users can access org brand components" ON brand_components
+  FOR ALL USING (
+    brand_id IN (
+      SELECT b.id FROM brands b
+      JOIN topical_maps tm ON tm.id = b.topical_map_id
+      JOIN projects p ON p.id = tm.project_id
+      WHERE p.organization_id IN (
+        SELECT organization_id FROM organization_members WHERE user_id = auth.uid()
+      )
+    )
+  );
+```
+
+**Step 2: Create SupabaseStorageAdapter**
+
+```typescript
+// services/brand-replication/storage/SupabaseStorageAdapter.ts
+export class SupabaseStorageAdapter implements StorageAdapter {
+  // Implement get/set/delete/list using Supabase client
+}
+```
+
+**Step 3: Deploy migration**
+
+Run: `supabase db push`
+
+---
+
+### Task 11: Connect Pipeline to Article Renderer
+
+Wire the pipeline's design decisions into the actual article rendering.
+
+**Files:**
+- Modify: `services/publishing/renderer/blueprintRenderer.ts`
+- Modify: `services/layout-engine/LayoutEngine.ts`
+
+**Step 1: Accept design decisions in blueprintRenderer**
+
+```typescript
+// Add option to use pipeline decisions instead of LayoutEngine
+interface BlueprintRendererOptions {
+  // existing options...
+  pipelineDecisions?: SectionDesignDecision[];
+}
+```
+
+**Step 2: Map SectionDesignDecision to BlueprintSection**
+
+Create a function that converts pipeline decisions to the existing blueprint format.
+
+**Step 3: Update StylePublishModal to pass decisions to renderer**
+
+When user has run the pipeline and approved decisions, use those for rendering.
+
+---
+
+### Task 12: UX Polish
+
+Improve user experience with progress indicators and better error handling.
+
+**Files:**
+- Modify: `components/publishing/StylePublishModal.tsx`
+- Create: `components/brand-replication/PipelineProgress.tsx`
+
+**Step 1: Create PipelineProgress component**
+
+Shows real-time progress across all 4 phases with status indicators.
+
+**Step 2: Add abort/cancel functionality**
+
+Allow users to cancel long-running operations.
+
+**Step 3: Improve error messages**
+
+Show actionable error messages when phases fail.
 
 ---
 

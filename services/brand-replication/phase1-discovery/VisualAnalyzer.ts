@@ -2,7 +2,6 @@
 
 import type { DiscoveredComponent, Screenshot } from '../interfaces';
 import { DISCOVERY_PROMPT } from '../config/defaultPrompts';
-import * as fs from 'fs';
 
 export interface VisualAnalyzerConfig {
   aiProvider: 'anthropic' | 'gemini';
@@ -39,15 +38,18 @@ export class VisualAnalyzer {
   }> {
     const prompt = this.config.customPrompt ?? DISCOVERY_PROMPT;
 
-    // Read screenshot files and convert to base64
-    const images = screenshots.map(s => {
-      const buffer = fs.readFileSync(s.path);
-      return {
+    // Use base64Data from screenshots (must be provided by caller)
+    const images = screenshots
+      .filter(s => s.base64Data) // Only use screenshots with base64 data
+      .map(s => ({
         url: s.url,
-        base64: buffer.toString('base64'),
-        mimeType: 'image/png',
-      };
-    });
+        base64: s.base64Data!,
+        mimeType: s.mimeType ?? 'image/png',
+      }));
+
+    if (images.length === 0) {
+      throw new Error('No screenshots with base64Data provided. Screenshots must include base64Data for visual analysis.');
+    }
 
     // Call AI with vision capability
     const response = await this.callAI(prompt, images);
@@ -110,10 +112,10 @@ export class VisualAnalyzer {
   }
 
   private async callGemini(prompt: string, images: { base64: string; mimeType: string }[]): Promise<string> {
-    const { GoogleGenerativeAI } = await import('@google/generative-ai');
-    const genAI = new GoogleGenerativeAI(this.config.apiKey);
-    const model = genAI.getGenerativeModel({ model: this.config.model ?? 'gemini-2.0-flash' });
+    const { GoogleGenAI } = await import('@google/genai');
+    const genAI = new GoogleGenAI({ apiKey: this.config.apiKey });
 
+    // Build content parts with images and text prompt
     const parts: any[] = images.map(img => ({
       inlineData: {
         mimeType: img.mimeType,
@@ -122,8 +124,11 @@ export class VisualAnalyzer {
     }));
     parts.push({ text: prompt });
 
-    const result = await model.generateContent(parts);
-    return result.response.text();
+    const response = await genAI.models.generateContent({
+      model: this.config.model ?? 'gemini-2.0-flash',
+      contents: [{ parts }],
+    });
+    return response.text ?? '';
   }
 
   private parseAnalysis(response: string): AnalysisResult {

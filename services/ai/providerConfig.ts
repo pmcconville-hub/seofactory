@@ -5,7 +5,8 @@ import { BusinessInfo } from '../../types';
 
 /**
  * Valid model IDs per provider
- * Updated: December 2025
+ * Updated: January 2026
+ * IMPORTANT: Keep in sync with geminiService.ts validGeminiModels
  */
 export const VALID_MODELS = {
   anthropic: [
@@ -30,9 +31,17 @@ export const VALID_MODELS = {
     'gpt-3.5-turbo',
   ],
   gemini: [
+    // Gemini 3 series (Latest - November 2025)
+    'gemini-3-pro-preview',
+    'gemini-3-pro-image-preview',
+    // Gemini 2.5 series (Production)
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-2.5-pro',
+    // Gemini 2.0 series (Legacy)
+    'gemini-2.0-flash',
     'gemini-2.0-flash-exp',
-    'gemini-1.5-pro',
-    'gemini-1.5-flash',
+    'gemini-2.0-flash-lite',
   ],
   perplexity: [
     'llama-3.1-sonar-large-128k-online',
@@ -51,7 +60,7 @@ export const VALID_MODELS = {
 export const DEFAULT_MODELS = {
   anthropic: 'claude-sonnet-4-5-20250929',
   openai: 'gpt-4o',
-  gemini: 'gemini-1.5-pro',
+  gemini: 'gemini-3-pro-preview',  // Latest model (January 2026)
   perplexity: 'llama-3.1-sonar-large-128k-online',
   openrouter: 'anthropic/claude-3.5-sonnet',
 } as const;
@@ -62,7 +71,7 @@ export const DEFAULT_MODELS = {
 export const FAST_MODELS = {
   anthropic: 'claude-haiku-4-5-20251001',
   openai: 'gpt-4o-mini',
-  gemini: 'gemini-1.5-flash',
+  gemini: 'gemini-2.5-flash',  // Fast production model for high-throughput
   perplexity: 'llama-3.1-sonar-small-128k-online',
   openrouter: 'openai/gpt-4o-mini',
 } as const;
