@@ -65,9 +65,14 @@ export async function saveDesignDNA(
  */
 function isTableMissingError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
-  const err = error as { code?: string; message?: string; status?: number };
-  // PGRST116 = relation does not exist or no rows, 406 = Not Acceptable (table issues)
-  return err.code === 'PGRST116' || err.code === '42P01' || err.status === 406;
+  const err = error as { code?: string; message?: string; status?: number; details?: string };
+  // 42P01 = relation does not exist (PostgreSQL)
+  // PGRST204 = table not found in schema cache (PostgREST)
+  // 404 = not found
+  if (err.code === '42P01' || err.code === 'PGRST204' || err.status === 404) return true;
+  // 406 can mean table not in schema cache OR just "no rows" with .single() — check message
+  if (err.status === 406 && err.message && !err.message.includes('0 rows')) return true;
+  return false;
 }
 
 /**
@@ -85,7 +90,7 @@ export async function getDesignDNA(projectId: string): Promise<DesignDNAExtracti
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (error) {
       if (isTableMissingError(error)) {
@@ -97,7 +102,6 @@ export async function getDesignDNA(projectId: string): Promise<DesignDNAExtracti
     }
 
     if (!data) {
-      console.log('[BrandDesignStorage] getDesignDNA: No data found for project');
       return null;
     }
 
@@ -198,7 +202,7 @@ export async function getBrandDesignSystem(projectId: string): Promise<BrandDesi
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (error) {
       if (isTableMissingError(error)) {
@@ -210,7 +214,6 @@ export async function getBrandDesignSystem(projectId: string): Promise<BrandDesi
     }
 
     if (!data) {
-      console.log('[BrandDesignStorage] getBrandDesignSystem: No data found for project');
       return null;
     }
 

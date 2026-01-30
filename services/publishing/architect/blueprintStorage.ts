@@ -110,12 +110,11 @@ export async function getProjectBlueprint(projectId: string): Promise<ProjectBlu
     .from('project_blueprints')
     .select('*')
     .eq('project_id', projectId)
-    .single();
+    .maybeSingle();
 
   if (error) {
-    // PGRST116 = no rows found, 406 = table doesn't exist (migration not deployed)
-    // Both are expected and should return null
-    if (error.code === 'PGRST116' || error.code === '406' || error.message?.includes('406')) {
+    // Table may not exist yet (migration not deployed) — graceful degradation
+    if (error.code === 'PGRST116' || error.code === '42P01' || error.status === 404) {
       return null;
     }
     console.error('Error fetching project blueprint:', error);
@@ -186,12 +185,11 @@ export async function getTopicalMapBlueprint(topicalMapId: string): Promise<Topi
     .from('topical_map_blueprints')
     .select('*')
     .eq('topical_map_id', topicalMapId)
-    .single();
+    .maybeSingle();
 
   if (error) {
-    // PGRST116 = no rows found, 406 = table doesn't exist (migration not deployed)
-    // Both are expected and should return null
-    if (error.code === 'PGRST116' || error.code === '406' || error.message?.includes('406')) {
+    // Table may not exist yet (migration not deployed) — graceful degradation
+    if (error.code === 'PGRST116' || error.code === '42P01' || error.status === 404) {
       return null;
     }
     console.error('Error fetching topical map blueprint:', error);
@@ -264,12 +262,11 @@ export async function getArticleBlueprint(topicId: string): Promise<ArticleBluep
     .from('article_blueprints')
     .select('*')
     .eq('topic_id', topicId)
-    .single();
+    .maybeSingle();
 
   if (error) {
-    // PGRST116 = no rows found, 406 = table doesn't exist (migration not deployed)
-    // Both are expected and should return null
-    if (error.code === 'PGRST116' || error.code === '406' || error.message?.includes('406')) {
+    // Table may not exist yet (migration not deployed) — graceful degradation
+    if (error.code === 'PGRST116' || error.code === '42P01' || error.status === 404) {
       return null;
     }
     console.error('Error fetching article blueprint:', error);
