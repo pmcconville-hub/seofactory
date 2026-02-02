@@ -43,3 +43,9 @@ backup/
 
 # Claude Code temp files
 tmpclaude-*
+
+# Temporary/scratch files
+tmp/
+
+# Test output
+playwright-output.txt
