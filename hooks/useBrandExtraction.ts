@@ -125,7 +125,9 @@ export function useBrandExtraction(
         throw new Error(data?.error || 'URL discovery returned no results');
       }
 
-      const discovered: UrlSuggestion[] = data.urls || [];
+      const discovered: UrlSuggestion[] = (data.urls || []).filter(
+        (s: UrlSuggestion) => !s.url.includes('@')
+      );
 
       setSuggestions(discovered);
 
@@ -326,30 +328,35 @@ export function useBrandExtraction(
                   createdAt: new Date().toISOString()
                 };
 
+                // Always add to in-memory state (for UI display and DesignDNA conversion)
+                setExtractedComponents(prev => [...prev, fullComponent]);
+
+                // Attempt DB save separately (non-blocking)
                 try {
                   await library.saveComponent(fullComponent);
-                  setExtractedComponents(prev => [...prev, fullComponent]);
                 } catch (saveErr) {
-                  console.warn(`[useBrandExtraction] Failed to save component:`, saveErr);
+                  console.warn(`[useBrandExtraction] Failed to save component to DB (will use in-memory):`, saveErr);
                 }
               }
             }
 
             // Save tokens from AI analysis to database
             if (analysisResult.tokens) {
-              const tokensId = crypto.randomUUID();
-              await useSupabase().from('brand_tokens').upsert({
-                id: tokensId,
-                project_id: projectId,
-                colors: analysisResult.tokens.colors,
-                typography: analysisResult.tokens.typography,
-                spacing: analysisResult.tokens.spacing,
-                shadows: analysisResult.tokens.shadows,
-                borders: analysisResult.tokens.borders,
-                gradients: analysisResult.tokens.gradients,
-                extracted_from: analysisResult.tokens.extractedFrom,
-                extracted_at: new Date().toISOString()
-              });
+              try {
+                await useSupabase().from('brand_tokens').upsert({
+                  project_id: projectId,
+                  colors: analysisResult.tokens.colors || {},
+                  typography: analysisResult.tokens.typography || {},
+                  spacing: analysisResult.tokens.spacing || {},
+                  shadows: analysisResult.tokens.shadows || {},
+                  borders: analysisResult.tokens.borders || {},
+                  gradients: analysisResult.tokens.gradients || null,
+                  extracted_from: analysisResult.tokens.extractedFrom,
+                  extracted_at: new Date().toISOString()
+                }, { onConflict: 'project_id' });
+              } catch (tokenSaveErr) {
+                console.warn('[useBrandExtraction] Failed to save tokens to DB:', tokenSaveErr);
+              }
             }
           } catch (analyzeErr) {
             console.warn(`[useBrandExtraction] AI analysis failed for ${url}:`, analyzeErr);
@@ -430,12 +437,14 @@ export function useBrandExtraction(
                       createdAt: new Date().toISOString()
                     };
 
+                    // Always add to in-memory state
+                    setExtractedComponents(prev => [...prev, fullComponent]);
+
                     try {
                       await library.saveComponent(fullComponent);
-                      setExtractedComponents(prev => [...prev, fullComponent]);
                       console.log(`[useBrandExtraction] Saved fallback ${sel.type} component`);
                     } catch (saveErr) {
-                      console.warn(`[useBrandExtraction] Failed to save ${sel.type} component:`, saveErr);
+                      console.warn(`[useBrandExtraction] Failed to save ${sel.type} component to DB:`, saveErr);
                     }
                   }
                 }
@@ -446,15 +455,21 @@ export function useBrandExtraction(
 
         // Also save the basic tokens from edge function extraction
         if (extraction.colors) {
-          const tokensId = crypto.randomUUID();
-          await useSupabase().from('brand_tokens').upsert({
-            id: tokensId,
-            project_id: projectId,
-            colors: extraction.colors,
-            typography: extraction.typography,
-            extracted_from: [url],
-            extracted_at: new Date().toISOString()
-          }, { onConflict: 'project_id' }); // Merge with existing
+          try {
+            await useSupabase().from('brand_tokens').upsert({
+              project_id: projectId,
+              colors: extraction.colors || {},
+              typography: extraction.typography || {},
+              spacing: extraction.spacing || { sectionGap: '48px', cardPadding: '24px', contentWidth: '1200px' },
+              shadows: extraction.shadows || { card: '0 1px 3px rgba(0,0,0,0.1)', elevated: '0 4px 6px rgba(0,0,0,0.1)' },
+              borders: extraction.borders || { radiusSmall: '4px', radiusMedium: '8px', radiusLarge: '16px', defaultColor: '#e5e7eb' },
+              gradients: extraction.gradients || null,
+              extracted_from: [url],
+              extracted_at: new Date().toISOString()
+            }, { onConflict: 'project_id' });
+          } catch (tokenSaveErr) {
+            console.warn('[useBrandExtraction] Failed to save edge function tokens to DB:', tokenSaveErr);
+          }
 
           // CRITICAL: If AI analysis didn't provide tokens, use edge function extraction as fallback
           // Edge function returns colors as object: {primary, secondary, accent, background}
@@ -529,9 +544,9 @@ export function useBrandExtraction(
       setPhase('complete');
       setProgress({
         phase: 'complete',
-        completedUrls: extractions.length,
-        totalUrls: extractions.length,
-        message: `Extraction complete! Processed ${extractions.length} pages.`
+        completedUrls: totalUrls,
+        totalUrls,
+        message: `Extraction complete! Processed ${totalUrls} page${totalUrls !== 1 ? 's' : ''}.`
       });
 
       console.log('[useBrandExtraction] Extraction complete, tokens:', mergedTokens ? 'present' : 'none');
@@ -727,17 +742,19 @@ export function useBrandExtraction(
         return false;
       }
 
-      // Convert DB rows back to UrlSuggestion[]
-      const loaded: UrlSuggestion[] = data.map(row => ({
-        url: row.suggested_url,
-        pageType: row.page_type as UrlSuggestion['pageType'],
-        discoveredFrom: row.discovered_from as UrlSuggestion['discoveredFrom'],
-        prominenceScore: (row.prominence_score ?? 0.5) * 100, // 0.00-1.00 → 0-100
-        visualContext: row.visual_context || '',
-      }));
+      // Convert DB rows back to UrlSuggestion[], filtering out email URLs
+      const loaded: UrlSuggestion[] = data
+        .filter(row => !row.suggested_url.includes('@'))
+        .map(row => ({
+          url: row.suggested_url,
+          pageType: row.page_type as UrlSuggestion['pageType'],
+          discoveredFrom: row.discovered_from as UrlSuggestion['discoveredFrom'],
+          prominenceScore: (row.prominence_score ?? 0.5) * 100, // 0.00-1.00 → 0-100
+          visualContext: row.visual_context || '',
+        }));
 
       const selected = data
-        .filter(row => row.selected)
+        .filter(row => row.selected && !row.suggested_url.includes('@'))
         .map(row => row.suggested_url);
 
       setSuggestions(loaded);

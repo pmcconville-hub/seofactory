@@ -112,7 +112,9 @@ async function discoverFromHomepage(domain: string): Promise<UrlSuggestion[]> {
 
     while ((match = hrefPattern.exec(html)) !== null) {
       const href = match[1];
-      if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) continue;
+      if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) continue;
+      // Skip URLs containing @ (email addresses parsed as http://user@domain)
+      if (href.includes('@')) continue;
 
       // Skip static assets
       const lowerHref = href.toLowerCase();

@@ -71,6 +71,7 @@ export class ComponentLibrary {
    * Save a component to the database.
    */
   async saveComponent(component: ExtractedComponent): Promise<void> {
+    // Use direct REST with upsert (RLS delegation to projects table handles access control)
     const { error } = await supabase
       .from('brand_components')
       .upsert({
@@ -82,10 +83,10 @@ export class ComponentLibrary {
         literal_html: component.literalHtml,
         literal_css: component.literalCss,
         their_class_names: component.theirClassNames,
-        content_slots: component.contentSlots,
-        bounding_box: component.boundingBox,
-        created_at: component.createdAt
-      });
+        content_slots: component.contentSlots || null,
+        bounding_box: component.boundingBox || null,
+        created_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
 
     if (error) {
       throw new Error(`Failed to save component: ${error.message}`);

@@ -243,10 +243,88 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
           });
 
         const primaryHex = findColorByUsage('primary', ['light', 'dark'])?.hex || tokens.colors?.values?.[0]?.hex || '#3b82f6';
-        const secondaryHex = findColorByUsage('secondary')?.hex || tokens.colors?.values?.[1]?.hex || '#1f2937';
-        const accentHex = findColorByUsage('accent')?.hex || tokens.colors?.values?.[2]?.hex || '#f59e0b';
+        let secondaryHex = findColorByUsage('secondary')?.hex || tokens.colors?.values?.[1]?.hex || '#1f2937';
+        let accentHex = findColorByUsage('accent')?.hex || tokens.colors?.values?.[2]?.hex || '#f59e0b';
 
-        console.log('[BrandIntelligenceStep] Color lookup results - primary:', primaryHex, 'secondary:', secondaryHex, 'accent:', accentHex);
+        console.log('[BrandIntelligenceStep] Color lookup results (raw) - primary:', primaryHex, 'secondary:', secondaryHex, 'accent:', accentHex);
+
+        // Validate colors - reject useless colors (white, near-white, near-black, grays)
+        const isUselessColor = (hex: string): boolean => {
+          if (!hex) return true;
+          const normalized = hex.toLowerCase().replace('#', '');
+          // Known useless values
+          if (['000000', 'ffffff', 'fff', '000', 'f3f5f5', 'f9fafb', 'e5e7eb', 'f5f5f5', 'fafafa'].includes(normalized)) return true;
+          // Check if it's a gray or near-neutral
+          const r = parseInt(normalized.slice(0, 2), 16);
+          const g = parseInt(normalized.slice(2, 4), 16);
+          const b = parseInt(normalized.slice(4, 6), 16);
+          if (isNaN(r) || isNaN(g) || isNaN(b)) return true;
+          // Near-white (all channels > 230) or near-black (all channels < 25)
+          if (r > 230 && g > 230 && b > 230) return true;
+          if (r < 25 && g < 25 && b < 25) return true;
+          // Gray (channels within 20 of each other)
+          if (Math.abs(r - g) < 20 && Math.abs(g - b) < 20 && Math.abs(r - b) < 20) return true;
+          return false;
+        };
+
+        // Check if color is too similar to another (within delta)
+        const isTooSimilar = (hex1: string, hex2: string, threshold = 40): boolean => {
+          const r1 = parseInt(hex1.replace('#', '').slice(0, 2), 16);
+          const g1 = parseInt(hex1.replace('#', '').slice(2, 4), 16);
+          const b1 = parseInt(hex1.replace('#', '').slice(4, 6), 16);
+          const r2 = parseInt(hex2.replace('#', '').slice(0, 2), 16);
+          const g2 = parseInt(hex2.replace('#', '').slice(2, 4), 16);
+          const b2 = parseInt(hex2.replace('#', '').slice(4, 6), 16);
+          return Math.abs(r1 - r2) + Math.abs(g1 - g2) + Math.abs(b1 - b2) < threshold;
+        };
+
+        // Compute complementary color (rotate hue 180°)
+        const computeComplementary = (hex: string): string => {
+          const r = parseInt(hex.replace('#', '').slice(0, 2), 16) / 255;
+          const g = parseInt(hex.replace('#', '').slice(2, 4), 16) / 255;
+          const b = parseInt(hex.replace('#', '').slice(4, 6), 16) / 255;
+          const max = Math.max(r, g, b), min = Math.min(r, g, b);
+          const l = (max + min) / 2;
+          let h = 0, s = 0;
+          if (max !== min) {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+            else if (max === g) h = ((b - r) / d + 2) / 6;
+            else h = ((r - g) / d + 4) / 6;
+          }
+          h = (h + 0.5) % 1; // Rotate 180°
+          // HSL to RGB
+          const hue2rgb = (p: number, q: number, t: number) => {
+            if (t < 0) t += 1; if (t > 1) t -= 1;
+            if (t < 1/6) return p + (q - p) * 6 * t;
+            if (t < 1/2) return q;
+            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+            return p;
+          };
+          const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+          const p = 2 * l - q;
+          const ro = Math.round(hue2rgb(p, q, h + 1/3) * 255);
+          const go = Math.round(hue2rgb(p, q, h) * 255);
+          const bo = Math.round(hue2rgb(p, q, h - 1/3) * 255);
+          return '#' + [ro, go, bo].map(c => c.toString(16).padStart(2, '0')).join('');
+        };
+
+        // Fix useless accent: compute complementary from primary
+        if (isUselessColor(accentHex) || isTooSimilar(accentHex, primaryHex)) {
+          const computed = computeComplementary(primaryHex);
+          console.log('[BrandIntelligenceStep] Accent was useless/duplicate, computed complementary:', computed);
+          accentHex = computed;
+        }
+
+        // Fix useless secondary: derive darker shade from primary
+        if (isUselessColor(secondaryHex) || isTooSimilar(secondaryHex, primaryHex)) {
+          const derived = darkenColor(primaryHex, 0.4);
+          console.log('[BrandIntelligenceStep] Secondary was useless/duplicate, derived from primary:', derived);
+          secondaryHex = derived;
+        }
+
+        console.log('[BrandIntelligenceStep] Color lookup results (final) - primary:', primaryHex, 'secondary:', secondaryHex, 'accent:', accentHex);
 
         // Convert extracted tokens to DesignDNA format
         const designDna: DesignDNA = {
@@ -418,24 +496,29 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
         };
 
         // Merge DOM-extracted high-confidence colors into DesignDNA
-        // (mirrors the merge logic in useBrandDetection.ts)
+        // Only accept colors that are useful (not white/black/gray/near-neutral)
         if (brandExtraction.extractedTokens?.colors?.values) {
           const colorValues = brandExtraction.extractedTokens.colors.values;
           for (const cv of colorValues) {
             if (!cv?.hex || !cv?.usage) continue;
             const usage = cv.usage.toLowerCase();
             if (usage.includes('primary') && !usage.includes('light') && !usage.includes('dark')) {
-              designDna.colors.primary.hex = cv.hex;
-              designDna.colors.primary.confidence = 0.95;
-              // Recompute light/dark
-              designDna.colors.primaryLight.hex = lightenColor(cv.hex, 0.3);
-              designDna.colors.primaryDark.hex = darkenColor(cv.hex, 0.2);
-              console.log('[BrandIntelligenceStep] Matched primary color by usage:', cv.hex);
-            } else if (usage.includes('secondary')) {
+              // Guard: only accept useful, non-gray/white/black primary from DOM
+              if (!isUselessColor(cv.hex)) {
+                designDna.colors.primary.hex = cv.hex;
+                designDna.colors.primary.confidence = 0.95;
+                // Recompute light/dark
+                designDna.colors.primaryLight.hex = lightenColor(cv.hex, 0.3);
+                designDna.colors.primaryDark.hex = darkenColor(cv.hex, 0.2);
+                console.log('[BrandIntelligenceStep] Matched primary color by usage:', cv.hex);
+              } else {
+                console.log('[BrandIntelligenceStep] SKIPPED useless DOM primary color:', cv.hex, 'usage:', cv.usage);
+              }
+            } else if (usage.includes('secondary') && !isUselessColor(cv.hex) && !isTooSimilar(cv.hex, designDna.colors.primary.hex)) {
               designDna.colors.secondary.hex = cv.hex;
               designDna.colors.secondary.confidence = 0.9;
               console.log('[BrandIntelligenceStep] Matched secondary color by usage:', cv.hex);
-            } else if (usage.includes('accent')) {
+            } else if (usage.includes('accent') && !isUselessColor(cv.hex) && !isTooSimilar(cv.hex, designDna.colors.primary.hex)) {
               designDna.colors.accent.hex = cv.hex;
               designDna.colors.accent.confidence = 0.85;
               console.log('[BrandIntelligenceStep] Matched accent color by usage:', cv.hex);
@@ -455,25 +538,83 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
           console.log('[BrandIntelligenceStep] Using extracted body font:', designDna.typography.bodyFont.family);
         }
 
-        // Generate BrandDesignSystem from DesignDNA
+        // Create placeholder design system so UI can show brand summary immediately
+        const placeholderDesignSystem: BrandDesignSystem = {
+          id: `bds_placeholder_${Date.now()}`,
+          brandName: 'Extracted Brand',
+          sourceUrl: brandExtraction.selectedUrls[0] || '',
+          generatedAt: new Date().toISOString(),
+          designDnaHash: 'placeholder',
+          tokens: { css: '', json: {} },
+          componentStyles: {} as BrandDesignSystem['componentStyles'],
+          decorative: {
+            dividers: { default: '', subtle: '', decorative: '' },
+            sectionBackgrounds: { default: '', accent: '', featured: '' }
+          },
+          interactions: {
+            buttonHover: '', buttonActive: '', buttonFocus: '',
+            cardHover: '', linkHover: '', focusRing: '', keyframes: {}
+          },
+          typographyTreatments: {
+            headingDecoration: '', dropCap: '', pullQuote: '',
+            listMarker: '', linkUnderline: '', codeBlock: ''
+          },
+          imageTreatments: { defaultFrame: '', featured: '', thumbnail: '', gallery: '' },
+          compiledCss: '', // Empty - CSS generation will update this
+          variantMappings: { card: {}, hero: {}, button: {}, cta: {} }
+        };
+
+        // Immediately notify parent with DesignDNA so brand summary shows right away
+        console.log('[BrandIntelligenceStep] Notifying parent with DesignDNA (CSS generation pending)...');
+        onDetectionComplete({
+          designDna,
+          designSystem: placeholderDesignSystem,
+          screenshotBase64: brandExtraction.screenshotBase64 || '',
+          extractedComponents: brandExtraction.extractedComponents,
+        });
+
+        // Generate full BrandDesignSystem with CSS in the background
         try {
           const generator = new BrandDesignSystemGenerator({
             provider: geminiApiKey ? 'gemini' : 'anthropic',
             apiKey: geminiApiKey || anthropicApiKey || '',
           });
 
+          // Construct Google Fonts URL from extracted font families
+          const headingFamily = designDna.typography?.headingFont?.family?.split(',')[0]?.trim();
+          const bodyFamily = designDna.typography?.bodyFont?.family?.split(',')[0]?.trim();
+          const systemFonts = ['system-ui', 'sans-serif', 'serif', 'monospace', 'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana', 'Tahoma'];
+          const googleFontFamilies: string[] = [];
+          if (headingFamily && !systemFonts.includes(headingFamily)) {
+            googleFontFamilies.push(headingFamily);
+          }
+          if (bodyFamily && !systemFonts.includes(bodyFamily) && bodyFamily !== headingFamily) {
+            googleFontFamilies.push(bodyFamily);
+          }
+          const googleFontsUrl = googleFontFamilies.length > 0
+            ? `https://fonts.googleapis.com/css2?${googleFontFamilies.map(f => `family=${encodeURIComponent(f)}:wght@400;600;700`).join('&')}&display=swap`
+            : undefined;
+          if (googleFontsUrl) {
+            console.log('[BrandIntelligenceStep] Constructed Google Fonts URL:', googleFontsUrl);
+          }
+
           const designSystem = await generator.generate(
             designDna,
             'Extracted Brand',
             brandExtraction.selectedUrls[0] || '',
             brandExtraction.screenshotBase64 || undefined,
-            undefined // googleFontsUrl not available in full extraction path
+            googleFontsUrl
           );
 
           console.log('[BrandIntelligenceStep] Generated design system, CSS length:', designSystem.compiledCss?.length);
-          console.log('[BrandIntelligenceStep] Extracted components count:', brandExtraction.extractedComponents.length);
 
-          // Notify parent with the converted data AND extracted components
+          // Expose compiled CSS for E2E testing/debugging
+          if (typeof window !== 'undefined') {
+            (window as Record<string, unknown>).__BRAND_COMPILED_CSS__ = designSystem.compiledCss;
+            (window as Record<string, unknown>).__BRAND_DESIGN_SYSTEM__ = designSystem;
+          }
+
+          // Update parent with the full design system (with generated CSS)
           onDetectionComplete({
             designDna,
             designSystem,
@@ -481,68 +622,11 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
             extractedComponents: brandExtraction.extractedComponents,
           });
 
-          console.log('[BrandIntelligenceStep] Full Extraction flow complete, notified parent');
+          console.log('[BrandIntelligenceStep] Full Extraction flow complete, notified parent with CSS');
         } catch (err) {
-          console.error('[BrandIntelligenceStep] Failed to generate design system from tokens:', err);
-          console.log('[BrandIntelligenceStep] Using fallback design system with extracted DesignDNA');
-
-          // Create a minimal fallback design system so we can still proceed
-          const fallbackDesignSystem: BrandDesignSystem = {
-            id: `bds_fallback_${Date.now()}`,
-            brandName: 'Extracted Brand',
-            sourceUrl: brandExtraction.selectedUrls[0] || '',
-            generatedAt: new Date().toISOString(),
-            designDnaHash: 'fallback',
-            tokens: {
-              css: '',
-              json: {}
-            },
-            componentStyles: {} as BrandDesignSystem['componentStyles'],
-            decorative: {
-              dividers: { default: '', subtle: '', decorative: '' },
-              sectionBackgrounds: { default: '', accent: '', featured: '' }
-            },
-            interactions: {
-              buttonHover: '',
-              buttonActive: '',
-              buttonFocus: '',
-              cardHover: '',
-              linkHover: '',
-              focusRing: '',
-              keyframes: {}
-            },
-            typographyTreatments: {
-              headingDecoration: '',
-              dropCap: '',
-              pullQuote: '',
-              listMarker: '',
-              linkUnderline: '',
-              codeBlock: ''
-            },
-            imageTreatments: {
-              defaultFrame: '',
-              featured: '',
-              thumbnail: '',
-              gallery: ''
-            },
-            compiledCss: '', // Empty - will use legacy fallback
-            variantMappings: {
-              card: {},
-              hero: {},
-              button: {},
-              cta: {}
-            }
-          };
-
-          // Still notify parent with DesignDNA - renderer will use legacy fallback for CSS
-          onDetectionComplete({
-            designDna,
-            designSystem: fallbackDesignSystem,
-            screenshotBase64: brandExtraction.screenshotBase64 || '',
-            extractedComponents: brandExtraction.extractedComponents,
-          });
-
-          console.log('[BrandIntelligenceStep] Fallback design system passed to parent');
+          console.error('[BrandIntelligenceStep] CSS generation failed, using placeholder:', err);
+          // Parent already has DesignDNA from the immediate notification above
+          // The placeholder design system will trigger legacy CSS fallback in the renderer
         }
       }
     };
@@ -617,11 +701,27 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
         apiKey,
       });
 
+      // Construct Google Fonts URL from DesignDNA font families
+      const regenHeadingFamily = designDna.typography?.headingFont?.family?.split(',')[0]?.trim();
+      const regenBodyFamily = designDna.typography?.bodyFont?.family?.split(',')[0]?.trim();
+      const regenSystemFonts = ['system-ui', 'sans-serif', 'serif', 'monospace', 'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana', 'Tahoma'];
+      const regenGoogleFamilies: string[] = [];
+      if (regenHeadingFamily && !regenSystemFonts.includes(regenHeadingFamily)) {
+        regenGoogleFamilies.push(regenHeadingFamily);
+      }
+      if (regenBodyFamily && !regenSystemFonts.includes(regenBodyFamily) && regenBodyFamily !== regenHeadingFamily) {
+        regenGoogleFamilies.push(regenBodyFamily);
+      }
+      const regenGoogleFontsUrl = regenGoogleFamilies.length > 0
+        ? `https://fonts.googleapis.com/css2?${regenGoogleFamilies.map(f => `family=${encodeURIComponent(f)}:wght@400;600;700`).join('&')}&display=swap`
+        : undefined;
+
       const newDesignSystem = await generator.generate(
         designDna,
         brandDesignSystem?.brandName || 'Brand',
         brandDesignSystem?.sourceUrl || savedSourceUrl || '',
-        screenshotBase64 || undefined
+        screenshotBase64 || undefined,
+        regenGoogleFontsUrl
       );
 
       console.log('[BrandIntelligenceStep] CSS regeneration complete, compiledCss length:', newDesignSystem.compiledCss?.length);
@@ -694,6 +794,12 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
   const currentScreenshot = screenshotBase64 || detection.result?.screenshotBase64;
   const hasDetection = Boolean(currentDna);
   const hasSavedData = Boolean(savedSourceUrl && savedExtractedAt && hasDetection);
+
+  // Expose design system for E2E testing/debugging (works for both saved and fresh data)
+  if (typeof window !== 'undefined' && brandDesignSystem?.compiledCss) {
+    (window as Record<string, unknown>).__BRAND_COMPILED_CSS__ = brandDesignSystem.compiledCss;
+    (window as Record<string, unknown>).__BRAND_DESIGN_SYSTEM__ = brandDesignSystem;
+  }
 
   return (
     <div className="space-y-6">
@@ -993,6 +1099,16 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
             </div>
           </div>
 
+          {/* CSS Generation Status */}
+          {brandDesignSystem && !brandDesignSystem.compiledCss && (
+            <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-xl flex items-center gap-3">
+              <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              <p className="text-sm text-blue-300">
+                Generating brand-matched CSS styles... The brand summary is ready for review while styles are being created.
+              </p>
+            </div>
+          )}
+
           {/* Color Palette */}
           <div className="p-4 bg-zinc-900/40 rounded-xl border border-zinc-700/50">
             <h4 className="text-sm font-medium text-zinc-300 mb-3">Color Palette</h4>
@@ -1045,18 +1161,70 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
             </div>
           </div>
 
-          {/* Expandable Design DNA Details */}
+          {/* Design DNA Visual Summary */}
+          {currentDna.componentPreferences && (
+            <div className="border border-zinc-700/50 rounded-xl p-4 space-y-3">
+              <h4 className="text-sm font-medium text-zinc-300">Detected Component Styles</h4>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(currentDna.componentPreferences).map(([key, value]) => {
+                  const label = key.replace('preferred', '').replace(/([A-Z])/g, ' $1').replace('Style', '').trim();
+                  return (
+                    <span key={key} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs">
+                      <span className="text-zinc-400">{label}:</span>
+                      <span className="text-white font-medium">{String(value)}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Confidence Scores */}
+          {currentDna.confidence && (
+            <div className="border border-zinc-700/50 rounded-xl p-4 space-y-3">
+              <h4 className="text-sm font-medium text-zinc-300">Detection Confidence</h4>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'Colors', value: currentDna.confidence.colorsConfidence },
+                  { label: 'Typography', value: currentDna.confidence.typographyConfidence },
+                  { label: 'Layout', value: currentDna.confidence.layoutConfidence },
+                  { label: 'Overall', value: currentDna.confidence.overall },
+                ].filter(item => item.value != null).map(item => (
+                  <div key={item.label} className="space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-zinc-400">{item.label}</span>
+                      <span className={`font-medium ${
+                        (item.value || 0) >= 80 ? 'text-green-400' :
+                        (item.value || 0) >= 60 ? 'text-yellow-400' : 'text-red-400'
+                      }`}>{item.value}%</span>
+                    </div>
+                    <div className="h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          (item.value || 0) >= 80 ? 'bg-green-500' :
+                          (item.value || 0) >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                        }`}
+                        style={{ width: `${item.value || 0}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Expandable raw details (for power users) */}
           <div className="border border-zinc-700/50 rounded-xl overflow-hidden">
             <button
               type="button"
               onClick={() => setIsExpanded(!isExpanded)}
               className="w-full p-4 flex items-center justify-between bg-zinc-900/40 hover:bg-zinc-800/50 transition-colors"
             >
-              <span className="text-sm font-medium text-zinc-300">
-                Design DNA Details
+              <span className="text-xs text-zinc-500">
+                Raw Design DNA (technical details)
               </span>
               <span
-                className={`text-zinc-400 transition-transform duration-200 ${
+                className={`text-zinc-500 text-xs transition-transform duration-200 ${
                   isExpanded ? 'rotate-180' : ''
                 }`}
               >
@@ -1068,6 +1236,14 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
                 <pre>{JSON.stringify(currentDna, null, 2)}</pre>
               </div>
             )}
+          </div>
+
+          {/* Post-extraction guidance */}
+          <div className="p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl">
+            <p className="text-sm text-blue-300">
+              Review the brand profile above. You can adjust the personality sliders to fine-tune the styling.
+              When ready, click <span className="font-semibold">Next</span> to proceed to the Layout step.
+            </p>
           </div>
         </>
       )}

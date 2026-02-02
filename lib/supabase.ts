@@ -7,5 +7,6 @@ import { useSupabase } from '../services/supabaseClient';
 
 // Export the supabase client getter
 export const supabase = {
-  from: (table: string) => useSupabase().from(table)
+  from: (table: string) => useSupabase().from(table),
+  rpc: (fn: string, params?: Record<string, unknown>) => useSupabase().rpc(fn, params)
 };

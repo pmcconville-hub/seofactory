@@ -273,20 +273,106 @@ async function extractBrandFromPages(urls: string[], apifyToken: string): Promis
             }
           }
 
-          // Heading color
-          const h1 = document.querySelector('h1, h2');
-          if (h1) {
-            results.secondary = window.getComputedStyle(h1).color || '#18181b';
-            sources.secondary = 'heading';
+          // Secondary color: find a second prominent brand color
+          // First try: look for nav/header background, footer background, or section backgrounds
+          const secondarySelectors = [
+            'header', 'nav', '.navbar', '.site-header',
+            'footer', '.site-footer',
+            'section[class*="dark"]', 'section[class*="color"]', '[class*="hero"]',
+            '.bg-primary', '.bg-secondary', '[class*="banner"]',
+          ];
+          for (const sel of secondarySelectors) {
+            try {
+              const el = document.querySelector(sel);
+              if (el) {
+                const bg = window.getComputedStyle(el).backgroundColor;
+                if (bg && !isNeutral(bg)) {
+                  // Check it's different from primary
+                  const m = bg.match(/\d+/g);
+                  const pm = results.primary?.match?.(/\d+/g);
+                  if (m && pm) {
+                    const diff = Math.abs(+m[0] - +pm[0]) + Math.abs(+m[1] - +pm[1]) + Math.abs(+m[2] - +pm[2]);
+                    if (diff > 60) {
+                      results.secondary = bg;
+                      sources.secondary = 'section_bg';
+                      break;
+                    }
+                  }
+                }
+              }
+            } catch {}
+          }
+          // Fallback to heading color
+          if (!results.secondary) {
+            const h1 = document.querySelector('h1, h2');
+            if (h1) {
+              results.secondary = window.getComputedStyle(h1).color || '#18181b';
+              sources.secondary = 'heading';
+            }
           }
 
           results.background = window.getComputedStyle(document.body).backgroundColor || '#ffffff';
 
-          // Fallback
+          // Fallback for primary
           if (!results.primary || isNeutral(results.primary)) {
             results.primary = 'rgb(234, 88, 12)';
             sources.primary = 'fallback';
           }
+
+          // Accent color: find a distinctive CTA/highlight color different from primary
+          // Look for CTA buttons, highlighted elements, badges, banners with distinct colors
+          if (!results.accent || results.accent === results.primary) {
+            const ctaSelectors = [
+              // CTA-specific selectors
+              'a[class*="cta"]', 'a[class*="aanvraag"]', 'a[class*="offerte"]',
+              '.cta', '[class*="call-to-action"]',
+              // WordPress & Elementor CTA patterns
+              '.wp-block-button__link', '.elementor-button', '.e-button',
+              // Generic CTA/highlight patterns
+              'button[class*="accent"]', 'a[class*="accent"]',
+              'button[class*="secondary"]', 'a[class*="secondary"]',
+              '.badge', '.tag', '.label',
+              // Navigation CTA (often a different color)
+              'nav a[class*="button"]', 'nav button', 'header a[class*="btn"]',
+              'header button:not([class*="menu"])',
+              // Any highlighted/colored button
+              'button', 'a.button', 'a.btn', '[role="button"]',
+            ];
+
+            const primaryRgb = results.primary ? (() => {
+              const m = results.primary.match(/\d+/g);
+              return m ? m.map(Number) : null;
+            })() : null;
+
+            for (const sel of ctaSelectors) {
+              try {
+                const elements = document.querySelectorAll(sel);
+                for (const el of Array.from(elements).slice(0, 10)) {
+                  const bg = window.getComputedStyle(el).backgroundColor;
+                  if (!bg || isNeutral(bg)) continue;
+                  // Check this color is different from primary
+                  const m = bg.match(/\d+/g);
+                  if (!m) continue;
+                  const [r, g, b] = m.map(Number);
+                  if (primaryRgb) {
+                    const diff = Math.abs(r - primaryRgb[0]) + Math.abs(g - primaryRgb[1]) + Math.abs(b - primaryRgb[2]);
+                    if (diff > 80) { // Significantly different from primary
+                      results.accent = bg;
+                      sources.accent = 'cta_button';
+                      break;
+                    }
+                  } else {
+                    results.accent = bg;
+                    sources.accent = 'cta_button';
+                    break;
+                  }
+                }
+                if (results.accent && results.accent !== results.primary) break;
+              } catch {}
+            }
+          }
+
+          // Final fallback: accent = primary
           if (!results.accent) {
             results.accent = results.primary;
             sources.accent = sources.primary;

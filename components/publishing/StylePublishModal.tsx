@@ -14,7 +14,7 @@
  * @module components/publishing/StylePublishModal
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAppState } from '../../state/appState';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -246,6 +246,10 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
 
   // Semantic Layout Engine toggle - AI-driven layout intelligence
   const [useSemanticLayoutEngine, setUseSemanticLayoutEngine] = useState(false);
+
+  // Renderer path selector - user controls which rendering engine to use
+  const [rendererPath, setRendererPath] = useState<'auto' | 'brand-templates' | 'clean-components'>('auto');
+  const rendererPathInitialRef = useRef(true); // Skip auto-regenerate on mount
 
   // ============================================================================
   // Brand Replication Pipeline State (Feature Flag: ENABLE_BRAND_REPLICATION)
@@ -1574,6 +1578,8 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
               // Pipeline decisions from Phase 3 Intelligence (when available)
               pipelineDecisions: pipelineIntelligenceOutput?.decisions,
               pipelineComponents: pipelineCodeGenOutput?.components,
+              // Renderer path override (user selection)
+              rendererPath,
             });
 
             console.log('[Style & Publish] Unified renderer succeeded');
@@ -1755,7 +1761,19 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     } finally {
       setIsGenerating(false);
     }
-  }, [style, layout, articleDraft, topic, brief, personalityId, blueprint, detectedDesignSystem, topicalMap, useSemanticLayoutEngine, detectedDesignDna, layoutEngineBlueprint, extractedComponents, activeAiApiKey, aiProvider, projectId, supabaseUrl, supabaseAnonKey, brandMatchScore]);
+  }, [style, layout, articleDraft, topic, brief, personalityId, blueprint, detectedDesignSystem, topicalMap, useSemanticLayoutEngine, detectedDesignDna, layoutEngineBlueprint, extractedComponents, activeAiApiKey, aiProvider, projectId, supabaseUrl, supabaseAnonKey, brandMatchScore, rendererPath]);
+
+  // Auto-regenerate preview when renderer path changes (user switched dropdown)
+  useEffect(() => {
+    if (rendererPathInitialRef.current) {
+      rendererPathInitialRef.current = false;
+      return;
+    }
+    // Only regenerate when on the preview step with valid style/layout
+    if (currentStep === 'preview' && style && layout) {
+      generatePreview();
+    }
+  }, [rendererPath]); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally only trigger on rendererPath change
 
   // Navigation handlers
   const handleNext = useCallback(async () => {
@@ -1913,7 +1931,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
 
             {/* Brand Replication Feature Toggle */}
             {detectedDesignDna && (
-              <div className="p-4 bg-zinc-900/40 rounded-xl border border-zinc-700/50">
+              <div className="p-4 bg-zinc-900/40 rounded-xl border border-zinc-700/50 space-y-3">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
@@ -1925,11 +1943,21 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
                   <div>
                     <span className="text-sm font-medium text-white">Advanced Brand Replication</span>
                     <span className="text-xs text-zinc-500 ml-2">(BETA)</span>
-                    <p className="text-xs text-zinc-400 mt-0.5">
-                      Extract component patterns for pixel-perfect brand matching
-                    </p>
                   </div>
                 </label>
+                <div className="text-xs text-zinc-400 space-y-1.5 pl-14">
+                  {enableBrandReplication ? (
+                    <>
+                      <p className="text-blue-300 font-medium">Enabled: Using real HTML/CSS from your website</p>
+                      <p>The output will use actual component HTML and CSS extracted from your brand website for pixel-perfect matching. This produces the most accurate brand replication but is experimental.</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-medium text-zinc-300">Default: AI-generated styling</p>
+                      <p>The output will be styled using AI-generated CSS based on detected brand colors, fonts, and personality. This is the recommended approach for most cases.</p>
+                    </>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1995,6 +2023,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
               isGenerating={isLayoutEngineGenerating}
               error={layoutEngineError}
               onRegenerate={() => generateLayoutEngineBlueprint(detectedDesignDna || undefined)}
+              onBlueprintChange={setLayoutEngineBlueprint}
             />
 
             {/* Section Designer - Shows Phase 3 design decisions when enabled */}
@@ -2157,6 +2186,13 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
               await generateLayoutEngineBlueprint(detectedDesignDna || undefined, instructions);
               await generateBlueprint();
               await generatePreview();
+            }}
+            // Renderer path selector
+            rendererPath={rendererPath}
+            onRendererPathChange={(path) => {
+              setRendererPath(path as 'auto' | 'brand-templates' | 'clean-components');
+              // Preview is cleared; useEffect on rendererPath will auto-regenerate
+              setPreview(null);
             }}
             // Semantic Layout Engine toggle (requires Gemini API key)
             useSemanticLayoutEngine={useSemanticLayoutEngine}

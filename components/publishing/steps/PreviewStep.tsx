@@ -130,6 +130,9 @@ interface PreviewStepProps {
   // Semantic Layout Engine toggle
   useSemanticLayoutEngine?: boolean;
   onSemanticLayoutEngineChange?: (enabled: boolean) => void;
+  // Renderer path selector
+  rendererPath?: 'auto' | 'brand-templates' | 'clean-components';
+  onRendererPathChange?: (path: 'auto' | 'brand-templates' | 'clean-components') => void;
 }
 
 interface DeviceFrameProps {
@@ -253,6 +256,9 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
   // Semantic Layout Engine toggle
   useSemanticLayoutEngine,
   onSemanticLayoutEngineChange,
+  // Renderer path selector
+  rendererPath,
+  onRendererPathChange,
 }) => {
   const [device, setDevice] = useState<DevicePreview>('desktop');
   const [showRawHtml, setShowRawHtml] = useState(false);
@@ -352,6 +358,20 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
               </span>
             </label>
           )}
+
+          {/* Renderer path selector */}
+          {onRendererPathChange && (
+            <select
+              value={rendererPath || 'auto'}
+              onChange={(e) => onRendererPathChange(e.target.value as 'auto' | 'brand-templates' | 'clean-components')}
+              className="px-2 py-1.5 text-xs bg-gray-800 text-gray-300 border border-gray-700 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              title="Choose which rendering engine to use"
+            >
+              <option value="auto">Renderer: Auto</option>
+              <option value="clean-components">Renderer: Clean Components</option>
+              <option value="brand-templates">Renderer: Brand Templates</option>
+            </select>
+          )}
         </div>
 
         {/* View toggles */}
@@ -409,7 +429,6 @@ document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Styled Article</title>
-  <script src="https://cdn.tailwindcss.com"></script>
   <style>
 ${preview.css}
   </style>
@@ -482,12 +501,11 @@ document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
   <style>
 ${preview.css}
   </style>
 </head>
-<body class="bg-white">
+<body>
 ${preview.html}
 <script>
 document.querySelectorAll('.ctc-faq-trigger').forEach(function(trigger) {

@@ -29,16 +29,17 @@ export async function saveDesignDNA(
   });
 
   try {
+    // Use direct REST (RLS delegation to projects table handles access control)
     const { data, error } = await supabase
       .from('brand_design_dna')
       .insert({
         project_id: projectId,
         source_url: result.sourceUrl,
-        screenshot_base64: result.screenshotBase64,
+        screenshot_base64: result.screenshotBase64 || null,
         design_dna: result.designDna,
-        ai_model: result.aiModel,
+        ai_model: result.aiModel || null,
         confidence_score: result.designDna.confidence.overall,
-        processing_time_ms: result.processingTimeMs
+        processing_time_ms: result.processingTimeMs || null,
       })
       .select('id')
       .single();
@@ -52,8 +53,9 @@ export async function saveDesignDNA(
       return null;
     }
 
-    console.log('[BrandDesignStorage] saveDesignDNA SUCCESS - id:', data.id);
-    return data.id;
+    const resultId = data?.id as string;
+    console.log('[BrandDesignStorage] saveDesignDNA SUCCESS - id:', resultId);
+    return resultId;
   } catch (err) {
     console.warn('[BrandDesignStorage] saveDesignDNA exception:', err);
     return null;
@@ -149,24 +151,23 @@ export async function saveBrandDesignSystem(
   });
 
   try {
+    // Use direct REST with upsert (RLS delegation to projects table handles access control)
     const { data, error } = await supabase
       .from('brand_design_systems')
       .upsert({
         project_id: projectId,
-        design_dna_id: designDnaId,
-        brand_name: system.brandName,
-        design_dna_hash: system.designDnaHash,
-        tokens: system.tokens,
-        component_styles: system.componentStyles,
-        decorative_elements: system.decorative,
-        interactions: system.interactions,
-        typography_treatments: system.typographyTreatments,
-        image_treatments: system.imageTreatments,
-        compiled_css: system.compiledCss,
-        variant_mappings: system.variantMappings
-      }, {
-        onConflict: 'project_id,design_dna_hash'
-      })
+        design_dna_id: designDnaId || null,
+        brand_name: system.brandName || null,
+        design_dna_hash: system.designDnaHash || null,
+        tokens: system.tokens || null,
+        component_styles: system.componentStyles || null,
+        decorative_elements: system.decorative || null,
+        interactions: system.interactions || null,
+        typography_treatments: system.typographyTreatments || null,
+        image_treatments: system.imageTreatments || null,
+        compiled_css: system.compiledCss || '',
+        variant_mappings: system.variantMappings || null,
+      }, { onConflict: 'project_id,design_dna_hash' })
       .select('id')
       .single();
 
@@ -179,8 +180,9 @@ export async function saveBrandDesignSystem(
       return null;
     }
 
-    console.log('[BrandDesignStorage] saveBrandDesignSystem SUCCESS - id:', data.id);
-    return data.id;
+    const resultId = data?.id as string;
+    console.log('[BrandDesignStorage] saveBrandDesignSystem SUCCESS - id:', resultId);
+    return resultId;
   } catch (err) {
     console.warn('[BrandDesignStorage] saveBrandDesignSystem exception:', err);
     return null;

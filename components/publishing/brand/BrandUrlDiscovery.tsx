@@ -72,7 +72,10 @@ const UrlSuggestionItem: React.FC<UrlSuggestionItemProps> = ({
   isSelected,
   onToggle,
 }) => {
-  const prominencePercent = Math.round(suggestion.prominenceScore * 100);
+  // prominenceScore is 0-100 from the edge function, display directly
+  const prominencePercent = Math.round(
+    suggestion.prominenceScore > 1 ? suggestion.prominenceScore : suggestion.prominenceScore * 100
+  );
 
   return (
     <label
@@ -150,9 +153,12 @@ export const BrandUrlDiscovery: React.FC<BrandUrlDiscoveryProps> = ({
     }
   };
 
+  // Filter out email addresses and invalid URLs on the frontend
+  const validSuggestions = suggestions.filter(s => !s.url.includes('@'));
+
   const selectedCount = selectedUrls.length;
   const hasSelections = selectedCount > 0;
-  const hasSuggestions = suggestions.length > 0;
+  const hasSuggestions = validSuggestions.length > 0;
 
   return (
     <div className="space-y-6">
@@ -215,7 +221,7 @@ export const BrandUrlDiscovery: React.FC<BrandUrlDiscoveryProps> = ({
           {/* Header with Select All / Clear */}
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-gray-300">
-              Discovered URLs ({suggestions.length})
+              Discovered URLs ({validSuggestions.length})
             </h3>
             <div className="flex gap-2">
               <button
@@ -237,8 +243,8 @@ export const BrandUrlDiscovery: React.FC<BrandUrlDiscoveryProps> = ({
           </div>
 
           {/* URL List */}
-          <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
-            {suggestions.map((suggestion) => (
+          <div className="space-y-2 max-h-[250px] overflow-y-auto pr-2">
+            {validSuggestions.map((suggestion) => (
               <UrlSuggestionItem
                 key={suggestion.url}
                 suggestion={suggestion}
@@ -248,8 +254,8 @@ export const BrandUrlDiscovery: React.FC<BrandUrlDiscoveryProps> = ({
             ))}
           </div>
 
-          {/* Extract Button */}
-          <div className="pt-4 border-t border-gray-700">
+          {/* Extract Button — always visible below the list */}
+          <div className="pt-4 border-t border-gray-700 sticky bottom-0 bg-gray-900/95 backdrop-blur-sm pb-2">
             <Button
               type="button"
               variant="primary"
