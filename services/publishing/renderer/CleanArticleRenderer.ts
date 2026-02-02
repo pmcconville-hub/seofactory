@@ -163,7 +163,54 @@ export class CleanArticleRenderer {
       // 1. Exact ID match
       // 2. Heading text similarity match
       // 3. Order-based match (accounting for intro sections)
-      const layoutSection = this.findMatchingLayoutSection(section, i, usedBlueprintIndices);
+      let layoutSection = this.findMatchingLayoutSection(section, i, usedBlueprintIndices);
+
+      // If no match but we have a blueprint, synthesize a section to use ComponentRenderer
+      if (!layoutSection && this.layoutBlueprint?.sections?.length) {
+        const inferredType = this.inferContentType(section);
+        const inferredComponent = this.inferComponent(inferredType);
+        if (inferredComponent !== 'prose') {
+          layoutSection = {
+            id: section.id || `synth-${i}`,
+            heading: section.heading || '',
+            headingLevel: section.headingLevel || 2,
+            order: i,
+            contentType: inferredType,
+            semanticWeight: isFirst ? 4 : 3,
+            component: {
+              primaryComponent: inferredComponent,
+              alternativeComponents: [],
+              confidence: 0.6,
+              reasoning: 'Synthesized from content analysis',
+            },
+            layout: {
+              width: 'medium' as const,
+              columns: 1 as const,
+              imagePosition: 'none' as const,
+              verticalSpacingBefore: 'normal' as const,
+              verticalSpacingAfter: 'normal' as const,
+              breakBefore: 'none' as const,
+              breakAfter: 'none' as const,
+              alignText: 'left' as const,
+            },
+            emphasis: {
+              level: isFirst ? 'hero' as const : (i <= 2 ? 'featured' as const : 'standard' as const),
+              headingSize: isFirst ? 'xl' as const : 'lg' as const,
+              headingDecoration: false,
+              paddingMultiplier: 1,
+              marginMultiplier: 1,
+              hasBackgroundTreatment: false,
+              hasAccentBorder: false,
+              elevation: 0 as const,
+              hasEntryAnimation: false,
+            },
+            constraints: {},
+            contentZone: 'MAIN' as const,
+            cssClasses: [],
+          } as BlueprintSection;
+          console.log(`[CleanArticleRenderer] Synthesized layoutSection for ${section.id}: ${inferredComponent}`);
+        }
+      }
 
       console.log(`[CleanArticleRenderer] Section ${i} (${section.id}) matched:`, {
         sectionHeading: section.heading?.substring(0, 40),
@@ -190,10 +237,11 @@ export class CleanArticleRenderer {
    * Build hero section - minimal semantic HTML, NO badges or decorative elements
    */
   private buildHero(title: string): string {
-    // Simple, semantic hero - just the title, no badges, no decorations
     return `
 <header class="article-header">
-  <h1>${this.escapeHtml(title)}</h1>
+  <div class="article-header-inner">
+    <h1>${this.escapeHtml(title)}</h1>
+  </div>
 </header>`;
   }
 
@@ -235,7 +283,7 @@ ${listItems}
 
     // Determine content type and emphasis from Layout Engine or infer from content
     const contentType = layoutSection?.contentType || this.inferContentType(section);
-    const emphasisLevel = layoutSection?.emphasis?.level || (isFirst ? 'featured' : 'standard');
+    const emphasisLevel = layoutSection?.emphasis?.level || (isFirst ? 'hero' : 'standard');
     const component = layoutSection?.component?.primaryComponent || this.inferComponent(contentType);
     const variant = layoutSection?.component?.componentVariant || 'default';
 
@@ -401,6 +449,9 @@ ${listItems}
   private headingsAreSimilar(h1: string, h2: string): boolean {
     if (h1 === h2) return true;
 
+    // Substring containment - if one heading contains the other
+    if (h1.includes(h2) || h2.includes(h1)) return true;
+
     const words1 = h1.split(' ').filter(w => w.length > 0);
     const words2 = h2.split(' ').filter(w => w.length > 0);
 
@@ -411,7 +462,7 @@ ${listItems}
     const overlap = [...set1].filter(w => set2.has(w)).length;
     const total = Math.max(set1.size, set2.size);
 
-    return overlap / total >= 0.7;
+    return overlap / total >= 0.5;
   }
 
   /**
@@ -944,8 +995,9 @@ ${listItems}
     // CSS per brand that captures their exact style, not generic fallback styles.
     if (this.compiledCss) {
       console.log('[CleanArticleRenderer] Using AI-generated compiledCss (design-agency quality)');
-      // Return the AI-generated CSS with minimal supplementary styles for our components
-      return `${this.compiledCss}\n\n${this.generateSupplementaryCSS()}`;
+      // compiledCss already has all visual styles via dual selectors (.ctc-card AND .card)
+      // Only add structural layout CSS (widths, grids, spacing, responsive)
+      return `${this.compiledCss}\n\n${this.generateStructuralCSS()}`;
     }
 
     console.log('[CleanArticleRenderer] Generating fallback CSS from DesignDNA');
@@ -974,7 +1026,7 @@ ${listItems}
     // Generate CSS with ACTUAL values embedded
     // Include base CSS + content type CSS + emphasis CSS
     const cssParts = [
-      this.generateBaseCSS(primary, primaryDark, textDark, textMedium, bgLight, border, headingFont, bodyFont, radiusSm, radiusMd, radiusLg),
+      this.generateBaseCSS(primary, primaryDark, textDark, textMedium, bgLight, border, headingFont, bodyFont, radiusSm, radiusMd, radiusLg, accent),
       this.generateEmphasisCSS(primary, primaryDark, accent, bgLight, headingFont, radiusMd, radiusLg),
       this.generateStepsCSS(primary, primaryDark, bgLight, headingFont, radiusMd),
       this.generateFaqCSS(primary, primaryDark, textDark, bgLight, headingFont, radiusMd),
@@ -991,8 +1043,8 @@ ${listItems}
         accentColor: accent,
         textColor: textDark,
         textMuted: textMedium,
-        backgroundColor: bgLight,
-        surfaceColor: bgLight,
+        backgroundColor: '#ffffff',     // Page background (not bgLight)
+        surfaceColor: bgLight,          // Card/quote backgrounds
         borderColor: border,
         headingFont: headingFont,
         bodyFont: bodyFont,
@@ -1006,16 +1058,195 @@ ${listItems}
   }
 
   /**
-   * Generate supplementary CSS for our semantic HTML structure.
-   * When compiledCss is available, this should be STRUCTURAL ONLY -
-   * no visual template CSS. The AI-generated compiledCss handles all visual styling.
-   *
-   * Only includes:
-   * - Layout structure (grid, flexbox, max-width)
-   * - Class aliases mapping non-prefixed → ctc-prefixed (backward compat for cached compiledCss)
-   * - Responsive breakpoints
+   * Generate STRUCTURAL-ONLY CSS for layout, grid, spacing, and responsive breakpoints.
+   * Used when compiledCss exists — compiledCss provides ALL visual styles
+   * (colors, backgrounds, fonts, shadows, borders, etc.) via dual selectors.
+   * This method adds ONLY positioning, sizing, and structural rules.
    */
-  private generateSupplementaryCSS(): string {
+  private generateStructuralCSS(): string {
+    return `
+/* ==========================================================================
+   Structural CSS - Layout, grid, spacing, responsive (NO visual styles)
+   Used alongside AI-generated compiledCss which handles all visual styling.
+   ========================================================================== */
+
+/* Article structure */
+.article-header { margin-bottom: 2rem; text-align: center; }
+.article-toc { margin: 1.5rem auto; max-width: 860px; padding: 1.5rem; }
+.article-toc ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.article-toc li a { display: block; padding: 0.5rem 0; text-decoration: none; }
+.section-inner { max-width: 100%; margin-top: 1.5rem; }
+
+/* Section layout structure */
+.section { position: relative; margin: 0; padding: 2rem 0; }
+.section-container { max-width: 860px; margin: 0 auto; padding: 0 1.5rem; }
+.section-content { margin-top: 1.5rem; }
+
+/* Heading structure (size only, no color/font) */
+.section-heading { margin-bottom: 1rem; line-height: 1.3; }
+.heading-xl { font-size: 2.1rem; }
+.heading-lg { font-size: 1.75rem; }
+.heading-md { font-size: 1.45rem; }
+.heading-sm { font-size: 1.2rem; }
+.heading-decorated { position: relative; }
+
+/* Layout width classes */
+.layout-narrow .section-container { max-width: 680px; }
+.layout-medium .section-container { max-width: 860px; }
+.layout-wide .section-container { max-width: 1100px; }
+.layout-full .section-container { max-width: 100%; padding: 0 2rem; }
+
+/* Column layout */
+.columns-2-column .section-content { column-count: 2; column-gap: 2rem; }
+.columns-3-column .section-content { column-count: 3; column-gap: 1.5rem; }
+.columns-asymmetric-left .section-content { display: grid; grid-template-columns: 1fr 2fr; gap: 2rem; }
+.columns-asymmetric-right .section-content { display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; }
+
+/* Spacing utilities */
+.spacing-before-tight { padding-top: 1rem; }
+.spacing-before-normal { padding-top: 2rem; }
+.spacing-before-generous { padding-top: 3rem; }
+.spacing-before-dramatic { padding-top: 5rem; }
+.spacing-after-tight { padding-bottom: 1rem; }
+.spacing-after-normal { padding-bottom: 2rem; }
+.spacing-after-generous { padding-bottom: 3rem; }
+.spacing-after-dramatic { padding-bottom: 5rem; }
+
+/* Emphasis level spacing (no visual styles — compiledCss handles colors/backgrounds) */
+.emphasis-hero { padding: 3rem 0; margin: 1rem 0; }
+.emphasis-featured { padding: 2.5rem 0; margin: 0.5rem 0; }
+.emphasis-standard { padding: 2rem 0; }
+.emphasis-supporting { padding: 1.5rem 0; }
+.emphasis-minimal { padding: 1rem 0; }
+
+/* Hero structure (positioning only) */
+.hero-content { text-align: center; }
+.hero-lead { max-width: 800px; margin: 0 auto 2rem; }
+.hero-details { display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; margin-top: 2rem; }
+.emphasis-hero .hero-lead { max-width: 720px; margin: 0 auto; }
+
+/* Prose spacing */
+.prose { line-height: 1.7; }
+.prose p { margin-bottom: 1.25rem; }
+
+/* Feature grid structure */
+.feature-grid { display: grid; gap: 1.5rem; }
+.feature-grid.columns-2 { grid-template-columns: repeat(2, 1fr); }
+.feature-grid.columns-3 { grid-template-columns: repeat(3, 1fr); }
+.feature-card { display: flex; gap: 1rem; align-items: flex-start; padding: 1.25rem; }
+.feature-icon { flex-shrink: 0; width: 2.5rem; height: 2.5rem; display: flex; align-items: center; justify-content: center; }
+.feature-content { flex: 1; min-width: 0; }
+
+/* Step list structure */
+.steps-list { list-style: none; padding: 0; counter-reset: step-counter; }
+.step-item { display: flex; gap: 1rem; align-items: flex-start; margin-bottom: 1.5rem; padding: 1rem; }
+.step-number { flex-shrink: 0; width: 2.25rem; height: 2.25rem; display: flex; align-items: center; justify-content: center; }
+.step-content { flex: 1; }
+
+/* FAQ structure */
+.faq-list { list-style: none; padding: 0; }
+.faq-accordion { display: flex; flex-direction: column; gap: 0; }
+.faq-item { padding: 1rem 0; }
+.faq-question { cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
+.faq-icon { flex-shrink: 0; }
+.faq-answer { margin-top: 0.75rem; padding-left: 1.75rem; line-height: 1.6; }
+
+/* Styled list structure */
+.styled-list { list-style: none; padding: 0; }
+.list-item { display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 0.75rem; padding: 0.5rem 0; }
+.list-marker { flex-shrink: 0; line-height: 1.5; }
+.list-content { flex: 1; line-height: 1.6; }
+
+/* Summary/definition box structure */
+.summary-box { display: flex; gap: 1rem; align-items: flex-start; padding: 1.5rem; margin: 1.5rem 0; }
+.summary-icon { flex-shrink: 0; width: 2.5rem; height: 2.5rem; display: flex; align-items: center; justify-content: center; }
+.summary-content { flex: 1; line-height: 1.6; }
+.definition-box { display: flex; gap: 1rem; align-items: flex-start; padding: 1.5rem; margin: 1.5rem 0; }
+.definition-icon { flex-shrink: 0; }
+.definition-content { flex: 1; line-height: 1.6; }
+
+/* Data highlight structure */
+.data-highlight { padding: 2rem; text-align: center; margin: 1.5rem 0; }
+
+/* Testimonial structure */
+.testimonial { padding: 2rem; margin: 1.5rem 0; }
+.testimonial-author { margin-top: 1rem; }
+
+/* Stat grid structure */
+.stat-grid { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.stat-card { text-align: center; padding: 1.5rem; }
+
+/* Key takeaways structure */
+.key-takeaways-grid { display: grid; gap: 1rem; }
+.key-takeaways-item { display: flex; gap: 0.75rem; align-items: flex-start; padding: 1rem; }
+.key-takeaways-icon { flex-shrink: 0; }
+
+/* Timeline structure */
+.timeline { position: relative; padding-left: 2rem; }
+.timeline-item { position: relative; margin-bottom: 1.5rem; padding-left: 1.5rem; }
+.timeline-marker { position: absolute; left: -1.5rem; top: 0.25rem; width: 1rem; height: 1rem; }
+.timeline-content { padding-bottom: 0.5rem; }
+
+/* Checklist structure */
+.checklist { list-style: none; padding: 0; }
+.checklist-item { display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 0.75rem; padding: 0.5rem 0; }
+.checklist-icon { flex-shrink: 0; }
+
+/* Card structure */
+.card { overflow: hidden; }
+.card-body { padding: 1.5rem; }
+.card-header { padding: 1.25rem 1.5rem; }
+
+/* CTA structure */
+.cta-actions { margin-top: 1.5rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+
+/* Table structure */
+table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; }
+th { padding: 0.75rem 1rem; text-align: left; }
+td { padding: 0.75rem 1rem; }
+.table-wrapper { overflow-x: auto; margin: 2rem 0; }
+
+/* Blockquote structure */
+blockquote { padding: 1rem 1.5rem; margin: 1.5rem 0; }
+
+/* Image structure */
+figure { margin: 2rem 0; }
+figure img { width: 100%; height: auto; }
+figcaption { text-align: center; margin-top: 0.75rem; }
+
+/* Accent utilities (structural positioning only) */
+.accent-left { padding-left: 1.5rem; }
+.accent-top { padding-top: 1.5rem; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .feature-grid.columns-2,
+  .feature-grid.columns-3 { grid-template-columns: 1fr; }
+  .columns-2-column .section-content,
+  .columns-3-column .section-content { column-count: 1; }
+  .columns-asymmetric-left .section-content,
+  .columns-asymmetric-right .section-content { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .emphasis-hero { padding: 2rem 0; }
+  .step-item { flex-direction: column; }
+  .summary-box, .definition-box { flex-direction: column; }
+  .section-container { padding: 0 1rem; }
+}
+
+@media (max-width: 480px) {
+  .stat-grid { grid-template-columns: 1fr; }
+  .section-container { padding: 0 1rem; }
+}
+`;
+  }
+
+  /**
+   * Generate VISUAL FALLBACK CSS for when no compiledCss is available.
+   * Includes full visual styling (colors, backgrounds, fonts, shadows, borders)
+   * using brand CSS variables from the AI-generated compiledCss or hardcoded fallbacks.
+   * This is the LEGACY path — kept for backward compatibility when no compiledCss exists.
+   */
+  private generateVisualFallbackCSS(): string {
     return `
 /* ==========================================================================
    Supplementary Styles - Structure + Visual styling using brand CSS variables
@@ -1023,6 +1254,17 @@ ${listItems}
    This CSS uses those properties to style ALL semantic class names
    that the CleanArticleRenderer generates in HTML.
    ========================================================================== */
+
+/* Page-level: Soft branded background */
+body, .article-body, .styled-article {
+  background: linear-gradient(180deg, #f0f4ff 0%, #f8faff 100%);
+  min-height: 100vh;
+}
+@supports (background: color-mix(in srgb, red 50%, blue)) {
+  body, .article-body, .styled-article {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--ctc-primary, #2563eb) 7%, white) 0%, color-mix(in srgb, var(--ctc-primary, #2563eb) 4%, white) 100%);
+  }
+}
 
 /* Article structure */
 .article-header { margin-bottom: 2rem; text-align: center; }
@@ -1035,6 +1277,14 @@ ${listItems}
 .section { position: relative; margin: 0; padding: 2rem 0; }
 .section-container { max-width: 860px; margin: 0 auto; padding: 0 1.5rem; }
 .section-content { margin-top: 1.5rem; }
+
+/* White content cards on branded background */
+.section:not(.emphasis-hero) .section-container {
+  background: var(--ctc-neutral-lightest, #ffffff);
+  border-radius: var(--ctc-radius-lg, 16px);
+  padding: 2.5rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
 .section-heading {
   font-family: var(--ctc-font-heading, sans-serif);
   font-weight: var(--ctc-heading-weight, 700);
@@ -1093,6 +1343,29 @@ ${listItems}
 }
 .emphasis-hero .section-heading { color: var(--ctc-neutral-lightest, #ffffff); }
 .emphasis-hero .section-content { color: rgba(255,255,255,0.9); }
+.emphasis-hero .section-content p { color: rgba(255,255,255,0.92); }
+.emphasis-hero .prose { color: rgba(255,255,255,0.92); }
+.emphasis-hero .prose p { color: rgba(255,255,255,0.92); }
+
+/* Hero inner component styles */
+.hero-content { text-align: center; }
+.hero-lead { max-width: 800px; margin: 0 auto 2rem; }
+.hero-text { font-size: 1.375rem; line-height: 1.8; color: var(--ctc-text-dark, #1e293b); }
+.hero-details { display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; margin-top: 2rem; }
+.emphasis-hero .hero-lead { max-width: 720px; margin: 0 auto; }
+.emphasis-hero .hero-text { font-size: 1.125rem; line-height: 1.7; color: rgba(255,255,255,0.92); }
+
+/* Components inside hero - transparent overlays on gradient bg */
+.emphasis-hero .step-item,
+.emphasis-hero .card,
+.emphasis-hero .feature-card,
+.emphasis-hero .checklist-item { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2); color: white; }
+.emphasis-hero .step-content,
+.emphasis-hero .card-body,
+.emphasis-hero .feature-content,
+.emphasis-hero .feature-desc,
+.emphasis-hero .checklist-text,
+.emphasis-hero .timeline-body { color: rgba(255,255,255,0.92); }
 
 .emphasis-featured {
   background: var(--ctc-secondary, #f9fafb);
@@ -1104,6 +1377,26 @@ ${listItems}
 .emphasis-standard { padding: 2rem 0; }
 .emphasis-supporting { padding: 1.5rem 0; }
 .emphasis-minimal { padding: 1rem 0; }
+
+/* Section dividers - branded separator between major sections */
+.section + .section.emphasis-featured { border-top: none; position: relative; }
+.section + .section.emphasis-featured::before {
+  content: '';
+  display: block;
+  height: 4px;
+  margin-bottom: 1.5rem;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--ctc-primary, #2563eb) 0px, var(--ctc-primary, #2563eb) 18px,
+    transparent 18px, transparent 24px,
+    var(--ctc-accent, #f59e0b) 24px, var(--ctc-accent, #f59e0b) 30px,
+    transparent 30px, transparent 36px
+  );
+}
+.section.emphasis-standard + .section.emphasis-standard {
+  border-top: 2px solid var(--ctc-borders-dividers, #e2e8f0);
+  padding-top: 3rem;
+}
 
 /* Background and accent utilities */
 .has-background { background-color: var(--ctc-secondary, #f9fafb); }
@@ -1479,7 +1772,8 @@ blockquote {
     bodyFont: string,
     radiusSm: string,
     radiusMd: string,
-    radiusLg: string
+    radiusLg: string,
+    accent: string
   ): string {
     return `
 /* ==========================================================================
@@ -1523,18 +1817,36 @@ a:hover { color: ${primaryDark}; text-decoration: underline; }
 
 strong { font-weight: 600; color: ${primaryDark}; }
 
-/* Article Header - clean, semantic */
+/* Article Header - branded hero with gradient */
 .article-header {
-  padding: 3rem 2rem;
-  background: ${bgLight};
-  border-bottom: 3px solid ${primary};
+  padding: 4rem 2rem 3rem;
+  background: linear-gradient(135deg, ${primaryDark} 0%, ${primary} 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.article-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, ${primary}, ${accent});
+}
+
+.article-header-inner {
+  max-width: 900px;
+  margin: 0 auto;
 }
 
 .article-header h1 {
   max-width: 900px;
   margin: 0 auto;
   font-size: 2.5rem;
-  color: ${primaryDark};
+  color: #ffffff;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
 /* Table of Contents - minimal semantic styling */
@@ -1580,10 +1892,17 @@ article {
   padding: 2rem 0;
 }
 
-/* Sections */
+/* Sections - with visual rhythm using brand primary */
 .section {
   padding: 3rem 0;
-  border-bottom: 1px solid ${bgLight};
+}
+
+.section:nth-child(even of .section) {
+  background: ${primary}06;
+}
+
+.section + .section {
+  border-top: 1px solid ${primary}12;
 }
 
 .section:last-child {
@@ -1591,7 +1910,7 @@ article {
 }
 
 .section-alt {
-  background: ${bgLight};
+  background: ${primary}0a;
   margin: 0 -2rem;
   padding: 3rem 2rem;
   border-radius: ${radiusMd};
@@ -1781,7 +2100,7 @@ blockquote p {
 /* Hero emphasis - Maximum visual impact */
 .emphasis-hero {
   padding: 4rem 2rem;
-  background: linear-gradient(135deg, ${bgLight} 0%, #ffffff 100%);
+  background: linear-gradient(135deg, ${primary}10 0%, ${primary}05 100%);
   border-radius: ${radiusLg};
   margin: 2rem 0;
   position: relative;
@@ -1800,14 +2119,14 @@ blockquote p {
 
 .emphasis-hero .section-heading {
   font-size: 2.25rem;
-  color: ${primaryDark};
+  color: ${primary};
   margin-bottom: 1.5rem;
 }
 
 /* Featured emphasis - Strong visual presence */
 .emphasis-featured {
   padding: 3rem 2rem;
-  background: ${bgLight};
+  background: ${primary}08;
   border-radius: ${radiusMd};
   margin: 1.5rem 0;
   border-left: 4px solid ${primary};
@@ -1815,7 +2134,7 @@ blockquote p {
 
 .emphasis-featured .section-heading {
   font-size: 1.75rem;
-  color: ${primaryDark};
+  color: ${primary};
 }
 
 /* Standard emphasis - Default styling */
@@ -1834,7 +2153,7 @@ blockquote p {
 
 .emphasis-supporting .section-heading {
   font-size: 1.25rem;
-  color: ${primaryDark};
+  color: ${primary};
 }
 
 /* Minimal emphasis - Lightweight styling */
@@ -2343,17 +2662,35 @@ ${html}
   private getColor(type: 'primary' | 'primaryLight' | 'primaryDark' | 'secondary' | 'accent'): string {
     const colors = this.designDna.colors || {};
     const defaults: Record<string, string> = {
-      primary: '#3b82f6',
-      primaryLight: '#93c5fd',
-      primaryDark: '#1e40af',
-      secondary: '#64748b',
-      accent: '#f59e0b'
+      primary: '#3b82f6', primaryLight: '#93c5fd', primaryDark: '#1e40af',
+      secondary: '#64748b', accent: '#f59e0b'
     };
 
     const color = colors[type];
-    if (!color) return defaults[type];
-    if (typeof color === 'string') return color;
-    return color.hex || defaults[type];
+    let hex: string;
+    if (!color) hex = defaults[type];
+    else if (typeof color === 'string') hex = color;
+    else hex = color.hex || defaults[type];
+
+    // Validate: primaryDark MUST be dark enough for text on white backgrounds
+    if (type === 'primaryDark') {
+      const lum = this.hexLuminance(hex);
+      if (lum > 0.4) {
+        const primaryHex = this.getColor('primary');
+        hex = this.hexLuminance(primaryHex) <= 0.4
+          ? this.darkenHexColor(primaryHex, 0.35)
+          : defaults['primaryDark'];
+        console.warn(`[CleanArticleRenderer] primaryDark too light (lum=${lum.toFixed(2)}), corrected to ${hex}`);
+      }
+    }
+
+    // Validate: primary should not be near-white
+    if (type === 'primary' && this.hexLuminance(hex) > 0.85) {
+      hex = defaults['primary'];
+      console.warn(`[CleanArticleRenderer] primary too light, using fallback ${hex}`);
+    }
+
+    return hex;
   }
 
   private getNeutral(level: 'darkest' | 'dark' | 'medium' | 'light' | 'lightest'): string {
@@ -2397,6 +2734,26 @@ ${html}
     }
 
     return borderRadius[size] || defaults[size];
+  }
+
+  /** WCAG 2.0 relative luminance */
+  private hexLuminance(hex: string): number {
+    const clean = hex.replace('#', '');
+    if (clean.length < 6) return 0.5;
+    const r = parseInt(clean.substring(0, 2), 16) / 255;
+    const g = parseInt(clean.substring(2, 4), 16) / 255;
+    const b = parseInt(clean.substring(4, 6), 16) / 255;
+    const toLinear = (c: number) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+  }
+
+  /** Darken a hex color by factor (0-1). factor=0.35 makes color 35% darker. */
+  private darkenHexColor(hex: string, factor: number): string {
+    const clean = hex.replace('#', '');
+    const r = Math.max(0, Math.round(parseInt(clean.substring(0, 2), 16) * (1 - factor)));
+    const g = Math.max(0, Math.round(parseInt(clean.substring(2, 4), 16) * (1 - factor)));
+    const b = Math.max(0, Math.round(parseInt(clean.substring(4, 6), 16) * (1 - factor)));
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
   }
 
   private getGoogleFontsUrl(): string | null {

@@ -242,19 +242,37 @@ export class BrandDesignSystemGenerator {
 
     // Safely extract colors with fallbacks
     const colors = designDna.colors || {} as DesignDNA['colors'];
-    const primaryHex = this.getHex(colors.primary, '#3b82f6');
+    let primaryHex = this.getHex(colors.primary, '#3b82f6');
+
+    console.log('[BrandDesignSystemGenerator] generateTokensFromDNA - colors.primary:', JSON.stringify(colors.primary), '→ primaryHex:', primaryHex);
 
     // Validate colors - reject black/white/near-white as accent, primaryLight, etc.
     const isUselessColor = (hex: string | undefined): boolean => {
       if (!hex) return true;
       const normalized = hex.toLowerCase().replace('#', '');
-      return ['000000', 'ffffff', 'fff', '000', 'f3f5f5', 'f9fafb', 'e5e7eb'].includes(normalized);
+      if (['000000', 'ffffff', 'fff', '000', 'f3f5f5', 'f9fafb', 'e5e7eb'].includes(normalized)) return true;
+      // Luminance-based: too light (> 0.85) or too dark (< 0.03)
+      if (normalized.length >= 6) {
+        const r = parseInt(normalized.substring(0, 2), 16) / 255;
+        const g = parseInt(normalized.substring(2, 4), 16) / 255;
+        const b = parseInt(normalized.substring(4, 6), 16) / 255;
+        const toLinear = (c: number) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+        const luminance = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+        if (luminance > 0.85 || luminance < 0.005) return true;
+      }
+      return false;
     };
 
     let accentHex = this.getHex(colors.accent, '#f59e0b');
     let primaryLightHex = this.getHex(colors.primaryLight, '');
     let primaryDarkHex = this.getHex(colors.primaryDark, '');
     let secondaryHex = this.getHex(colors.secondary, '#1f2937');
+
+    // Fix useless primary (should never be white/black/gray)
+    if (isUselessColor(primaryHex)) {
+      console.log('[BrandDesignSystemGenerator] PRIMARY was useless:', primaryHex, '→ using fallback #3b82f6');
+      primaryHex = '#3b82f6'; // Safe blue fallback
+    }
 
     // Fix useless colors by deriving from primary
     if (isUselessColor(accentHex)) {
@@ -272,6 +290,20 @@ export class BrandDesignSystemGenerator {
     if (isUselessColor(secondaryHex)) {
       secondaryHex = this.darkenHex(primaryHex, 0.4);
       console.log('[BrandDesignSystemGenerator] Secondary was useless, derived from primary:', secondaryHex);
+    }
+
+    // Ensure primaryDark is darker than primary (catch swapped values)
+    const computeLum = (h: string) => {
+      const n = h.replace('#', '');
+      const r = parseInt(n.substring(0, 2), 16) / 255;
+      const g = parseInt(n.substring(2, 4), 16) / 255;
+      const b = parseInt(n.substring(4, 6), 16) / 255;
+      const toLinear = (c: number) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+    };
+    if (computeLum(primaryDarkHex) > computeLum(primaryHex) + 0.05) {
+      console.warn('[BrandDesignSystemGenerator] primaryDark LIGHTER than primary — fixing');
+      primaryDarkHex = this.darkenHex(primaryHex, 0.35);
     }
 
     // Color tokens

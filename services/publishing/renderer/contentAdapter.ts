@@ -202,10 +202,45 @@ export function htmlToArticleContent(html: string, title: string): ArticleConten
     });
   }
 
-  // Handle case where there are no headings - entire content is one section
+  // If no h2-h6 headings found, try including h1 headings as section markers
   if (headings.length === 0 && html.trim()) {
-    console.warn('[htmlToArticleContent] NO HEADINGS FOUND - treating entire content as single section');
-    console.warn('[htmlToArticleContent] This means all styled components (hero, cards, FAQ, etc.) will NOT be applied!');
+    console.log('[htmlToArticleContent] No h2-h6 headings found, trying h1 headings as section markers');
+    const h1Regex = /<h([1-6])([^>]*)>([\s\S]*?)<\/h\1>/gi;
+    let h1Match: RegExpExecArray | null;
+    while ((h1Match = h1Regex.exec(html)) !== null) {
+      const level = parseInt(h1Match[1], 10);
+      const headingText = stripHtmlTags(h1Match[3]).trim();
+      headings.push({
+        level: level === 1 ? 2 : level, // Demote h1 to h2 for sections (article title is the real h1)
+        text: headingText,
+        index: h1Match.index,
+        endIndex: h1Match.index + h1Match[0].length,
+      });
+    }
+
+    // Re-process sections from these headings
+    if (headings.length > 0) {
+      console.log(`[htmlToArticleContent] Found ${headings.length} headings including h1, re-parsing sections`);
+      for (let i = 0; i < headings.length; i++) {
+        const heading = headings[i];
+        const nextHeading = headings[i + 1];
+        const contentStart = heading.endIndex;
+        const contentEnd = nextHeading ? nextHeading.index : html.length;
+        const content = html.substring(contentStart, contentEnd).trim();
+        sections.push({
+          id: `section-${sectionIndex++}`,
+          heading: heading.text,
+          headingLevel: heading.level,
+          content,
+          type: inferSectionTypeFromHeading(heading.text),
+        });
+      }
+    }
+  }
+
+  // Final fallback: still no headings
+  if (sections.length === 0 && html.trim()) {
+    console.warn('[htmlToArticleContent] NO HEADINGS FOUND AT ALL - treating entire content as single section');
     sections.push({
       id: 'section-0',
       content: html.trim(),
@@ -310,14 +345,43 @@ function markdownToArticleContent(markdown: string, title: string): ArticleConte
     });
   }
 
-  // Handle case where there are no headings - entire content is one section
+  // If no ##+ headings found, try including # headings as section markers
   if (headings.length === 0 && markdown.trim()) {
-    console.warn('[markdownToArticleContent] NO HEADINGS FOUND - treating entire content as single section');
-    sections.push({
-      id: 'section-0',
-      content: markdown.trim(),
-      type: 'section',
-    });
+    console.log('[markdownToArticleContent] No ##+ headings found, trying # headings');
+    const h1MdRegex = /^(#{1,6})\s+(.+)$/gm;
+    let h1Match: RegExpExecArray | null;
+    while ((h1Match = h1MdRegex.exec(markdown)) !== null) {
+      const level = Math.max(2, h1Match[1].length); // Demote # to ## level
+      headings.push({
+        level,
+        text: h1Match[2].trim(),
+        index: h1Match.index,
+        endIndex: h1Match.index + h1Match[0].length,
+      });
+    }
+    // Re-process with these headings
+    if (headings.length > 0) {
+      for (let i = 0; i < headings.length; i++) {
+        const heading = headings[i];
+        const nextHeading = headings[i + 1];
+        const contentStart = heading.endIndex;
+        const contentEnd = nextHeading ? nextHeading.index : markdown.length;
+        const content = markdown.substring(contentStart, contentEnd).trim();
+        sections.push({
+          id: `section-${i}`,
+          heading: heading.text,
+          headingLevel: heading.level,
+          content,
+          type: inferSectionTypeFromHeading(heading.text),
+        });
+      }
+    }
+  }
+
+  // Final fallback: still no headings
+  if (sections.length === 0 && markdown.trim()) {
+    console.warn('[markdownToArticleContent] NO HEADINGS FOUND AT ALL');
+    sections.push({ id: 'section-0', content: markdown.trim(), type: 'section' });
   }
 
   // DEBUG: Log the parsing result
@@ -445,4 +509,41 @@ function inferSectionTypeFromHeading(heading: string): string {
 
   // Default
   return 'section';
+}
+
+// ============================================================================
+// SEO HEADING STRUCTURE VALIDATION
+// ============================================================================
+
+export interface HeadingValidationResult {
+  isValid: boolean;
+  hasH1: boolean;
+  h1Count: number;
+  hierarchy: Array<{ level: number; text: string }>;
+  issues: string[];
+}
+
+export function validateHeadingStructure(html: string): HeadingValidationResult {
+  const issues: string[] = [];
+  const hierarchy: Array<{ level: number; text: string }> = [];
+
+  const h1Regex = /<h1[^>]*>([\s\S]*?)<\/h1>/gi;
+  const h1Count = [...html.matchAll(h1Regex)].length;
+  if (h1Count === 0) issues.push('Missing H1 tag');
+  else if (h1Count > 1) issues.push(`Multiple H1 tags (${h1Count}) — only 1 per page`);
+
+  const allHeadingsRegex = /<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi;
+  let match: RegExpExecArray | null;
+  let lastLevel = 0;
+  while ((match = allHeadingsRegex.exec(html)) !== null) {
+    const level = parseInt(match[1], 10);
+    const text = match[2].replace(/<[^>]*>/g, '').trim();
+    hierarchy.push({ level, text });
+    if (lastLevel > 0 && level > lastLevel + 1) {
+      issues.push(`Heading skip: h${lastLevel} → h${level} near "${text.substring(0, 50)}"`);
+    }
+    lastLevel = level;
+  }
+
+  return { isValid: issues.length === 0, hasH1: h1Count >= 1, h1Count, hierarchy, issues };
 }

@@ -30,6 +30,7 @@ import {
   mergeDecisionsWithBlueprint,
   extractBrandCss,
 } from '../../brand-replication/integration';
+import { validateHeadingStructure } from './contentAdapter';
 
 // ============================================================================
 // TYPES
@@ -156,6 +157,13 @@ export interface RenderContentOptions {
    * Required when pipelineDecisions is provided to get component CSS.
    */
   pipelineComponents?: BrandComponent[];
+  /**
+   * Force a specific renderer path:
+   * - 'auto': Use normal routing logic (default)
+   * - 'brand-templates': Force BrandAwareComposer (PATH A)
+   * - 'clean-components': Force CleanArticleRenderer (PATH B)
+   */
+  rendererPath?: 'auto' | 'brand-templates' | 'clean-components';
 }
 
 // ============================================================================
@@ -333,9 +341,28 @@ export async function renderContent(
   }
 
   // ============================================================================
-  // PATH 0: Semantic Layout Engine (NEW - AI-driven layout intelligence)
+  // EARLY CHECK: Do we have a complete rendering pipeline?
+  // When LayoutBlueprint + BrandDesignSystem compiledCss are both available,
+  // skip AI-driven paths (PATH 0, PATH A) and go directly to CleanArticleRenderer.
   // ============================================================================
-  if (options.useSemanticLayoutEngine && options.aiApiKey && options.dispatch) {
+  const hasCompletePipeline = effectiveLayoutBlueprint &&
+    effectiveLayoutBlueprint.sections?.length > 0 &&
+    options.brandDesignSystem?.compiledCss;
+
+  // Renderer path overrides
+  const forcePathA = options.rendererPath === 'brand-templates';
+  const forcePathB = options.rendererPath === 'clean-components';
+
+  if (forcePathA || forcePathB) {
+    console.log('[STYLING PIPELINE] Renderer path override:', options.rendererPath);
+  }
+
+  // ============================================================================
+  // PATH 0: Semantic Layout Engine (NEW - AI-driven layout intelligence)
+  // SKIPPED when complete pipeline is available (avoids wasted AI API calls)
+  // SKIPPED when renderer path is forced
+  // ============================================================================
+  if (options.useSemanticLayoutEngine && options.aiApiKey && options.dispatch && !hasCompletePipeline && !forcePathA && !forcePathB) {
     console.log('-'.repeat(80));
     console.log('[STYLING PIPELINE] STEP 2: ROUTING TO SemanticLayoutEngine (AI-DRIVEN)');
     console.log('[STYLING PIPELINE] Reason: useSemanticLayoutEngine=true');
@@ -418,13 +445,16 @@ export async function renderContent(
         css: result.css,
         cssVariables: {} as CssVariables,
         components: [],
-        seoValidation: {
-          isValid: true,
-          warnings: [],
-          headingStructure: { hasH1: true, hierarchy: [], issues: [] },
-          schemaPreserved: true,
-          metaPreserved: true,
-        },
+        seoValidation: (() => {
+          const hv = validateHeadingStructure(result.html);
+          return {
+            isValid: hv.isValid,
+            warnings: hv.issues,
+            headingStructure: { hasH1: hv.hasH1, hierarchy: hv.hierarchy, issues: hv.issues },
+            schemaPreserved: true,
+            metaPreserved: true,
+          };
+        })(),
         template: 'semantic-layout',
         renderInfo: {
           renderer: 'semantic-layout-engine',
@@ -460,10 +490,20 @@ export async function renderContent(
   const hasDbExtraction = !hasDirectComponents ? await hasBrandExtraction(options.projectId) : false;
   console.log('[STYLING PIPELINE] Database extraction check result:', hasDbExtraction);
 
-  if ((hasDirectComponents || hasDbExtraction) && options.aiApiKey) {
-    // PRIMARY PATH: Brand-aware rendering using LITERAL HTML from target site
+  if (hasCompletePipeline && !forcePathA) {
+    console.log('[STYLING PIPELINE] SKIPPING BrandAwareComposer - complete pipeline available');
+    console.log('[STYLING PIPELINE] Blueprint sections:', effectiveLayoutBlueprint!.sections.length);
+    console.log('[STYLING PIPELINE] CompiledCSS length:', options.brandDesignSystem!.compiledCss!.length);
+  }
+
+  if (forcePathB) {
+    console.log('[STYLING PIPELINE] SKIPPING BrandAwareComposer - forced to clean-components path');
+  }
+
+  if (((hasDirectComponents || hasDbExtraction) && options.aiApiKey && !hasCompletePipeline && !forcePathB) || forcePathA) {
+    // PATH A: BrandAwareComposer - ONLY when no complete pipeline
     console.log('-'.repeat(80));
-    console.log('[STYLING PIPELINE] STEP 3A: ROUTING TO BrandAwareComposer (PRIMARY PATH)');
+    console.log('[STYLING PIPELINE] STEP 3A: ROUTING TO BrandAwareComposer (FALLBACK - no complete pipeline)');
     console.log('[STYLING PIPELINE] Reason: Extracted components available' + (hasDirectComponents ? ' (DIRECT)' : ' (DATABASE)'));
     console.log('[Renderer] Using BrandAwareComposer for project:', options.projectId);
 
@@ -510,10 +550,16 @@ export async function renderContent(
     if (isPoorQuality) {
       console.warn('[Renderer] POOR QUALITY OUTPUT DETECTED from BrandAwareComposer');
       console.warn(`[Renderer] ${emptySections}/${totalSections} sections have empty classes`);
-      console.warn('[Renderer] Falling back to CleanArticleRenderer with ComponentRenderer');
+
+      if (forcePathA) {
+        // User explicitly chose "Brand Templates" — respect their choice
+        console.log('[Renderer] User forced brand-templates path — using output as-is');
+      } else {
+        console.warn('[Renderer] Falling back to CleanArticleRenderer with ComponentRenderer');
+      }
     }
 
-    if (isContaminated || isPoorQuality) {
+    if (isContaminated || (isPoorQuality && !forcePathA)) {
       const reason = isContaminated ? 'contamination' : 'poor quality (empty section classes)';
       console.warn(`[Renderer] Falling back to CleanArticleRenderer due to: ${reason}`);
 
@@ -606,13 +652,16 @@ export async function renderContent(
           css: cleanResult.css,
           cssVariables: {} as CssVariables,
           components: [],
-          seoValidation: {
-            isValid: true,
-            warnings: [`Fallback renderer used due to ${reason}`],
-            headingStructure: { hasH1: true, hierarchy: [], issues: [] },
-            schemaPreserved: true,
-            metaPreserved: true
-          },
+          seoValidation: (() => {
+            const hv = validateHeadingStructure(cleanResult.fullDocument || cleanResult.html);
+            return {
+              isValid: hv.isValid,
+              warnings: [`Fallback renderer used due to ${reason}`, ...hv.issues],
+              headingStructure: { hasH1: hv.hasH1, hierarchy: hv.hierarchy, issues: hv.issues },
+              schemaPreserved: true,
+              metaPreserved: true,
+            };
+          })(),
           template: 'clean-article-fallback',
           renderInfo: {
             renderer: 'fallback',
@@ -642,26 +691,30 @@ export async function renderContent(
       css: result.standaloneCss,
       cssVariables: {} as CssVariables, // Brand CSS handles variables internally
       components: [], // Could be enhanced to map componentsUsed
-      seoValidation: {
-        isValid: true,
-        warnings: [],
-        headingStructure: {
-          hasH1: true,
-          hierarchy: [],
-          issues: []
-        },
-        schemaPreserved: true,
-        metaPreserved: true
-      },
+      seoValidation: (() => {
+        const hv = validateHeadingStructure(result.html);
+        return {
+          isValid: hv.isValid,
+          warnings: hv.issues,
+          headingStructure: { hasH1: hv.hasH1, hierarchy: hv.hierarchy, issues: hv.issues },
+          schemaPreserved: true,
+          metaPreserved: true,
+        };
+      })(),
       template: 'brand-aware',
       renderInfo: {
         renderer: 'brand-aware',
-        message: 'Using brand-aware styling with extracted components from your target site',
-        reason: 'Brand extraction data was found for this project',
-        level: 'info',
+        message: isPoorQuality
+          ? 'Using brand template output (some sections may have limited styling)'
+          : 'Using brand-aware styling with extracted components from your target site',
+        reason: isPoorQuality
+          ? `Brand extraction has ${emptySections}/${totalSections} sections without class names — output may look plain`
+          : 'Brand extraction data was found for this project',
+        level: isPoorQuality ? ('warning' as const) : ('info' as const),
         details: {
           brandExtractionUsed: true,
           componentsDetected: result.componentsUsed?.length || 0,
+          poorQualityWarning: isPoorQuality,
         },
       },
       renderMetadata: {
@@ -798,11 +851,18 @@ export async function renderContent(
     } : undefined;
 
     // THE KEY FIX: Pass compiledCss from BrandDesignSystem for agency-quality output
-    // Combine brand design system CSS with pipeline CSS (if available)
-    const compiledCss = [
-      options.brandDesignSystem?.compiledCss,
-      pipelineCss, // CSS from pipeline components (Phase 2)
-    ].filter(Boolean).join('\n\n') || undefined;
+    // When user forces "Clean Components", skip compiledCss to show DesignDNA-only styling
+    // This gives a visually distinct output from "Auto" which includes full compiledCss
+    const compiledCss = forcePathB ? undefined : (
+      [
+        options.brandDesignSystem?.compiledCss,
+        pipelineCss, // CSS from pipeline components (Phase 2)
+      ].filter(Boolean).join('\n\n') || undefined
+    );
+
+    if (forcePathB) {
+      console.log('[STYLING PIPELINE] Clean Components mode: using DesignDNA fallback CSS (no compiledCss)');
+    }
     console.log('[STYLING PIPELINE] Passing to CleanArticleRenderer:', {
       hasCompiledCss: !!compiledCss,
       compiledCssLength: compiledCss?.length || 0,
@@ -834,17 +894,16 @@ export async function renderContent(
       css: cleanResult.css,
       cssVariables: {} as CssVariables,
       components: [],
-      seoValidation: {
-        isValid: true,
-        warnings: [],
-        headingStructure: {
-          hasH1: true,
-          hierarchy: [],
-          issues: []
-        },
-        schemaPreserved: true,
-        metaPreserved: true
-      },
+      seoValidation: (() => {
+        const hv = validateHeadingStructure(cleanResult.fullDocument || cleanResult.html);
+        return {
+          isValid: hv.isValid,
+          warnings: hv.issues,
+          headingStructure: { hasH1: hv.hasH1, hierarchy: hv.hierarchy, issues: hv.issues },
+          schemaPreserved: true,
+          metaPreserved: true,
+        };
+      })(),
       template: 'clean-article',
       renderInfo: {
         renderer: 'clean-article',
@@ -872,7 +931,7 @@ export async function renderContent(
   console.log('-'.repeat(80));
   console.log('[STYLING PIPELINE] STEP 3C: ROUTING TO BlueprintRenderer (LEGACY FALLBACK)');
   console.log('[STYLING PIPELINE] WARNING: Using template-based renderer');
-  console.log('[STYLING PIPELINE] Reason:', !hasExtraction
+  console.log('[STYLING PIPELINE] Reason:', !(hasDirectComponents || hasDbExtraction)
     ? 'No brand extraction components AND no DesignDNA'
     : 'No AI API key and no DesignDNA');
   console.log('[Renderer] Using BlueprintRenderer legacy fallback for project:', options.projectId);
@@ -951,17 +1010,16 @@ export async function renderContent(
     css: blueprintResult.css,
     cssVariables: {} as CssVariables, // Blueprint CSS handles variables internally
     components: [],
-    seoValidation: {
-      isValid: true,
-      warnings: [],
-      headingStructure: {
-        hasH1: true,
-        hierarchy: [],
-        issues: []
-      },
-      schemaPreserved: true,
-      metaPreserved: true
-    },
+    seoValidation: (() => {
+      const hv = validateHeadingStructure(blueprintResult.html);
+      return {
+        isValid: hv.isValid,
+        warnings: hv.issues,
+        headingStructure: { hasH1: hv.hasH1, hierarchy: hv.hierarchy, issues: hv.issues },
+        schemaPreserved: true,
+        metaPreserved: true,
+      };
+    })(),
     template: 'blog-article',
     renderInfo: {
       renderer: 'blueprint',
