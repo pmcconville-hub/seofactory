@@ -150,6 +150,49 @@ test.describe('CSS Pipeline Validation', () => {
     expect(css).toMatch(/\.lead-paragraph\s*\{[^}]*border-left/);
   });
 
+  test('compiledCss brand-specific properties override generic ComponentStyles', async () => {
+    // When compiledCss exists, it should come AFTER componentCss in the output
+    // so that brand-specific AI-generated values override generic visual base
+    const { CleanArticleRenderer } = await import(
+      '../services/publishing/renderer/CleanArticleRenderer'
+    );
+
+    const designDna = {
+      colors: {
+        primary: { hex: '#0056b3', usage: 'primary', confidence: 0.8 },
+        primaryDark: { hex: '#003d80', usage: 'primary-dark', confidence: 0.8 },
+        secondary: { hex: '#6c757d', usage: 'secondary', confidence: 0.7 },
+        accent: { hex: '#ff6b35', usage: 'accent', confidence: 0.7 },
+        neutrals: { lightest: '#f8f9fa', light: '#dee2e6', medium: '#6c757d', dark: '#212529', darkest: '#000000' },
+      },
+      typography: {
+        headingFont: { family: 'Inter', fallback: 'sans-serif', weight: 700 },
+        bodyFont: { family: 'Inter', fallback: 'sans-serif', weight: 400 },
+      },
+      shapes: { borderRadius: { small: '4px', medium: '8px', large: '16px' } },
+    } as any;
+
+    const compiledCss = '/* brand-compiled */ .feature-card { box-shadow: 0 8px 32px rgba(0,86,179,0.15); }';
+    const renderer = new CleanArticleRenderer(designDna, 'TestBrand', undefined, compiledCss);
+    const result = renderer.render({ title: 'Test', sections: [{ id: 's1', content: '<p>text</p>' }] });
+
+    // componentCss generates .feature-card with generic styles
+    const componentFeatureCard = result.css.indexOf('.feature-card');
+    // compiledCss marker should come AFTER componentCss
+    const brandOverrideMarker = result.css.indexOf('Brand-Specific Overrides');
+    // The brand-compiled content should come after componentCss's .feature-card
+    const brandCompiledPos = result.css.indexOf('brand-compiled');
+
+    // All three must be present
+    expect(componentFeatureCard).toBeGreaterThan(-1);
+    expect(brandOverrideMarker).toBeGreaterThan(-1);
+    expect(brandCompiledPos).toBeGreaterThan(-1);
+
+    // compiledCss (brand overrides) must come AFTER componentCss (visual base)
+    expect(brandOverrideMarker).toBeGreaterThan(componentFeatureCard);
+    expect(brandCompiledPos).toBeGreaterThan(componentFeatureCard);
+  });
+
   test('structural CSS does not override component visual styles', async () => {
     // This test verifies the cascade fix: generateStructuralCSS() must NOT
     // contain component-specific selectors that override ComponentStyles' visual properties.

@@ -1089,15 +1089,13 @@ ${listItems}
     if (this.compiledCss) {
       console.log('[CleanArticleRenderer] Using AI-generated compiledCss + component visual styles');
       // CSS Layer Order (bottom to top):
-      // 1. compiledCss: AI-generated brand base styles (colors, fonts, generic selectors)
-      // 2. componentCss: Rich visual component styles (.feature-card, .timeline-item, etc.)
-      //    - These are brand-aware (use extracted colors) and provide backgrounds, shadows,
-      //      gradients, hover effects that compiledCss does NOT include
+      // 1. componentCss: Rich visual component styles - generic visual base
+      // 2. compiledCss: AI-generated brand-specific overrides (wins cascade for matching selectors)
       // 3. structuralCSS: Layout-only (grid, flex, spacing, responsive breakpoints)
       //
-      // CRITICAL: componentCss MUST come AFTER compiledCss so that visual styles
-      // (backgrounds, shadows, borders, hover effects) are not overridden by
-      // compiledCss's generic declarations.
+      // CRITICAL: compiledCss MUST come AFTER componentCss so that brand-specific
+      // AI-generated values (custom shadows, unique gradient angles, personality-specific
+      // hover effects) override the generic component visual base.
       const brandColors = {
         primaryColor: this.getColor('primary'),
         primaryDark: this.getColor('primaryDark'),
@@ -1115,7 +1113,8 @@ ${listItems}
         radiusLarge: this.getRadius('large'),
       };
       const componentCss = generateComponentStyles(brandColors);
-      return `${this.compiledCss}\n\n${componentCss}\n\n${this.generateStructuralCSS()}`;
+      // NEW order: componentCss (generic visual base) → compiledCss (brand-specific overrides) → structuralCSS (layout)
+      return `${componentCss}\n\n/* === Brand-Specific Overrides (compiledCss) === */\n${this.compiledCss}\n\n${this.generateStructuralCSS()}`;
     }
 
     console.log('[CleanArticleRenderer] Generating fallback CSS from DesignDNA');
