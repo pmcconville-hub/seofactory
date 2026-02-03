@@ -246,7 +246,7 @@ export function generateComponentStyles(options: Partial<ComponentStylesOptions>
   margin-top: 0.75rem;
 }
 
-.article-subtitle {
+.article-header .article-subtitle {
   color: rgba(255, 255, 255, 0.85);
   font-size: 1.15rem;
   line-height: 1.6;

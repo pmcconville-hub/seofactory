@@ -399,6 +399,8 @@ test.describe('HTML Visual Structure Validation', () => {
     // Subtitle and meta CSS should exist
     expect(result.css).toContain('.article-subtitle');
     expect(result.css).toContain('.article-meta');
+    // Subtitle should be rendered in the HTML when intro content qualifies
+    expect(result.html).toContain('article-subtitle');
   });
 });
 
