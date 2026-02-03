@@ -558,7 +558,7 @@ export interface DetectedComponent {
  */
 export interface RenderInfo {
   /** Which renderer was used */
-  renderer: 'brand-aware' | 'clean-article' | 'blueprint' | 'fallback';
+  renderer: 'brand-aware' | 'clean-article' | 'blueprint' | 'fallback' | 'semantic-layout-engine';
   /** Human-readable description of what happened */
   message: string;
   /** Why this renderer was chosen */
@@ -573,7 +573,49 @@ export interface RenderInfo {
     compiledCssUsed?: boolean;
     componentsDetected?: number;
     fallbackTriggered?: boolean;
+    semanticLayoutUsed?: boolean;
+    componentTypes?: string[];
+    textToCodeRatio?: number;
+    domNodeCount?: number;
   };
+  /** Pipeline telemetry for PipelineInspector */
+  pipelineTelemetry?: PipelineTelemetry;
+}
+
+/**
+ * Pipeline telemetry data for debugging and visibility
+ */
+export interface PipelineTelemetry {
+  /** Which CSS sources are active */
+  cssSources: {
+    compiledCss: boolean;
+    componentStyles: boolean;
+    structural: boolean;
+    compiledCssLength?: number;
+  };
+  /** Per-section rendering decisions */
+  sectionDecisions: Array<{
+    heading: string;
+    assignedComponent: string;
+    emphasis: string;
+    width: string;
+    renderedAs: string;
+    status: 'ok' | 'fallback' | 'error';
+    fallbackReason?: string;
+  }>;
+  /** Brand detection info */
+  brandInfo?: {
+    brandName?: string;
+    primaryColor?: string;
+    secondaryColor?: string;
+    accentColor?: string;
+    headingFont?: string;
+    bodyFont?: string;
+    personality?: string;
+    confidence?: number;
+  };
+  /** Warnings from the pipeline */
+  warnings: string[];
 }
 
 /**

@@ -14,12 +14,14 @@ import { LayoutPanel } from '../panels/LayoutPanel';
 import { BlueprintPanel } from '../panels/BlueprintPanel';
 import { BrandMatchIndicator } from '../BrandMatchIndicator';
 import { DesignQualityAssessment, type DesignIssue } from '../DesignQualityAssessment';
+import { PipelineInspector } from '../PipelineInspector';
 import type {
   StyledContentOutput,
   DevicePreview,
   SeoWarning,
   LayoutConfiguration,
   ContentTypeTemplate,
+  PipelineTelemetry,
 } from '../../../types/publishing';
 import type { LayoutBlueprint } from '../../../services/publishing';
 
@@ -71,6 +73,7 @@ interface RenderingMetadata {
     componentsDetected?: number;
     fallbackTriggered?: boolean;
   };
+  pipelineTelemetry?: PipelineTelemetry;
 }
 
 /**
@@ -140,6 +143,32 @@ interface DeviceFrameProps {
   children: React.ReactNode;
 }
 
+/**
+ * Build a complete HTML document for iframe srcdoc from preview output.
+ * Handles both full documents (<!DOCTYPE html>) and HTML fragments.
+ */
+function buildIframeSrcdoc(html: string, css: string): string {
+  const isFullDocument = html.trim().startsWith('<!DOCTYPE') || html.trim().startsWith('<html');
+
+  if (isFullDocument) {
+    // Already a full document - return as-is (CSS is already embedded)
+    return html;
+  }
+
+  // Fragment - wrap in a document with CSS
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>${css}</style>
+</head>
+<body style="margin:0;padding:0;">
+${html}
+</body>
+</html>`;
+}
+
 // ============================================================================
 // Device Frame Component
 // ============================================================================
@@ -190,9 +219,9 @@ const DeviceFrame: React.FC<DeviceFrameProps> = ({ device, children }) => {
           </div>
         )}
 
-        {/* Content area with scaled content */}
+        {/* Content area - iframe is scaled down to fit the device frame */}
         <div
-          className="overflow-auto"
+          className="overflow-hidden"
           style={{
             height: device === 'mobile'
               ? size.height * scale - 20 - 16
@@ -205,7 +234,9 @@ const DeviceFrame: React.FC<DeviceFrameProps> = ({ device, children }) => {
               transform: `scale(${scale})`,
               transformOrigin: 'top left',
               width: size.width,
-              minHeight: size.height - (device === 'mobile' ? 36 : 40),
+              height: Math.round((device === 'mobile'
+                ? size.height * scale - 20 - 16
+                : size.height * scale - 32 - 8) / scale),
             }}
           >
             {children}
@@ -264,6 +295,7 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
   const [showRawHtml, setShowRawHtml] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFixingDesign, setIsFixingDesign] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
 
   // Handle AI fix for individual design issue
@@ -295,6 +327,73 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
     info: seoWarnings.filter(w => w.severity === 'info').length,
   }), [seoWarnings]);
 
+  // Design quality score reported by DesignQualityAssessment
+  const [designScore, setDesignScore] = useState<{
+    overall: number;
+    criticalCount: number;
+    recommendation: string;
+  } | null>(null);
+
+  // Auto-expand details when design quality is poor
+  const handleDesignScoreCalculated = useCallback((result: {
+    overallScore: number;
+    issues: { severity: string }[];
+    recommendation: string;
+  }) => {
+    const criticalCount = result.issues.filter(i => i.severity === 'critical').length;
+    setDesignScore({
+      overall: result.overallScore,
+      criticalCount,
+      recommendation: result.recommendation,
+    });
+    // Auto-expand details when quality is poor or there are critical issues
+    if (result.overallScore < 50 || criticalCount > 0) {
+      setShowDetails(true);
+    }
+  }, []);
+
+  // Helper: build interactivity-enhanced HTML bundle for copy/download
+  const buildBundle = useCallback((forDownload = false) => {
+    if (!preview) return '';
+    const isFullDocument = preview.html.trim().startsWith('<!DOCTYPE') || preview.html.trim().startsWith('<html');
+    const interactivityScript = `
+<script>
+document.querySelectorAll('.ctc-faq-trigger').forEach(function(trigger) {
+  trigger.addEventListener('click', function() {
+    var answer = document.getElementById(trigger.getAttribute('aria-controls'));
+    var isExpanded = trigger.getAttribute('aria-expanded') === 'true';
+    trigger.setAttribute('aria-expanded', !isExpanded);
+    if (answer) answer.hidden = isExpanded;
+  });
+});
+document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
+  link.addEventListener('click', function(e) {
+    var target = document.querySelector(this.getAttribute('href'));
+    if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  });
+});
+</script>`;
+
+    if (isFullDocument) {
+      return preview.html.replace('</body>', `${interactivityScript}\n</body>`);
+    }
+
+    const title = forDownload ? (contentContext?.title || 'Styled Article') : 'Styled Article';
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>\n${preview.css}\n  </style>
+</head>
+<body>
+${preview.html}
+${interactivityScript}
+</body>
+</html>`;
+  }, [preview, contentContext?.title]);
+
   // Render loading state
   if (isGenerating) {
     return (
@@ -318,11 +417,13 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
   }
 
   return (
-    <div className="space-y-4">
-      {/* Controls */}
+    <div className="space-y-3">
+      {/* ================================================================ */}
+      {/* CONTROLS BAR                                                     */}
+      {/* ================================================================ */}
       <div className="flex items-center justify-between">
-        {/* Device selector and Semantic Layout toggle */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          {/* Device selector */}
           <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-1">
             {(Object.keys(DEVICE_SIZES) as DevicePreview[]).map(d => (
               <button
@@ -330,7 +431,7 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
                 type="button"
                 onClick={() => setDevice(d)}
                 className={`
-                  px-3 py-1.5 text-sm rounded-md transition-colors
+                  px-2.5 py-1 text-sm rounded-md transition-colors
                   ${device === d
                     ? 'bg-zinc-700 text-white'
                     : 'text-zinc-400 hover:text-white'
@@ -342,22 +443,6 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
               </button>
             ))}
           </div>
-
-          {/* Semantic Layout Engine toggle */}
-          {onSemanticLayoutEngineChange && (
-            <label className="flex items-center gap-2 cursor-pointer group" title="AI-driven layout that transforms prose into visual components (cards, timelines, stats) based on content analysis">
-              <input
-                type="checkbox"
-                checked={useSemanticLayoutEngine || false}
-                onChange={(e) => onSemanticLayoutEngineChange(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="relative w-9 h-5 bg-gray-700 peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-              <span className="text-xs text-gray-400 group-hover:text-gray-200 transition-colors">
-                ✨ AI Layout <span className="hidden sm:inline text-gray-500">(BETA)</span>
-              </span>
-            </label>
-          )}
 
           {/* Renderer path selector */}
           {onRendererPathChange && (
@@ -372,433 +457,474 @@ export const PreviewStep: React.FC<PreviewStepProps> = ({
               <option value="brand-templates">Renderer: Brand Templates</option>
             </select>
           )}
+
+          {/* Semantic Layout Engine toggle */}
+          {onSemanticLayoutEngineChange && (
+            <label className="flex items-center gap-2 cursor-pointer group" title="AI-driven layout that transforms prose into visual components (cards, timelines, stats) based on content analysis">
+              <input
+                type="checkbox"
+                checked={useSemanticLayoutEngine || false}
+                onChange={(e) => onSemanticLayoutEngineChange(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="relative w-9 h-5 bg-gray-700 peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+              <span className="text-xs text-gray-400 group-hover:text-gray-200 transition-colors">
+                AI Layout
+              </span>
+            </label>
+          )}
         </div>
 
-        {/* View toggles */}
-        <div className="flex items-center gap-2">
+        {/* Action buttons */}
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => setShowRawHtml(!showRawHtml)}
-            className={`
-              px-3 py-1.5 text-sm rounded-md transition-colors
-              ${showRawHtml
-                ? 'bg-gray-700 text-white'
-                : 'text-gray-400 hover:text-white'
-              }
-            `}
+            className={`px-2.5 py-1.5 text-xs rounded-md transition-colors ${
+              showRawHtml ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+            }`}
           >
-            {showRawHtml ? '👁️ Preview' : '</> HTML'}
+            {showRawHtml ? 'Preview' : '</>'}
           </button>
 
           <Button
             variant="secondary"
             size="sm"
             onClick={() => {
-              if (preview) {
-                // Check if preview.html is already a complete document
-                const isFullDocument = preview.html.trim().startsWith('<!DOCTYPE') || preview.html.trim().startsWith('<html');
-
-                let bundle: string;
-                if (isFullDocument) {
-                  // Already a complete document, use as-is (add interactivity scripts)
-                  bundle = preview.html.replace('</body>', `
-<script>
-// FAQ Accordion Toggle
-document.querySelectorAll('.ctc-faq-trigger').forEach(function(trigger) {
-  trigger.addEventListener('click', function() {
-    var answer = document.getElementById(trigger.getAttribute('aria-controls'));
-    var isExpanded = trigger.getAttribute('aria-expanded') === 'true';
-    trigger.setAttribute('aria-expanded', !isExpanded);
-    if (answer) answer.hidden = isExpanded;
-  });
-});
-// Smooth scroll for TOC links
-document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
-  link.addEventListener('click', function(e) {
-    var target = document.querySelector(this.getAttribute('href'));
-    if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  });
-});
-</script>
-</body>`);
-                } else {
-                  // Fragment - wrap in document structure
-                  bundle = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Styled Article</title>
-  <style>
-${preview.css}
-  </style>
-</head>
-<body>
-${preview.html}
-<script>
-document.querySelectorAll('.ctc-faq-trigger').forEach(function(trigger) {
-  trigger.addEventListener('click', function() {
-    var answer = document.getElementById(trigger.getAttribute('aria-controls'));
-    var isExpanded = trigger.getAttribute('aria-expanded') === 'true';
-    trigger.setAttribute('aria-expanded', !isExpanded);
-    if (answer) answer.hidden = isExpanded;
-  });
-});
-document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
-  link.addEventListener('click', function(e) {
-    var target = document.querySelector(this.getAttribute('href'));
-    if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  });
-});
-</script>
-</body>
-</html>`;
-                }
+              const bundle = buildBundle(false);
+              if (bundle) {
                 navigator.clipboard.writeText(bundle);
                 if (onCopyHtml) onCopyHtml(bundle);
               }
             }}
           >
-            📋 Copy Bundle
+            Copy
           </Button>
 
-          {/* Download HTML Bundle */}
           <Button
             variant="ghost"
             size="sm"
             onClick={() => {
-              if (preview) {
-                // Check if preview.html is already a complete document
-                const isFullDocument = preview.html.trim().startsWith('<!DOCTYPE') || preview.html.trim().startsWith('<html');
-                const title = contentContext?.title || 'Styled Article';
-
-                let bundle: string;
-                if (isFullDocument) {
-                  // Already a complete document - add interactivity scripts
-                  bundle = preview.html.replace('</body>', `
-<script>
-document.querySelectorAll('.ctc-faq-trigger').forEach(function(trigger) {
-  trigger.addEventListener('click', function() {
-    var answer = document.getElementById(trigger.getAttribute('aria-controls'));
-    var isExpanded = trigger.getAttribute('aria-expanded') === 'true';
-    trigger.setAttribute('aria-expanded', !isExpanded);
-    if (answer) answer.hidden = isExpanded;
-  });
-});
-document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
-  link.addEventListener('click', function(e) {
-    var target = document.querySelector(this.getAttribute('href'));
-    if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  });
-});
-</script>
-</body>`);
-                } else {
-                  // Fragment - wrap in document structure
-                  bundle = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-  <style>
-${preview.css}
-  </style>
-</head>
-<body>
-${preview.html}
-<script>
-document.querySelectorAll('.ctc-faq-trigger').forEach(function(trigger) {
-  trigger.addEventListener('click', function() {
-    var answer = document.getElementById(trigger.getAttribute('aria-controls'));
-    var isExpanded = trigger.getAttribute('aria-expanded') === 'true';
-    trigger.setAttribute('aria-expanded', !isExpanded);
-    if (answer) answer.hidden = isExpanded;
-  });
-});
-document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
-  link.addEventListener('click', function(e) {
-    var target = document.querySelector(this.getAttribute('href'));
-    if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  });
-});
-</script>
-</body>
-</html>`;
-                }
-
-                // Generate filename from title
-                const filename = (contentContext?.title || 'article')
-                  .toLowerCase()
-                  .replace(/[^a-z0-9]+/g, '-')
-                  .replace(/^-|-$/g, '')
-                  .substring(0, 50) + '.html';
-
-                // Create and trigger download
-                const blob = new Blob([bundle], { type: 'text/html' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-              }
+              const bundle = buildBundle(true);
+              if (!bundle) return;
+              const filename = (contentContext?.title || 'article')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-|-$/g, '')
+                .substring(0, 50) + '.html';
+              const blob = new Blob([bundle], { type: 'text/html' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
             }}
           >
-            ⬇️ Download HTML
+            Download
           </Button>
 
           <Button variant="ghost" size="sm" onClick={onRegenerate}>
             Regenerate
           </Button>
 
-          {/* Expand/Fullscreen Button */}
           <button
             type="button"
             onClick={() => setIsFullscreen(true)}
-            className="px-3 py-1.5 text-sm rounded-md transition-colors bg-zinc-700 text-white hover:bg-zinc-600 flex items-center gap-1"
+            className="px-2.5 py-1.5 text-xs rounded-md transition-colors bg-zinc-700 text-white hover:bg-zinc-600"
             title="Open fullscreen preview"
           >
-            ⛶ Expand
+            Expand
           </button>
         </div>
       </div>
 
-      {/* Brand Match Indicator */}
-      {brandMatchScore !== undefined && (
-        <BrandMatchIndicator
-          score={brandMatchScore}
-          assessmentText={brandAssessment}
-          onShowDetails={onShowBrandDetails}
-        />
-      )}
-
-      {/* Rendering Status Notification - Always show to keep user informed */}
-      {renderingMetadata?.renderMessage && (
-        <div className={`p-3 rounded-lg border ${
-          renderingMetadata.renderLevel === 'error'
-            ? 'bg-red-900/30 border-red-500/30'
-            : renderingMetadata.renderLevel === 'warning'
-            ? 'bg-yellow-900/30 border-yellow-500/30'
-            : 'bg-blue-900/30 border-blue-500/30'
-        }`}>
-          <div className="flex items-start gap-2">
-            <span className={
-              renderingMetadata.renderLevel === 'error' ? 'text-red-400' :
-              renderingMetadata.renderLevel === 'warning' ? 'text-yellow-400' : 'text-blue-400'
-            }>
-              {renderingMetadata.renderLevel === 'error' ? '❌' :
-               renderingMetadata.renderLevel === 'warning' ? '⚠️' : 'ℹ️'}
-            </span>
-            <div className="flex-1">
-              <p className={`text-sm font-medium ${
-                renderingMetadata.renderLevel === 'error' ? 'text-red-300' :
-                renderingMetadata.renderLevel === 'warning' ? 'text-yellow-300' : 'text-blue-300'
-              }`}>
-                {renderingMetadata.renderMessage}
-              </p>
-              {renderingMetadata.renderReason && (
-                <p className={`text-xs mt-0.5 ${
-                  renderingMetadata.renderLevel === 'error' ? 'text-red-400/80' :
-                  renderingMetadata.renderLevel === 'warning' ? 'text-yellow-400/80' : 'text-blue-400/80'
-                }`}>
-                  {renderingMetadata.renderReason}
-                </p>
-              )}
-              {/* Technical details for transparency */}
-              {renderingMetadata.renderDetails && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {renderingMetadata.renderDetails.brandExtractionUsed && (
-                    <span className="px-2 py-0.5 bg-green-500/20 text-green-300 text-xs rounded">Brand Extraction</span>
-                  )}
-                  {renderingMetadata.renderDetails.compiledCssUsed && (
-                    <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 text-xs rounded">AI-Generated CSS</span>
-                  )}
-                  {renderingMetadata.renderDetails.layoutBlueprintUsed && (
-                    <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-xs rounded">Layout Blueprint</span>
-                  )}
-                  {renderingMetadata.renderDetails.aiLayoutUsed && (
-                    <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 text-xs rounded">AI Layout Planning</span>
-                  )}
-                  {renderingMetadata.renderDetails.fallbackTriggered && (
-                    <span className="px-2 py-0.5 bg-orange-500/20 text-orange-300 text-xs rounded">Fallback Used</span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+      {/* ================================================================ */}
+      {/* CRITICAL BANNERS (errors + fixing state only)                    */}
+      {/* ================================================================ */}
+      {renderingMetadata?.renderLevel === 'error' && renderingMetadata?.renderMessage && (
+        <div className="px-3 py-2 bg-red-900/30 rounded-lg border border-red-500/30 flex items-center gap-2">
+          <span className="text-red-400 text-sm">Error:</span>
+          <span className="text-sm text-red-300">{renderingMetadata.renderMessage}</span>
         </div>
       )}
 
-      {/* Legacy Rendering Fallback Warning - for backwards compatibility */}
-      {!renderingMetadata?.renderMessage && renderingMetadata?.rendererUsed === 'BlueprintRenderer' && renderingMetadata.fallbackReason && (
-        <div className="p-3 bg-yellow-900/30 rounded-lg border border-yellow-500/30">
-          <div className="flex items-start gap-2">
-            <span className="text-yellow-400">⚠️</span>
-            <div>
-              <p className="text-sm font-medium text-yellow-300">Brand styling limited</p>
-              <p className="text-xs text-yellow-400/80 mt-0.5">
-                {renderingMetadata.fallbackReason || 'Full brand extraction not available. Using design tokens instead.'}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Unresolved Images Warning */}
-      {renderingMetadata?.unresolvedImageCount && renderingMetadata.unresolvedImageCount > 0 && (
-        <div className="p-3 bg-blue-900/30 rounded-lg border border-blue-500/30">
-          <div className="flex items-start gap-2">
-            <span className="text-blue-400">🖼️</span>
-            <div>
-              <p className="text-sm font-medium text-blue-300">
-                {renderingMetadata.unresolvedImageCount} image placeholder{renderingMetadata.unresolvedImageCount > 1 ? 's' : ''} need attention
-              </p>
-              <p className="text-xs text-blue-400/80 mt-0.5">
-                Generate images in the Image Management panel to replace placeholders.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Blueprint Quality Warning */}
-      {blueprintQuality && blueprintQuality.overallScore < 70 && (
-        <div className="p-3 bg-amber-900/30 rounded-lg border border-amber-500/30">
-          <div className="flex items-start gap-2">
-            <span className="text-amber-400">📐</span>
-            <div>
-              <p className="text-sm font-medium text-amber-300">
-                Layout coherence: {blueprintQuality.overallScore}%
-              </p>
-              {blueprintQuality.coherence.issues.length > 0 && (
-                <ul className="mt-1 space-y-0.5">
-                  {blueprintQuality.coherence.issues.slice(0, 3).map((issue, idx) => (
-                    <li key={idx} className="text-xs text-amber-400/80 flex items-start gap-1">
-                      <span>{issue.severity === 'error' ? '•' : '○'}</span>
-                      <span>{issue.message}</span>
-                    </li>
-                  ))}
-                  {blueprintQuality.coherence.issues.length > 3 && (
-                    <li className="text-xs text-amber-400/60 ml-3">
-                      +{blueprintQuality.coherence.issues.length - 3} more issues
-                    </li>
-                  )}
-                </ul>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Design Quality Assessment - Comprehensive evaluation with actionable suggestions */}
-      {preview?.html && (
-        <DesignQualityAssessment
-          html={preview.html}
-          css={preview.css || ''}
-          businessContext={businessContext}
-          contentContext={contentContext}
-          onAutoFix={onAutoFixIssue ? handleAutoFixIssue : undefined}
-          onRegenerateWithInstructions={onRegenerateWithInstructions ? handleRegenerateWithInstructions : undefined}
-          isFixing={isFixingDesign}
-        />
-      )}
-
-      {/* Fixing in progress */}
       {isFixingDesign && (
-        <div className="p-3 bg-blue-900/30 rounded-lg border border-blue-500/30">
-          <div className="flex items-center gap-2">
-            <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full" />
-            <span className="text-sm text-blue-300">AI is improving your design... This may take a moment.</span>
-          </div>
+        <div className="px-3 py-2 bg-blue-900/30 rounded-lg border border-blue-500/30 flex items-center gap-2">
+          <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+          <span className="text-sm text-blue-300">AI is improving your design...</span>
         </div>
       )}
 
-      {/* SEO Validation */}
-      {seoWarnings.length > 0 && (
-        <div className="p-3 bg-gray-800 rounded-lg border border-gray-700">
-          <div className="flex items-center gap-4 mb-2">
-            <span className="text-sm font-medium text-white">SEO Validation</span>
-            {warningCounts.error > 0 && (
-              <span className="px-2 py-0.5 bg-red-900/30 text-red-400 text-xs rounded">
-                {warningCounts.error} error{warningCounts.error > 1 ? 's' : ''}
-              </span>
-            )}
-            {warningCounts.warning > 0 && (
-              <span className="px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded">
-                {warningCounts.warning} warning{warningCounts.warning > 1 ? 's' : ''}
-              </span>
-            )}
-            {warningCounts.info > 0 && (
-              <span className="px-2 py-0.5 bg-blue-900/30 text-blue-400 text-xs rounded">
-                {warningCounts.info} info
-              </span>
-            )}
-          </div>
-
-          <ul className="space-y-1">
-            {seoWarnings.slice(0, 3).map((warning, index) => (
-              <li
-                key={index}
-                className={`text-xs flex items-start gap-2 ${warning.severity === 'error' ? 'text-red-400' :
-                  warning.severity === 'warning' ? 'text-yellow-400' : 'text-blue-400'
-                  }`}
-              >
-                <span>
-                  {warning.severity === 'error' ? '❌' :
-                    warning.severity === 'warning' ? '⚠️' : 'ℹ️'}
-                </span>
-                <span>
-                  {warning.message}
-                  {warning.suggestion && (
-                    <span className="text-gray-500 ml-1">— {warning.suggestion}</span>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Preview / HTML View */}
-      <div className="bg-gray-900 rounded-xl p-6 overflow-auto shadow-2xl" style={{ minHeight: '650px', maxHeight: '80vh' }}>
+      {/* ================================================================ */}
+      {/* PREVIEW - PRIMARY CONTENT AREA                                   */}
+      {/* ================================================================ */}
+      <div className="bg-gray-900 rounded-xl p-4 overflow-auto shadow-2xl" style={{ minHeight: '70vh' }}>
         {showRawHtml ? (
           <div className="space-y-4">
-            {/* HTML Code */}
             <div>
               <h4 className="text-sm font-medium text-gray-300 mb-2">HTML</h4>
-              <pre className="bg-gray-950 p-4 rounded-lg overflow-auto text-xs text-gray-300 max-h-[50vh]">
+              <pre className="bg-gray-950 p-4 rounded-lg overflow-auto text-xs text-gray-300 max-h-[60vh]">
                 <code>{preview.html}</code>
               </pre>
             </div>
-
-            {/* CSS Code */}
             <div>
               <h4 className="text-sm font-medium text-gray-300 mb-2">CSS</h4>
-              <pre className="bg-gray-950 p-4 rounded-lg overflow-auto text-xs text-gray-300 max-h-[50vh]">
+              <pre className="bg-gray-950 p-4 rounded-lg overflow-auto text-xs text-gray-300 max-h-[60vh]">
                 <code>{preview.css}</code>
               </pre>
             </div>
-
-            {/* CSS Variables */}
             <div>
               <h4 className="text-sm font-medium text-gray-300 mb-2">CSS Variables</h4>
-              <pre className="bg-gray-950 p-4 rounded-lg overflow-auto text-xs text-gray-300 max-h-[50vh]">
+              <pre className="bg-gray-950 p-4 rounded-lg overflow-auto text-xs text-gray-300 max-h-[60vh]">
                 <code>{JSON.stringify(preview.cssVariables, null, 2)}</code>
               </pre>
             </div>
           </div>
         ) : (
           <DeviceFrame device={device}>
-            <style dangerouslySetInnerHTML={{ __html: preview.css }} />
-            <div dangerouslySetInnerHTML={{ __html: preview.html }} />
+            <iframe
+              ref={iframeRef}
+              srcDoc={buildIframeSrcdoc(preview.html, preview.css)}
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                backgroundColor: '#ffffff',
+              }}
+              sandbox="allow-same-origin allow-scripts"
+              title="Article preview"
+            />
           </DeviceFrame>
         )}
       </div>
 
-      {/* Adjustment Panels - collapsed by default */}
+      {/* ================================================================ */}
+      {/* STATUS STRIP - Key metrics at a glance                           */}
+      {/* ================================================================ */}
+      <div className="space-y-2">
+        {/* Design quality alert - always visible when score is poor */}
+        {designScore && designScore.overall < 50 && (
+          <div className={`flex items-center justify-between px-4 py-2.5 rounded-lg border ${
+            designScore.overall < 30
+              ? 'bg-red-900/30 border-red-500/30'
+              : 'bg-yellow-900/30 border-yellow-500/30'
+          }`}>
+            <div className="flex items-center gap-3">
+              <span className={`text-lg font-bold ${
+                designScore.overall < 30 ? 'text-red-400' : 'text-yellow-400'
+              }`}>
+                {designScore.overall}%
+              </span>
+              <div>
+                <span className={`text-sm font-medium ${
+                  designScore.overall < 30 ? 'text-red-300' : 'text-yellow-300'
+                }`}>
+                  Design Quality
+                  {designScore.criticalCount > 0 && (
+                    <span className="ml-2 px-1.5 py-0.5 bg-red-500/20 text-red-300 text-xs rounded">
+                      {designScore.criticalCount} critical
+                    </span>
+                  )}
+                </span>
+                <p className={`text-xs mt-0.5 ${
+                  designScore.overall < 30 ? 'text-red-400/70' : 'text-yellow-400/70'
+                }`}>
+                  {designScore.recommendation === 'rework-recommended'
+                    ? 'Output needs rework before publishing'
+                    : 'Improvements recommended - expand details below'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowDetails(true)}
+              className={`text-xs px-3 py-1.5 rounded-md transition-colors ${
+                designScore.overall < 30
+                  ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30'
+                  : 'bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30'
+              }`}
+            >
+              View Issues
+            </button>
+          </div>
+        )}
+
+        {/* Compact metrics row */}
+        <div className="flex items-center justify-between bg-zinc-800/50 rounded-lg px-4 py-2">
+          <div className="flex items-center gap-4 flex-wrap">
+            {/* Design quality score */}
+            {designScore && (
+              <span className="flex items-center gap-1.5 text-xs">
+                <span className={`w-2 h-2 rounded-full ${
+                  designScore.overall >= 70 ? 'bg-green-400' : designScore.overall >= 50 ? 'bg-yellow-400' : 'bg-red-400'
+                }`} />
+                <span className={`${
+                  designScore.overall < 50 ? 'text-red-400 font-medium' : 'text-zinc-400'
+                }`}>
+                  Quality {designScore.overall}%
+                </span>
+                {designScore.criticalCount > 0 && (
+                  <span className="text-red-400 font-medium">
+                    ({designScore.criticalCount} critical)
+                  </span>
+                )}
+              </span>
+            )}
+
+            {/* Brand score */}
+            {brandMatchScore !== undefined && (
+              <span className="flex items-center gap-1.5 text-xs">
+                <span className={`w-2 h-2 rounded-full ${
+                  brandMatchScore >= 70 ? 'bg-green-400' : brandMatchScore >= 40 ? 'bg-yellow-400' : 'bg-red-400'
+                }`} />
+                <span className="text-zinc-400">Brand {brandMatchScore}%</span>
+              </span>
+            )}
+
+            {/* SEO summary */}
+            {seoWarnings.length > 0 && (
+              <span className="text-xs text-zinc-400">
+                SEO:
+                {warningCounts.error > 0 && <span className="text-red-400 ml-1">{warningCounts.error} err</span>}
+                {warningCounts.warning > 0 && <span className="text-yellow-400 ml-1">{warningCounts.warning} warn</span>}
+                {warningCounts.error === 0 && warningCounts.warning === 0 && <span className="text-green-400 ml-1">OK</span>}
+              </span>
+            )}
+
+            {/* Renderer + component info */}
+            <span className="text-xs text-zinc-500">
+              {renderingMetadata?.rendererUsed && <>{renderingMetadata.rendererUsed} · </>}
+              {preview.components.length} components
+              {' '}
+              {preview.seoValidation.headingStructure.hasH1 ? '✓' : '✗'} H1
+              {' '}
+              {preview.seoValidation.schemaPreserved ? '✓' : '✗'} Schema
+            </span>
+
+            {/* Pipeline telemetry summary */}
+            {renderingMetadata?.pipelineTelemetry && (() => {
+              const t = renderingMetadata.pipelineTelemetry!;
+              const fb = t.sectionDecisions.filter(d => d.status === 'fallback').length;
+              const er = t.sectionDecisions.filter(d => d.status === 'error').length;
+              return (fb > 0 || er > 0) ? (
+                <span className="text-xs">
+                  {fb > 0 && <span className="text-yellow-400">{fb} fallback</span>}
+                  {er > 0 && <span className="text-red-400 ml-1">{er} error</span>}
+                </span>
+              ) : null;
+            })()}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowDetails(!showDetails)}
+            className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1.5 shrink-0"
+          >
+            <span className="text-[10px]">{showDetails ? '▼' : '▶'}</span>
+            {showDetails ? 'Hide' : 'Show'} Details
+          </button>
+        </div>
+      </div>
+
+      {/* ================================================================ */}
+      {/* DESIGN QUALITY (always mounted so score callback fires)          */}
+      {/* ================================================================ */}
+      <div className={showDetails ? '' : 'hidden'}>
+        {preview?.html && (
+          <DesignQualityAssessment
+            html={preview.html}
+            css={preview.css || ''}
+            businessContext={businessContext}
+            contentContext={contentContext}
+            onAutoFix={onAutoFixIssue ? handleAutoFixIssue : undefined}
+            onRegenerateWithInstructions={onRegenerateWithInstructions ? handleRegenerateWithInstructions : undefined}
+            isFixing={isFixingDesign}
+            onScoreCalculated={handleDesignScoreCalculated}
+          />
+        )}
+      </div>
+
+      {/* ================================================================ */}
+      {/* EXPANDABLE DETAILS & DIAGNOSTICS                                 */}
+      {/* ================================================================ */}
+      {showDetails && (
+        <div className="space-y-3 bg-zinc-900/50 rounded-lg p-4 border border-zinc-700/50">
+          {/* Rendering Status Notification */}
+          {renderingMetadata?.renderMessage && renderingMetadata.renderLevel !== 'error' && (
+            <div className={`p-3 rounded-lg border ${
+              renderingMetadata.renderLevel === 'warning'
+                ? 'bg-yellow-900/30 border-yellow-500/30'
+                : 'bg-blue-900/30 border-blue-500/30'
+            }`}>
+              <div className="flex items-start gap-2">
+                <span className={renderingMetadata.renderLevel === 'warning' ? 'text-yellow-400' : 'text-blue-400'}>
+                  {renderingMetadata.renderLevel === 'warning' ? '⚠️' : 'ℹ️'}
+                </span>
+                <div className="flex-1">
+                  <p className={`text-sm font-medium ${
+                    renderingMetadata.renderLevel === 'warning' ? 'text-yellow-300' : 'text-blue-300'
+                  }`}>
+                    {renderingMetadata.renderMessage}
+                  </p>
+                  {renderingMetadata.renderReason && (
+                    <p className={`text-xs mt-0.5 ${
+                      renderingMetadata.renderLevel === 'warning' ? 'text-yellow-400/80' : 'text-blue-400/80'
+                    }`}>
+                      {renderingMetadata.renderReason}
+                    </p>
+                  )}
+                  {renderingMetadata.renderDetails && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {renderingMetadata.renderDetails.brandExtractionUsed && (
+                        <span className="px-2 py-0.5 bg-green-500/20 text-green-300 text-xs rounded">Brand Extraction</span>
+                      )}
+                      {renderingMetadata.renderDetails.compiledCssUsed && (
+                        <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 text-xs rounded">AI-Generated CSS</span>
+                      )}
+                      {renderingMetadata.renderDetails.layoutBlueprintUsed && (
+                        <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 text-xs rounded">Layout Blueprint</span>
+                      )}
+                      {renderingMetadata.renderDetails.aiLayoutUsed && (
+                        <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 text-xs rounded">AI Layout Planning</span>
+                      )}
+                      {renderingMetadata.renderDetails.fallbackTriggered && (
+                        <span className="px-2 py-0.5 bg-orange-500/20 text-orange-300 text-xs rounded">Fallback Used</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Legacy Rendering Fallback Warning */}
+          {!renderingMetadata?.renderMessage && renderingMetadata?.rendererUsed === 'BlueprintRenderer' && renderingMetadata.fallbackReason && (
+            <div className="p-3 bg-yellow-900/30 rounded-lg border border-yellow-500/30">
+              <div className="flex items-start gap-2">
+                <span className="text-yellow-400">⚠️</span>
+                <div>
+                  <p className="text-sm font-medium text-yellow-300">Brand styling limited</p>
+                  <p className="text-xs text-yellow-400/80 mt-0.5">
+                    {renderingMetadata.fallbackReason || 'Full brand extraction not available. Using design tokens instead.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Brand Match Indicator */}
+          {brandMatchScore !== undefined && (
+            <BrandMatchIndicator
+              score={brandMatchScore}
+              assessmentText={brandAssessment}
+              onShowDetails={onShowBrandDetails}
+            />
+          )}
+
+          {/* Unresolved Images Warning */}
+          {renderingMetadata?.unresolvedImageCount != null && renderingMetadata.unresolvedImageCount > 0 && (
+            <div className="p-3 bg-blue-900/30 rounded-lg border border-blue-500/30">
+              <div className="flex items-start gap-2">
+                <span className="text-blue-400">🖼️</span>
+                <div>
+                  <p className="text-sm font-medium text-blue-300">
+                    {renderingMetadata.unresolvedImageCount} image placeholder{renderingMetadata.unresolvedImageCount > 1 ? 's' : ''} need attention
+                  </p>
+                  <p className="text-xs text-blue-400/80 mt-0.5">
+                    Generate images in the Image Management panel to replace placeholders.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Blueprint Quality Warning */}
+          {blueprintQuality && blueprintQuality.overallScore < 70 && (
+            <div className="p-3 bg-amber-900/30 rounded-lg border border-amber-500/30">
+              <div className="flex items-start gap-2">
+                <span className="text-amber-400">📐</span>
+                <div>
+                  <p className="text-sm font-medium text-amber-300">
+                    Layout coherence: {blueprintQuality.overallScore}%
+                  </p>
+                  {blueprintQuality.coherence.issues.length > 0 && (
+                    <ul className="mt-1 space-y-0.5">
+                      {blueprintQuality.coherence.issues.slice(0, 3).map((issue, idx) => (
+                        <li key={idx} className="text-xs text-amber-400/80 flex items-start gap-1">
+                          <span>{issue.severity === 'error' ? '•' : '○'}</span>
+                          <span>{issue.message}</span>
+                        </li>
+                      ))}
+                      {blueprintQuality.coherence.issues.length > 3 && (
+                        <li className="text-xs text-amber-400/60 ml-3">
+                          +{blueprintQuality.coherence.issues.length - 3} more issues
+                        </li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Pipeline Inspector */}
+          {renderingMetadata?.pipelineTelemetry && (
+            <PipelineInspector telemetry={renderingMetadata.pipelineTelemetry} />
+          )}
+
+          {/* SEO Validation */}
+          {seoWarnings.length > 0 && (
+            <div className="p-3 bg-gray-800 rounded-lg border border-gray-700">
+              <div className="flex items-center gap-4 mb-2">
+                <span className="text-sm font-medium text-white">SEO Validation</span>
+                {warningCounts.error > 0 && (
+                  <span className="px-2 py-0.5 bg-red-900/30 text-red-400 text-xs rounded">
+                    {warningCounts.error} error{warningCounts.error > 1 ? 's' : ''}
+                  </span>
+                )}
+                {warningCounts.warning > 0 && (
+                  <span className="px-2 py-0.5 bg-yellow-900/30 text-yellow-400 text-xs rounded">
+                    {warningCounts.warning} warning{warningCounts.warning > 1 ? 's' : ''}
+                  </span>
+                )}
+                {warningCounts.info > 0 && (
+                  <span className="px-2 py-0.5 bg-blue-900/30 text-blue-400 text-xs rounded">
+                    {warningCounts.info} info
+                  </span>
+                )}
+              </div>
+              <ul className="space-y-1">
+                {seoWarnings.map((warning, index) => (
+                  <li
+                    key={index}
+                    className={`text-xs flex items-start gap-2 ${warning.severity === 'error' ? 'text-red-400' :
+                      warning.severity === 'warning' ? 'text-yellow-400' : 'text-blue-400'
+                    }`}
+                  >
+                    <span>
+                      {warning.severity === 'error' ? '❌' :
+                        warning.severity === 'warning' ? '⚠️' : 'ℹ️'}
+                    </span>
+                    <span>
+                      {warning.message}
+                      {warning.suggestion && (
+                        <span className="text-gray-500 ml-1">— {warning.suggestion}</span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ================================================================ */}
+      {/* ADJUSTMENT PANELS                                                */}
+      {/* ================================================================ */}
       {(layout || blueprint) && (
         <div className="space-y-2">
           <p className="text-xs text-gray-500 italic">
@@ -824,19 +950,9 @@ document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
         </div>
       )}
 
-      {/* Component Summary */}
-      <div className="flex items-center justify-between text-xs text-gray-500">
-        <span>
-          {preview.components.length} components detected •
-          Template: {preview.template}
-        </span>
-        <span>
-          {preview.seoValidation.headingStructure.hasH1 ? '✓' : '✗'} H1 •
-          {preview.seoValidation.schemaPreserved ? '✓' : '✗'} Schema
-        </span>
-      </div>
-
-      {/* Fullscreen Preview Modal */}
+      {/* ================================================================ */}
+      {/* FULLSCREEN PREVIEW MODAL                                         */}
+      {/* ================================================================ */}
       {isFullscreen && (
         <div
           className="fixed inset-0 z-50 bg-black/90 flex flex-col"
@@ -844,12 +960,11 @@ document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
             if (e.target === e.currentTarget) setIsFullscreen(false);
           }}
         >
-          {/* Fullscreen header */}
-          <div className="flex items-center justify-between p-4 bg-zinc-900 border-b border-zinc-800">
+          <div className="flex items-center justify-between p-3 bg-zinc-900 border-b border-zinc-800">
             <div className="flex items-center gap-4">
               <h3 className="text-lg font-semibold text-white">Full Preview</h3>
               <span className="text-sm text-zinc-400">
-                View at actual size to check layout and design quality
+                Check layout, typography, and visual hierarchy at actual size
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -863,7 +978,7 @@ document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
                   }}
                   className="bg-blue-600 hover:bg-blue-500 text-white"
                 >
-                  🔄 Regenerate
+                  Regenerate
                 </Button>
               )}
               <button
@@ -871,28 +986,23 @@ document.querySelectorAll('.ctc-toc a[href^="#"]').forEach(function(link) {
                 onClick={() => setIsFullscreen(false)}
                 className="px-4 py-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white transition-colors"
               >
-                ✕ Close
+                Close
               </button>
             </div>
           </div>
 
-          {/* Fullscreen content */}
-          <div className="flex-1 overflow-auto p-4 bg-white">
-            <div className="max-w-[1200px] mx-auto">
-              <style dangerouslySetInnerHTML={{ __html: preview.css }} />
-              <div dangerouslySetInnerHTML={{ __html: preview.html }} />
-            </div>
-          </div>
-
-          {/* Fullscreen footer with instructions */}
-          <div className="p-3 bg-zinc-900 border-t border-zinc-800">
-            <div className="flex items-center justify-center gap-4 max-w-[1200px] mx-auto text-sm text-zinc-400">
-              <span>👆 Scroll to review the full article</span>
-              <span>•</span>
-              <span>📐 Check layout, typography, and visual hierarchy</span>
-              <span>•</span>
-              <span>🎯 Verify CTAs and engagement elements are present</span>
-            </div>
+          <div className="flex-1 overflow-hidden bg-white">
+            <iframe
+              srcDoc={buildIframeSrcdoc(preview.html, preview.css)}
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                backgroundColor: '#ffffff',
+              }}
+              sandbox="allow-same-origin allow-scripts"
+              title="Article fullscreen preview"
+            />
           </div>
         </div>
       )}

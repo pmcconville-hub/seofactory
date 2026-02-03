@@ -17,6 +17,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAppState } from '../../state/appState';
 import { Modal } from '../ui/Modal';
+import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { getSupabaseClient } from '../../services/supabaseClient';
 import { BrandIntelligenceStep } from './steps/BrandIntelligenceStep';
@@ -119,6 +120,7 @@ export interface StylePublishModalProps {
   supabaseAnonKey: string;
   projectId?: string;
   onPublishSuccess?: () => void;
+  asPage?: boolean;
 }
 
 interface StepInfo {
@@ -154,6 +156,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
   supabaseAnonKey,
   projectId,
   onPublishSuccess,
+  asPage,
 }) => {
   // Get app state for API keys
   const { state, dispatch } = useAppState();
@@ -242,6 +245,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
       fallbackTriggered?: boolean;
       semanticLayoutUsed?: boolean;
     };
+    pipelineTelemetry?: import('../../types/publishing').PipelineTelemetry;
   } | null>(null);
 
   // Semantic Layout Engine toggle - AI-driven layout intelligence
@@ -1596,6 +1600,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
               renderReason: renderInfo?.reason,
               renderLevel: renderInfo?.level || 'info',
               renderDetails: renderInfo?.details,
+              pipelineTelemetry: renderInfo?.pipelineTelemetry,
             });
             console.log('[Style & Publish] Render info:', renderInfo);
             return;
@@ -2313,15 +2318,8 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
     </div>
   );
 
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title="Style & Publish"
-      maxWidth="max-w-5xl"
-      footer={footerContent}
-      headerIcon={<span className="text-2xl">🎨</span>}
-    >
+  const stepProgressAndContent = (
+    <>
       {/* Step Progress */}
       <div className="flex items-center justify-between mb-6 px-4">
         {STEPS.map((step, index) => {
@@ -2383,6 +2381,43 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
       <div className="min-h-[400px]">
         {renderStepContent()}
       </div>
+    </>
+  );
+
+  if (asPage) {
+    return (
+      <div className="-m-4">
+        <Card className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden p-6">
+          <div className="flex-shrink-0">
+            <button
+              onClick={onClose}
+              className="text-xs text-gray-500 hover:text-gray-300 mb-1"
+            >
+              &larr; Back to Draft
+            </button>
+            <h2 className="text-xl font-bold text-white mb-4">Style & Publish</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {stepProgressAndContent}
+          </div>
+          <div className="border-t border-gray-700 pt-4 mt-4 flex-shrink-0">
+            {footerContent}
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Style & Publish"
+      maxWidth="max-w-5xl"
+      footer={footerContent}
+      headerIcon={<span className="text-2xl">🎨</span>}
+    >
+      {stepProgressAndContent}
     </Modal>
   );
 };

@@ -550,16 +550,10 @@ export async function renderContent(
     if (isPoorQuality) {
       console.warn('[Renderer] POOR QUALITY OUTPUT DETECTED from BrandAwareComposer');
       console.warn(`[Renderer] ${emptySections}/${totalSections} sections have empty classes`);
-
-      if (forcePathA) {
-        // User explicitly chose "Brand Templates" — respect their choice
-        console.log('[Renderer] User forced brand-templates path — using output as-is');
-      } else {
-        console.warn('[Renderer] Falling back to CleanArticleRenderer with ComponentRenderer');
-      }
+      console.warn('[Renderer] Falling back to CleanArticleRenderer with ComponentRenderer');
     }
 
-    if (isContaminated || (isPoorQuality && !forcePathA)) {
+    if (isContaminated || isPoorQuality) {
       const reason = isContaminated ? 'contamination' : 'poor quality (empty section classes)';
       console.warn(`[Renderer] Falling back to CleanArticleRenderer due to: ${reason}`);
 
@@ -677,6 +671,7 @@ export async function renderContent(
               compiledCssUsed: !!options.brandDesignSystem?.compiledCss,
               fallbackTriggered: true,
             },
+            pipelineTelemetry: cleanResult.pipelineTelemetry,
           },
           renderMetadata: {
             unresolvedImageCount: imageInjectionResult?.unresolvedCount || 0,
@@ -918,6 +913,7 @@ export async function renderContent(
           compiledCssUsed: !!compiledCss,
           componentsDetected: layoutBlueprintInput?.sections?.length || 0,
         },
+        pipelineTelemetry: cleanResult.pipelineTelemetry,
       },
       renderMetadata: {
         unresolvedImageCount: imageInjectionResult?.unresolvedCount || 0,
