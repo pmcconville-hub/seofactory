@@ -496,6 +496,261 @@ test.describe('HTML Visual Structure Validation', () => {
 });
 
 // ============================================================================
+// COMPONENT SELECTOR - ALERT/INFO PATTERN DETECTION
+// ============================================================================
+
+test.describe('ComponentSelector content pattern detection', () => {
+  /**
+   * Helper: Create a minimal SectionAnalysis for testing
+   */
+  function createAnalysis(overrides: Record<string, unknown> = {}) {
+    return {
+      sectionId: 'section-test',
+      heading: 'Test Section',
+      headingLevel: 2,
+      contentType: 'explanation' as const,
+      semanticWeight: 3,
+      semanticWeightFactors: {
+        baseWeight: 3,
+        topicCategoryBonus: 0,
+        coreTopicBonus: 0,
+        fsTargetBonus: 0,
+        mainIntentBonus: 0,
+        totalWeight: 3,
+      },
+      constraints: {},
+      wordCount: 50,
+      hasTable: false,
+      hasList: false,
+      hasQuote: false,
+      hasImage: false,
+      isCoreTopic: false,
+      answersMainIntent: false,
+      contentZone: 'MAIN' as const,
+      ...overrides,
+    };
+  }
+
+  test('ComponentSelector assigns alert-box for Dutch warning content', async () => {
+    const { ComponentSelector } = await import(
+      '../services/layout-engine/ComponentSelector'
+    );
+
+    const warningContent =
+      '<p><strong>Waarschuwing:</strong> Dit netwerk is kwetsbaar voor aanvallen.</p>' +
+      '<p>Neem onmiddellijk actie om uw systeem te beveiligen.</p>';
+
+    const analysis = createAnalysis();
+    const result = ComponentSelector.selectComponent(analysis, undefined, {
+      content: warningContent,
+    });
+
+    expect(result.primaryComponent).toBe('alert-box');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.7);
+  });
+
+  test('ComponentSelector assigns alert-box for English warning content', async () => {
+    const { ComponentSelector } = await import(
+      '../services/layout-engine/ComponentSelector'
+    );
+
+    const warningContent =
+      '<p><strong>Warning:</strong> This system is vulnerable to attacks.</p>' +
+      '<p>Take immediate action to secure your environment.</p>';
+
+    const analysis = createAnalysis();
+    const result = ComponentSelector.selectComponent(analysis, undefined, {
+      content: warningContent,
+    });
+
+    expect(result.primaryComponent).toBe('alert-box');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.7);
+  });
+
+  test('ComponentSelector assigns alert-box for risk keyword content', async () => {
+    const { ComponentSelector } = await import(
+      '../services/layout-engine/ComponentSelector'
+    );
+
+    const riskContent =
+      '<p>There is a significant risk of data loss if backups are not configured.</p>' +
+      '<p>This danger cannot be ignored.</p>';
+
+    const analysis = createAnalysis();
+    const result = ComponentSelector.selectComponent(analysis, undefined, {
+      content: riskContent,
+    });
+
+    expect(result.primaryComponent).toBe('alert-box');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.7);
+  });
+
+  test('ComponentSelector assigns alert-box for "Belangrijk:" prefix', async () => {
+    const { ComponentSelector } = await import(
+      '../services/layout-engine/ComponentSelector'
+    );
+
+    const importantContent =
+      '<p><strong>Belangrijk:</strong> Controleer altijd de certificaten.</p>';
+
+    const analysis = createAnalysis();
+    const result = ComponentSelector.selectComponent(analysis, undefined, {
+      content: importantContent,
+    });
+
+    expect(result.primaryComponent).toBe('alert-box');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.7);
+  });
+
+  test('ComponentSelector assigns info-box for Dutch tip content', async () => {
+    const { ComponentSelector } = await import(
+      '../services/layout-engine/ComponentSelector'
+    );
+
+    const tipContent =
+      '<p><strong>Tip:</strong> Gebruik altijd sterke wachtwoorden voor extra bescherming.</p>';
+
+    const analysis = createAnalysis();
+    const result = ComponentSelector.selectComponent(analysis, undefined, {
+      content: tipContent,
+    });
+
+    expect(result.primaryComponent).toBe('info-box');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.6);
+  });
+
+  test('ComponentSelector assigns info-box for English note content', async () => {
+    const { ComponentSelector } = await import(
+      '../services/layout-engine/ComponentSelector'
+    );
+
+    const noteContent =
+      '<p><strong>Note:</strong> This feature is only available in the premium plan.</p>';
+
+    const analysis = createAnalysis();
+    const result = ComponentSelector.selectComponent(analysis, undefined, {
+      content: noteContent,
+    });
+
+    expect(result.primaryComponent).toBe('info-box');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.6);
+  });
+
+  test('ComponentSelector assigns info-box for "Goed om te weten:" prefix', async () => {
+    const { ComponentSelector } = await import(
+      '../services/layout-engine/ComponentSelector'
+    );
+
+    const infoContent =
+      '<p><strong>Goed om te weten:</strong> De API ondersteunt ook bulk-verzoeken.</p>';
+
+    const analysis = createAnalysis();
+    const result = ComponentSelector.selectComponent(analysis, undefined, {
+      content: infoContent,
+    });
+
+    expect(result.primaryComponent).toBe('info-box');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.6);
+  });
+
+  test('ComponentSelector assigns lead-paragraph for introductory first section', async () => {
+    const { ComponentSelector } = await import(
+      '../services/layout-engine/ComponentSelector'
+    );
+
+    const introContent =
+      '<p>In dit artikel bespreken we de belangrijkste trends op het gebied van netwerksecurity.</p>';
+
+    const analysis = createAnalysis({
+      contentType: 'introduction',
+      sectionId: 'section-0',
+    });
+
+    const result = ComponentSelector.selectComponent(analysis, undefined, {
+      content: introContent,
+      isFirstSection: true,
+    });
+
+    expect(result.primaryComponent).toBe('lead-paragraph');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.8);
+  });
+
+  test('ComponentSelector does NOT assign lead-paragraph for non-first sections', async () => {
+    const { ComponentSelector } = await import(
+      '../services/layout-engine/ComponentSelector'
+    );
+
+    const introContent =
+      '<p>This is another section that happens to be introductory.</p>';
+
+    const analysis = createAnalysis({
+      contentType: 'introduction',
+      sectionId: 'section-3',
+    });
+
+    const result = ComponentSelector.selectComponent(analysis, undefined, {
+      content: introContent,
+      isFirstSection: false,
+    });
+
+    // Should NOT be lead-paragraph when not first section
+    expect(result.primaryComponent).not.toBe('lead-paragraph');
+  });
+
+  test('ComponentSelector falls back to matrix selection for neutral content', async () => {
+    const { ComponentSelector } = await import(
+      '../services/layout-engine/ComponentSelector'
+    );
+
+    const neutralContent =
+      '<p>SEO is een belangrijk onderdeel van digitale marketing.</p>' +
+      '<p>Het helpt bedrijven om beter gevonden te worden in zoekmachines.</p>';
+
+    const analysis = createAnalysis();
+    const result = ComponentSelector.selectComponent(analysis, undefined, {
+      content: neutralContent,
+    });
+
+    // Should fall through to standard matrix (prose for explanation content)
+    expect(result.primaryComponent).toBe('prose');
+  });
+
+  test('ComponentSelector without content option behaves as before', async () => {
+    const { ComponentSelector } = await import(
+      '../services/layout-engine/ComponentSelector'
+    );
+
+    const analysis = createAnalysis({ contentType: 'explanation' });
+    const result = ComponentSelector.selectComponent(analysis);
+
+    // Without content, should use standard matrix selection
+    expect(result.primaryComponent).toBe('prose');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.6);
+  });
+
+  test('FS-protected sections still override content pattern detection', async () => {
+    const { ComponentSelector } = await import(
+      '../services/layout-engine/ComponentSelector'
+    );
+
+    const warningContent =
+      '<p><strong>Warning:</strong> This is a critical warning.</p>';
+
+    const analysis = createAnalysis({
+      formatCode: 'FS',
+      constraints: { fsTarget: true },
+    });
+
+    const result = ComponentSelector.selectComponent(analysis, undefined, {
+      content: warningContent,
+    });
+
+    // FS-protected should still win over content patterns
+    expect(result.confidence).toBeGreaterThanOrEqual(0.9);
+  });
+});
+
+// ============================================================================
 // SCREENSHOT CAPTURE (requires running app)
 // ============================================================================
 

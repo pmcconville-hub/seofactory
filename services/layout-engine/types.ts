@@ -420,11 +420,22 @@ export interface ILayoutPlanner {
 }
 
 /**
+ * Content pattern options for enhanced component selection.
+ * When provided, enables detection of alert-box, info-box, and lead-paragraph.
+ */
+export interface ContentPatternOptions {
+  /** Raw HTML/markdown content of the section for pattern detection */
+  content?: string;
+  /** Whether this is the first section in the article (for lead-paragraph) */
+  isFirstSection?: boolean;
+}
+
+/**
  * Component selector service interface
  */
 export interface IComponentSelector {
-  selectComponent(analysis: SectionAnalysis, designDna?: DesignDNA): ComponentSelection;
-  selectAllComponents(analyses: SectionAnalysis[], designDna?: DesignDNA): ComponentSelection[];
+  selectComponent(analysis: SectionAnalysis, designDna?: DesignDNA, options?: ContentPatternOptions): ComponentSelection;
+  selectAllComponents(analyses: SectionAnalysis[], designDna?: DesignDNA, contentOptions?: ContentPatternOptions[]): ComponentSelection[];
 }
 
 /**
