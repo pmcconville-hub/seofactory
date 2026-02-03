@@ -1,10 +1,10 @@
 
 // App.tsx
 import React, { useEffect, useReducer, useRef, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { AppStateContext, appReducer, initialState } from './state/appState';
 import { AppStep, BusinessInfo, Project, TopicalMap } from './types';
 import { getSupabaseClient, resetSupabaseClient, clearSupabaseAuthStorage } from './services/supabaseClient';
-import { verifiedDelete, verifiedBulkDelete } from './services/verifiedDatabaseService';
 import { parseTopicalMap, normalizeRpcData, parseProject, repairBriefsInMap } from './utils/parsers';
 import { setGlobalUsageContext, clearGlobalUsageContext, setBillingContext, determineKeySource } from './services/telemetryService';
 import { cacheService } from './services/cacheService';
@@ -13,12 +13,8 @@ import { consoleLogger, setLogContext } from './services/consoleLogger';
 import { apiCallLogger } from './services/apiCallLogger';
 import { performanceLogger } from './services/performanceLogger';
 
-// Import Screens
-import { AuthScreen, ProjectSelectionScreen, AnalysisStatusScreen } from './components/screens';
-import ProjectWorkspace from './components/ProjectWorkspace';
-import { SiteAnalysisToolV2 } from './components/site-analysis';
-import AdminDashboard from './components/admin/AdminDashboard';
-import { QuotationTool } from './components/quotation';
+// Import Router
+import AppRouter from './components/router/AppRouter';
 
 // Import Global UI
 import { SettingsModal } from './components/modals';
@@ -27,17 +23,35 @@ import ConfirmationModal from './components/ui/ConfirmationModal';
 import GlobalLoadingBar from './components/ui/GlobalLoadingBar';
 import LoggingPanel from './components/LoggingPanel';
 import EdgeToolbar, { ToolbarIcons } from './components/ui/EdgeToolbar';
-import MainLayout from './components/layout/MainLayout';
 import { useVersionCheck, UpdateBanner } from './hooks/useVersionCheck';
 import { CelebrationOverlay } from './components/gamification';
 import { OrganizationProvider } from './components/organization';
 
+// Bridge hooks for migration period
+import { useNavigationSync } from './hooks/useNavigationSync';
+import { useLastUrl, getLastUrl, clearLastUrl } from './hooks/useLastUrl';
+
+/**
+ * NavigationBridge - Must render inside AppStateContext.Provider
+ * so useNavigationSync can access useAppState().
+ */
+const NavigationBridge: React.FC = () => {
+    useNavigationSync();
+    return null;
+};
+
 const App: React.FC = () => {
     const [state, dispatch] = useReducer(appReducer, initialState);
+    const navigate = useNavigate();
+    const location = useLocation();
 
     // Counter to force re-subscription when the Supabase client is reset
     // This ensures onAuthStateChange cleanup runs and re-subscribes on the new client
     const [authClientVersion, setAuthClientVersion] = useState(0);
+
+    // Bridge hook: persist last URL for deep-link restore after login
+    // (useLastUrl only needs useLocation, which is available from BrowserRouter above)
+    useLastUrl();
 
     // Initialize logging services on mount (once only)
     useEffect(() => {
@@ -144,11 +158,17 @@ const App: React.FC = () => {
                     clearSupabaseAuthStorage();
                 } else if (session?.user) {
                     console.log('[App] Valid session found for:', session.user.email);
-                    // Dispatch user and navigate to project selection immediately
-                    // This ensures the user sees the correct screen after page reload
-                    // without waiting for onAuthStateChange which may have race conditions
                     dispatch({ type: 'SET_USER', payload: session.user });
                     dispatch({ type: 'SET_STEP', payload: AppStep.PROJECT_SELECTION });
+
+                    // Restore last URL after session recovery (deep link support)
+                    const lastUrl = getLastUrl();
+                    if (lastUrl && location.pathname === '/login') {
+                        clearLastUrl();
+                        navigate(lastUrl, { replace: true });
+                    } else if (location.pathname === '/' || location.pathname === '/login') {
+                        navigate('/projects', { replace: true });
+                    }
                 } else {
                     console.log('[App] No existing session');
                 }
@@ -374,10 +394,6 @@ const App: React.FC = () => {
                 const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
 
                 // Fetch Projects - RLS policies handle access control via organization membership
-                // This returns all projects the user has access to:
-                // - Projects in organizations they're a member of (has_project_access)
-                // - Legacy projects they own directly (user_id = auth.uid())
-                // Include topical_maps with updated_at to calculate map_count and last_activity
                 const { data: projectsData, error: projectsError } = await supabase
                     .from('projects')
                     .select('*, topical_maps(updated_at)')
@@ -401,8 +417,6 @@ const App: React.FC = () => {
                 const { data: settingsData, error: settingsError } = await supabase.functions.invoke('get-settings');
                 if (settingsError) throw settingsError;
                 if (settingsData) {
-                    // Filter to only apply global settings fields, not project-specific data
-                    // This prevents stale project data from user_settings overwriting defaults
                     const GLOBAL_SETTINGS_FIELDS = [
                         'aiProvider', 'aiModel',
                         'geminiApiKey', 'openAiApiKey', 'anthropicApiKey', 'perplexityApiKey', 'openRouterApiKey',
@@ -419,36 +433,23 @@ const App: React.FC = () => {
                         }
                     }
 
-                    // Debug: Log API key sources to help diagnose auth issues (once per user)
+                    // Debug: Log API key sources
                     const envKey = state.businessInfo.anthropicApiKey;
                     const dbKey = filteredSettings.anthropicApiKey;
                     console.log('[Settings] API Key Sources:', {
                         envKeyPreview: envKey ? `${envKey.substring(0, 15)}...` : 'NOT SET',
                         dbKeyPreview: dbKey ? `${dbKey.substring(0, 15)}...` : 'NOT SET',
                         usingSource: dbKey ? 'DATABASE (overrides env)' : 'ENV FILE',
-                        dbKeyLength: dbKey?.length || 0,
-                        envKeyLength: envKey?.length || 0
-                    });
-                    // Debug: Log Apify token specifically
-                    console.log('[Settings] Apify Token:', {
-                        hasApifyToken: !!filteredSettings.apifyToken,
-                        apifyTokenLength: filteredSettings.apifyToken?.length || 0,
-                        apifyTokenPreview: filteredSettings.apifyToken ? `${filteredSettings.apifyToken.substring(0, 10)}...` : 'NOT SET',
                     });
 
-                    // Set billing context for AI usage tracking
-                    // This determines whether platform keys or user BYOK keys are being used
                     const keySource = determineKeySource(!!dbKey, !!envKey);
                     setBillingContext({
                         keySource,
-                        // If user has their own key, they are billable; otherwise platform is billable
                         billableTo: keySource === 'user_byok' ? 'user' : 'platform',
                         billableId: keySource === 'user_byok' ? userId : undefined,
                     });
 
                     dispatch({ type: 'SET_BUSINESS_INFO', payload: { ...state.businessInfo, ...filteredSettings } });
-
-                    // Initialize verbose logging state from settings
                     setVerboseLogging(filteredSettings.verboseLogging === true);
                 }
             } catch (e) {
@@ -461,196 +462,7 @@ const App: React.FC = () => {
         fetchInitialData();
     }, [state.user?.id, state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
 
-
-    const handleCreateProject = async (projectName: string, domain: string) => {
-        if (!state.user) return;
-        dispatch({ type: 'SET_LOADING', payload: { key: 'createProject', value: true } });
-        try {
-            const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
-            const { data, error } = await supabase.rpc('create_new_project', {
-                p_project_data: { project_name: projectName, domain: domain, user_id: state.user.id }
-            });
-            if (error) throw error;
-
-            // FIX: Use normalizeRpcData to handle array vs object response safely
-            const rawProject = normalizeRpcData(data);
-            const newProject = parseProject(rawProject);
-
-            dispatch({ type: 'ADD_PROJECT', payload: newProject });
-            dispatch({ type: 'SET_ACTIVE_PROJECT', payload: newProject.id });
-            dispatch({ type: 'SET_STEP', payload: AppStep.PROJECT_WORKSPACE });
-        } catch (e) {
-            dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to create project.' });
-        } finally {
-            dispatch({ type: 'SET_LOADING', payload: { key: 'createProject', value: false } });
-        }
-    };
-
-    const handleLoadProject = async (projectId: string) => {
-        dispatch({ type: 'SET_LOADING', payload: { key: 'loadProject', value: true } });
-        try {
-            const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
-            const { data, error } = await supabase.from('topical_maps').select('*').eq('project_id', projectId);
-            if (error) throw error;
-
-            // Parse/Sanitize the data before state update to prevent "Minified React Error #31"
-            // This ensures columns that are strings (like 'pillars' or 'business_info' if stored as strings in some versions,
-            // or objects containing bad data) are converted to safe Application Domain Objects.
-            const sanitizedMaps = (data || []).map((map: any) => parseTopicalMap(map));
-
-            // Fetch topic COUNTS only (not full data) for UI display in merge modal, etc.
-            // We deliberately DO NOT set map.topics here - that stays undefined so useMapData
-            // can properly hydrate full topic data + briefs when the map is selected.
-            const mapIds = sanitizedMaps.map(m => m.id);
-            if (mapIds.length > 0) {
-                const { data: topicsData, error: topicsError } = await supabase
-                    .from('topics')
-                    .select('id, map_id, type')
-                    .in('map_id', mapIds);
-
-                if (!topicsError && topicsData) {
-                    // Calculate counts per map
-                    const countsByMap = topicsData.reduce((acc, topic) => {
-                        if (!acc[topic.map_id]) acc[topic.map_id] = { core: 0, outer: 0, total: 0 };
-                        acc[topic.map_id].total++;
-                        if (topic.type === 'core') acc[topic.map_id].core++;
-                        else acc[topic.map_id].outer++;
-                        return acc;
-                    }, {} as Record<string, { core: number; outer: number; total: number }>);
-
-                    // Set topicCounts on each map (NOT topics array)
-                    sanitizedMaps.forEach(map => {
-                        map.topicCounts = countsByMap[map.id] || { core: 0, outer: 0, total: 0 };
-                    });
-                }
-            }
-
-            // FIX: Corrected the dispatch order to prevent a race condition.
-            // SET_ACTIVE_PROJECT clears the old map state, THEN SET_TOPICAL_MAPS populates it with new data.
-            dispatch({ type: 'SET_ACTIVE_PROJECT', payload: projectId });
-            dispatch({ type: 'SET_TOPICAL_MAPS', payload: sanitizedMaps });
-
-            dispatch({ type: 'SET_STEP', payload: AppStep.PROJECT_WORKSPACE });
-        } catch (e) {
-             dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to load project maps.' });
-        } finally {
-             dispatch({ type: 'SET_LOADING', payload: { key: 'loadProject', value: false } });
-        }
-    };
-    
-    const handleInitiateDeleteProject = (project: Project) => {
-        dispatch({
-            type: 'SHOW_CONFIRMATION',
-            payload: {
-                title: 'Delete Project?',
-                message: <>Are you sure you want to permanently delete the project <strong>"{project.project_name}"</strong>? This will delete all associated topical maps and content briefs. This action cannot be undone.</>,
-                onConfirm: async () => {
-                    try {
-                        const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
-
-                        // Get all maps for this project
-                        const { data: maps } = await supabase
-                            .from('topical_maps')
-                            .select('id')
-                            .eq('project_id', project.id);
-
-                        const mapIds = (maps || []).map(m => m.id);
-
-                        // Delete related records for each map individually to avoid .in() issues
-                        for (const mapId of mapIds) {
-                            // Get topic IDs first - content_briefs uses topic_id, not map_id
-                            const { data: topics } = await supabase.from('topics').select('id').eq('map_id', mapId);
-                            const topicIds = (topics || []).map(t => t.id);
-
-                            // Delete content_briefs by topic_id (cascade)
-                            if (topicIds.length > 0) {
-                                const briefsResult = await verifiedBulkDelete(
-                                    supabase,
-                                    { table: 'content_briefs', operationDescription: `delete briefs for map ${mapId}` },
-                                    { column: 'topic_id', operator: 'in', value: topicIds }
-                                );
-                                if (!briefsResult.success) {
-                                    console.warn(`[DeleteProject] Content briefs deletion issue for map ${mapId}:`, briefsResult.error);
-                                }
-                            }
-
-                            // Delete topics - verified since this is critical
-                            if (topicIds.length > 0) {
-                                const topicsResult = await verifiedBulkDelete(
-                                    supabase,
-                                    { table: 'topics', operationDescription: `delete topics for map ${mapId}` },
-                                    { column: 'map_id', operator: 'eq', value: mapId },
-                                    topicIds.length
-                                );
-                                if (!topicsResult.success) {
-                                    console.warn(`[DeleteProject] Topics deletion issue for map ${mapId}:`, topicsResult.error);
-                                }
-                            }
-
-                            // Delete foundation pages and navigation (optional - may not exist)
-                            const foundationResult = await verifiedBulkDelete(
-                                supabase,
-                                { table: 'foundation_pages', operationDescription: `delete foundation pages for map ${mapId}` },
-                                { column: 'map_id', operator: 'eq', value: mapId }
-                            );
-                            if (!foundationResult.success && foundationResult.error && !foundationResult.error.includes('0 records')) {
-                                console.warn(`[DeleteProject] Foundation pages deletion issue:`, foundationResult.error);
-                            }
-
-                            const navStructResult = await verifiedBulkDelete(
-                                supabase,
-                                { table: 'navigation_structures', operationDescription: `delete navigation structures for map ${mapId}` },
-                                { column: 'map_id', operator: 'eq', value: mapId }
-                            );
-                            if (!navStructResult.success && navStructResult.error && !navStructResult.error.includes('0 records')) {
-                                console.warn(`[DeleteProject] Navigation structures deletion issue:`, navStructResult.error);
-                            }
-
-                            const navSyncResult = await verifiedBulkDelete(
-                                supabase,
-                                { table: 'navigation_sync_status', operationDescription: `delete navigation sync status for map ${mapId}` },
-                                { column: 'map_id', operator: 'eq', value: mapId }
-                            );
-                            if (!navSyncResult.success && navSyncResult.error && !navSyncResult.error.includes('0 records')) {
-                                console.warn(`[DeleteProject] Navigation sync status deletion issue:`, navSyncResult.error);
-                            }
-
-                            // Delete the map itself - verified
-                            const mapResult = await verifiedDelete(
-                                supabase,
-                                { table: 'topical_maps', operationDescription: `delete map ${mapId}` },
-                                { column: 'id', value: mapId }
-                            );
-                            if (!mapResult.success) {
-                                console.warn(`[DeleteProject] Map deletion issue for ${mapId}:`, mapResult.error);
-                            }
-                        }
-
-                        // Delete the project itself - verified
-                        const projectResult = await verifiedDelete(
-                            supabase,
-                            { table: 'projects', operationDescription: `delete project "${project.project_name}"` },
-                            { column: 'id', value: project.id }
-                        );
-                        if (!projectResult.success) {
-                            throw new Error(projectResult.error || 'Project deletion verification failed');
-                        }
-
-                        dispatch({ type: 'DELETE_PROJECT', payload: { projectId: project.id } });
-                        dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Project "${project.project_name}" deleted (verified).` });
-                    } catch (e) {
-                        console.error('Delete project error:', e);
-                        dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to delete project.' });
-                    } finally {
-                        dispatch({ type: 'HIDE_CONFIRMATION' });
-                    }
-                }
-            }
-        });
-    };
-
     // Fields that should be stored globally in user_settings (credentials only)
-    // Project-specific fields like projectName, domain, valueProp, etc. should be stored in topical_maps.business_info
     const GLOBAL_SETTINGS_FIELDS = [
         'aiProvider', 'aiModel',
         'geminiApiKey', 'openAiApiKey', 'anthropicApiKey', 'perplexityApiKey', 'openRouterApiKey',
@@ -659,7 +471,7 @@ const App: React.FC = () => {
         'neo4jUri', 'neo4jUser', 'neo4jPassword',
         'cloudinaryCloudName', 'cloudinaryApiKey', 'cloudinaryUploadPreset', 'markupGoApiKey',
         'supabaseUrl', 'supabaseAnonKey',
-        'language', 'targetMarket', 'expertise' // These can be global defaults
+        'language', 'targetMarket', 'expertise'
     ];
 
     const handleSaveSettings = async (settings: Partial<BusinessInfo>) => {
@@ -667,8 +479,6 @@ const App: React.FC = () => {
         try {
             const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
 
-            // Filter to only save global credential fields to user_settings
-            // Project-specific fields (projectName, domain, valueProp, etc.) should NOT be in global settings
             const globalSettings: Partial<BusinessInfo> = {};
             for (const key of GLOBAL_SETTINGS_FIELDS) {
                 if (key in settings) {
@@ -681,7 +491,6 @@ const App: React.FC = () => {
             });
             if (error) throw error;
 
-            // Check response body for errors (Edge Function returns { ok: false, error: "..." } on failure)
             if (data && !data.ok) {
                 throw new Error(data.error || 'Settings update failed');
             }
@@ -691,9 +500,7 @@ const App: React.FC = () => {
             const { data: verifyData, error: verifyError } = await supabase.functions.invoke('get-settings');
             if (verifyError) {
                 console.warn('[Settings] Verification read failed:', verifyError);
-                // Don't throw - the save likely succeeded, just verification failed
             } else if (verifyData?.settings) {
-                // Verify at least one key field matches what we sent
                 const saved = verifyData.settings;
                 if ('aiProvider' in globalSettings && saved.aiProvider !== globalSettings.aiProvider) {
                     console.warn('[Settings] Verification mismatch: aiProvider', { sent: globalSettings.aiProvider, saved: saved.aiProvider });
@@ -702,16 +509,13 @@ const App: React.FC = () => {
                 console.log('[Settings] Verification passed - settings confirmed saved');
             }
 
-            // Update local state with what we sent
             dispatch({ type: 'SET_BUSINESS_INFO', payload: { ...state.businessInfo, ...globalSettings } });
 
-            // Update verbose logging state if it was changed
             if ('verboseLogging' in globalSettings) {
                 setVerboseLogging(globalSettings.verboseLogging === true);
             }
 
             dispatch({ type: 'SET_NOTIFICATION', payload: 'Settings saved successfully (verified).' });
-            // Keep modal open so user can see the save confirmation
         } catch(e) {
             dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to save settings.' });
         } finally {
@@ -721,8 +525,6 @@ const App: React.FC = () => {
 
     /**
      * Opens the help documentation in a separate browser window/tab.
-     * This allows users to continue working while viewing help content.
-     * @param featureKey - Optional feature key to deep-link to a specific article
      */
     const openHelpWindow = (featureKey?: string) => {
         const baseUrl = '/help.html';
@@ -730,35 +532,10 @@ const App: React.FC = () => {
         window.open(url, 'holistic-seo-help', 'width=1200,height=800,menubar=no,toolbar=no,location=no,status=no');
     };
 
-    const renderStep = () => {
-        // Debug: Log current app step to help diagnose blank screen issues
-        console.log('[App] Rendering step:', state.appStep, 'user:', !!state.user, 'activeProject:', !!state.activeProjectId, 'activeMap:', !!state.activeMapId);
-
-        switch (state.appStep) {
-            case AppStep.AUTH: return <AuthScreen />;
-            case AppStep.PROJECT_SELECTION: return <ProjectSelectionScreen onCreateProject={handleCreateProject} onLoadProject={handleLoadProject} onInitiateDeleteProject={handleInitiateDeleteProject} />;
-            case AppStep.ANALYSIS_STATUS: return <AnalysisStatusScreen />;
-            case AppStep.SITE_ANALYSIS: return <SiteAnalysisToolV2 onClose={() => dispatch({ type: 'SET_STEP', payload: AppStep.PROJECT_SELECTION })} />;
-            case AppStep.ADMIN: return <AdminDashboard />;
-            case AppStep.QUOTATION: return <QuotationTool onClose={() => dispatch({ type: 'SET_STEP', payload: AppStep.PROJECT_SELECTION })} />;
-            case AppStep.PROJECT_WORKSPACE:
-            case AppStep.BUSINESS_INFO:
-            case AppStep.PILLAR_WIZARD:
-            case AppStep.EAV_WIZARD:
-            case AppStep.COMPETITOR_WIZARD:
-            case AppStep.BLUEPRINT_WIZARD:
-            case AppStep.PROJECT_DASHBOARD:
-                return <ProjectWorkspace />;
-            default:
-                console.warn('[App] Unknown app step:', state.appStep);
-                return <p>Unknown application step: {state.appStep}</p>;
-        }
-    };
-
     return (
         <AppStateContext.Provider value={{ state, dispatch }}>
             <OrganizationProvider>
-                <MainLayout>
+                <NavigationBridge />
                 <div className="bg-gray-900 text-gray-200 min-h-screen font-sans" style={{ backgroundColor: '#111827', color: '#e5e7eb', minHeight: '100vh' }}>
                     <GlobalLoadingBar />
                     <CelebrationOverlay />
@@ -779,14 +556,11 @@ const App: React.FC = () => {
                         </div>
                     )}
 
-                    {/* Main content container. Full width for admin/site-analysis/quality-demo, constrained for wizards if needed. */}
-                    <div className={(state.appStep === AppStep.ADMIN || state.appStep === AppStep.SITE_ANALYSIS) ? "w-full" : "container mx-auto px-4 py-8"}>
-                        {renderStep()}
-                    </div>
+                    {/* Router-based content - replaces renderStep() */}
+                    <AppRouter />
 
                     {/* Edge Toolbar - compact right-edge toolbar that slides out on hover */}
-                    {/* Only show when logged in and not on auth screen */}
-                    {state.user && state.appStep !== AppStep.AUTH && (
+                    {state.user && location.pathname !== '/login' && (
                         <EdgeToolbar
                             items={[
                                 {
@@ -838,7 +612,6 @@ const App: React.FC = () => {
                         />
                     )}
                 </div>
-                </MainLayout>
             </OrganizationProvider>
         </AppStateContext.Provider>
     );

@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Style &amp; Publish - Wireframe</title>
+<style>
+  :root {
+    --bg-primary: #111827; --bg-secondary: #1f2937; --bg-tertiary: #374151;
+    --bg-card: #1e293b; --text-primary: #e5e7eb; --text-secondary: #9ca3af;
+    --text-muted: #6b7280; --accent: #3b82f6; --accent-hover: #2563eb;
+    --border: #374151; --success: #10b981; --warning: #f59e0b; --danger: #ef4444;
+    --sidebar-width: 240px; --sidebar-collapsed: 56px; --breadcrumb-height: 48px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-primary); color: var(--text-primary);
+    display: flex; height: 100vh; overflow: hidden;
+  }
+  .sidebar {
+    width: var(--sidebar-width); min-width: var(--sidebar-width);
+    background: var(--bg-secondary); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; transition: width 0.2s ease, min-width 0.2s ease;
+    overflow: hidden; position: relative; z-index: 10;
+  }
+  .sidebar.collapsed { width: var(--sidebar-collapsed); min-width: var(--sidebar-collapsed); }
+  .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; min-height: 56px; }
+  .sidebar-header .logo { width: 24px; height: 24px; background: var(--accent); border-radius: 6px; flex-shrink: 0; }
+  .sidebar-header .app-name { font-weight: 600; font-size: 14px; white-space: nowrap; }
+  .collapsed .app-name { display: none; }
+  .sidebar-nav { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .nav-section-label { padding: 12px 16px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); white-space: nowrap; }
+  .collapsed .nav-section-label { text-align: center; font-size: 0; }
+  .nav-item {
+    display: flex; align-items: center; gap: 12px; padding: 8px 16px;
+    color: var(--text-secondary); text-decoration: none; font-size: 13px;
+    cursor: pointer; border-left: 3px solid transparent; transition: all 0.15s;
+    white-space: nowrap; overflow: hidden;
+  }
+  .nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .nav-item.active { border-left-color: var(--accent); color: var(--accent); background: rgba(59,130,246,0.1); }
+  .nav-item .icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; }
+  .nav-item .label { overflow: hidden; }
+  .collapsed .nav-item .label { display: none; }
+  .collapsed .nav-item { justify-content: center; padding: 8px 0; }
+  .back-item { color: var(--text-muted) !important; font-size: 12px !important; border-bottom: 1px solid var(--border); margin-bottom: 4px; padding-bottom: 10px !important; }
+  .sidebar-footer { border-top: 1px solid var(--border); padding: 12px 16px; display: flex; align-items: center; gap: 12px; min-height: 56px; }
+  .avatar { width: 28px; height: 28px; background: var(--bg-tertiary); border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text-secondary); }
+  .user-info { overflow: hidden; flex: 1; }
+  .user-name { font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .user-email { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+  .collapsed .user-info { display: none; }
+  .logout-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; flex-shrink: 0; padding: 4px; }
+  .collapsed .logout-btn { display: none; }
+  .collapse-toggle {
+    position: absolute; top: 16px; right: -12px; width: 24px; height: 24px;
+    background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 50%;
+    color: var(--text-secondary); cursor: pointer; display: flex; align-items: center;
+    justify-content: center; font-size: 12px; z-index: 11; transition: transform 0.2s;
+  }
+  .collapsed .collapse-toggle { transform: rotate(180deg); }
+  .main-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .breadcrumb-bar {
+    height: var(--breadcrumb-height); background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border); display: flex; align-items: center;
+    padding: 0 24px; font-size: 13px; gap: 8px; flex-shrink: 0;
+  }
+  .breadcrumb-bar a { color: var(--text-muted); text-decoration: none; }
+  .breadcrumb-bar a:hover { color: var(--text-primary); }
+  .breadcrumb-bar .sep { color: var(--text-muted); }
+  .breadcrumb-bar .current { color: var(--text-primary); }
+  .main-content { flex: 1; overflow-y: auto; padding: 24px; }
+
+  /* Style & Publish specific */
+  .step-tabs {
+    display: flex; gap: 0; margin-bottom: 24px; background: var(--bg-secondary);
+    border-radius: 12px; overflow: hidden; border: 1px solid var(--border);
+  }
+  .step-tab {
+    flex: 1; padding: 14px 20px; text-align: center; font-size: 13px;
+    cursor: pointer; color: var(--text-muted); transition: all 0.15s;
+    border-right: 1px solid var(--border); position: relative;
+  }
+  .step-tab:last-child { border-right: none; }
+  .step-tab:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+  .step-tab.active { color: var(--accent); background: rgba(59,130,246,0.1); }
+  .step-tab.active::after {
+    content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+    height: 2px; background: var(--accent);
+  }
+  .step-tab .step-num { font-size: 10px; color: var(--text-muted); display: block; margin-bottom: 2px; }
+  .step-tab.active .step-num { color: var(--accent); }
+
+  .step-content { display: none; }
+  .step-content.visible { display: block; }
+
+  .brand-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+  }
+  .card h3 { font-size: 14px; margin-bottom: 16px; }
+
+  .brand-colors {
+    display: flex; gap: 8px; margin-bottom: 16px;
+  }
+  .color-swatch {
+    width: 40px; height: 40px; border-radius: 8px; border: 2px solid var(--border);
+    cursor: pointer; position: relative;
+  }
+  .color-swatch.active { border-color: var(--accent); }
+  .color-swatch .label {
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
+    font-size: 9px; color: var(--text-muted); white-space: nowrap;
+  }
+
+  .slider-group { margin-bottom: 16px; }
+  .slider-label {
+    display: flex; justify-content: space-between; font-size: 12px;
+    margin-bottom: 6px;
+  }
+  .slider-label span:first-child { color: var(--text-secondary); }
+  .slider-label span:last-child { color: var(--text-primary); font-weight: 500; }
+  .slider-track {
+    height: 6px; background: var(--bg-tertiary); border-radius: 3px;
+    position: relative; cursor: pointer;
+  }
+  .slider-fill {
+    height: 100%; background: var(--accent); border-radius: 3px;
+  }
+  .slider-thumb {
+    width: 14px; height: 14px; background: white; border-radius: 50%;
+    position: absolute; top: -4px; transform: translateX(-50%);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+
+  .font-preview {
+    padding: 16px; background: var(--bg-secondary); border-radius: 8px;
+    margin-bottom: 12px;
+  }
+  .font-preview .heading { font-size: 20px; margin-bottom: 4px; }
+  .font-preview .body { font-size: 14px; color: var(--text-secondary); }
+
+  .section-layout-list { list-style: none; }
+  .section-layout-item {
+    display: flex; align-items: center; gap: 12px; padding: 12px;
+    background: var(--bg-secondary); border-radius: 8px; margin-bottom: 8px;
+    border: 1px solid var(--border);
+  }
+  .emphasis-indicator {
+    width: 4px; height: 32px; border-radius: 2px; flex-shrink: 0;
+  }
+  .emphasis-hero { background: var(--danger); }
+  .emphasis-featured { background: var(--accent); }
+  .emphasis-standard { background: var(--success); }
+  .emphasis-supporting { background: var(--text-muted); }
+  .section-layout-info { flex: 1; }
+  .section-layout-info .name { font-size: 13px; font-weight: 500; }
+  .section-layout-info .layout { font-size: 11px; color: var(--text-muted); }
+  .section-layout-info .component { font-size: 10px; color: var(--accent); margin-top: 2px; }
+
+  .brand-match {
+    display: flex; align-items: center; gap: 12px; padding: 16px;
+    background: var(--bg-secondary); border-radius: 10px; margin-bottom: 16px;
+  }
+  .match-score {
+    width: 56px; height: 56px; border-radius: 50%;
+    border: 3px solid var(--success); display: flex; align-items: center;
+    justify-content: center; font-size: 18px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .match-info { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+
+  .preview-frame {
+    background: white; border-radius: 8px; padding: 32px 48px;
+    color: #1a1a1a; min-height: 400px;
+  }
+  .preview-frame h1 { font-size: 28px; margin-bottom: 8px; color: #111; }
+  .preview-frame .subtitle { color: #666; font-size: 14px; margin-bottom: 24px; }
+  .preview-frame h2 { font-size: 22px; margin: 24px 0 8px; color: #222; }
+  .preview-frame p { font-size: 15px; color: #444; line-height: 1.7; margin-bottom: 12px; }
+
+  .btn-primary {
+    padding: 10px 20px; background: var(--accent); color: white;
+    border: none; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: 500;
+  }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-secondary {
+    padding: 10px 20px; background: var(--bg-secondary); color: var(--text-secondary);
+    border: 1px solid var(--border); border-radius: 8px; font-size: 13px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo"></div>
+      <span class="app-name">Topical Map</span>
+    </div>
+    <button class="collapse-toggle" onclick="document.getElementById('sidebar').classList.toggle('collapsed')">&lsaquo;</button>
+    <nav class="sidebar-nav">
+      <a href="./map-selection-page.html" class="nav-item back-item">
+        <span class="icon">&larr;</span><span class="label">Back to Maps</span>
+      </a>
+      <div class="nav-section-label">Map</div>
+      <a href="./dashboard-page.html" class="nav-item">
+        <span class="icon">&#9632;</span><span class="label">Dashboard</span>
+      </a>
+      <a href="./setup-wizard-page.html" class="nav-item">
+        <span class="icon">&#10070;</span><span class="label">Setup Wizard</span>
+      </a>
+      <a href="./topic-detail-page.html" class="nav-item active">
+        <span class="icon">&#9830;</span><span class="label">Topics</span>
+      </a>
+      <a href="./audit-page.html" class="nav-item">
+        <span class="icon">&#10004;</span><span class="label">Audit Dashboard</span>
+      </a>
+      <a href="./insights-page.html" class="nav-item">
+        <span class="icon">&#9878;</span><span class="label">Insights Hub</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9733;</span><span class="label">Gap Analysis</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#10003;</span><span class="label">Quality</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9776;</span><span class="label">Planning</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#128197;</span><span class="label">Calendar</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9670;</span><span class="label">KP Strategy</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9679;</span><span class="label">Entity Authority</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#10010;</span><span class="label">Entity Health</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="avatar">JD</div>
+      <div class="user-info">
+        <div class="user-name">Jane Doe</div>
+        <div class="user-email">jane@example.com</div>
+      </div>
+      <button class="logout-btn" title="Logout">&#10132;</button>
+    </div>
+  </aside>
+
+  <div class="main-wrapper">
+    <div class="breadcrumb-bar">
+      <a href="./projects-page.html">Projects</a>
+      <span class="sep">/</span>
+      <a href="./map-selection-page.html">TechReviews Pro</a>
+      <span class="sep">/</span>
+      <a href="./dashboard-page.html">Laptop Reviews 2025</a>
+      <span class="sep">/</span>
+      <a href="./topic-detail-page.html">MacBook Pro vs Dell XPS</a>
+      <span class="sep">/</span>
+      <span class="current">Style &amp; Publish</span>
+    </div>
+    <main class="main-content">
+      <!-- Step Tabs -->
+      <div class="step-tabs">
+        <div class="step-tab active" onclick="showPublishStep(1)">
+          <span class="step-num">Step 1</span>
+          Brand Intelligence
+        </div>
+        <div class="step-tab" onclick="showPublishStep(2)">
+          <span class="step-num">Step 2</span>
+          Layout Intelligence
+        </div>
+        <div class="step-tab" onclick="showPublishStep(3)">
+          <span class="step-num">Step 3</span>
+          Preview &amp; Publish
+        </div>
+      </div>
+
+      <!-- Step 1: Brand Intelligence -->
+      <div class="step-content visible" id="pub-step1">
+        <div class="brand-grid">
+          <div class="card">
+            <h3>Detected Brand Colors</h3>
+            <div class="brand-colors">
+              <div class="color-swatch active" style="background:#1a73e8;">
+                <span class="label">Primary</span>
+              </div>
+              <div class="color-swatch" style="background:#174ea6;">
+                <span class="label">Dark</span>
+              </div>
+              <div class="color-swatch" style="background:#e8f0fe;">
+                <span class="label">Light</span>
+              </div>
+              <div class="color-swatch" style="background:#ffffff;">
+                <span class="label">Background</span>
+              </div>
+              <div class="color-swatch" style="background:#202124;">
+                <span class="label">Text</span>
+              </div>
+              <div class="color-swatch" style="background:#f59e0b;">
+                <span class="label">Accent</span>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:24px;">
+              Colors extracted from techreviewspro.com via AI brand detection. Click any swatch to adjust.
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Typography</h3>
+            <div class="font-preview">
+              <div class="heading" style="font-family:Inter,sans-serif;font-weight:700;">Inter Bold - Headings</div>
+              <div class="body" style="font-family:Inter,sans-serif;">Inter Regular - Body text that flows naturally for reading long-form reviews.</div>
+            </div>
+            <div class="font-preview">
+              <div class="heading" style="font-family:Georgia,serif;font-weight:700;">Georgia Bold - Alternative</div>
+              <div class="body" style="font-family:Georgia,serif;">Georgia - A more traditional serif option for editorial content.</div>
+            </div>
+          </div>
+
+          <div class="card" style="grid-column:1/-1;">
+            <h3>Brand Personality</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+              <div>
+                <div class="slider-group">
+                  <div class="slider-label"><span>Professional</span><span>72%</span></div>
+                  <div class="slider-track">
+                    <div class="slider-fill" style="width:72%;"></div>
+                    <div class="slider-thumb" style="left:72%;"></div>
+                  </div>
+                </div>
+                <div class="slider-group">
+                  <div class="slider-label"><span>Technical</span><span>85%</span></div>
+                  <div class="slider-track">
+                    <div class="slider-fill" style="width:85%;"></div>
+                    <div class="slider-thumb" style="left:85%;"></div>
+                  </div>
+                </div>
+                <div class="slider-group">
+                  <div class="slider-label"><span>Authoritative</span><span>68%</span></div>
+                  <div class="slider-track">
+                    <div class="slider-fill" style="width:68%;"></div>
+                    <div class="slider-thumb" style="left:68%;"></div>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div class="slider-group">
+                  <div class="slider-label"><span>Friendly</span><span>55%</span></div>
+                  <div class="slider-track">
+                    <div class="slider-fill" style="width:55%;"></div>
+                    <div class="slider-thumb" style="left:55%;"></div>
+                  </div>
+                </div>
+                <div class="slider-group">
+                  <div class="slider-label"><span>Minimalist</span><span>60%</span></div>
+                  <div class="slider-track">
+                    <div class="slider-fill" style="width:60%;"></div>
+                    <div class="slider-thumb" style="left:60%;"></div>
+                  </div>
+                </div>
+                <div class="slider-group">
+                  <div class="slider-label"><span>Data-Driven</span><span>90%</span></div>
+                  <div class="slider-track">
+                    <div class="slider-fill" style="width:90%;"></div>
+                    <div class="slider-thumb" style="left:90%;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;margin-top:20px;gap:8px;">
+          <button class="btn-secondary">Re-detect Brand</button>
+          <button class="btn-primary" onclick="showPublishStep(2)">Next: Layout Intelligence &rarr;</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Layout Intelligence -->
+      <div class="step-content" id="pub-step2">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+          <div class="card">
+            <h3>Section Layout Plan</h3>
+            <ul class="section-layout-list">
+              <li class="section-layout-item">
+                <div class="emphasis-indicator emphasis-hero"></div>
+                <div class="section-layout-info">
+                  <div class="name">Introduction</div>
+                  <div class="layout">Full width &middot; Hero emphasis &middot; Weight: 5</div>
+                  <div class="component">HeroSection with gradient background</div>
+                </div>
+              </li>
+              <li class="section-layout-item">
+                <div class="emphasis-indicator emphasis-featured"></div>
+                <div class="section-layout-info">
+                  <div class="name">Performance Comparison</div>
+                  <div class="layout">Full width &middot; Featured &middot; Weight: 4</div>
+                  <div class="component">ComparisonTable with benchmarks</div>
+                </div>
+              </li>
+              <li class="section-layout-item">
+                <div class="emphasis-indicator emphasis-standard"></div>
+                <div class="section-layout-info">
+                  <div class="name">Display Quality</div>
+                  <div class="layout">Standard &middot; 2-column &middot; Weight: 3</div>
+                  <div class="component">SplitContent with image</div>
+                </div>
+              </li>
+              <li class="section-layout-item">
+                <div class="emphasis-indicator emphasis-standard"></div>
+                <div class="section-layout-info">
+                  <div class="name">Build &amp; Design</div>
+                  <div class="layout">Standard &middot; 2-column &middot; Weight: 3</div>
+                  <div class="component">SplitContent with gallery</div>
+                </div>
+              </li>
+              <li class="section-layout-item">
+                <div class="emphasis-indicator emphasis-supporting"></div>
+                <div class="section-layout-info">
+                  <div class="name">Battery Life</div>
+                  <div class="layout">Narrow &middot; Supporting &middot; Weight: 2</div>
+                  <div class="component">DataCard with bar chart</div>
+                </div>
+              </li>
+              <li class="section-layout-item">
+                <div class="emphasis-indicator emphasis-supporting"></div>
+                <div class="section-layout-info">
+                  <div class="name">Ports &amp; Connectivity</div>
+                  <div class="layout">Narrow &middot; Supporting &middot; Weight: 2</div>
+                  <div class="component">SpecList with icons</div>
+                </div>
+              </li>
+              <li class="section-layout-item">
+                <div class="emphasis-indicator emphasis-featured"></div>
+                <div class="section-layout-info">
+                  <div class="name">Price &amp; Value</div>
+                  <div class="layout">Full width &middot; Featured &middot; Weight: 4</div>
+                  <div class="component">PricingComparison with CTA</div>
+                </div>
+              </li>
+              <li class="section-layout-item">
+                <div class="emphasis-indicator emphasis-hero"></div>
+                <div class="section-layout-info">
+                  <div class="name">Verdict</div>
+                  <div class="layout">Full width &middot; Hero &middot; Weight: 5</div>
+                  <div class="component">VerdictCard with score badges</div>
+                </div>
+              </li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Layout Legend</h3>
+            <div style="font-size:12px;color:var(--text-secondary);line-height:2;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:4px;height:20px;background:var(--danger);border-radius:2px;"></div>
+                Hero (Weight 5) - Full width, large headings, gradient BG
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:4px;height:20px;background:var(--accent);border-radius:2px;"></div>
+                Featured (Weight 4) - Full width, enhanced styling
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:4px;height:20px;background:var(--success);border-radius:2px;"></div>
+                Standard (Weight 3) - Normal layout, optional columns
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:4px;height:20px;background:var(--text-muted);border-radius:2px;"></div>
+                Supporting (Weight 1-2) - Compact, narrow layout
+              </div>
+            </div>
+            <div style="margin-top:20px;">
+              <h3>Semantic Weight Distribution</h3>
+              <div style="display:flex;gap:4px;margin-top:12px;height:80px;align-items:flex-end;">
+                <div style="flex:1;background:var(--danger);border-radius:4px 4px 0 0;height:100%;"></div>
+                <div style="flex:1;background:var(--accent);border-radius:4px 4px 0 0;height:80%;"></div>
+                <div style="flex:1;background:var(--success);border-radius:4px 4px 0 0;height:60%;"></div>
+                <div style="flex:1;background:var(--success);border-radius:4px 4px 0 0;height:60%;"></div>
+                <div style="flex:1;background:var(--text-muted);border-radius:4px 4px 0 0;height:40%;"></div>
+                <div style="flex:1;background:var(--text-muted);border-radius:4px 4px 0 0;height:40%;"></div>
+                <div style="flex:1;background:var(--accent);border-radius:4px 4px 0 0;height:80%;"></div>
+                <div style="flex:1;background:var(--danger);border-radius:4px 4px 0 0;height:100%;"></div>
+              </div>
+              <div style="display:flex;gap:4px;margin-top:4px;">
+                <div style="flex:1;font-size:8px;text-align:center;color:var(--text-muted);">Intro</div>
+                <div style="flex:1;font-size:8px;text-align:center;color:var(--text-muted);">Perf</div>
+                <div style="flex:1;font-size:8px;text-align:center;color:var(--text-muted);">Disp</div>
+                <div style="flex:1;font-size:8px;text-align:center;color:var(--text-muted);">Build</div>
+                <div style="flex:1;font-size:8px;text-align:center;color:var(--text-muted);">Batt</div>
+                <div style="flex:1;font-size:8px;text-align:center;color:var(--text-muted);">Ports</div>
+                <div style="flex:1;font-size:8px;text-align:center;color:var(--text-muted);">Price</div>
+                <div style="flex:1;font-size:8px;text-align:center;color:var(--text-muted);">Verdict</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:20px;">
+          <button class="btn-secondary" onclick="showPublishStep(1)">&larr; Brand Intelligence</button>
+          <button class="btn-primary" onclick="showPublishStep(3)">Next: Preview &rarr;</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Preview -->
+      <div class="step-content" id="pub-step3">
+        <div class="brand-match">
+          <div class="match-score" style="color:var(--success);">87</div>
+          <div class="match-info">
+            <strong>Brand Match Score: 87%</strong><br>
+            Colors, typography, and layout closely match the TechReviews Pro brand guidelines. Minor adjustments recommended for heading weight and accent color contrast.
+          </div>
+        </div>
+
+        <div class="preview-frame">
+          <h1 style="font-family:Inter,sans-serif;">MacBook Pro vs Dell XPS 15: Complete Comparison (2025)</h1>
+          <div class="subtitle">By TechReviews Pro &middot; January 2025 &middot; 12 min read</div>
+
+          <div style="background:linear-gradient(135deg,#1a73e8 0%,#174ea6 100%);padding:24px;border-radius:12px;color:white;margin-bottom:24px;">
+            <p style="color:rgba(255,255,255,0.9);font-size:16px;line-height:1.6;margin:0;">
+              Choosing between Apple's MacBook Pro M3 Max and Dell's XPS 15 is one of the most common dilemmas for professionals and creative users in 2025. We put both premium laptops through extensive testing to help you make the right decision.
+            </p>
+          </div>
+
+          <h2 style="font-family:Inter,sans-serif;">Performance Comparison</h2>
+          <p>The performance gap between these two flagships tells a nuanced story. While raw benchmark numbers favor Intel in specific scenarios, Apple's unified architecture delivers a more consistent experience...</p>
+
+          <div style="background:#f8f9fa;padding:16px;border-radius:8px;margin:16px 0;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+              <tr style="border-bottom:1px solid #e0e0e0;"><th style="text-align:left;padding:8px;color:#666;">Benchmark</th><th style="padding:8px;color:#666;">MacBook Pro</th><th style="padding:8px;color:#666;">Dell XPS 15</th></tr>
+              <tr style="border-bottom:1px solid #e0e0e0;"><td style="padding:8px;">Cinebench R24 (Multi)</td><td style="padding:8px;text-align:center;font-weight:600;">1,650</td><td style="padding:8px;text-align:center;font-weight:600;color:#1a73e8;">1,820</td></tr>
+              <tr><td style="padding:8px;">Geekbench 6 (Multi)</td><td style="padding:8px;text-align:center;font-weight:600;color:#1a73e8;">21,400</td><td style="padding:8px;text-align:center;font-weight:600;">16,800</td></tr>
+            </table>
+          </div>
+
+          <p>For sustained workloads like 4K video rendering, the MacBook Pro's thermal management gives it a significant advantage...</p>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;margin-top:20px;">
+          <button class="btn-secondary" onclick="showPublishStep(2)">&larr; Layout Intelligence</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-secondary">Export HTML</button>
+            <button class="btn-secondary">Export WordPress</button>
+            <button class="btn-primary">Publish</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function showPublishStep(n) {
+      document.querySelectorAll('.step-content').forEach(el => el.classList.remove('visible'));
+      document.querySelectorAll('.step-tab').forEach(el => el.classList.remove('active'));
+      document.getElementById('pub-step' + n).classList.add('visible');
+      document.querySelectorAll('.step-tab')[n - 1].classList.add('active');
+    }
+  </script>
+</body>
+</html>

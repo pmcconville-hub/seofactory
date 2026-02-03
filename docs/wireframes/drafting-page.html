@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Article Drafting - Wireframe</title>
+<style>
+  :root {
+    --bg-primary: #111827; --bg-secondary: #1f2937; --bg-tertiary: #374151;
+    --bg-card: #1e293b; --text-primary: #e5e7eb; --text-secondary: #9ca3af;
+    --text-muted: #6b7280; --accent: #3b82f6; --accent-hover: #2563eb;
+    --border: #374151; --success: #10b981; --warning: #f59e0b; --danger: #ef4444;
+    --sidebar-width: 240px; --sidebar-collapsed: 56px; --breadcrumb-height: 48px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-primary); color: var(--text-primary);
+    display: flex; height: 100vh; overflow: hidden;
+  }
+  .sidebar {
+    width: var(--sidebar-collapsed); min-width: var(--sidebar-collapsed);
+    background: var(--bg-secondary); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; transition: width 0.2s ease, min-width 0.2s ease;
+    overflow: hidden; position: relative; z-index: 10;
+  }
+  .sidebar.expanded { width: var(--sidebar-width); min-width: var(--sidebar-width); }
+  .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; min-height: 56px; }
+  .sidebar-header .logo { width: 24px; height: 24px; background: var(--accent); border-radius: 6px; flex-shrink: 0; }
+  .sidebar-header .app-name { font-weight: 600; font-size: 14px; white-space: nowrap; display: none; }
+  .expanded .app-name { display: inline; }
+  .sidebar-nav { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .nav-section-label { padding: 12px 16px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); white-space: nowrap; text-align: center; font-size: 0; }
+  .expanded .nav-section-label { text-align: left; font-size: 10px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 12px; padding: 8px 0;
+    color: var(--text-secondary); text-decoration: none; font-size: 13px;
+    cursor: pointer; border-left: 3px solid transparent; transition: all 0.15s;
+    white-space: nowrap; overflow: hidden; justify-content: center;
+  }
+  .expanded .nav-item { padding: 8px 16px; justify-content: flex-start; }
+  .nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .nav-item.active { border-left-color: var(--accent); color: var(--accent); background: rgba(59,130,246,0.1); }
+  .nav-item .icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; }
+  .nav-item .label { overflow: hidden; display: none; }
+  .expanded .nav-item .label { display: inline; }
+  .back-item { color: var(--text-muted) !important; font-size: 12px !important; border-bottom: 1px solid var(--border); margin-bottom: 4px; padding-bottom: 10px !important; }
+  .sidebar-footer { border-top: 1px solid var(--border); padding: 12px 16px; display: flex; align-items: center; gap: 12px; min-height: 56px; justify-content: center; }
+  .expanded .sidebar-footer { justify-content: flex-start; }
+  .avatar { width: 28px; height: 28px; background: var(--bg-tertiary); border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text-secondary); }
+  .user-info { overflow: hidden; flex: 1; display: none; }
+  .expanded .user-info { display: block; }
+  .user-name { font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .user-email { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+  .logout-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; flex-shrink: 0; padding: 4px; display: none; }
+  .expanded .logout-btn { display: block; }
+  .collapse-toggle {
+    position: absolute; top: 16px; right: -12px; width: 24px; height: 24px;
+    background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 50%;
+    color: var(--text-secondary); cursor: pointer; display: flex; align-items: center;
+    justify-content: center; font-size: 12px; z-index: 11; transition: transform 0.2s;
+    transform: rotate(180deg);
+  }
+  .expanded .collapse-toggle { transform: rotate(0deg); }
+  .main-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .breadcrumb-bar {
+    height: var(--breadcrumb-height); background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border); display: flex; align-items: center;
+    padding: 0 24px; font-size: 13px; gap: 8px; flex-shrink: 0;
+  }
+  .breadcrumb-bar a { color: var(--text-muted); text-decoration: none; }
+  .breadcrumb-bar a:hover { color: var(--text-primary); }
+  .breadcrumb-bar .sep { color: var(--text-muted); }
+  .breadcrumb-bar .current { color: var(--text-primary); }
+  .main-content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+  /* Drafting specific */
+  .generation-controls {
+    display: flex; align-items: center; gap: 16px; padding: 12px 24px;
+    background: var(--bg-secondary); border-bottom: 1px solid var(--border);
+  }
+  .gen-btn {
+    padding: 8px 16px; background: var(--success); color: white;
+    border: none; border-radius: 6px; font-size: 12px; font-weight: 600;
+    cursor: pointer;
+  }
+  .gen-btn:hover { opacity: 0.9; }
+  .gen-btn.pause { background: var(--warning); }
+  .gen-btn.stop { background: var(--danger); }
+  .gen-status { font-size: 12px; color: var(--text-secondary); }
+  .gen-progress { flex: 1; max-width: 300px; }
+  .gen-progress-bar { height: 6px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; }
+  .gen-progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
+  .gen-progress-label { font-size: 10px; color: var(--text-muted); margin-top: 4px; display: flex; justify-content: space-between; }
+
+  .pass-tracker {
+    display: flex; gap: 4px; padding: 12px 24px; background: var(--bg-primary);
+    border-bottom: 1px solid var(--border); overflow-x: auto;
+  }
+  .pass-chip {
+    padding: 4px 10px; border-radius: 12px; font-size: 10px; font-weight: 600;
+    white-space: nowrap; border: 1px solid var(--border); color: var(--text-muted);
+    cursor: pointer;
+  }
+  .pass-chip.done { background: rgba(16,185,129,0.15); color: var(--success); border-color: var(--success); }
+  .pass-chip.active { background: rgba(59,130,246,0.15); color: var(--accent); border-color: var(--accent); }
+  .pass-chip.pending { opacity: 0.5; }
+
+  .workspace { flex: 1; display: flex; overflow: hidden; }
+  .section-panel {
+    width: 280px; min-width: 280px; background: var(--bg-secondary);
+    border-right: 1px solid var(--border); overflow-y: auto; padding: 12px;
+  }
+  .section-panel h4 { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .section-item {
+    padding: 10px 12px; background: var(--bg-primary); border: 1px solid var(--border);
+    border-radius: 8px; margin-bottom: 6px; cursor: pointer; transition: all 0.15s;
+  }
+  .section-item:hover { border-color: var(--accent); }
+  .section-item.active { border-color: var(--accent); background: rgba(59,130,246,0.05); }
+  .section-item .section-title { font-size: 12px; font-weight: 500; margin-bottom: 4px; }
+  .section-item .section-meta { display: flex; gap: 8px; font-size: 10px; color: var(--text-muted); }
+  .section-status { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .section-status.done { background: var(--success); }
+  .section-status.active { background: var(--accent); }
+  .section-status.pending { background: var(--bg-tertiary); }
+
+  .content-preview {
+    flex: 1; overflow-y: auto; padding: 32px 48px;
+  }
+  .content-preview h1 { font-size: 26px; margin-bottom: 8px; line-height: 1.3; }
+  .content-preview .meta-line { font-size: 12px; color: var(--text-muted); margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .content-preview h2 { font-size: 20px; margin: 28px 0 12px; color: var(--text-primary); }
+  .content-preview h3 { font-size: 16px; margin: 20px 0 8px; color: var(--text-primary); }
+  .content-preview p { font-size: 14px; color: var(--text-secondary); line-height: 1.7; margin-bottom: 12px; }
+  .content-preview .placeholder {
+    background: var(--bg-secondary); border: 1px dashed var(--border);
+    border-radius: 8px; padding: 20px; text-align: center; color: var(--text-muted);
+    font-size: 12px; margin: 12px 0;
+  }
+  .content-preview table {
+    width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px;
+  }
+  .content-preview th {
+    text-align: left; padding: 10px 12px; background: var(--bg-secondary);
+    border: 1px solid var(--border); color: var(--text-muted); font-weight: 500;
+  }
+  .content-preview td {
+    padding: 10px 12px; border: 1px solid var(--border); color: var(--text-secondary);
+  }
+</style>
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo"></div>
+      <span class="app-name">Topical Map</span>
+    </div>
+    <button class="collapse-toggle" onclick="document.getElementById('sidebar').classList.toggle('expanded')">&lsaquo;</button>
+    <nav class="sidebar-nav">
+      <a href="./map-selection-page.html" class="nav-item back-item">
+        <span class="icon">&larr;</span><span class="label">Back to Maps</span>
+      </a>
+      <div class="nav-section-label">Map</div>
+      <a href="./dashboard-page.html" class="nav-item">
+        <span class="icon">&#9632;</span><span class="label">Dashboard</span>
+      </a>
+      <a href="./setup-wizard-page.html" class="nav-item">
+        <span class="icon">&#10070;</span><span class="label">Setup Wizard</span>
+      </a>
+      <a href="./topic-detail-page.html" class="nav-item active">
+        <span class="icon">&#9830;</span><span class="label">Topics</span>
+      </a>
+      <a href="./audit-page.html" class="nav-item">
+        <span class="icon">&#10004;</span><span class="label">Audit Dashboard</span>
+      </a>
+      <a href="./insights-page.html" class="nav-item">
+        <span class="icon">&#9878;</span><span class="label">Insights Hub</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9733;</span><span class="label">Gap Analysis</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#10003;</span><span class="label">Quality</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9776;</span><span class="label">Planning</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#128197;</span><span class="label">Calendar</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9670;</span><span class="label">KP Strategy</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9679;</span><span class="label">Entity Authority</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#10010;</span><span class="label">Entity Health</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="avatar">JD</div>
+      <div class="user-info">
+        <div class="user-name">Jane Doe</div>
+        <div class="user-email">jane@example.com</div>
+      </div>
+      <button class="logout-btn" title="Logout">&#10132;</button>
+    </div>
+  </aside>
+
+  <div class="main-wrapper">
+    <div class="breadcrumb-bar">
+      <a href="./projects-page.html">Projects</a>
+      <span class="sep">/</span>
+      <a href="./map-selection-page.html">TechReviews Pro</a>
+      <span class="sep">/</span>
+      <a href="./dashboard-page.html">Laptop Reviews 2025</a>
+      <span class="sep">/</span>
+      <a href="./topic-detail-page.html">MacBook Pro vs Dell XPS</a>
+      <span class="sep">/</span>
+      <span class="current">Drafting</span>
+    </div>
+
+    <div class="main-content">
+      <!-- Generation Controls -->
+      <div class="generation-controls">
+        <button class="gen-btn">&#9654; Generate All Passes</button>
+        <button class="gen-btn pause">&#10074;&#10074; Pause</button>
+        <button class="gen-btn stop">&#9632; Stop</button>
+        <div class="gen-progress">
+          <div class="gen-progress-bar">
+            <div class="gen-progress-fill" style="width:33%"></div>
+          </div>
+          <div class="gen-progress-label">
+            <span>Pass 3 of 9</span>
+            <span>33%</span>
+          </div>
+        </div>
+        <div class="gen-status">Generating: Lists &amp; Tables optimization...</div>
+      </div>
+
+      <!-- Pass Tracker -->
+      <div class="pass-tracker">
+        <span class="pass-chip done">1. Draft</span>
+        <span class="pass-chip done">2. Headers</span>
+        <span class="pass-chip active">3. Lists/Tables</span>
+        <span class="pass-chip pending">4. Visual Semantics</span>
+        <span class="pass-chip pending">5. Micro Semantics</span>
+        <span class="pass-chip pending">6. Discourse</span>
+        <span class="pass-chip pending">7. Introduction</span>
+        <span class="pass-chip pending">8. Audit</span>
+        <span class="pass-chip pending">9. Schema</span>
+      </div>
+
+      <!-- Workspace: section panel + content preview -->
+      <div class="workspace">
+        <div class="section-panel">
+          <h4>Sections (8)</h4>
+          <div class="section-item">
+            <div class="section-title"><span class="section-status done"></span> Introduction</div>
+            <div class="section-meta"><span>280 words</span><span>Pass 2 done</span></div>
+          </div>
+          <div class="section-item active">
+            <div class="section-title"><span class="section-status active"></span> Performance Comparison</div>
+            <div class="section-meta"><span>520 words</span><span>Pass 3 running</span></div>
+          </div>
+          <div class="section-item">
+            <div class="section-title"><span class="section-status done"></span> Display Quality</div>
+            <div class="section-meta"><span>410 words</span><span>Pass 2 done</span></div>
+          </div>
+          <div class="section-item">
+            <div class="section-title"><span class="section-status done"></span> Build &amp; Design</div>
+            <div class="section-meta"><span>380 words</span><span>Pass 2 done</span></div>
+          </div>
+          <div class="section-item">
+            <div class="section-title"><span class="section-status done"></span> Battery Life</div>
+            <div class="section-meta"><span>310 words</span><span>Pass 2 done</span></div>
+          </div>
+          <div class="section-item">
+            <div class="section-title"><span class="section-status done"></span> Ports &amp; Connectivity</div>
+            <div class="section-meta"><span>290 words</span><span>Pass 2 done</span></div>
+          </div>
+          <div class="section-item">
+            <div class="section-title"><span class="section-status done"></span> Price &amp; Value</div>
+            <div class="section-meta"><span>350 words</span><span>Pass 2 done</span></div>
+          </div>
+          <div class="section-item">
+            <div class="section-title"><span class="section-status done"></span> Verdict</div>
+            <div class="section-meta"><span>260 words</span><span>Pass 2 done</span></div>
+          </div>
+        </div>
+
+        <div class="content-preview">
+          <h1>MacBook Pro vs Dell XPS 15: Complete Comparison (2025)</h1>
+          <div class="meta-line">Core Topic &middot; Laptop Reviews 2025 &middot; ~3,400 words &middot; Last updated: 2 min ago</div>
+
+          <h2>Performance Comparison</h2>
+          <p>The performance gap between Apple's M3 Max and Intel's 14th-gen Core i9 processors tells an interesting story in 2025. While raw multi-threaded performance numbers favor Intel's 24-core architecture in sustained workloads, Apple's unified memory architecture delivers consistently faster results in real-world creative applications.</p>
+
+          <h3>CPU Benchmarks: M3 Max vs Intel i9-14900H</h3>
+          <p>In Cinebench R24, the i9-14900H scores approximately 1,820 in multi-core tests compared to the M3 Max's 1,650. However, the story changes dramatically when we look at power efficiency and thermal throttling behavior over extended workloads.</p>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Benchmark</th>
+                <th>MacBook Pro (M3 Max)</th>
+                <th>Dell XPS 15 (i9-14900H)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Cinebench R24 (Single)</td>
+                <td>138</td>
+                <td>125</td>
+              </tr>
+              <tr>
+                <td>Cinebench R24 (Multi)</td>
+                <td>1,650</td>
+                <td>1,820</td>
+              </tr>
+              <tr>
+                <td>Geekbench 6 (Single)</td>
+                <td>3,150</td>
+                <td>2,890</td>
+              </tr>
+              <tr>
+                <td>Geekbench 6 (Multi)</td>
+                <td>21,400</td>
+                <td>16,800</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>GPU Performance for Creative Work</h3>
+          <p>For video editors and 3D artists, GPU performance is often the decisive factor. The M3 Max's 40-core GPU with hardware-accelerated ray tracing delivers exceptional performance in Final Cut Pro and DaVinci Resolve, while the Dell XPS 15's NVIDIA RTX 4060 mobile GPU offers broader software compatibility.</p>
+
+          <div class="placeholder">
+            [Image placeholder: Side-by-side GPU benchmark chart comparing M3 Max vs RTX 4060 in creative applications]<br>
+            Alt: "Bar chart comparing MacBook Pro M3 Max and Dell XPS 15 RTX 4060 GPU performance across Blender, DaVinci Resolve, and Premiere Pro benchmarks"
+          </div>
+
+          <h3>Real-World Multitasking Tests</h3>
+          <p>With 96GB of unified memory available on the MacBook Pro and up to 64GB of DDR5 on the Dell XPS, both machines handle demanding multitasking scenarios. Our test workflow included running a 4K video export while compiling code and browsing with 30+ Chrome tabs open simultaneously.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,6 +1,7 @@
 
 // components/ContentBriefModal.tsx
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAppState } from '../../state/appState';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -48,10 +49,13 @@ import { TemplateName, DepthMode } from '../../types/contentTemplates';
 interface ContentBriefModalProps {
   allTopics: EnrichedTopic[];
   onGenerateDraft: (brief: ContentBrief) => void;
+  asPage?: boolean;
 }
 
-const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGenerateDraft }) => {
+const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGenerateDraft, asPage }) => {
     const { state, dispatch } = useAppState();
+    const routeNavigate = useNavigate();
+    const routeParams = useParams<{ projectId: string; mapId: string; topicId: string }>();
     const { activeBriefTopic, topicalMaps, activeMapId, isLoading, businessInfo, user, knowledgeGraph } = state;
 
     // Feature gate for content generation
@@ -92,7 +96,7 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
         };
     }, [businessInfo, activeMap]);
 
-    const isOpen = !!(state.modals.contentBrief && brief);
+    const isOpen = asPage ? !!brief : !!(state.modals.contentBrief && brief);
     const isDrafting = !!isLoading.audit; // 'audit' key is currently reused for drafting in container
 
     // Multi-pass generation state
@@ -597,6 +601,16 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
     });
 
     const handleClose = () => {
+        if (asPage) {
+            const pid = routeParams.projectId || state.activeProjectId;
+            const mid = routeParams.mapId || activeMapId;
+            const tid = routeParams.topicId || activeBriefTopic?.id;
+            if (pid && mid && tid) {
+                routeNavigate(`/p/${pid}/m/${mid}/topics/${tid}`);
+            } else if (pid && mid) {
+                routeNavigate(`/p/${pid}/m/${mid}`);
+            }
+        }
         dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'contentBrief', visible: false } });
         dispatch({ type: 'SET_ACTIVE_BRIEF_TOPIC', payload: null });
     };
@@ -655,8 +669,14 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
     }, [brief, activeMapId, effectiveBusinessInfo, dispatch, startGeneration]);
 
     const handleViewDraft = () => {
-        if (brief) {
-            dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'drafting', visible: true } });
+        if (brief && activeBriefTopic) {
+            const pid = routeParams.projectId || state.activeProjectId;
+            const mid = routeParams.mapId || activeMapId;
+            if (pid && mid) {
+                routeNavigate(`/p/${pid}/m/${mid}/topics/${activeBriefTopic.id}/draft`);
+            } else {
+                dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'drafting', visible: true } });
+            }
         }
     }
 
@@ -888,19 +908,9 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
         return null;
     }
 
-    return (
+    // Modal body content shared between modal and page rendering
+    const modalBodyContent = (
         <>
-        <Modal
-            isOpen={isOpen}
-            onClose={handleClose}
-            title="Content Brief"
-            description={`Content brief for ${activeBriefTopic?.title || 'topic'}`}
-            maxWidth="max-w-4xl"
-            showHeader={false}
-            customHeader={customHeader}
-            footer={footerContent}
-            className="max-h-[90vh] flex flex-col"
-        >
 
             {/* Collapsible Settings Panel - visible when settings toggled on */}
             {canShowSettings && showSettings && (
@@ -1393,8 +1403,12 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                         )}
                     </div>
                 </div>
-        </Modal>
+        </>
+    );
 
+    // Sub-modals (always rendered as modals regardless of asPage)
+    const subModals = (
+        <>
         {/* Brief Edit Modal */}
         {showEditModal && brief && activeBriefTopic && activeMap && activeMapId && (
             <BriefEditModal
@@ -1433,6 +1447,44 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                 businessInfo={effectiveBusinessInfo}
             />
         )}
+        </>
+    );
+
+    if (asPage) {
+        return (
+            <>
+                <div className="-m-4">
+                    <Card className="flex flex-col h-[calc(100vh-4rem)] overflow-hidden">
+                        {customHeader}
+                        {modalBodyContent}
+                        {footerContent && (
+                            <div className="border-t border-gray-700 p-4 flex-shrink-0">
+                                {footerContent}
+                            </div>
+                        )}
+                    </Card>
+                </div>
+                {subModals}
+            </>
+        );
+    }
+
+    return (
+    <>
+        <Modal
+            isOpen={isOpen}
+            onClose={handleClose}
+            title="Content Brief"
+            description={`Content brief for ${activeBriefTopic?.title || 'topic'}`}
+            maxWidth="max-w-4xl"
+            showHeader={false}
+            customHeader={customHeader}
+            footer={footerContent}
+            className="max-h-[90vh] flex flex-col"
+        >
+            {modalBodyContent}
+        </Modal>
+        {subModals}
     </>
     );
 };

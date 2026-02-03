@@ -1,9 +1,9 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 // FIX: Changed import to be a relative path to resolve module resolution error.
 import App from './App';
-import { StateProvider } from './state/StateProvider';
 import { GlobalErrorBoundary } from './components/GlobalErrorBoundary';
 
 const rootElement = document.getElementById('root');
@@ -15,9 +15,9 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <GlobalErrorBoundary>
-      <StateProvider>
+      <BrowserRouter>
         <App />
-      </StateProvider>
+      </BrowserRouter>
     </GlobalErrorBoundary>
   </React.StrictMode>
 );

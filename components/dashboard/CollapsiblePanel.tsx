@@ -19,6 +19,7 @@ interface CollapsiblePanelProps {
   headerActions?: React.ReactNode;
   onToggle?: (expanded: boolean) => void;
   persistKey?: string; // If provided, saves state to localStorage
+  forceExpand?: number; // Increment to force-expand from outside
 }
 
 const CollapsiblePanel: React.FC<CollapsiblePanelProps> = ({
@@ -33,6 +34,7 @@ const CollapsiblePanel: React.FC<CollapsiblePanelProps> = ({
   headerActions,
   onToggle,
   persistKey,
+  forceExpand,
 }) => {
   // Initialize expanded state from localStorage if persistKey provided
   const [isExpanded, setIsExpanded] = useState(() => {
@@ -48,6 +50,20 @@ const CollapsiblePanel: React.FC<CollapsiblePanelProps> = ({
     }
     return defaultExpanded;
   });
+
+  // Force expand from outside (e.g., when user clicks "jump to panel")
+  useEffect(() => {
+    if (forceExpand && forceExpand > 0) {
+      setIsExpanded(true);
+      if (persistKey) {
+        try {
+          localStorage.setItem(`panel-${persistKey}`, 'true');
+        } catch {
+          // Ignore storage errors
+        }
+      }
+    }
+  }, [forceExpand, persistKey]);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState<number | 'auto'>('auto');

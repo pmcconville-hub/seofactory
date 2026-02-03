@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Insights Hub - Wireframe</title>
+<style>
+  :root {
+    --bg-primary: #111827; --bg-secondary: #1f2937; --bg-tertiary: #374151;
+    --bg-card: #1e293b; --text-primary: #e5e7eb; --text-secondary: #9ca3af;
+    --text-muted: #6b7280; --accent: #3b82f6; --accent-hover: #2563eb;
+    --border: #374151; --success: #10b981; --warning: #f59e0b; --danger: #ef4444;
+    --purple: #8b5cf6; --pink: #ec4899;
+    --sidebar-width: 240px; --sidebar-collapsed: 56px; --breadcrumb-height: 48px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-primary); color: var(--text-primary);
+    display: flex; height: 100vh; overflow: hidden;
+  }
+  .sidebar {
+    width: var(--sidebar-width); min-width: var(--sidebar-width);
+    background: var(--bg-secondary); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; transition: width 0.2s ease, min-width 0.2s ease;
+    overflow: hidden; position: relative; z-index: 10;
+  }
+  .sidebar.collapsed { width: var(--sidebar-collapsed); min-width: var(--sidebar-collapsed); }
+  .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; min-height: 56px; }
+  .sidebar-header .logo { width: 24px; height: 24px; background: var(--accent); border-radius: 6px; flex-shrink: 0; }
+  .sidebar-header .app-name { font-weight: 600; font-size: 14px; white-space: nowrap; }
+  .collapsed .app-name { display: none; }
+  .sidebar-nav { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .nav-section-label { padding: 12px 16px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); white-space: nowrap; }
+  .collapsed .nav-section-label { text-align: center; font-size: 0; }
+  .nav-item {
+    display: flex; align-items: center; gap: 12px; padding: 8px 16px;
+    color: var(--text-secondary); text-decoration: none; font-size: 13px;
+    cursor: pointer; border-left: 3px solid transparent; transition: all 0.15s;
+    white-space: nowrap; overflow: hidden;
+  }
+  .nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .nav-item.active { border-left-color: var(--accent); color: var(--accent); background: rgba(59,130,246,0.1); }
+  .nav-item .icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; }
+  .nav-item .label { overflow: hidden; }
+  .collapsed .nav-item .label { display: none; }
+  .collapsed .nav-item { justify-content: center; padding: 8px 0; }
+  .back-item { color: var(--text-muted) !important; font-size: 12px !important; border-bottom: 1px solid var(--border); margin-bottom: 4px; padding-bottom: 10px !important; }
+  .sidebar-footer { border-top: 1px solid var(--border); padding: 12px 16px; display: flex; align-items: center; gap: 12px; min-height: 56px; }
+  .avatar { width: 28px; height: 28px; background: var(--bg-tertiary); border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text-secondary); }
+  .user-info { overflow: hidden; flex: 1; }
+  .user-name { font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .user-email { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+  .collapsed .user-info { display: none; }
+  .logout-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; flex-shrink: 0; padding: 4px; }
+  .collapsed .logout-btn { display: none; }
+  .collapse-toggle {
+    position: absolute; top: 16px; right: -12px; width: 24px; height: 24px;
+    background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 50%;
+    color: var(--text-secondary); cursor: pointer; display: flex; align-items: center;
+    justify-content: center; font-size: 12px; z-index: 11; transition: transform 0.2s;
+  }
+  .collapsed .collapse-toggle { transform: rotate(180deg); }
+  .main-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .breadcrumb-bar {
+    height: var(--breadcrumb-height); background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border); display: flex; align-items: center;
+    padding: 0 24px; font-size: 13px; gap: 8px; flex-shrink: 0;
+  }
+  .breadcrumb-bar a { color: var(--text-muted); text-decoration: none; }
+  .breadcrumb-bar a:hover { color: var(--text-primary); }
+  .breadcrumb-bar .sep { color: var(--text-muted); }
+  .breadcrumb-bar .current { color: var(--text-primary); }
+  .main-content { flex: 1; overflow-y: auto; padding: 24px; }
+
+  /* Insights-specific */
+  .tab-bar {
+    display: flex; gap: 0; margin-bottom: 24px; border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .tab-item {
+    padding: 10px 18px; font-size: 13px; color: var(--text-muted);
+    cursor: pointer; border-bottom: 2px solid transparent;
+    transition: all 0.15s; white-space: nowrap; background: none; border-top: none;
+    border-left: none; border-right: none;
+  }
+  .tab-item:hover { color: var(--text-primary); }
+  .tab-item.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .tab-content { display: none; }
+  .tab-content.visible { display: block; }
+
+  .stat-row { display: flex; gap: 16px; margin-bottom: 24px; }
+  .stat-box {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px; flex: 1;
+  }
+  .stat-box .label { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
+  .stat-box .value { font-size: 24px; font-weight: 700; }
+  .stat-box .change { font-size: 11px; margin-top: 4px; }
+  .change-up { color: var(--success); }
+  .change-down { color: var(--danger); }
+
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+  }
+  .card h3 { font-size: 14px; margin-bottom: 16px; }
+
+  .chart-placeholder {
+    background: var(--bg-secondary); border: 1px dashed var(--border);
+    border-radius: 8px; height: 200px; display: flex; align-items: center;
+    justify-content: center; color: var(--text-muted); font-size: 12px;
+    position: relative; overflow: hidden;
+  }
+
+  /* Simple bar chart mock */
+  .bar-chart { display: flex; align-items: flex-end; gap: 8px; height: 160px; padding: 0 16px; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .bar {
+    width: 100%; border-radius: 4px 4px 0 0; min-height: 4px;
+    transition: height 0.3s;
+  }
+  .bar-label { font-size: 9px; color: var(--text-muted); }
+
+  /* Simple line chart mock */
+  .line-chart {
+    position: relative; height: 160px; padding: 0 8px;
+  }
+  .line-chart svg { width: 100%; height: 100%; }
+
+  .ranking-list { list-style: none; }
+  .ranking-item {
+    display: flex; align-items: center; gap: 12px; padding: 10px 0;
+    border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .ranking-item:last-child { border-bottom: none; }
+  .rank-num {
+    width: 24px; height: 24px; background: var(--bg-tertiary); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; flex-shrink: 0;
+  }
+  .rank-num.top { background: rgba(59,130,246,0.2); color: var(--accent); }
+  .ranking-info { flex: 1; }
+  .ranking-topic { font-weight: 500; }
+  .ranking-keyword { font-size: 11px; color: var(--text-muted); }
+  .ranking-metric { text-align: right; font-size: 12px; }
+  .ranking-metric .val { font-weight: 600; font-size: 14px; }
+
+  .competitor-row {
+    display: flex; align-items: center; gap: 12px; padding: 10px 0;
+    border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .competitor-row:last-child { border-bottom: none; }
+  .competitor-icon {
+    width: 28px; height: 28px; background: var(--bg-tertiary);
+    border-radius: 6px; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; flex-shrink: 0;
+  }
+  .competitor-bar-bg { flex: 1; height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
+  .competitor-bar-fill { height: 100%; border-radius: 4px; }
+  .competitor-val { font-size: 12px; font-weight: 600; width: 48px; text-align: right; }
+
+  .opportunity-card {
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px; margin-bottom: 10px;
+    display: flex; align-items: flex-start; gap: 12px;
+  }
+  .opp-priority {
+    padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;
+    flex-shrink: 0;
+  }
+  .opp-high { background: rgba(16,185,129,0.15); color: var(--success); }
+  .opp-medium { background: rgba(245,158,11,0.15); color: var(--warning); }
+  .opp-info { flex: 1; }
+  .opp-title { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .opp-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+  .opp-impact { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+</style>
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo"></div>
+      <span class="app-name">Topical Map</span>
+    </div>
+    <button class="collapse-toggle" onclick="document.getElementById('sidebar').classList.toggle('collapsed')">&lsaquo;</button>
+    <nav class="sidebar-nav">
+      <a href="./map-selection-page.html" class="nav-item back-item">
+        <span class="icon">&larr;</span><span class="label">Back to Maps</span>
+      </a>
+      <div class="nav-section-label">Map</div>
+      <a href="./dashboard-page.html" class="nav-item">
+        <span class="icon">&#9632;</span><span class="label">Dashboard</span>
+      </a>
+      <a href="./setup-wizard-page.html" class="nav-item">
+        <span class="icon">&#10070;</span><span class="label">Setup Wizard</span>
+      </a>
+      <a href="./topic-detail-page.html" class="nav-item">
+        <span class="icon">&#9830;</span><span class="label">Topics</span>
+      </a>
+      <a href="./audit-page.html" class="nav-item">
+        <span class="icon">&#10004;</span><span class="label">Audit Dashboard</span>
+      </a>
+      <a href="./insights-page.html" class="nav-item active">
+        <span class="icon">&#9878;</span><span class="label">Insights Hub</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9733;</span><span class="label">Gap Analysis</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#10003;</span><span class="label">Quality</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9776;</span><span class="label">Planning</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#128197;</span><span class="label">Calendar</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9670;</span><span class="label">KP Strategy</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9679;</span><span class="label">Entity Authority</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#10010;</span><span class="label">Entity Health</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="avatar">JD</div>
+      <div class="user-info">
+        <div class="user-name">Jane Doe</div>
+        <div class="user-email">jane@example.com</div>
+      </div>
+      <button class="logout-btn" title="Logout">&#10132;</button>
+    </div>
+  </aside>
+
+  <div class="main-wrapper">
+    <div class="breadcrumb-bar">
+      <a href="./projects-page.html">Projects</a>
+      <span class="sep">/</span>
+      <a href="./map-selection-page.html">TechReviews Pro</a>
+      <span class="sep">/</span>
+      <a href="./dashboard-page.html">Laptop Reviews 2025</a>
+      <span class="sep">/</span>
+      <span class="current">Insights Hub</span>
+    </div>
+    <main class="main-content">
+      <h2 style="font-size:22px;margin-bottom:20px;">Insights Hub</h2>
+
+      <!-- Tabs -->
+      <div class="tab-bar">
+        <button class="tab-item active" onclick="showTab('overview')">Overview</button>
+        <button class="tab-item" onclick="showTab('traffic')">Traffic</button>
+        <button class="tab-item" onclick="showTab('content')">Content</button>
+        <button class="tab-item" onclick="showTab('technical')">Technical</button>
+        <button class="tab-item" onclick="showTab('competitors')">Competitors</button>
+        <button class="tab-item" onclick="showTab('opportunities')">Opportunities</button>
+        <button class="tab-item" onclick="showTab('trends')">Trends</button>
+        <button class="tab-item" onclick="showTab('custom')">Custom</button>
+      </div>
+
+      <!-- Overview Tab -->
+      <div class="tab-content visible" id="tab-overview">
+        <div class="stat-row">
+          <div class="stat-box">
+            <div class="label">Estimated Monthly Traffic</div>
+            <div class="value">24,800</div>
+            <div class="change change-up">+12.4% vs last month</div>
+          </div>
+          <div class="stat-box">
+            <div class="label">Avg. Position (Tracked)</div>
+            <div class="value">14.2</div>
+            <div class="change change-up">-2.3 positions improved</div>
+          </div>
+          <div class="stat-box">
+            <div class="label">Topics in Top 10</div>
+            <div class="value">18</div>
+            <div class="change change-up">+3 since last week</div>
+          </div>
+          <div class="stat-box">
+            <div class="label">Content Coverage</div>
+            <div class="value">65%</div>
+            <div class="change change-up">+8% this month</div>
+          </div>
+        </div>
+
+        <div class="chart-grid">
+          <div class="card">
+            <h3>Traffic Trend (Last 6 Months)</h3>
+            <div class="line-chart">
+              <svg viewBox="0 0 400 160" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="grad1" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.3"/>
+                    <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path d="M0,130 L67,110 L133,100 L200,85 L267,60 L333,45 L400,30" fill="none" stroke="#3b82f6" stroke-width="2"/>
+                <path d="M0,130 L67,110 L133,100 L200,85 L267,60 L333,45 L400,30 L400,160 L0,160 Z" fill="url(#grad1)"/>
+                <circle cx="400" cy="30" r="4" fill="#3b82f6"/>
+              </svg>
+              <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-top:4px;">
+                <span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span><span>Jan</span><span>Feb</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Top Performing Topics</h3>
+            <ul class="ranking-list">
+              <li class="ranking-item">
+                <span class="rank-num top">1</span>
+                <div class="ranking-info">
+                  <div class="ranking-topic">Best Laptops 2025</div>
+                  <div class="ranking-keyword">best laptops 2025</div>
+                </div>
+                <div class="ranking-metric">
+                  <div class="val">5,200</div>
+                  <div style="font-size:10px;color:var(--success);">Pos #3</div>
+                </div>
+              </li>
+              <li class="ranking-item">
+                <span class="rank-num top">2</span>
+                <div class="ranking-info">
+                  <div class="ranking-topic">MacBook Pro vs Dell XPS</div>
+                  <div class="ranking-keyword">macbook pro vs dell xps</div>
+                </div>
+                <div class="ranking-metric">
+                  <div class="val">3,800</div>
+                  <div style="font-size:10px;color:var(--success);">Pos #5</div>
+                </div>
+              </li>
+              <li class="ranking-item">
+                <span class="rank-num top">3</span>
+                <div class="ranking-info">
+                  <div class="ranking-topic">Budget Laptops Under $500</div>
+                  <div class="ranking-keyword">best budget laptops</div>
+                </div>
+                <div class="ranking-metric">
+                  <div class="val">2,900</div>
+                  <div style="font-size:10px;color:var(--warning);">Pos #8</div>
+                </div>
+              </li>
+              <li class="ranking-item">
+                <span class="rank-num">4</span>
+                <div class="ranking-info">
+                  <div class="ranking-topic">Laptop RAM Guide</div>
+                  <div class="ranking-keyword">how much ram do i need</div>
+                </div>
+                <div class="ranking-metric">
+                  <div class="val">2,100</div>
+                  <div style="font-size:10px;color:var(--success);">Pos #6</div>
+                </div>
+              </li>
+              <li class="ranking-item">
+                <span class="rank-num">5</span>
+                <div class="ranking-info">
+                  <div class="ranking-topic">SSD vs HDD</div>
+                  <div class="ranking-keyword">ssd vs hdd laptop</div>
+                </div>
+                <div class="ranking-metric">
+                  <div class="val">1,800</div>
+                  <div style="font-size:10px;color:var(--warning);">Pos #11</div>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <h3>Content Status Distribution</h3>
+            <div class="bar-chart">
+              <div class="bar-col">
+                <div class="bar" style="height:100%;background:var(--success);"></div>
+                <div class="bar-label">Published</div>
+                <div style="font-size:11px;font-weight:600;">18</div>
+              </div>
+              <div class="bar-col">
+                <div class="bar" style="height:60%;background:var(--accent);"></div>
+                <div class="bar-label">Drafted</div>
+                <div style="font-size:11px;font-weight:600;">12</div>
+              </div>
+              <div class="bar-col">
+                <div class="bar" style="height:75%;background:var(--warning);"></div>
+                <div class="bar-label">Briefed</div>
+                <div style="font-size:11px;font-weight:600;">14</div>
+              </div>
+              <div class="bar-col">
+                <div class="bar" style="height:55%;background:var(--bg-tertiary);"></div>
+                <div class="bar-label">Planned</div>
+                <div style="font-size:11px;font-weight:600;">20</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Authority Score History</h3>
+            <div class="line-chart">
+              <svg viewBox="0 0 400 160" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="grad2" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#10b981" stop-opacity="0.3"/>
+                    <stop offset="100%" stop-color="#10b981" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path d="M0,145 L57,140 L114,130 L171,115 L228,100 L285,80 L342,55 L400,40" fill="none" stroke="#10b981" stroke-width="2"/>
+                <path d="M0,145 L57,140 L114,130 L171,115 L228,100 L285,80 L342,55 L400,40 L400,160 L0,160 Z" fill="url(#grad2)"/>
+                <circle cx="400" cy="40" r="4" fill="#10b981"/>
+              </svg>
+              <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-top:4px;">
+                <span>Week 1</span><span>Week 2</span><span>Week 3</span><span>Week 4</span><span>Week 5</span><span>Week 6</span><span>Week 7</span><span>Week 8</span>
+              </div>
+              <div style="text-align:center;margin-top:8px;font-size:12px;color:var(--success);">
+                Authority score: 42 &rarr; 72 (+30 in 8 weeks)
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Traffic Tab -->
+      <div class="tab-content" id="tab-traffic">
+        <div class="stat-row">
+          <div class="stat-box">
+            <div class="label">Organic Sessions</div>
+            <div class="value">18,400</div>
+            <div class="change change-up">+15.2% MoM</div>
+          </div>
+          <div class="stat-box">
+            <div class="label">Unique Visitors</div>
+            <div class="value">12,600</div>
+            <div class="change change-up">+9.8% MoM</div>
+          </div>
+          <div class="stat-box">
+            <div class="label">Avg. Time on Page</div>
+            <div class="value">4:32</div>
+            <div class="change change-up">+18s vs avg</div>
+          </div>
+          <div class="stat-box">
+            <div class="label">Bounce Rate</div>
+            <div class="value">34%</div>
+            <div class="change change-up">-5% improved</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Traffic by Content Pillar</h3>
+          <div class="bar-chart" style="height:200px;">
+            <div class="bar-col">
+              <div class="bar" style="height:100%;background:var(--accent);"></div>
+              <div class="bar-label">Reviews</div>
+              <div style="font-size:11px;font-weight:600;">8,200</div>
+            </div>
+            <div class="bar-col">
+              <div class="bar" style="height:65%;background:var(--purple);"></div>
+              <div class="bar-label">Guides</div>
+              <div style="font-size:11px;font-weight:600;">5,300</div>
+            </div>
+            <div class="bar-col">
+              <div class="bar" style="height:40%;background:var(--success);"></div>
+              <div class="bar-label">Specs</div>
+              <div style="font-size:11px;font-weight:600;">3,200</div>
+            </div>
+            <div class="bar-col">
+              <div class="bar" style="height:30%;background:var(--warning);"></div>
+              <div class="bar-label">Compare</div>
+              <div style="font-size:11px;font-weight:600;">2,400</div>
+            </div>
+            <div class="bar-col">
+              <div class="bar" style="height:18%;background:var(--pink);"></div>
+              <div class="bar-label">How-To</div>
+              <div style="font-size:11px;font-weight:600;">1,500</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Content Tab -->
+      <div class="tab-content" id="tab-content">
+        <div class="card">
+          <h3>Content Performance Matrix</h3>
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead>
+                <tr style="background:var(--bg-secondary);">
+                  <th style="text-align:left;padding:10px;color:var(--text-muted);">Topic</th>
+                  <th style="padding:10px;color:var(--text-muted);">Type</th>
+                  <th style="padding:10px;color:var(--text-muted);">Words</th>
+                  <th style="padding:10px;color:var(--text-muted);">Audit Score</th>
+                  <th style="padding:10px;color:var(--text-muted);">Position</th>
+                  <th style="padding:10px;color:var(--text-muted);">Traffic</th>
+                  <th style="padding:10px;color:var(--text-muted);">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="border-top:1px solid var(--border);">
+                  <td style="padding:10px;font-weight:500;">Best Laptops 2025</td>
+                  <td style="padding:10px;text-align:center;"><span style="padding:2px 6px;border-radius:10px;font-size:10px;background:rgba(59,130,246,0.15);color:var(--accent);">Core</span></td>
+                  <td style="padding:10px;text-align:center;">3,450</td>
+                  <td style="padding:10px;text-align:center;color:var(--success);">92</td>
+                  <td style="padding:10px;text-align:center;">#3</td>
+                  <td style="padding:10px;text-align:center;font-weight:600;">5,200</td>
+                  <td style="padding:10px;text-align:center;"><span style="padding:2px 6px;border-radius:10px;font-size:10px;background:rgba(16,185,129,0.15);color:var(--success);">Published</span></td>
+                </tr>
+                <tr style="border-top:1px solid var(--border);">
+                  <td style="padding:10px;font-weight:500;">MacBook Pro vs Dell XPS</td>
+                  <td style="padding:10px;text-align:center;"><span style="padding:2px 6px;border-radius:10px;font-size:10px;background:rgba(59,130,246,0.15);color:var(--accent);">Core</span></td>
+                  <td style="padding:10px;text-align:center;">3,200</td>
+                  <td style="padding:10px;text-align:center;color:var(--success);">88</td>
+                  <td style="padding:10px;text-align:center;">#5</td>
+                  <td style="padding:10px;text-align:center;font-weight:600;">3,800</td>
+                  <td style="padding:10px;text-align:center;"><span style="padding:2px 6px;border-radius:10px;font-size:10px;background:rgba(16,185,129,0.15);color:var(--success);">Published</span></td>
+                </tr>
+                <tr style="border-top:1px solid var(--border);">
+                  <td style="padding:10px;font-weight:500;">Laptop RAM Guide</td>
+                  <td style="padding:10px;text-align:center;"><span style="padding:2px 6px;border-radius:10px;font-size:10px;background:rgba(16,185,129,0.15);color:var(--success);">Supporting</span></td>
+                  <td style="padding:10px;text-align:center;">2,100</td>
+                  <td style="padding:10px;text-align:center;color:var(--warning);">76</td>
+                  <td style="padding:10px;text-align:center;">#6</td>
+                  <td style="padding:10px;text-align:center;font-weight:600;">2,100</td>
+                  <td style="padding:10px;text-align:center;"><span style="padding:2px 6px;border-radius:10px;font-size:10px;background:rgba(16,185,129,0.15);color:var(--success);">Published</span></td>
+                </tr>
+                <tr style="border-top:1px solid var(--border);">
+                  <td style="padding:10px;font-weight:500;">College Laptop Guide</td>
+                  <td style="padding:10px;text-align:center;"><span style="padding:2px 6px;border-radius:10px;font-size:10px;background:rgba(16,185,129,0.15);color:var(--success);">Supporting</span></td>
+                  <td style="padding:10px;text-align:center;">2,800</td>
+                  <td style="padding:10px;text-align:center;color:var(--success);">82</td>
+                  <td style="padding:10px;text-align:center;">#12</td>
+                  <td style="padding:10px;text-align:center;font-weight:600;">890</td>
+                  <td style="padding:10px;text-align:center;"><span style="padding:2px 6px;border-radius:10px;font-size:10px;background:rgba(245,158,11,0.15);color:var(--warning);">Drafted</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Technical Tab -->
+      <div class="tab-content" id="tab-technical">
+        <div class="stat-row">
+          <div class="stat-box">
+            <div class="label">Schema Validation</div>
+            <div class="value" style="color:var(--success);">100%</div>
+            <div class="change">All 18 articles valid</div>
+          </div>
+          <div class="stat-box">
+            <div class="label">Heading Structure</div>
+            <div class="value" style="color:var(--warning);">88%</div>
+            <div class="change change-down">6 articles with issues</div>
+          </div>
+          <div class="stat-box">
+            <div class="label">Image Alt Coverage</div>
+            <div class="value" style="color:var(--success);">96%</div>
+            <div class="change">2 images missing alt text</div>
+          </div>
+          <div class="stat-box">
+            <div class="label">Internal Link Density</div>
+            <div class="value" style="color:var(--warning);">3.2</div>
+            <div class="change change-down">Target: 5+ per article</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Technical Health Checks</h3>
+          <div class="chart-placeholder">Technical health dashboard with crawl data, indexation status, and Core Web Vitals metrics</div>
+        </div>
+      </div>
+
+      <!-- Competitors Tab -->
+      <div class="tab-content" id="tab-competitors">
+        <div class="card">
+          <h3>Competitor Authority Comparison</h3>
+          <div style="padding:8px 0;">
+            <div class="competitor-row">
+              <div class="competitor-icon">LP</div>
+              <div style="flex:1;">
+                <div style="font-weight:500;margin-bottom:4px;">laptopmag.com</div>
+                <div class="competitor-bar-bg"><div class="competitor-bar-fill" style="width:92%;background:var(--danger);"></div></div>
+              </div>
+              <div class="competitor-val">92</div>
+            </div>
+            <div class="competitor-row">
+              <div class="competitor-icon">NB</div>
+              <div style="flex:1;">
+                <div style="font-weight:500;margin-bottom:4px;">notebookcheck.net</div>
+                <div class="competitor-bar-bg"><div class="competitor-bar-fill" style="width:88%;background:var(--warning);"></div></div>
+              </div>
+              <div class="competitor-val">88</div>
+            </div>
+            <div class="competitor-row">
+              <div class="competitor-icon">RT</div>
+              <div style="flex:1;">
+                <div style="font-weight:500;margin-bottom:4px;">rtings.com</div>
+                <div class="competitor-bar-bg"><div class="competitor-bar-fill" style="width:85%;background:var(--warning);"></div></div>
+              </div>
+              <div class="competitor-val">85</div>
+            </div>
+            <div class="competitor-row">
+              <div class="competitor-icon" style="background:rgba(59,130,246,0.2);color:var(--accent);">TR</div>
+              <div style="flex:1;">
+                <div style="font-weight:500;margin-bottom:4px;color:var(--accent);">techreviewspro.com (You)</div>
+                <div class="competitor-bar-bg"><div class="competitor-bar-fill" style="width:72%;background:var(--accent);"></div></div>
+              </div>
+              <div class="competitor-val" style="color:var(--accent);">72</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Content Gap vs Competitors</h3>
+          <div class="chart-placeholder">Network graph showing content coverage overlap and unique topics per competitor</div>
+        </div>
+      </div>
+
+      <!-- Opportunities Tab -->
+      <div class="tab-content" id="tab-opportunities">
+        <div class="card">
+          <h3>Recommended Actions</h3>
+          <div class="opportunity-card">
+            <span class="opp-priority opp-high">High Impact</span>
+            <div class="opp-info">
+              <div class="opp-title">Create "Gaming Laptop Benchmarks" article (Core topic gap)</div>
+              <div class="opp-desc">This core topic has no content yet. Competitors rank for 12 related keywords with combined monthly volume of 18,000. Creating comprehensive benchmark content could capture 3,000+ monthly visits.</div>
+              <div class="opp-impact">Est. impact: +3,000 monthly organic visits</div>
+            </div>
+          </div>
+          <div class="opportunity-card">
+            <span class="opp-priority opp-high">High Impact</span>
+            <div class="opp-info">
+              <div class="opp-title">Fix interlinking for 12 supporting articles</div>
+              <div class="opp-desc">12 supporting articles have zero internal links to pillar content. Adding contextual links could boost pillar page authority by an estimated 15-20%.</div>
+              <div class="opp-impact">Est. impact: +15% pillar authority</div>
+            </div>
+          </div>
+          <div class="opportunity-card">
+            <span class="opp-priority opp-medium">Medium Impact</span>
+            <div class="opp-info">
+              <div class="opp-title">Add FAQ schema to 8 comparison articles</div>
+              <div class="opp-desc">These articles match People Also Ask patterns. FAQ schema could earn rich snippets for an estimated 24 additional keywords.</div>
+              <div class="opp-impact">Est. impact: +800 monthly clicks from rich results</div>
+            </div>
+          </div>
+          <div class="opportunity-card">
+            <span class="opp-priority opp-medium">Medium Impact</span>
+            <div class="opp-info">
+              <div class="opp-title">Target "laptop for video editing" keyword cluster</div>
+              <div class="opp-desc">No existing content covers this high-intent cluster (combined 9,400 monthly searches). Closest topic is 0.6 semantic distance, suggesting a new dedicated article.</div>
+              <div class="opp-impact">Est. impact: +1,500 monthly organic visits</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trends Tab -->
+      <div class="tab-content" id="tab-trends">
+        <div class="card">
+          <h3>Emerging Topics in Your Niche</h3>
+          <div class="chart-placeholder">Trending keyword heatmap showing rising search queries in the laptop/tech review space over the past 90 days</div>
+        </div>
+        <div class="card" style="margin-top:20px;">
+          <h3>Seasonal Keyword Patterns</h3>
+          <div class="chart-placeholder">12-month seasonal trend chart for key topics: back-to-school peak (Aug-Sep), Black Friday (Nov), holiday gifting (Dec)</div>
+        </div>
+      </div>
+
+      <!-- Custom Tab -->
+      <div class="tab-content" id="tab-custom">
+        <div class="card">
+          <h3>Custom Dashboard</h3>
+          <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+            Create custom widgets and reports by selecting metrics, dimensions, and visualization types.
+          </p>
+          <div class="chart-placeholder" style="height:300px;">
+            Drag and drop widgets here to build your custom insights dashboard.<br><br>
+            Available widgets: Traffic Over Time, Position Changes, Content Velocity,<br>
+            Authority Breakdown, Keyword Rankings, SERP Feature Coverage
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function showTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('visible'));
+      document.querySelectorAll('.tab-item').forEach(el => el.classList.remove('active'));
+      document.getElementById('tab-' + tabId).classList.add('visible');
+      event.target.classList.add('active');
+    }
+  </script>
+</body>
+</html>

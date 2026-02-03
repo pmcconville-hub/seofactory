@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Map Selection - Wireframe</title>
+<style>
+  :root {
+    --bg-primary: #111827; --bg-secondary: #1f2937; --bg-tertiary: #374151;
+    --bg-card: #1e293b; --text-primary: #e5e7eb; --text-secondary: #9ca3af;
+    --text-muted: #6b7280; --accent: #3b82f6; --accent-hover: #2563eb;
+    --border: #374151; --success: #10b981; --warning: #f59e0b; --danger: #ef4444;
+    --sidebar-width: 240px; --sidebar-collapsed: 56px; --breadcrumb-height: 48px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-primary); color: var(--text-primary);
+    display: flex; height: 100vh; overflow: hidden;
+  }
+  .sidebar {
+    width: var(--sidebar-width); min-width: var(--sidebar-width);
+    background: var(--bg-secondary); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    transition: width 0.2s ease, min-width 0.2s ease;
+    overflow: hidden; position: relative; z-index: 10;
+  }
+  .sidebar.collapsed { width: var(--sidebar-collapsed); min-width: var(--sidebar-collapsed); }
+  .sidebar-header {
+    padding: 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; min-height: 56px;
+  }
+  .sidebar-header .logo { width: 24px; height: 24px; background: var(--accent); border-radius: 6px; flex-shrink: 0; }
+  .sidebar-header .app-name { font-weight: 600; font-size: 14px; white-space: nowrap; }
+  .collapsed .app-name { display: none; }
+  .sidebar-nav { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .nav-section-label { padding: 12px 16px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); white-space: nowrap; }
+  .collapsed .nav-section-label { text-align: center; font-size: 0; }
+  .nav-item {
+    display: flex; align-items: center; gap: 12px; padding: 8px 16px;
+    color: var(--text-secondary); text-decoration: none; font-size: 13px;
+    cursor: pointer; border-left: 3px solid transparent; transition: all 0.15s;
+    white-space: nowrap; overflow: hidden;
+  }
+  .nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .nav-item.active { border-left-color: var(--accent); color: var(--accent); background: rgba(59,130,246,0.1); }
+  .nav-item .icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; }
+  .nav-item .label { overflow: hidden; }
+  .collapsed .nav-item .label { display: none; }
+  .collapsed .nav-item { justify-content: center; padding: 8px 0; }
+  .back-item { color: var(--text-muted) !important; font-size: 12px !important; border-bottom: 1px solid var(--border); margin-bottom: 4px; padding-bottom: 10px !important; }
+  .sidebar-footer { border-top: 1px solid var(--border); padding: 12px 16px; display: flex; align-items: center; gap: 12px; min-height: 56px; }
+  .avatar { width: 28px; height: 28px; background: var(--bg-tertiary); border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text-secondary); }
+  .user-info { overflow: hidden; flex: 1; }
+  .user-name { font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .user-email { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+  .collapsed .user-info { display: none; }
+  .logout-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; flex-shrink: 0; padding: 4px; }
+  .collapsed .logout-btn { display: none; }
+  .collapse-toggle {
+    position: absolute; top: 16px; right: -12px; width: 24px; height: 24px;
+    background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 50%;
+    color: var(--text-secondary); cursor: pointer; display: flex; align-items: center;
+    justify-content: center; font-size: 12px; z-index: 11; transition: transform 0.2s;
+  }
+  .collapsed .collapse-toggle { transform: rotate(180deg); }
+  .main-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .breadcrumb-bar {
+    height: var(--breadcrumb-height); background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border); display: flex; align-items: center;
+    padding: 0 24px; font-size: 13px; gap: 8px; flex-shrink: 0;
+  }
+  .breadcrumb-bar a { color: var(--text-muted); text-decoration: none; }
+  .breadcrumb-bar a:hover { color: var(--text-primary); }
+  .breadcrumb-bar .sep { color: var(--text-muted); }
+  .breadcrumb-bar .current { color: var(--text-primary); }
+  .main-content { flex: 1; overflow-y: auto; padding: 24px; }
+
+  .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .page-header h1 { font-size: 22px; font-weight: 600; }
+  .page-header .subtitle { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+  .btn-primary {
+    padding: 10px 20px; background: var(--accent); color: white;
+    border: none; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: 500;
+  }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .map-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  .map-card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px; cursor: pointer; transition: border-color 0.15s, transform 0.15s;
+    text-decoration: none; color: inherit;
+  }
+  .map-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .map-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+  .map-card h3 { font-size: 16px; }
+  .map-badge {
+    padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.03em;
+  }
+  .badge-active { background: rgba(16,185,129,0.15); color: var(--success); }
+  .badge-draft { background: rgba(245,158,11,0.15); color: var(--warning); }
+  .map-card .description { font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 16px; }
+  .map-stats { display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border); padding-top: 12px; }
+  .map-stats .stat-label { color: var(--text-muted); }
+  .map-stats .stat-value { font-weight: 600; color: var(--text-primary); }
+  .map-card .updated { font-size: 11px; color: var(--text-muted); margin-top: 12px; }
+  .progress-bar-bg { height: 4px; background: var(--bg-tertiary); border-radius: 2px; margin-top: 12px; overflow: hidden; }
+  .progress-bar-fill { height: 100%; border-radius: 2px; background: var(--accent); }
+  .progress-label { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+</style>
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo"></div>
+      <span class="app-name">Topical Map</span>
+    </div>
+    <button class="collapse-toggle" onclick="document.getElementById('sidebar').classList.toggle('collapsed')">&lsaquo;</button>
+    <nav class="sidebar-nav">
+      <a href="./projects-page.html" class="nav-item back-item">
+        <span class="icon">&larr;</span><span class="label">Back to Projects</span>
+      </a>
+      <div class="nav-section-label">Maps</div>
+      <a href="./map-selection-page.html" class="nav-item active">
+        <span class="icon">&#9783;</span><span class="label">All Maps</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9881;</span><span class="label">Project Settings</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="avatar">JD</div>
+      <div class="user-info">
+        <div class="user-name">Jane Doe</div>
+        <div class="user-email">jane@example.com</div>
+      </div>
+      <button class="logout-btn" title="Logout">&#10132;</button>
+    </div>
+  </aside>
+
+  <div class="main-wrapper">
+    <div class="breadcrumb-bar">
+      <a href="./projects-page.html">Projects</a>
+      <span class="sep">/</span>
+      <span class="current">TechReviews Pro</span>
+    </div>
+    <main class="main-content">
+      <div class="page-header">
+        <div>
+          <h1>TechReviews Pro</h1>
+          <div class="subtitle">techreviewspro.com &middot; 3 topical maps</div>
+        </div>
+        <button class="btn-primary">+ Create Map</button>
+      </div>
+
+      <div class="map-grid">
+        <a href="./dashboard-page.html" class="map-card">
+          <div class="map-card-header">
+            <h3>Laptop Reviews 2025</h3>
+            <span class="map-badge badge-active">Active</span>
+          </div>
+          <div class="description">Comprehensive topical map covering laptop reviews, comparisons, buying guides, and technical specifications for the 2025 product cycle.</div>
+          <div class="map-stats">
+            <div><span class="stat-label">Topics</span><br><span class="stat-value">64</span></div>
+            <div><span class="stat-label">Briefs</span><br><span class="stat-value">42</span></div>
+            <div><span class="stat-label">Drafts</span><br><span class="stat-value">18</span></div>
+            <div><span class="stat-label">Authority</span><br><span class="stat-value">72%</span></div>
+          </div>
+          <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:65%"></div></div>
+          <div class="progress-label">65% content coverage</div>
+          <div class="updated">Updated 2 hours ago</div>
+        </a>
+
+        <a href="./dashboard-page.html" class="map-card">
+          <div class="map-card-header">
+            <h3>Smartphone Photography</h3>
+            <span class="map-badge badge-active">Active</span>
+          </div>
+          <div class="description">Mobile photography techniques, camera comparisons, editing apps, and accessories for smartphone photographers.</div>
+          <div class="map-stats">
+            <div><span class="stat-label">Topics</span><br><span class="stat-value">48</span></div>
+            <div><span class="stat-label">Briefs</span><br><span class="stat-value">31</span></div>
+            <div><span class="stat-label">Drafts</span><br><span class="stat-value">12</span></div>
+            <div><span class="stat-label">Authority</span><br><span class="stat-value">58%</span></div>
+          </div>
+          <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:45%"></div></div>
+          <div class="progress-label">45% content coverage</div>
+          <div class="updated">Updated 1 day ago</div>
+        </a>
+
+        <a href="./dashboard-page.html" class="map-card">
+          <div class="map-card-header">
+            <h3>Gaming Peripherals</h3>
+            <span class="map-badge badge-draft">Draft</span>
+          </div>
+          <div class="description">Gaming mice, keyboards, headsets, and monitors. Still in setup phase - needs EAV completion and competitor analysis.</div>
+          <div class="map-stats">
+            <div><span class="stat-label">Topics</span><br><span class="stat-value">35</span></div>
+            <div><span class="stat-label">Briefs</span><br><span class="stat-value">8</span></div>
+            <div><span class="stat-label">Drafts</span><br><span class="stat-value">0</span></div>
+            <div><span class="stat-label">Authority</span><br><span class="stat-value">--</span></div>
+          </div>
+          <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:15%"></div></div>
+          <div class="progress-label">15% content coverage</div>
+          <div class="updated">Updated 3 days ago</div>
+        </a>
+
+        <div class="map-card" style="border-style:dashed; display:flex; align-items:center; justify-content:center; min-height:200px; opacity:0.5;">
+          <div style="text-align:center;">
+            <div style="font-size:32px; margin-bottom:8px;">+</div>
+            <div style="font-size:13px; color:var(--text-muted);">New Topical Map</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

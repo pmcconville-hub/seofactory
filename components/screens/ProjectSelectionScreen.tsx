@@ -112,7 +112,7 @@ const ProjectSelectionScreen: React.FC<ProjectSelectionScreenProps> = ({ onCreat
   };
 
   return (
-    <div className="max-w-7xl w-full mx-auto relative pb-20 px-4">
+    <div className="w-full relative pb-20 px-4">
       {/* Header */}
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
         <div className="flex items-center gap-6">

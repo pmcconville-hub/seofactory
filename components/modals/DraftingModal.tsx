@@ -2,6 +2,7 @@
 // components/DraftingModal.tsx
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ContentBrief, BusinessInfo, EnrichedTopic, FreshnessProfile, ImagePlaceholder, StreamingProgress } from '../../types';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { useAppState } from '../../state/appState';
@@ -113,10 +114,13 @@ interface DraftingModalProps {
   isLoading: boolean;
   businessInfo: BusinessInfo;
   onAnalyzeFlow: (draft: string) => void;
+  asPage?: boolean;
 }
 
-const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: briefProp, onAudit, onGenerateSchema, isLoading, businessInfo, onAnalyzeFlow }) => {
+const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: briefProp, onAudit, onGenerateSchema, isLoading, businessInfo, onAnalyzeFlow, asPage }) => {
   const { state, dispatch } = useAppState();
+  const routeNavigate = useNavigate();
+  const routeParams = useParams<{ projectId: string; mapId: string; topicId: string }>();
 
   // Feature gate for content generation (covers polish, audit, schema)
   const { enabled: canGenerateContent, reason: featureReason } = useFeatureGate('content_generation');
@@ -2738,11 +2742,23 @@ ${schemaScript}`;
 
   const isTransient = brief.id.startsWith('transient-');
 
+  const cardClasses = asPage
+    ? "w-full flex flex-col h-[calc(100vh-4rem)] overflow-hidden"
+    : "w-full max-w-[98vw] h-[95vh] flex flex-col";
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4" onClick={handleCloseModal}>
-      <Card className="w-full max-w-[98vw] h-[95vh] flex flex-col" onClick={e => e.stopPropagation()}>
+    <div className={asPage ? '-m-4' : "fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4"} onClick={asPage ? undefined : handleCloseModal}>
+      <Card className={cardClasses} onClick={asPage ? undefined : (e => e.stopPropagation())}>
         <header className="sticky top-0 bg-gray-800 p-4 border-b border-gray-700 flex justify-between items-center z-10 flex-shrink-0">
           <div>
+            {asPage && routeParams.topicId && (
+              <button
+                onClick={() => routeNavigate(`/p/${routeParams.projectId}/m/${routeParams.mapId}/topics/${routeParams.topicId}/brief`)}
+                className="text-xs text-gray-500 hover:text-gray-300 mb-1"
+              >
+                &larr; Back to Brief
+              </button>
+            )}
             <h2 className="text-xl font-bold text-white">
                 {isTransient ? 'Audit Live Page' : 'Article Draft Workspace'}
             </h2>
@@ -3843,7 +3859,13 @@ ${schemaScript}`;
                                 id: 'style-publish',
                                 label: 'Style & Publish',
                                 icon: '🎨',
-                                onClick: () => setShowStylePublishModal(true),
+                                onClick: () => {
+                                    if (asPage && routeParams.projectId && routeParams.mapId && routeParams.topicId) {
+                                        routeNavigate(`/p/${routeParams.projectId}/m/${routeParams.mapId}/topics/${routeParams.topicId}/style`);
+                                    } else {
+                                        setShowStylePublishModal(true);
+                                    }
+                                },
                                 divider: true
                             },
                             {

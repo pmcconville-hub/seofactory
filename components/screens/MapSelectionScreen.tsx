@@ -29,7 +29,7 @@ const MapSelectionScreen: React.FC<MapSelectionScreenProps> = ({
     const [isMergeWizardOpen, setIsMergeWizardOpen] = useState(false);
     
     return (
-        <div className="max-w-6xl w-full mx-auto space-y-8">
+        <div className="w-full space-y-8">
             <header className="flex justify-between items-start">
                 <div>
                     <h1 className="text-4xl font-bold text-white">{projectName}</h1>

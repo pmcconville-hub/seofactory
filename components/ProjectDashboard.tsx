@@ -1,6 +1,7 @@
 
 // components/ProjectDashboard.tsx
 import React, { useState, useMemo, useCallback, useRef } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAppState } from '../state/appState';
 import { TopicalMap, EnrichedTopic, ContentBrief, BusinessInfo, SEOPillars, TopicRecommendation, GscRow, ValidationIssue, MergeSuggestion, ResponseCode, SemanticTriple, ExpansionMode, AuditRuleResult, ContextualFlowIssue, FoundationPage, FoundationPageType, NAPData, NavigationStructure, ExpandedTemplateResult, FreshnessProfile, ContextualBridgeLink } from '../types';
 import { getSupabaseClient } from '../services/supabaseClient';
@@ -70,6 +71,8 @@ import { Button } from './ui/Button';
 import { FeatureErrorBoundary } from './ui/FeatureErrorBoundary';
 import TabNavigation, { createDashboardTabs, NavIcons } from './dashboard/TabNavigation';
 import StrategyOverview from './dashboard/StrategyOverview';
+import CompactMetricsStrip from './dashboard/CompactMetricsStrip';
+import NextStepsAlert from './dashboard/NextStepsAlert';
 import CollapsiblePanel from './dashboard/CollapsiblePanel';
 import CannibalizationWarnings from './dashboard/CannibalizationWarnings';
 
@@ -249,6 +252,8 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     onSaveBusinessInfo
 }) => {
     const { state, dispatch } = useAppState();
+    const navigate = useNavigate();
+    const { projectId, mapId } = useParams<{ projectId: string; mapId: string }>();
     const { modals, isLoading, briefGenerationStatus, validationResult, unifiedAudit } = state;
     const [topicForBrief, setTopicForBrief] = useState<EnrichedTopic | null>(null);
     const [isBusinessInfoModalOpen, setIsBusinessInfoModalOpen] = useState(false);
@@ -281,8 +286,13 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         setTopicForBrief(topic);
 
         if (briefExists) {
+            // Navigate to the brief page route instead of opening a modal
             dispatch({ type: 'SET_ACTIVE_BRIEF_TOPIC', payload: topic });
-            dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'contentBrief', visible: true } });
+            if (projectId && mapId) {
+                navigate(`/p/${projectId}/m/${mapId}/topics/${topic.id}/brief`);
+            } else {
+                dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'contentBrief', visible: true } });
+            }
             return;
         }
 
@@ -291,7 +301,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
         } else {
             dispatch({ type: 'SET_ERROR', payload: "Cannot generate brief. Please ensure you have defined SEO Pillars and run 'Analyze Domain' action at least once." });
         }
-    }, [dispatch, briefs, canGenerateBriefs]);
+    }, [dispatch, briefs, canGenerateBriefs, navigate, projectId, mapId]);
 
     // Handler for bulk updating topics (used by Auto-Fix for search intents)
     // Only updates topics that have metadata.intent_source === 'auto_fix' (newly assigned)
@@ -441,6 +451,26 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     // Bridge topic pre-fill for AddTopicModal
     const [bridgeTopicPrefill, setBridgeTopicPrefill] = useState<TopicPrefill | null>(null);
 
+    // Force-expand counters for analysis panels (increment to trigger expand)
+    const [panelExpandTriggers, setPanelExpandTriggers] = useState<Record<string, number>>({});
+
+    // Scroll to an analysis panel and force-expand it via React state
+    const scrollToAndExpandPanel = useCallback((panelId: string) => {
+        // Trigger the panel to expand via forceExpand prop
+        setPanelExpandTriggers(prev => ({
+            ...prev,
+            [panelId]: (prev[panelId] || 0) + 1,
+        }));
+
+        // Scroll to the panel after React renders the expanded state
+        setTimeout(() => {
+            const panel = document.getElementById(panelId);
+            if (panel) {
+                panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }, 100);
+    }, []);
+
     // Create navigation tabs configuration
     const dashboardTabs = createDashboardTabs({
         onEditPillars: () => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'pillarEdit', visible: true } }),
@@ -491,7 +521,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     });
 
     return (
-        <div className="space-y-6 max-w-7xl w-full">
+        <div className="space-y-6 w-full">
             {/* Compact Header */}
             <header className="flex justify-between items-center">
               <div>
@@ -506,8 +536,26 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
               </div>
             </header>
 
+            {/* Compact Metrics Strip - replaces expanded Strategy Overview */}
+            <CompactMetricsStrip
+                pillars={topicalMap.pillars}
+                topics={allTopics}
+                briefs={briefs}
+                eavs={topicalMap.eavs as SemanticTriple[] || []}
+                knowledgeGraph={knowledgeGraph}
+                onEditPillars={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'pillarEdit', visible: true } })}
+                onEditEavs={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'eavManager', visible: true } })}
+                onEditCompetitors={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'competitorManager', visible: true } })}
+                onJumpToPanel={scrollToAndExpandPanel}
+            />
+
             {/* Tab Navigation - All actions in one place */}
             <TabNavigation tabs={dashboardTabs} />
+
+            {/* Next Steps Alert - Critical/High priority only, slim banner */}
+            {recommendations.length > 0 && (
+                <NextStepsAlert recommendations={recommendations} onAction={handleRecommendationAction} />
+            )}
 
             {/* Cannibalization Warnings - Show when topics are too similar */}
             <CannibalizationWarnings
@@ -520,183 +568,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                 collapsed={true}
             />
 
-            {/* Condensed Strategy Overview */}
-            <CollapsiblePanel
-                id="strategy-overview"
-                title="Strategy Overview"
-                icon={<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>}
-                defaultExpanded={true}
-                persistKey="dashboard-strategy"
-            >
-                <StrategyOverview
-                    pillars={topicalMap.pillars}
-                    topics={allTopics}
-                    briefs={briefs}
-                    eavs={topicalMap.eavs as SemanticTriple[] || []}
-                    knowledgeGraph={knowledgeGraph}
-                    onEditPillars={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'pillarEdit', visible: true } })}
-                    onEditEavs={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'eavManager', visible: true } })}
-                    onEditCompetitors={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'competitorManager', visible: true } })}
-                />
-            </CollapsiblePanel>
-
-            {/* Semantic Authority Score (Gamification) */}
-            <CollapsiblePanel
-                id="semantic-authority"
-                title="Semantic Authority Score"
-                icon={<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-                defaultExpanded={false}
-                persistKey="dashboard-semantic-score"
-            >
-                <FeatureErrorBoundary featureName="Semantic Authority Score">
-                    <ConfidenceDashboard
-                        map={topicalMap}
-                        briefs={Object.values(briefs)}
-                        dispatch={dispatch}
-                        businessInfo={effectiveBusinessInfo}
-                        onSaveEavs={onUpdateEavs}
-                        onSaveTopics={handleBulkUpdateTopics}
-                        onAddTopic={handleAutoFixAddTopic}
-                    />
-                </FeatureErrorBoundary>
-            </CollapsiblePanel>
-
-            {/* Content Bridging Opportunities */}
-            <CollapsiblePanel
-                id="bridging-opportunities"
-                title="Content Bridging Opportunities"
-                icon={<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}
-                defaultExpanded={false}
-                persistKey="dashboard-bridging"
-            >
-                <FeatureErrorBoundary featureName="Bridging Opportunities">
-                    <BridgingOpportunitiesPanel
-                        knowledgeGraph={knowledgeGraph}
-                        eavs={topicalMap.eavs as SemanticTriple[] || []}
-                        pillars={topicalMap.pillars}
-                        topics={allTopics}
-                        onSelectTopic={(topicId) => {
-                            const topic = allTopics.find(t => t.id === topicId);
-                            if (topic) handleSelectTopicForBrief(topic);
-                        }}
-                        onCreateBridgeTopic={(suggestion: BridgeTopicSuggestion) => {
-                            // Convert BridgeTopicSuggestion to TopicPrefill
-                            const prefill: TopicPrefill = {
-                                title: suggestion.title,
-                                description: suggestion.description,
-                                type: suggestion.placement.type,
-                                parentTopicId: suggestion.placement.parentTopicId,
-                                reasoning: `${suggestion.reasoning}\n\nSEO Impact: ${suggestion.seoImpact}`,
-                            };
-                            setBridgeTopicPrefill(prefill);
-                            dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'addTopic', visible: true } });
-                        }}
-                        onAddLinks={async (bridgeTopicId: string, links: ContextualBridgeLink[]) => {
-                            // Get existing brief for the bridge topic
-                            const existingBrief = briefs[bridgeTopicId];
-
-                            if (!existingBrief) {
-                                // No brief exists yet - we need to notify user to generate brief first
-                                dispatch({
-                                    type: 'SET_NOTIFICATION',
-                                    payload: 'Please generate a content brief for this topic first before adding links.'
-                                });
-                                return;
-                            }
-
-                            // Merge new links with existing contextual bridge
-                            let currentLinks: ContextualBridgeLink[] = [];
-                            if (Array.isArray(existingBrief.contextualBridge)) {
-                                currentLinks = existingBrief.contextualBridge;
-                            } else if (existingBrief.contextualBridge && typeof existingBrief.contextualBridge === 'object' && 'links' in existingBrief.contextualBridge) {
-                                currentLinks = existingBrief.contextualBridge.links || [];
-                            }
-
-                            // Filter out duplicates (same target topic)
-                            const existingTargets = new Set(currentLinks.map(l => l.targetTopic.toLowerCase()));
-                            const newLinks = links.filter(l => !existingTargets.has(l.targetTopic.toLowerCase()));
-
-                            if (newLinks.length === 0) {
-                                dispatch({
-                                    type: 'SET_NOTIFICATION',
-                                    payload: 'All suggested links already exist in the brief.'
-                                });
-                                return;
-                            }
-
-                            // Update state with merged links
-                            const updatedBridge = [...currentLinks, ...newLinks];
-
-                            dispatch({
-                                type: 'UPDATE_BRIEF',
-                                payload: {
-                                    mapId: topicalMap.id,
-                                    topicId: bridgeTopicId,
-                                    updates: { contextualBridge: updatedBridge }
-                                }
-                            });
-
-                            // Persist to database
-                            try {
-                                const supabase = getSupabaseClient(
-                                    effectiveBusinessInfo.supabaseUrl,
-                                    effectiveBusinessInfo.supabaseAnonKey
-                                );
-                                await supabase
-                                    .from('content_briefs')
-                                    .update({ contextual_bridge: JSON.stringify(updatedBridge) })
-                                    .eq('topic_id', bridgeTopicId);
-
-                                dispatch({
-                                    type: 'SET_NOTIFICATION',
-                                    payload: `✅ Added ${newLinks.length} internal links to "${existingBrief.title || 'the brief'}"`
-                                });
-                            } catch (err) {
-                                console.error('Failed to persist links:', err);
-                                dispatch({
-                                    type: 'SET_NOTIFICATION',
-                                    payload: 'Links added to state but failed to persist to database. Please save the brief manually.'
-                                });
-                            }
-                        }}
-                    />
-                </FeatureErrorBoundary>
-            </CollapsiblePanel>
-
-            {/* Content Priority Tiers (Gamification) */}
-            <CollapsiblePanel
-                id="priority-tiers"
-                title="Content Priority Tiers"
-                icon={<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" /></svg>}
-                defaultExpanded={false}
-                persistKey="dashboard-priority-tiers"
-            >
-                <FeatureErrorBoundary featureName="Priority Tiers">
-                    <PriorityTieringSystem
-                        map={topicalMap}
-                        briefs={Object.values(briefs)}
-                        onTopicClick={(topicId) => {
-                            const topic = allTopics.find(t => t.id === topicId);
-                            if (topic) handleSelectTopicForBrief(topic);
-                        }}
-                    />
-                </FeatureErrorBoundary>
-            </CollapsiblePanel>
-
-            {/* Priority Recommendations (Compact) */}
-            {recommendations.length > 0 && (
-                <CollapsiblePanel
-                    id="next-steps"
-                    title={`Next Steps (${recommendations.length})`}
-                    icon={<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}
-                    defaultExpanded={recommendations.some(r => r.priority === 'CRITICAL')}
-                    persistKey="dashboard-nextsteps"
-                >
-                    <NextStepsWidget recommendations={recommendations} onAction={handleRecommendationAction} />
-                </CollapsiblePanel>
-            )}
-
-            {/* Main Content: Topical Map */}
+            {/* Main Content: Topical Map - PRIMARY FOCUS, above the fold */}
             <FeatureErrorBoundary featureName="Topical Map">
                 <TopicalMapDisplay
                     coreTopics={coreTopics}
@@ -704,9 +576,9 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                     childTopics={childTopics}
                     briefs={briefs}
                     onSelectTopicForBrief={handleSelectTopicForBrief}
-                    onExpandCoreTopic={(topic, mode) => onExpandCoreTopic(topic, mode, undefined, undefined)} // Default no override for direct click
+                    onExpandCoreTopic={(topic, mode) => onExpandCoreTopic(topic, mode, undefined, undefined)}
                     expandingCoreTopicId={expandingCoreTopicId}
-                    onExecuteMerge={() => {}} // Placeholder
+                    onExecuteMerge={() => {}}
                     canExpandTopics={canExpandTopics}
                     canGenerateBriefs={canGenerateBriefs}
                     onGenerateInitialMap={onGenerateInitialMap}
@@ -729,16 +601,198 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                     onGenerateMissingPages={onGenerateMissingFoundationPages}
                     businessInfo={effectiveBusinessInfo}
                     pillars={topicalMap.pillars}
-                    // Navigation props
                     navigation={navigation}
                     topics={allTopics}
                     onSaveNavigation={onSaveNavigation}
                     onGenerateNavigation={onRepairNavigation}
                     onRegenerateNavigation={onRepairNavigation ? async () => onRepairNavigation() : undefined}
                     isGeneratingNavigation={isRepairingNavigation}
-                    // Brand Kit
                     onSaveBrandKit={onSaveBrandKit}
                 />
+            </div>
+
+            {/* Analysis & Insights Section */}
+            <div>
+                <h2 className="text-lg font-semibold text-gray-400 mb-4 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                    Analysis &amp; Insights
+                </h2>
+
+                <div className="space-y-3">
+                    {/* Strategy Details (full StrategyOverview, collapsed) */}
+                    <CollapsiblePanel
+                        id="strategy-overview"
+                        title="Strategy Details"
+                        icon={<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>}
+                        defaultExpanded={false}
+                        persistKey="dashboard-strategy"
+                        forceExpand={panelExpandTriggers['strategy-overview']}
+                    >
+                        <StrategyOverview
+                            pillars={topicalMap.pillars}
+                            topics={allTopics}
+                            briefs={briefs}
+                            eavs={topicalMap.eavs as SemanticTriple[] || []}
+                            knowledgeGraph={knowledgeGraph}
+                            onEditPillars={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'pillarEdit', visible: true } })}
+                            onEditEavs={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'eavManager', visible: true } })}
+                            onEditCompetitors={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'competitorManager', visible: true } })}
+                        />
+                    </CollapsiblePanel>
+
+                    {/* Semantic Authority Score */}
+                    <CollapsiblePanel
+                        id="semantic-authority"
+                        title="Semantic Authority Score"
+                        icon={<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                        defaultExpanded={false}
+                        persistKey="dashboard-semantic-score"
+                        forceExpand={panelExpandTriggers['semantic-authority']}
+                    >
+                        <FeatureErrorBoundary featureName="Semantic Authority Score">
+                            <ConfidenceDashboard
+                                map={topicalMap}
+                                briefs={Object.values(briefs)}
+                                dispatch={dispatch}
+                                businessInfo={effectiveBusinessInfo}
+                                onSaveEavs={onUpdateEavs}
+                                onSaveTopics={handleBulkUpdateTopics}
+                                onAddTopic={handleAutoFixAddTopic}
+                            />
+                        </FeatureErrorBoundary>
+                    </CollapsiblePanel>
+
+                    {/* Content Bridging Opportunities */}
+                    <CollapsiblePanel
+                        id="bridging-opportunities"
+                        title="Content Bridging Opportunities"
+                        icon={<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}
+                        defaultExpanded={false}
+                        persistKey="dashboard-bridging"
+                        forceExpand={panelExpandTriggers['bridging-opportunities']}
+                    >
+                        <FeatureErrorBoundary featureName="Bridging Opportunities">
+                            <BridgingOpportunitiesPanel
+                                knowledgeGraph={knowledgeGraph}
+                                eavs={topicalMap.eavs as SemanticTriple[] || []}
+                                pillars={topicalMap.pillars}
+                                topics={allTopics}
+                                onSelectTopic={(topicId) => {
+                                    const topic = allTopics.find(t => t.id === topicId);
+                                    if (topic) handleSelectTopicForBrief(topic);
+                                }}
+                                onCreateBridgeTopic={(suggestion: BridgeTopicSuggestion) => {
+                                    const prefill: TopicPrefill = {
+                                        title: suggestion.title,
+                                        description: suggestion.description,
+                                        type: suggestion.placement.type,
+                                        parentTopicId: suggestion.placement.parentTopicId,
+                                        reasoning: `${suggestion.reasoning}\n\nSEO Impact: ${suggestion.seoImpact}`,
+                                    };
+                                    setBridgeTopicPrefill(prefill);
+                                    dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'addTopic', visible: true } });
+                                }}
+                                onAddLinks={async (bridgeTopicId: string, links: ContextualBridgeLink[]) => {
+                                    const existingBrief = briefs[bridgeTopicId];
+
+                                    if (!existingBrief) {
+                                        dispatch({
+                                            type: 'SET_NOTIFICATION',
+                                            payload: 'Please generate a content brief for this topic first before adding links.'
+                                        });
+                                        return;
+                                    }
+
+                                    let currentLinks: ContextualBridgeLink[] = [];
+                                    if (Array.isArray(existingBrief.contextualBridge)) {
+                                        currentLinks = existingBrief.contextualBridge;
+                                    } else if (existingBrief.contextualBridge && typeof existingBrief.contextualBridge === 'object' && 'links' in existingBrief.contextualBridge) {
+                                        currentLinks = existingBrief.contextualBridge.links || [];
+                                    }
+
+                                    const existingTargets = new Set(currentLinks.map(l => l.targetTopic.toLowerCase()));
+                                    const newLinks = links.filter(l => !existingTargets.has(l.targetTopic.toLowerCase()));
+
+                                    if (newLinks.length === 0) {
+                                        dispatch({
+                                            type: 'SET_NOTIFICATION',
+                                            payload: 'All suggested links already exist in the brief.'
+                                        });
+                                        return;
+                                    }
+
+                                    const updatedBridge = [...currentLinks, ...newLinks];
+
+                                    dispatch({
+                                        type: 'UPDATE_BRIEF',
+                                        payload: {
+                                            mapId: topicalMap.id,
+                                            topicId: bridgeTopicId,
+                                            updates: { contextualBridge: updatedBridge }
+                                        }
+                                    });
+
+                                    try {
+                                        const supabase = getSupabaseClient(
+                                            effectiveBusinessInfo.supabaseUrl,
+                                            effectiveBusinessInfo.supabaseAnonKey
+                                        );
+                                        await supabase
+                                            .from('content_briefs')
+                                            .update({ contextual_bridge: JSON.stringify(updatedBridge) })
+                                            .eq('topic_id', bridgeTopicId);
+
+                                        dispatch({
+                                            type: 'SET_NOTIFICATION',
+                                            payload: `Added ${newLinks.length} internal links to "${existingBrief.title || 'the brief'}"`
+                                        });
+                                    } catch (err) {
+                                        console.error('Failed to persist links:', err);
+                                        dispatch({
+                                            type: 'SET_NOTIFICATION',
+                                            payload: 'Links added to state but failed to persist to database. Please save the brief manually.'
+                                        });
+                                    }
+                                }}
+                            />
+                        </FeatureErrorBoundary>
+                    </CollapsiblePanel>
+
+                    {/* Content Priority Tiers */}
+                    <CollapsiblePanel
+                        id="priority-tiers"
+                        title="Content Priority Tiers"
+                        icon={<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" /></svg>}
+                        defaultExpanded={false}
+                        persistKey="dashboard-priority-tiers"
+                        forceExpand={panelExpandTriggers['priority-tiers']}
+                    >
+                        <FeatureErrorBoundary featureName="Priority Tiers">
+                            <PriorityTieringSystem
+                                map={topicalMap}
+                                briefs={Object.values(briefs)}
+                                onTopicClick={(topicId) => {
+                                    const topic = allTopics.find(t => t.id === topicId);
+                                    if (topic) handleSelectTopicForBrief(topic);
+                                }}
+                            />
+                        </FeatureErrorBoundary>
+                    </CollapsiblePanel>
+
+                    {/* Next Steps (full widget, collapsed) */}
+                    {recommendations.length > 0 && (
+                        <CollapsiblePanel
+                            id="next-steps"
+                            title={`Next Steps (${recommendations.length})`}
+                            icon={<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}
+                            defaultExpanded={false}
+                            persistKey="dashboard-nextsteps"
+                            forceExpand={panelExpandTriggers['next-steps']}
+                        >
+                            <NextStepsWidget recommendations={recommendations} onAction={handleRecommendationAction} />
+                        </CollapsiblePanel>
+                    )}
+                </div>
             </div>
 
             <AddTopicModal

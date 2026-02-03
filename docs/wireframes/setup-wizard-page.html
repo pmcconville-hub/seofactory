@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Setup Wizard - Wireframe</title>
+<style>
+  :root {
+    --bg-primary: #111827; --bg-secondary: #1f2937; --bg-tertiary: #374151;
+    --bg-card: #1e293b; --text-primary: #e5e7eb; --text-secondary: #9ca3af;
+    --text-muted: #6b7280; --accent: #3b82f6; --accent-hover: #2563eb;
+    --border: #374151; --success: #10b981; --warning: #f59e0b; --danger: #ef4444;
+    --sidebar-width: 240px; --sidebar-collapsed: 56px; --breadcrumb-height: 48px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-primary); color: var(--text-primary);
+    display: flex; height: 100vh; overflow: hidden;
+  }
+  .sidebar {
+    width: var(--sidebar-width); min-width: var(--sidebar-width);
+    background: var(--bg-secondary); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; transition: width 0.2s ease, min-width 0.2s ease;
+    overflow: hidden; position: relative; z-index: 10;
+  }
+  .sidebar.collapsed { width: var(--sidebar-collapsed); min-width: var(--sidebar-collapsed); }
+  .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; min-height: 56px; }
+  .sidebar-header .logo { width: 24px; height: 24px; background: var(--accent); border-radius: 6px; flex-shrink: 0; }
+  .sidebar-header .app-name { font-weight: 600; font-size: 14px; white-space: nowrap; }
+  .collapsed .app-name { display: none; }
+  .sidebar-nav { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .nav-section-label { padding: 12px 16px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); white-space: nowrap; }
+  .collapsed .nav-section-label { text-align: center; font-size: 0; }
+  .nav-item {
+    display: flex; align-items: center; gap: 12px; padding: 8px 16px;
+    color: var(--text-secondary); text-decoration: none; font-size: 13px;
+    cursor: pointer; border-left: 3px solid transparent; transition: all 0.15s;
+    white-space: nowrap; overflow: hidden;
+  }
+  .nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .nav-item.active { border-left-color: var(--accent); color: var(--accent); background: rgba(59,130,246,0.1); }
+  .nav-item .icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; }
+  .nav-item .label { overflow: hidden; }
+  .collapsed .nav-item .label { display: none; }
+  .collapsed .nav-item { justify-content: center; padding: 8px 0; }
+  .back-item { color: var(--text-muted) !important; font-size: 12px !important; border-bottom: 1px solid var(--border); margin-bottom: 4px; padding-bottom: 10px !important; }
+  .sidebar-footer { border-top: 1px solid var(--border); padding: 12px 16px; display: flex; align-items: center; gap: 12px; min-height: 56px; }
+  .avatar { width: 28px; height: 28px; background: var(--bg-tertiary); border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text-secondary); }
+  .user-info { overflow: hidden; flex: 1; }
+  .user-name { font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .user-email { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+  .collapsed .user-info { display: none; }
+  .logout-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; flex-shrink: 0; padding: 4px; }
+  .collapsed .logout-btn { display: none; }
+  .collapse-toggle {
+    position: absolute; top: 16px; right: -12px; width: 24px; height: 24px;
+    background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 50%;
+    color: var(--text-secondary); cursor: pointer; display: flex; align-items: center;
+    justify-content: center; font-size: 12px; z-index: 11; transition: transform 0.2s;
+  }
+  .collapsed .collapse-toggle { transform: rotate(180deg); }
+  .main-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .breadcrumb-bar {
+    height: var(--breadcrumb-height); background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border); display: flex; align-items: center;
+    padding: 0 24px; font-size: 13px; gap: 8px; flex-shrink: 0;
+  }
+  .breadcrumb-bar a { color: var(--text-muted); text-decoration: none; }
+  .breadcrumb-bar a:hover { color: var(--text-primary); }
+  .breadcrumb-bar .sep { color: var(--text-muted); }
+  .breadcrumb-bar .current { color: var(--text-primary); }
+  .main-content { flex: 1; overflow-y: auto; padding: 24px; }
+
+  /* Wizard specific */
+  .wizard-container { max-width: 800px; margin: 0 auto; }
+  .stepper {
+    display: flex; align-items: center; margin-bottom: 32px;
+    padding: 0 20px;
+  }
+  .step {
+    display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  }
+  .step-circle {
+    width: 32px; height: 32px; border-radius: 50%; display: flex;
+    align-items: center; justify-content: center; font-size: 13px; font-weight: 600;
+    border: 2px solid var(--border); color: var(--text-muted);
+    transition: all 0.2s; cursor: pointer;
+  }
+  .step.completed .step-circle {
+    background: var(--success); border-color: var(--success); color: white;
+  }
+  .step.current .step-circle {
+    background: var(--accent); border-color: var(--accent); color: white;
+  }
+  .step-label { font-size: 12px; color: var(--text-muted); }
+  .step.current .step-label { color: var(--text-primary); font-weight: 500; }
+  .step.completed .step-label { color: var(--success); }
+  .step-connector {
+    flex: 1; height: 2px; background: var(--border); margin: 0 12px;
+  }
+  .step-connector.done { background: var(--success); }
+  .wizard-card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 32px;
+  }
+  .wizard-card h2 { font-size: 20px; margin-bottom: 8px; }
+  .wizard-card .description { font-size: 13px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.6; }
+  .form-group { margin-bottom: 20px; }
+  .form-group label {
+    display: block; font-size: 12px; font-weight: 500;
+    color: var(--text-secondary); margin-bottom: 6px;
+  }
+  .form-group input, .form-group textarea, .form-group select {
+    width: 100%; padding: 10px 14px; background: var(--bg-secondary);
+    border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary);
+    font-size: 13px; font-family: inherit;
+  }
+  .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+    outline: none; border-color: var(--accent);
+  }
+  .form-group textarea { min-height: 80px; resize: vertical; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .wizard-actions {
+    display: flex; justify-content: space-between; margin-top: 24px;
+    padding-top: 20px; border-top: 1px solid var(--border);
+  }
+  .btn-secondary {
+    padding: 10px 20px; background: var(--bg-secondary); color: var(--text-secondary);
+    border: 1px solid var(--border); border-radius: 8px; font-size: 13px; cursor: pointer;
+  }
+  .btn-secondary:hover { border-color: var(--text-muted); color: var(--text-primary); }
+  .btn-primary {
+    padding: 10px 20px; background: var(--accent); color: white;
+    border: none; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: 500;
+  }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .pillar-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; background: rgba(59,130,246,0.15); color: var(--accent);
+    border-radius: 16px; font-size: 12px; margin-right: 6px; margin-bottom: 6px;
+  }
+  .pillar-tag .remove { cursor: pointer; opacity: 0.6; }
+  .pillar-tag .remove:hover { opacity: 1; }
+</style>
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo"></div>
+      <span class="app-name">Topical Map</span>
+    </div>
+    <button class="collapse-toggle" onclick="document.getElementById('sidebar').classList.toggle('collapsed')">&lsaquo;</button>
+    <nav class="sidebar-nav">
+      <a href="./map-selection-page.html" class="nav-item back-item">
+        <span class="icon">&larr;</span><span class="label">Back to Maps</span>
+      </a>
+      <div class="nav-section-label">Map</div>
+      <a href="./dashboard-page.html" class="nav-item">
+        <span class="icon">&#9632;</span><span class="label">Dashboard</span>
+      </a>
+      <a href="./setup-wizard-page.html" class="nav-item active">
+        <span class="icon">&#10070;</span><span class="label">Setup Wizard</span>
+      </a>
+      <a href="./topic-detail-page.html" class="nav-item">
+        <span class="icon">&#9830;</span><span class="label">Topics</span>
+      </a>
+      <a href="./audit-page.html" class="nav-item">
+        <span class="icon">&#10004;</span><span class="label">Audit Dashboard</span>
+      </a>
+      <a href="./insights-page.html" class="nav-item">
+        <span class="icon">&#9878;</span><span class="label">Insights Hub</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9733;</span><span class="label">Gap Analysis</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#10003;</span><span class="label">Quality</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9776;</span><span class="label">Planning</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#128197;</span><span class="label">Calendar</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9670;</span><span class="label">KP Strategy</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#9679;</span><span class="label">Entity Authority</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="icon">&#10010;</span><span class="label">Entity Health</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="avatar">JD</div>
+      <div class="user-info">
+        <div class="user-name">Jane Doe</div>
+        <div class="user-email">jane@example.com</div>
+      </div>
+      <button class="logout-btn" title="Logout">&#10132;</button>
+    </div>
+  </aside>
+
+  <div class="main-wrapper">
+    <div class="breadcrumb-bar">
+      <a href="./projects-page.html">Projects</a>
+      <span class="sep">/</span>
+      <a href="./map-selection-page.html">TechReviews Pro</a>
+      <span class="sep">/</span>
+      <a href="./dashboard-page.html">Laptop Reviews 2025</a>
+      <span class="sep">/</span>
+      <span class="current">Setup Wizard</span>
+    </div>
+    <main class="main-content">
+      <div class="wizard-container">
+        <!-- Stepper -->
+        <div class="stepper">
+          <div class="step completed" onclick="showStep(1)">
+            <div class="step-circle">&#10003;</div>
+            <span class="step-label">Business Info</span>
+          </div>
+          <div class="step-connector done"></div>
+          <div class="step completed" onclick="showStep(2)">
+            <div class="step-circle">&#10003;</div>
+            <span class="step-label">Pillars</span>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step current" onclick="showStep(3)">
+            <div class="step-circle">3</div>
+            <span class="step-label">EAVs</span>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step" onclick="showStep(4)">
+            <div class="step-circle">4</div>
+            <span class="step-label">Competitors</span>
+          </div>
+          <div class="step-connector"></div>
+          <div class="step" onclick="showStep(5)">
+            <div class="step-circle">5</div>
+            <span class="step-label">Blueprint</span>
+          </div>
+        </div>
+
+        <!-- Step 1: Business Info (completed) -->
+        <div class="wizard-card" id="step1" style="display:none;">
+          <h2>Business Information</h2>
+          <div class="description">Define your business context to help the AI generate relevant, targeted content strategies.</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Business Name</label>
+              <input type="text" value="TechReviews Pro" />
+            </div>
+            <div class="form-group">
+              <label>Industry</label>
+              <select><option>Technology</option></select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Website URL</label>
+            <input type="text" value="https://techreviewspro.com" />
+          </div>
+          <div class="form-group">
+            <label>Business Description</label>
+            <textarea>We provide in-depth, unbiased laptop and technology reviews to help consumers make informed purchasing decisions. Our target audience includes tech enthusiasts, professionals, and students.</textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Target Audience</label>
+              <input type="text" value="Tech enthusiasts, professionals, students" />
+            </div>
+            <div class="form-group">
+              <label>Target Region</label>
+              <input type="text" value="United States, Global English" />
+            </div>
+          </div>
+          <div class="wizard-actions">
+            <div></div>
+            <button class="btn-primary" onclick="showStep(2)">Next: Pillars &rarr;</button>
+          </div>
+        </div>
+
+        <!-- Step 2: Pillars (completed) -->
+        <div class="wizard-card" id="step2" style="display:none;">
+          <h2>SEO Pillars</h2>
+          <div class="description">Define the core content pillars that will structure your topical map. Each pillar represents a major theme in your content strategy.</div>
+          <div class="form-group">
+            <label>Current Pillars</label>
+            <div style="margin-bottom:12px;">
+              <span class="pillar-tag">Laptop Reviews <span class="remove">&times;</span></span>
+              <span class="pillar-tag">Buying Guides <span class="remove">&times;</span></span>
+              <span class="pillar-tag">Technical Specs <span class="remove">&times;</span></span>
+              <span class="pillar-tag">Comparisons <span class="remove">&times;</span></span>
+              <span class="pillar-tag">How-To Guides <span class="remove">&times;</span></span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Add New Pillar</label>
+            <div style="display:flex;gap:8px;">
+              <input type="text" placeholder="Enter pillar name..." style="flex:1;" />
+              <button class="btn-primary" style="white-space:nowrap;">Add Pillar</button>
+            </div>
+          </div>
+          <div class="wizard-actions">
+            <button class="btn-secondary" onclick="showStep(1)">&larr; Business Info</button>
+            <button class="btn-primary" onclick="showStep(3)">Next: EAVs &rarr;</button>
+          </div>
+        </div>
+
+        <!-- Step 3: EAVs (current) -->
+        <div class="wizard-card" id="step3">
+          <h2>Entity-Attribute-Value Triples</h2>
+          <div class="description">Define the semantic triples that describe your topic entities. These EAVs help the AI understand the relationships and attributes in your niche.</div>
+
+          <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <span style="font-size:13px;font-weight:500;">EAV Coverage</span>
+              <span style="font-size:13px;color:var(--accent);">68%</span>
+            </div>
+            <div style="height:6px;background:var(--bg-tertiary);border-radius:3px;overflow:hidden;">
+              <div style="width:68%;height:100%;background:var(--accent);border-radius:3px;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:11px;color:var(--text-muted);">
+              <span>42 of 62 entities covered</span>
+              <span>14 gaps detected</span>
+            </div>
+          </div>
+
+          <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:20px;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+              <thead>
+                <tr style="background:var(--bg-secondary);">
+                  <th style="text-align:left;padding:10px 12px;color:var(--text-muted);font-weight:500;">Entity</th>
+                  <th style="text-align:left;padding:10px 12px;color:var(--text-muted);font-weight:500;">Attribute</th>
+                  <th style="text-align:left;padding:10px 12px;color:var(--text-muted);font-weight:500;">Value</th>
+                  <th style="text-align:left;padding:10px 12px;color:var(--text-muted);font-weight:500;">Category</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="border-top:1px solid var(--border);">
+                  <td style="padding:10px 12px;">MacBook Pro M3</td>
+                  <td style="padding:10px 12px;">has_processor</td>
+                  <td style="padding:10px 12px;">Apple M3 Max</td>
+                  <td style="padding:10px 12px;"><span style="padding:2px 8px;border-radius:10px;font-size:10px;background:rgba(59,130,246,0.15);color:var(--accent);">UNIQUE</span></td>
+                </tr>
+                <tr style="border-top:1px solid var(--border);">
+                  <td style="padding:10px 12px;">Dell XPS 15</td>
+                  <td style="padding:10px 12px;">has_display</td>
+                  <td style="padding:10px 12px;">15.6" OLED 3.5K</td>
+                  <td style="padding:10px 12px;"><span style="padding:2px 8px;border-radius:10px;font-size:10px;background:rgba(245,158,11,0.15);color:var(--warning);">RARE</span></td>
+                </tr>
+                <tr style="border-top:1px solid var(--border);">
+                  <td style="padding:10px 12px;">Laptop</td>
+                  <td style="padding:10px 12px;">is_type_of</td>
+                  <td style="padding:10px 12px;">Personal Computer</td>
+                  <td style="padding:10px 12px;"><span style="padding:2px 8px;border-radius:10px;font-size:10px;background:rgba(16,185,129,0.15);color:var(--success);">ROOT</span></td>
+                </tr>
+                <tr style="border-top:1px solid var(--border);">
+                  <td style="padding:10px 12px;">RAM</td>
+                  <td style="padding:10px 12px;">measured_in</td>
+                  <td style="padding:10px 12px;">Gigabytes (GB)</td>
+                  <td style="padding:10px 12px;"><span style="padding:2px 8px;border-radius:10px;font-size:10px;background:var(--bg-tertiary);color:var(--text-secondary);">COMMON</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="form-group">
+            <label>Add New EAV Triple</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;">
+              <input type="text" placeholder="Entity..." />
+              <input type="text" placeholder="Attribute..." />
+              <input type="text" placeholder="Value..." />
+              <button class="btn-primary">Add</button>
+            </div>
+          </div>
+
+          <div class="wizard-actions">
+            <button class="btn-secondary" onclick="showStep(2)">&larr; Pillars</button>
+            <button class="btn-primary" onclick="showStep(4)">Next: Competitors &rarr;</button>
+          </div>
+        </div>
+
+        <!-- Step 4: Competitors -->
+        <div class="wizard-card" id="step4" style="display:none;">
+          <h2>Competitor Analysis</h2>
+          <div class="description">Add competitor URLs to analyze their content strategy and identify gaps in your topical coverage.</div>
+          <div class="form-group">
+            <label>Competitor URLs</label>
+            <input type="text" placeholder="Enter competitor URL..." style="margin-bottom:8px;" />
+            <div style="font-size:12px;color:var(--text-muted);">Added competitors:</div>
+            <div style="margin-top:8px;">
+              <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-secondary);border-radius:6px;margin-bottom:6px;font-size:13px;">
+                <span style="flex:1;">laptopmag.com</span>
+                <span style="color:var(--text-muted);cursor:pointer;">&times;</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-secondary);border-radius:6px;margin-bottom:6px;font-size:13px;">
+                <span style="flex:1;">notebookcheck.net</span>
+                <span style="color:var(--text-muted);cursor:pointer;">&times;</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-secondary);border-radius:6px;font-size:13px;">
+                <span style="flex:1;">rtings.com/laptop</span>
+                <span style="color:var(--text-muted);cursor:pointer;">&times;</span>
+              </div>
+            </div>
+          </div>
+          <div class="wizard-actions">
+            <button class="btn-secondary" onclick="showStep(3)">&larr; EAVs</button>
+            <button class="btn-primary" onclick="showStep(5)">Next: Blueprint &rarr;</button>
+          </div>
+        </div>
+
+        <!-- Step 5: Blueprint -->
+        <div class="wizard-card" id="step5" style="display:none;">
+          <h2>Generate Blueprint</h2>
+          <div class="description">Review your setup and generate the topical map blueprint. The AI will create a comprehensive content strategy based on your inputs.</div>
+          <div style="background:var(--bg-secondary);border-radius:8px;padding:16px;margin-bottom:20px;">
+            <div style="font-size:13px;margin-bottom:12px;">
+              <strong>Summary:</strong>
+            </div>
+            <div style="font-size:12px;color:var(--text-secondary);line-height:1.8;">
+              <div>Business: TechReviews Pro (techreviewspro.com)</div>
+              <div>Pillars: 5 defined</div>
+              <div>EAVs: 42 of 62 entities covered (68%)</div>
+              <div>Competitors: 3 analyzed</div>
+            </div>
+          </div>
+          <div style="text-align:center;padding:20px;">
+            <button class="btn-primary" style="padding:14px 32px;font-size:15px;">Generate Topical Map Blueprint</button>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">This will use AI to create your content strategy</div>
+          </div>
+          <div class="wizard-actions">
+            <button class="btn-secondary" onclick="showStep(4)">&larr; Competitors</button>
+            <div></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function showStep(n) {
+      for (let i = 1; i <= 5; i++) {
+        document.getElementById('step' + i).style.display = i === n ? 'block' : 'none';
+      }
+    }
+  </script>
+</body>
+</html>
