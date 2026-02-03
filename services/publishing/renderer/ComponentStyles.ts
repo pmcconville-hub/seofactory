@@ -246,6 +246,28 @@ export function generateComponentStyles(options: Partial<ComponentStylesOptions>
   margin-top: 0.75rem;
 }
 
+.article-subtitle {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 1.15rem;
+  line-height: 1.6;
+  margin-top: 1rem;
+  max-width: 700px;
+}
+
+.article-meta {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.875rem;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 /* Orange CTA button in header */
 .article-header .cta-button,
 .cta-button-orange {

@@ -389,6 +389,17 @@ test.describe('HTML Visual Structure Validation', () => {
     expect(result.pipelineTelemetry!.brandInfo?.brandName).toBe('TestBrand');
     expect(result.pipelineTelemetry!.brandInfo?.primaryColor).toContain('#');
   });
+
+  test('hero section includes subtitle when article has intro content', async () => {
+    const result = await renderTestArticle({ withBlueprint: true });
+    // Hero should contain the article-header
+    expect(result.html).toContain('article-header');
+    // Hero must have the gradient/styled background from ComponentStyles
+    expect(result.css).toMatch(/\.article-header\s*\{[^}]*background/);
+    // Subtitle and meta CSS should exist
+    expect(result.css).toContain('.article-subtitle');
+    expect(result.css).toContain('.article-meta');
+  });
 });
 
 // ============================================================================

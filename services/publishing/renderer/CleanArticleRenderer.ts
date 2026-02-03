@@ -45,6 +45,8 @@ export interface CleanRenderOutput {
   html: string;
   css: string;
   fullDocument: string; // Complete standalone HTML document
+  /** Pipeline telemetry for debugging and PipelineInspector */
+  pipelineTelemetry?: import('../../../types/publishing').PipelineTelemetry;
 }
 
 /**
@@ -83,6 +85,17 @@ export class CleanArticleRenderer {
   /** Track which content types are actually used for CSS generation */
   private usedContentTypes: Set<ContentType> = new Set();
   private usedEmphasisLevels: Set<EmphasisLevel> = new Set();
+  /** Pipeline telemetry for debugging */
+  private sectionTelemetry: Array<{
+    heading: string;
+    assignedComponent: string;
+    emphasis: string;
+    width: string;
+    renderedAs: string;
+    status: 'ok' | 'fallback' | 'error';
+    fallbackReason?: string;
+  }> = [];
+  private pipelineWarnings: string[] = [];
 
   constructor(
     designDna: DesignDNA,
@@ -107,6 +120,8 @@ export class CleanArticleRenderer {
     // Reset tracking for this render
     this.usedContentTypes.clear();
     this.usedEmphasisLevels.clear();
+    this.sectionTelemetry = [];
+    this.pipelineWarnings = [];
 
     // Generate HTML first (this populates usedContentTypes and usedEmphasisLevels)
     const html = this.generateHTML(article);
@@ -116,7 +131,29 @@ export class CleanArticleRenderer {
 
     const fullDocument = this.wrapInDocument(html, css, article.title);
 
-    return { html, css, fullDocument };
+    // Build pipeline telemetry
+    const pipelineTelemetry: import('../../../types/publishing').PipelineTelemetry = {
+      cssSources: {
+        compiledCss: !!this.compiledCss,
+        componentStyles: true, // Always included now
+        structural: true,
+        compiledCssLength: this.compiledCss?.length,
+      },
+      sectionDecisions: this.sectionTelemetry,
+      brandInfo: {
+        brandName: this.brandName,
+        primaryColor: this.getColor('primary'),
+        secondaryColor: this.getColor('secondary'),
+        accentColor: this.getColor('accent'),
+        headingFont: this.getFont('heading'),
+        bodyFont: this.getFont('body'),
+        personality: this.designDna?.personality?.overall,
+        confidence: this.designDna?.confidence?.overall,
+      },
+      warnings: this.pipelineWarnings,
+    };
+
+    return { html, css, fullDocument, pipelineTelemetry };
   }
 
   // ============================================================================
@@ -126,8 +163,24 @@ export class CleanArticleRenderer {
   private generateHTML(article: ArticleInput): string {
     const parts: string[] = [];
 
-    // Hero section - built dynamically from title
-    parts.push(this.buildHero(article.title));
+    // Extract subtitle from first section if it's an introduction
+    const firstSection = article.sections[0];
+    let subtitle: string | undefined;
+    if (firstSection?.content) {
+      const textOnly = firstSection.content.replace(/<[^>]+>/g, '').trim();
+      const firstSentence = textOnly.match(/^[^.!?]+[.!?]/)?.[0];
+      if (firstSentence && firstSentence.length > 30 && firstSentence.length < 200) {
+        subtitle = firstSentence;
+      }
+    }
+
+    // Estimate read time
+    const totalText = article.sections.map(s => s.content.replace(/<[^>]+>/g, '')).join(' ');
+    const wordCount = totalText.split(/\s+/).length;
+    const readTime = `${Math.max(1, Math.round(wordCount / 200))} min`;
+
+    // Hero section - built dynamically from title, subtitle, and metadata
+    parts.push(this.buildHero(article.title, subtitle, { readTime }));
 
     // Table of contents - built from actual section headings
     const tocItems = article.sections
@@ -234,13 +287,19 @@ export class CleanArticleRenderer {
   }
 
   /**
-   * Build hero section - minimal semantic HTML, NO badges or decorative elements
+   * Build hero section - semantic HTML with optional subtitle and metadata
    */
-  private buildHero(title: string): string {
+  private buildHero(title: string, subtitle?: string, metadata?: { readTime?: string; date?: string }): string {
     return `
 <header class="article-header">
   <div class="article-header-inner">
     <h1>${this.escapeHtml(title)}</h1>
+    ${subtitle ? `<p class="article-subtitle">${this.escapeHtml(subtitle)}</p>` : ''}
+    ${metadata?.readTime || metadata?.date ? `
+    <div class="article-meta">
+      ${metadata.date ? `<span class="meta-item">${this.escapeHtml(metadata.date)}</span>` : ''}
+      ${metadata.readTime ? `<span class="meta-item">${this.escapeHtml(metadata.readTime)}</span>` : ''}
+    </div>` : ''}
   </div>
 </header>`;
   }
@@ -298,23 +357,57 @@ ${listItems}
     // purposefully designed visual components (feature grids, timelines, etc.)
     if (layoutSection && layoutSection.component && layoutSection.layout && layoutSection.emphasis) {
       console.log(`[CleanArticleRenderer] Using ComponentRenderer for ${component}`);
-      return ComponentRenderer.render({
-        sectionId,
-        heading: section.heading || '',
-        headingLevel: section.headingLevel || 2,
-        content: section.content,
-        component: component as ComponentType,
-        variant,
-        layout: layoutSection.layout,
-        emphasis: layoutSection.emphasis,
-        cssClasses: layoutSection.cssClasses,
-      });
+      try {
+        const rendered = ComponentRenderer.render({
+          sectionId,
+          heading: section.heading || '',
+          headingLevel: section.headingLevel || 2,
+          content: section.content,
+          component: component as ComponentType,
+          variant,
+          layout: layoutSection.layout,
+          emphasis: layoutSection.emphasis,
+          cssClasses: layoutSection.cssClasses,
+        });
+        this.sectionTelemetry.push({
+          heading: section.heading || '(untitled)',
+          assignedComponent: component,
+          emphasis: emphasisLevel,
+          width: layoutSection.layout?.width || 'medium',
+          renderedAs: component,
+          status: 'ok',
+        });
+        return rendered;
+      } catch (err) {
+        console.error(`[CleanArticleRenderer] ComponentRenderer failed for ${component}:`, err);
+        this.sectionTelemetry.push({
+          heading: section.heading || '(untitled)',
+          assignedComponent: component,
+          emphasis: emphasisLevel,
+          width: layoutSection.layout?.width || 'medium',
+          renderedAs: 'prose',
+          status: 'error',
+          fallbackReason: String(err),
+        });
+        this.pipelineWarnings.push(`Section "${section.heading || sectionId}" component "${component}" failed: ${String(err)}`);
+        // Fall through to prose rendering below
+      }
     }
 
     // =========================================================================
     // FALLBACK: Simple prose rendering when no Layout Engine blueprint
     // =========================================================================
     console.log(`[CleanArticleRenderer] Fallback prose rendering for ${sectionId}`);
+    this.sectionTelemetry.push({
+      heading: section.heading || '(untitled)',
+      assignedComponent: component,
+      emphasis: emphasisLevel,
+      width: 'medium',
+      renderedAs: 'prose',
+      status: 'fallback',
+      fallbackReason: 'No layout blueprint section available',
+    });
+    this.pipelineWarnings.push(`Section "${section.heading || sectionId}" fell back to prose (no layout blueprint)`);
 
     // Build CSS classes based on inferred content type
     const classes = [
@@ -994,10 +1087,35 @@ ${listItems}
     // This is what makes output "design-agency quality" - the AI generates unique
     // CSS per brand that captures their exact style, not generic fallback styles.
     if (this.compiledCss) {
-      console.log('[CleanArticleRenderer] Using AI-generated compiledCss (design-agency quality)');
-      // compiledCss already has all visual styles via dual selectors (.ctc-card AND .card)
-      // Only add structural layout CSS (widths, grids, spacing, responsive)
-      return `${this.compiledCss}\n\n${this.generateStructuralCSS()}`;
+      console.log('[CleanArticleRenderer] Using AI-generated compiledCss + component visual styles');
+      // CSS Layer Order (bottom to top):
+      // 1. compiledCss: AI-generated brand base styles (colors, fonts, generic selectors)
+      // 2. componentCss: Rich visual component styles (.feature-card, .timeline-item, etc.)
+      //    - These are brand-aware (use extracted colors) and provide backgrounds, shadows,
+      //      gradients, hover effects that compiledCss does NOT include
+      // 3. structuralCSS: Layout-only (grid, flex, spacing, responsive breakpoints)
+      //
+      // CRITICAL: componentCss MUST come AFTER compiledCss so that visual styles
+      // (backgrounds, shadows, borders, hover effects) are not overridden by
+      // compiledCss's generic declarations.
+      const brandColors = {
+        primaryColor: this.getColor('primary'),
+        primaryDark: this.getColor('primaryDark'),
+        secondaryColor: this.getColor('secondary'),
+        accentColor: this.getColor('accent'),
+        textColor: this.getNeutral('dark'),
+        textMuted: this.getNeutral('medium'),
+        backgroundColor: '#ffffff',
+        surfaceColor: this.getNeutral('lightest'),
+        borderColor: this.getNeutral('light'),
+        headingFont: this.getFont('heading'),
+        bodyFont: this.getFont('body'),
+        radiusSmall: this.getRadius('small'),
+        radiusMedium: this.getRadius('medium'),
+        radiusLarge: this.getRadius('large'),
+      };
+      const componentCss = generateComponentStyles(brandColors);
+      return `${this.compiledCss}\n\n${componentCss}\n\n${this.generateStructuralCSS()}`;
     }
 
     console.log('[CleanArticleRenderer] Generating fallback CSS from DesignDNA');
@@ -1064,31 +1182,26 @@ ${listItems}
    * This method adds ONLY positioning, sizing, and structural rules.
    */
   private generateStructuralCSS(): string {
+    // IMPORTANT: This method ONLY contains layout primitives (positioning, sizing,
+    // spacing, responsive breakpoints). ALL component-specific selectors
+    // (.feature-card, .step-item, .faq-item, .timeline-*, etc.) are defined
+    // EXCLUSIVELY in ComponentStyles.ts to prevent CSS cascade conflicts.
+    //
+    // Previous versions duplicated component selectors here with conflicting
+    // structural-only properties (e.g., .feature-card { display: flex; gap: 1rem; })
+    // which overrode ComponentStyles' rich visual properties (backgrounds, shadows,
+    // borders, colors). This caused the "unstyled but structured" appearance.
     return `
 /* ==========================================================================
-   Structural CSS - Layout, grid, spacing, responsive (NO visual styles)
-   Used alongside AI-generated compiledCss which handles all visual styling.
+   Structural CSS - Layout primitives ONLY (no component selectors)
+   ComponentStyles.ts is the single source of truth for all component styling.
    ========================================================================== */
 
-/* Article structure */
-.article-header { margin-bottom: 2rem; text-align: center; }
-.article-toc { margin: 1.5rem auto; max-width: 860px; padding: 1.5rem; }
-.article-toc ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
-.article-toc li a { display: block; padding: 0.5rem 0; text-decoration: none; }
-.section-inner { max-width: 100%; margin-top: 1.5rem; }
-
 /* Section layout structure */
-.section { position: relative; margin: 0; padding: 2rem 0; }
+.section { position: relative; margin: 0; }
 .section-container { max-width: 860px; margin: 0 auto; padding: 0 1.5rem; }
 .section-content { margin-top: 1.5rem; }
-
-/* Heading structure (size only, no color/font) */
-.section-heading { margin-bottom: 1rem; line-height: 1.3; }
-.heading-xl { font-size: 2.1rem; }
-.heading-lg { font-size: 1.75rem; }
-.heading-md { font-size: 1.45rem; }
-.heading-sm { font-size: 1.2rem; }
-.heading-decorated { position: relative; }
+.section-inner { max-width: 100%; margin-top: 1.5rem; }
 
 /* Layout width classes */
 .layout-narrow .section-container { max-width: 680px; }
@@ -1112,129 +1225,25 @@ ${listItems}
 .spacing-after-generous { padding-bottom: 3rem; }
 .spacing-after-dramatic { padding-bottom: 5rem; }
 
-/* Emphasis level spacing (no visual styles — compiledCss handles colors/backgrounds) */
-.emphasis-hero { padding: 3rem 0; margin: 1rem 0; }
-.emphasis-featured { padding: 2.5rem 0; margin: 0.5rem 0; }
-.emphasis-standard { padding: 2rem 0; }
-.emphasis-supporting { padding: 1.5rem 0; }
-.emphasis-minimal { padding: 1rem 0; }
-
-/* Hero structure (positioning only) */
-.hero-content { text-align: center; }
-.hero-lead { max-width: 800px; margin: 0 auto 2rem; }
-.hero-details { display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; margin-top: 2rem; }
-.emphasis-hero .hero-lead { max-width: 720px; margin: 0 auto; }
-
-/* Prose spacing */
-.prose { line-height: 1.7; }
-.prose p { margin-bottom: 1.25rem; }
-
-/* Feature grid structure */
-.feature-grid { display: grid; gap: 1.5rem; }
-.feature-grid.columns-2 { grid-template-columns: repeat(2, 1fr); }
-.feature-grid.columns-3 { grid-template-columns: repeat(3, 1fr); }
-.feature-card { display: flex; gap: 1rem; align-items: flex-start; padding: 1.25rem; }
-.feature-icon { flex-shrink: 0; width: 2.5rem; height: 2.5rem; display: flex; align-items: center; justify-content: center; }
-.feature-content { flex: 1; min-width: 0; }
-
-/* Step list structure */
-.steps-list { list-style: none; padding: 0; counter-reset: step-counter; }
-.step-item { display: flex; gap: 1rem; align-items: flex-start; margin-bottom: 1.5rem; padding: 1rem; }
-.step-number { flex-shrink: 0; width: 2.25rem; height: 2.25rem; display: flex; align-items: center; justify-content: center; }
-.step-content { flex: 1; }
-
-/* FAQ structure */
-.faq-list { list-style: none; padding: 0; }
-.faq-accordion { display: flex; flex-direction: column; gap: 0; }
-.faq-item { padding: 1rem 0; }
-.faq-question { cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
-.faq-icon { flex-shrink: 0; }
-.faq-answer { margin-top: 0.75rem; padding-left: 1.75rem; line-height: 1.6; }
-
-/* Styled list structure */
-.styled-list { list-style: none; padding: 0; }
-.list-item { display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 0.75rem; padding: 0.5rem 0; }
-.list-marker { flex-shrink: 0; line-height: 1.5; }
-.list-content { flex: 1; line-height: 1.6; }
-
-/* Summary/definition box structure */
-.summary-box { display: flex; gap: 1rem; align-items: flex-start; padding: 1.5rem; margin: 1.5rem 0; }
-.summary-icon { flex-shrink: 0; width: 2.5rem; height: 2.5rem; display: flex; align-items: center; justify-content: center; }
-.summary-content { flex: 1; line-height: 1.6; }
-.definition-box { display: flex; gap: 1rem; align-items: flex-start; padding: 1.5rem; margin: 1.5rem 0; }
-.definition-icon { flex-shrink: 0; }
-.definition-content { flex: 1; line-height: 1.6; }
-
-/* Data highlight structure */
-.data-highlight { padding: 2rem; text-align: center; margin: 1.5rem 0; }
-
-/* Testimonial structure */
-.testimonial { padding: 2rem; margin: 1.5rem 0; }
-.testimonial-author { margin-top: 1rem; }
-
-/* Stat grid structure */
-.stat-grid { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
-.stat-card { text-align: center; padding: 1.5rem; }
-
-/* Key takeaways structure */
-.key-takeaways-grid { display: grid; gap: 1rem; }
-.key-takeaways-item { display: flex; gap: 0.75rem; align-items: flex-start; padding: 1rem; }
-.key-takeaways-icon { flex-shrink: 0; }
-
-/* Timeline structure */
-.timeline { position: relative; padding-left: 2rem; }
-.timeline-item { position: relative; margin-bottom: 1.5rem; padding-left: 1.5rem; }
-.timeline-marker { position: absolute; left: -1.5rem; top: 0.25rem; width: 1rem; height: 1rem; }
-.timeline-content { padding-bottom: 0.5rem; }
-
-/* Checklist structure */
-.checklist { list-style: none; padding: 0; }
-.checklist-item { display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 0.75rem; padding: 0.5rem 0; }
-.checklist-icon { flex-shrink: 0; }
-
-/* Card structure */
-.card { overflow: hidden; }
-.card-body { padding: 1.5rem; }
-.card-header { padding: 1.25rem 1.5rem; }
-
-/* CTA structure */
-.cta-actions { margin-top: 1.5rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
-
-/* Table structure */
+/* Generic HTML element resets for standalone documents */
 table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; }
 th { padding: 0.75rem 1rem; text-align: left; }
 td { padding: 0.75rem 1rem; }
-.table-wrapper { overflow-x: auto; margin: 2rem 0; }
-
-/* Blockquote structure */
-blockquote { padding: 1rem 1.5rem; margin: 1.5rem 0; }
-
-/* Image structure */
 figure { margin: 2rem 0; }
 figure img { width: 100%; height: auto; }
 figcaption { text-align: center; margin-top: 0.75rem; }
+blockquote { padding: 1rem 1.5rem; margin: 1.5rem 0; }
 
-/* Accent utilities (structural positioning only) */
-.accent-left { padding-left: 1.5rem; }
-.accent-top { padding-top: 1.5rem; }
-
-/* Responsive */
+/* Responsive breakpoints */
 @media (max-width: 768px) {
-  .feature-grid.columns-2,
-  .feature-grid.columns-3 { grid-template-columns: 1fr; }
   .columns-2-column .section-content,
   .columns-3-column .section-content { column-count: 1; }
   .columns-asymmetric-left .section-content,
   .columns-asymmetric-right .section-content { grid-template-columns: 1fr; }
-  .stat-grid { grid-template-columns: repeat(2, 1fr); }
-  .emphasis-hero { padding: 2rem 0; }
-  .step-item { flex-direction: column; }
-  .summary-box, .definition-box { flex-direction: column; }
   .section-container { padding: 0 1rem; }
 }
 
 @media (max-width: 480px) {
-  .stat-grid { grid-template-columns: 1fr; }
   .section-container { padding: 0 1rem; }
 }
 `;
@@ -2713,8 +2722,15 @@ ${html}
       return type === 'heading' ? "'Georgia', serif" : "'Open Sans', Arial, sans-serif";
     }
 
-    const family = font.family || (type === 'heading' ? 'Georgia' : 'Open Sans');
+    let family = font.family || (type === 'heading' ? 'Georgia' : 'Open Sans');
     const fallback = font.fallback || (type === 'heading' ? 'serif' : 'sans-serif');
+
+    // Clean up: strip existing quotes and fallback stacks from family name
+    // e.g. "'Barlow Semi Condensed', sans-serif" → "Barlow Semi Condensed"
+    family = family.replace(/^['"]|['"]$/g, ''); // strip outer quotes
+    if (family.includes(',')) {
+      family = family.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+    }
 
     return `'${family}', ${fallback}`;
   }
