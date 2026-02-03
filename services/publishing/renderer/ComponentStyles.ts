@@ -317,8 +317,8 @@ section.section-introduction,
 }
 
 /* Hero Emphasis - Navy accent section (NFIR style) */
+/* Note: background is overridden by .emphasis-hero in the Visual Rhythm section below with a gradient */
 .emphasis-hero {
-  background: ${navyDark};
   padding: 3rem 0;
   position: relative;
   overflow: hidden;
@@ -1221,6 +1221,141 @@ section.section-introduction,
 
 .prose-columns-2-column { column-count: 2; column-gap: 2rem; }
 .prose-columns-3-column { column-count: 3; column-gap: 1.5rem; }
+
+/* ------------------------------------------------------------------------- */
+/* ALERT BOX - Warnings, risks, important notes                              */
+/* ------------------------------------------------------------------------- */
+
+.alert-box {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1.25rem 1.5rem;
+  background: ${o.accentColor}0a;
+  border-left: 4px solid ${o.accentColor};
+  border-radius: 0 ${o.radiusMedium} ${o.radiusMedium} 0;
+  margin: 1.5rem 0;
+  color: ${o.textColor};
+  line-height: 1.6;
+}
+
+.alert-box-icon {
+  flex-shrink: 0;
+  font-size: 1.25rem;
+  margin-top: 0.1rem;
+}
+
+.alert-box-content {
+  flex: 1;
+}
+
+.alert-box-content p { margin: 0; }
+.alert-box-content p + p { margin-top: 0.75rem; }
+
+.alert-box-title {
+  font-weight: 700;
+  color: ${o.accentColor};
+  margin-bottom: 0.5rem;
+  font-family: ${o.headingFont};
+}
+
+/* Severity variants */
+.alert-box--warning {
+  background: ${o.accentColor}0a;
+  border-left-color: ${o.accentColor};
+}
+
+.alert-box--info {
+  background: ${o.primaryColor}08;
+  border-left-color: ${o.primaryColor};
+}
+
+.alert-box--success {
+  background: #10b98108;
+  border-left-color: #10b981;
+}
+
+.alert-box--info .alert-box-title { color: ${o.primaryColor}; }
+.alert-box--success .alert-box-title { color: #10b981; }
+
+/* ------------------------------------------------------------------------- */
+/* INFO BOX - Contextual information, tips, definitions                      */
+/* ------------------------------------------------------------------------- */
+
+.info-box {
+  padding: 1.5rem 2rem;
+  background: ${o.primaryColor}06;
+  border-radius: ${o.radiusMedium};
+  margin: 1.5rem 0;
+  color: ${o.textColor};
+  line-height: 1.7;
+}
+
+.info-box p { margin: 0; }
+.info-box p + p { margin-top: 0.75rem; }
+
+.info-box-title {
+  font-weight: 700;
+  color: ${o.primaryDark};
+  margin-bottom: 0.5rem;
+  font-family: ${o.headingFont};
+}
+
+.info-box--highlight {
+  background: ${o.accentColor}08;
+  border-left: 4px solid ${o.accentColor};
+  border-radius: 0 ${o.radiusMedium} ${o.radiusMedium} 0;
+}
+
+/* ------------------------------------------------------------------------- */
+/* LEAD PARAGRAPH - First paragraph with visual accent                       */
+/* ------------------------------------------------------------------------- */
+
+.lead-paragraph {
+  border-left: 4px solid ${o.primaryColor};
+  padding: 0.5rem 0 0.5rem 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.lead-text {
+  font-size: 1.125rem;
+  line-height: 1.7;
+  color: ${o.textColor};
+}
+
+/* ------------------------------------------------------------------------- */
+/* SECTION VISUAL RHYTHM - Alternating backgrounds & accent borders          */
+/* ------------------------------------------------------------------------- */
+
+/* Alternating subtle background tints for visual rhythm */
+.section:nth-child(even):not(.emphasis-hero) .section-container {
+  background: ${o.surfaceColor};
+}
+
+/* Featured sections get left accent border for visual distinction */
+.emphasis-featured .section-container {
+  border-left: 4px solid ${o.primaryColor};
+}
+
+/* Hero sections get gradient background using brand colors */
+.emphasis-hero {
+  background: linear-gradient(135deg, ${navyDark} 0%, ${darkenHex(o.primaryColor, 0.45)} 100%);
+}
+
+/* Visual break line between emphasis level transitions */
+.emphasis-standard + .emphasis-featured,
+.emphasis-supporting + .emphasis-featured,
+.emphasis-featured + .emphasis-standard {
+  border-top: 3px solid ${o.primaryColor}20;
+  margin-top: 0.5rem;
+}
+
+/* Step-number sizing scoped by emphasis level */
+.step-medium .step-number {
+  width: 3rem;
+  height: 3rem;
+  font-size: 1.25rem;
+}
 
 /* ------------------------------------------------------------------------- */
 /* RESPONSIVE ADJUSTMENTS                                                    */

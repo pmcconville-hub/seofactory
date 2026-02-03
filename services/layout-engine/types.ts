@@ -199,7 +199,10 @@ export type ComponentType =
   | 'stat-highlight'
   | 'blockquote'
   | 'definition-box'
-  | 'faq-accordion';
+  | 'faq-accordion'
+  | 'alert-box'
+  | 'info-box'
+  | 'lead-paragraph';
 
 /**
  * Component selection result

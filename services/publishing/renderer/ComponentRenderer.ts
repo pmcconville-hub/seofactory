@@ -206,6 +206,12 @@ export class ComponentRenderer {
         return this.renderBlockquote(processedContent, emphasis);
       case 'definition-box':
         return this.renderDefinitionBox(processedContent, emphasis);
+      case 'alert-box':
+        return this.renderAlertBox(processedContent, emphasis);
+      case 'info-box':
+        return this.renderInfoBox(processedContent, emphasis);
+      case 'lead-paragraph':
+        return this.renderLeadParagraph(processedContent, emphasis);
       case 'prose':
       default:
         return this.renderProse(processedContent, emphasis, layout);
@@ -390,7 +396,22 @@ ${proseHtml}
       // Fall back to parsing numbered patterns from prose
       const steps = this.extractStepsFromProse(content);
       if (steps.length === 0) {
-        console.warn('[ComponentRenderer] renderStepList: No list or numbered steps found - falling back to prose');
+        // Create steps from paragraphs (like renderTimeline does)
+        const paragraphs = blocks.filter(b => b.type === 'paragraph' && b.content && b.content.length > 20);
+        if (paragraphs.length >= 2) {
+          console.log(`[ComponentRenderer] renderStepList: Creating steps from ${paragraphs.length} paragraphs`);
+          return this.renderStepsHtml(
+            paragraphs.slice(0, 8).map(p => p.content || ''),
+            emphasis
+          );
+        }
+        // Final fallback: split content into sentences
+        const sentences = content.replace(/<[^>]+>/g, '').split(/(?<=[.!?])\s+/).filter(s => s.length > 15);
+        if (sentences.length >= 2) {
+          console.log(`[ComponentRenderer] renderStepList: Creating steps from ${sentences.length} sentences`);
+          return this.renderStepsHtml(sentences.slice(0, 8), emphasis);
+        }
+        console.warn('[ComponentRenderer] renderStepList: No structured content found - falling back to prose');
         return this.renderProse(content, { ...emphasis, level: 'standard' }, { columns: '1-column' } as any);
       }
       console.log(`[ComponentRenderer] renderStepList: Extracted ${steps.length} steps from prose`);
@@ -661,6 +682,62 @@ ${proseHtml}
   }
 
   /**
+   * Alert Box - Warning/risk/important note with icon and colored border
+   */
+  private static renderAlertBox(content: string, emphasis: VisualEmphasis): string {
+    const blocks = this.parseContent(content);
+    const text = blocks.map(b => this.renderBlock(b)).join('\n');
+
+    // Detect severity from content
+    const lower = content.toLowerCase();
+    const severity = lower.includes('warning') || lower.includes('waarschuwing') || lower.includes('risico') || lower.includes('risk')
+      ? 'warning'
+      : lower.includes('tip') || lower.includes('info')
+      ? 'info'
+      : 'warning';
+
+    const icons: Record<string, string> = { warning: '\u26A0\uFE0F', info: '\u2139\uFE0F', success: '\u2705' };
+
+    return `
+<aside class="alert-box alert-box--${severity}">
+  <div class="alert-box-icon">${icons[severity]}</div>
+  <div class="alert-box-content">
+    ${text}
+  </div>
+</aside>`;
+  }
+
+  /**
+   * Info Box - Contextual information, tips, definitions
+   */
+  private static renderInfoBox(content: string, emphasis: VisualEmphasis): string {
+    const blocks = this.parseContent(content);
+
+    return `
+<aside class="info-box">
+  <div class="info-box-content">
+    ${blocks.map(b => this.renderBlock(b)).join('\n')}
+  </div>
+</aside>`;
+  }
+
+  /**
+   * Lead Paragraph - First paragraph with visual accent (left border)
+   */
+  private static renderLeadParagraph(content: string, emphasis: VisualEmphasis): string {
+    const blocks = this.parseContent(content);
+    const firstParagraphBlock = blocks.find(b => b.type === 'paragraph');
+    const firstParagraph = firstParagraphBlock?.content || content;
+    const remaining = blocks.filter(b => b !== firstParagraphBlock);
+
+    return `
+<div class="lead-paragraph">
+  <p class="lead-text">${this.processInlineMarkdown(firstParagraph)}</p>
+</div>
+${remaining.length > 0 ? `<div class="prose">${remaining.map(b => this.renderBlock(b)).join('\n')}</div>` : ''}`;
+  }
+
+  /**
    * Prose - Standard paragraphs with proper typography
    * This is the fallback for content that doesn't match other components
    */
@@ -710,54 +787,108 @@ ${proseHtml}
    */
   private static parseContent(content: string): ParsedContentBlock[] {
     const blocks: ParsedContentBlock[] = [];
-    const rawBlocks = content.split(/\n\n+/).filter(b => b.trim());
 
-    for (const raw of rawBlocks) {
-      const trimmed = raw.trim();
+    // First, extract HTML lists before splitting on double newlines
+    // Content generation produces HTML lists (<ul>/<ol>) not markdown lists
+    let remaining = content;
+    const htmlListRegex = /<(ul|ol)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+    const segments: Array<{ type: 'html-list' | 'text'; content: string; tag?: string }> = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
 
-      // Heading
-      const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/m);
-      if (headingMatch) {
-        blocks.push({ type: 'heading', content: headingMatch[2], level: headingMatch[1].length });
-        continue;
+    while ((match = htmlListRegex.exec(remaining)) !== null) {
+      if (match.index > lastIndex) {
+        segments.push({ type: 'text', content: remaining.substring(lastIndex, match.index) });
       }
+      segments.push({ type: 'html-list', content: match[2], tag: match[1] });
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < remaining.length) {
+      segments.push({ type: 'text', content: remaining.substring(lastIndex) });
+    }
 
-      // Table
-      if (trimmed.includes('|') && trimmed.split('\n').length > 1) {
-        const tableData = this.parseMarkdownTable(trimmed);
-        if (tableData) {
-          blocks.push({ type: 'table', content: trimmed, headers: tableData.headers, rows: tableData.rows });
-          continue;
+    for (const segment of segments) {
+      if (segment.type === 'html-list') {
+        // Extract items from HTML list
+        const itemRegex = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+        const items: string[] = [];
+        let itemMatch: RegExpExecArray | null;
+        while ((itemMatch = itemRegex.exec(segment.content)) !== null) {
+          const text = itemMatch[1].trim();
+          if (text) items.push(text);
         }
-      }
-
-      // List
-      if (/^[\*\-\+]\s+/m.test(trimmed) || /^\d+\.\s+/m.test(trimmed)) {
-        const items = trimmed
-          .split('\n')
-          .filter(line => /^[\*\-\+\d\.]\s*/.test(line.trim()))
-          .map(line => line.replace(/^[\*\-\+]\s+/, '').replace(/^\d+\.\s+/, '').trim());
         if (items.length > 0) {
-          blocks.push({ type: 'list', content: trimmed, items });
+          blocks.push({ type: 'list', content: segment.content, items });
+        }
+        continue;
+      }
+
+      // Process text segments with the original markdown-based parsing
+      const rawBlocks = segment.content.split(/\n\n+/).filter(b => b.trim());
+
+      for (const raw of rawBlocks) {
+        const trimmed = raw.trim();
+        if (!trimmed) continue;
+
+        // Heading
+        const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/m);
+        if (headingMatch) {
+          blocks.push({ type: 'heading', content: headingMatch[2], level: headingMatch[1].length });
           continue;
         }
-      }
 
-      // Quote
-      if (trimmed.startsWith('>')) {
-        blocks.push({ type: 'quote', content: trimmed.replace(/^>\s*/gm, '') });
-        continue;
-      }
+        // Table
+        if (trimmed.includes('|') && trimmed.split('\n').length > 1) {
+          const tableData = this.parseMarkdownTable(trimmed);
+          if (tableData) {
+            blocks.push({ type: 'table', content: trimmed, headers: tableData.headers, rows: tableData.rows });
+            continue;
+          }
+        }
 
-      // Image
-      const imgMatch = trimmed.match(/!\[([^\]]*)\]\(([^)]+)\)/);
-      if (imgMatch) {
-        blocks.push({ type: 'image', content: trimmed, alt: imgMatch[1], src: imgMatch[2] });
-        continue;
-      }
+        // Markdown list
+        if (/^[\*\-\+]\s+/m.test(trimmed) || /^\d+\.\s+/m.test(trimmed)) {
+          const items = trimmed
+            .split('\n')
+            .filter(line => /^[\*\-\+\d\.]\s*/.test(line.trim()))
+            .map(line => line.replace(/^[\*\-\+]\s+/, '').replace(/^\d+\.\s+/, '').trim());
+          if (items.length > 0) {
+            blocks.push({ type: 'list', content: trimmed, items });
+            continue;
+          }
+        }
 
-      // Default: paragraph
-      blocks.push({ type: 'paragraph', content: trimmed });
+        // Quote
+        if (trimmed.startsWith('>')) {
+          blocks.push({ type: 'quote', content: trimmed.replace(/^>\s*/gm, '') });
+          continue;
+        }
+
+        // Image
+        const imgMatch = trimmed.match(/!\[([^\]]*)\]\(([^)]+)\)/);
+        if (imgMatch) {
+          blocks.push({ type: 'image', content: trimmed, alt: imgMatch[1], src: imgMatch[2] });
+          continue;
+        }
+
+        // HTML paragraph tags - extract text content
+        if (trimmed.startsWith('<p>') || trimmed.startsWith('<p ')) {
+          const pRegex = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+          let pMatch: RegExpExecArray | null;
+          let foundParagraphs = false;
+          while ((pMatch = pRegex.exec(trimmed)) !== null) {
+            const text = pMatch[1].trim();
+            if (text) {
+              blocks.push({ type: 'paragraph', content: text });
+              foundParagraphs = true;
+            }
+          }
+          if (foundParagraphs) continue;
+        }
+
+        // Default: paragraph
+        blocks.push({ type: 'paragraph', content: trimmed });
+      }
     }
 
     return blocks;
