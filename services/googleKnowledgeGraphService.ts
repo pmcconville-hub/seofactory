@@ -7,6 +7,48 @@ import { resolveEntity as resolveWikidataEntity } from './wikidataService';
 
 const KNOWLEDGE_GRAPH_API_URL = 'https://kgsearch.googleapis.com/v1/entities:search';
 
+export interface KGProxyConfig {
+  supabaseUrl: string;
+  supabaseAnonKey: string;
+}
+
+/**
+ * Fetch via Supabase edge proxy if config available, otherwise direct fetch.
+ * Google KG API may block CORS from some origins.
+ */
+const fetchWithOptionalProxy = async (url: string, proxyConfig?: KGProxyConfig): Promise<Response> => {
+  if (proxyConfig?.supabaseUrl && proxyConfig?.supabaseAnonKey) {
+    const proxyUrl = `${proxyConfig.supabaseUrl}/functions/v1/fetch-proxy`;
+    const response = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${proxyConfig.supabaseAnonKey}`,
+        'apikey': proxyConfig.supabaseAnonKey,
+      },
+      body: JSON.stringify({ url, method: 'GET' }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Edge proxy HTTP error: ${response.status}`);
+    }
+
+    const wrapper = await response.json();
+    if (wrapper.error && !wrapper.body) {
+      throw new Error(`Proxy error: ${wrapper.error}`);
+    }
+
+    const responseBody = wrapper.body ?? '';
+    return new Response(typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody), {
+      status: wrapper.status || 200,
+      statusText: wrapper.statusText || '',
+      headers: { 'Content-Type': wrapper.contentType || 'application/json' },
+    });
+  }
+
+  return fetch(url);
+};
+
 interface KGSearchResponse {
   '@type': string;
   itemListElement?: Array<{
@@ -41,7 +83,8 @@ export async function searchKnowledgeGraph(
   apiKey: string,
   types?: string[],
   limit: number = 10,
-  language: string = 'en'
+  language: string = 'en',
+  proxyConfig?: KGProxyConfig
 ): Promise<KnowledgeGraphEntityResult[]> {
   if (!apiKey) {
     console.warn('[KnowledgeGraphService] No API key provided');
@@ -62,7 +105,7 @@ export async function searchKnowledgeGraph(
   }
 
   try {
-    const response = await fetch(`${KNOWLEDGE_GRAPH_API_URL}?${params}`);
+    const response = await fetchWithOptionalProxy(`${KNOWLEDGE_GRAPH_API_URL}?${params}`, proxyConfig);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -107,9 +150,10 @@ export async function getKnowledgeGraphEntity(
   apiKey: string,
   context?: string,
   types?: string[],
-  language: string = 'en'
+  language: string = 'en',
+  proxyConfig?: KGProxyConfig
 ): Promise<KnowledgeGraphEntityResult | null> {
-  const results = await searchKnowledgeGraph(entityName, apiKey, types, 10, language);
+  const results = await searchKnowledgeGraph(entityName, apiKey, types, 10, language, proxyConfig);
 
   if (!results.length) {
     return null;
@@ -163,7 +207,8 @@ export async function validateEntityAuthority(
   entityName: string,
   domain?: string,
   googleApiKey?: string,
-  language: string = 'en'
+  language: string = 'en',
+  proxyConfig?: KGProxyConfig
 ): Promise<EntityAuthorityResult> {
   const results: EntityAuthorityResult = {
     entityName,
@@ -180,7 +225,7 @@ export async function validateEntityAuthority(
     verifyWikipediaEntity(entityName, domain, language),
     resolveWikidataEntity(entityName, domain || '', undefined, language),
     googleApiKey
-      ? getKnowledgeGraphEntity(entityName, googleApiKey, domain, undefined, language)
+      ? getKnowledgeGraphEntity(entityName, googleApiKey, domain, undefined, language, proxyConfig)
       : Promise.resolve(null)
   ]);
 
@@ -302,7 +347,8 @@ export async function batchValidateAuthority(
   entities: Array<{ name: string; context?: string }>,
   googleApiKey?: string,
   language: string = 'en',
-  delayMs: number = 300
+  delayMs: number = 300,
+  proxyConfig?: KGProxyConfig
 ): Promise<Map<string, EntityAuthorityResult>> {
   const results = new Map<string, EntityAuthorityResult>();
 
@@ -311,7 +357,8 @@ export async function batchValidateAuthority(
       entity.name,
       entity.context,
       googleApiKey,
-      language
+      language,
+      proxyConfig
     );
     results.set(entity.name, result);
 
@@ -358,12 +405,12 @@ export function getKnowledgeGraphTypes(): Record<string, string> {
 /**
  * Check if Google Knowledge Graph API key is valid
  */
-export async function validateApiKey(apiKey: string): Promise<boolean> {
+export async function validateApiKey(apiKey: string, proxyConfig?: KGProxyConfig): Promise<boolean> {
   if (!apiKey) return false;
 
   try {
     // Try a simple search to validate the key
-    const results = await searchKnowledgeGraph('test', apiKey, undefined, 1);
+    const results = await searchKnowledgeGraph('test', apiKey, undefined, 1, 'en', proxyConfig);
     return true; // If we get here without error, key is valid
   } catch (error) {
     return false;
@@ -376,9 +423,10 @@ export async function validateApiKey(apiKey: string): Promise<boolean> {
 export async function getDisambiguationOptions(
   entityName: string,
   apiKey: string,
-  language: string = 'en'
+  language: string = 'en',
+  proxyConfig?: KGProxyConfig
 ): Promise<Array<{ name: string; type: string; description: string; score: number }>> {
-  const results = await searchKnowledgeGraph(entityName, apiKey, undefined, 10, language);
+  const results = await searchKnowledgeGraph(entityName, apiKey, undefined, 10, language, proxyConfig);
 
   return results.map(result => ({
     name: result.name,

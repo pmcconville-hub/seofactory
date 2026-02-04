@@ -15,7 +15,7 @@ import type {
   SemanticTriple,
 } from '../../types';
 
-import { analyzeCompetitorSitemap } from '../serpApiService';
+import { analyzeCompetitorSitemap, ProxyConfig } from '../serpApiService';
 import { extractPageContent } from '../jinaService';
 
 // Progress callback type
@@ -35,10 +35,11 @@ const GENERIC_ANCHORS = [
  */
 export async function discoverPages(
   domain: string,
-  maxPages: number = 100
+  maxPages: number = 100,
+  proxyConfig?: ProxyConfig
 ): Promise<string[]> {
   try {
-    const pages = await analyzeCompetitorSitemap(domain);
+    const pages = await analyzeCompetitorSitemap(domain, proxyConfig);
     return pages.slice(0, maxPages);
   } catch (error) {
     console.error('[CorpusAudit] Error discovering pages:', error);
@@ -494,7 +495,10 @@ export async function runCorpusAudit(
   try {
     // Step 1: Discover pages
     updateProgress('discovering', 'Discovering pages from sitemap...', 0, 0);
-    const pageUrls = await discoverPages(config.domain, config.maxPages || 50);
+    const proxyConfig: ProxyConfig | undefined = businessInfo.supabaseUrl && businessInfo.supabaseAnonKey
+      ? { supabaseUrl: businessInfo.supabaseUrl, supabaseAnonKey: businessInfo.supabaseAnonKey }
+      : undefined;
+    const pageUrls = await discoverPages(config.domain, config.maxPages || 50, proxyConfig);
 
     if (pageUrls.length === 0) {
       throw new Error('No pages found in sitemap');

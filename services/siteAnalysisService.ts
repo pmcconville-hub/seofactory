@@ -15,7 +15,7 @@ import {
   ApifyTechnicalData
 } from '../types';
 import { extractPageContent, generateContentHash } from './jinaService';
-import { parseSitemap, discoverSitemap, analyzeSitemapStructure, SitemapUrl } from './sitemapService';
+import { parseSitemap, discoverSitemap, analyzeSitemapStructure, SitemapUrl, ProxyConfig } from './sitemapService';
 import { importGscCsv, groupQueriesByPage, GscPagesRow } from './gscImportService';
 import { ALL_AUDIT_RULES, PHASE_CONFIG, AuditRule, getRulesByPhase } from '../config/pageAuditRules';
 import { AppAction } from '../state/appState';
@@ -65,7 +65,7 @@ export const initFromSitemap = async (
   project: SiteAnalysisProject,
   sitemapUrl: string,
   dispatch: React.Dispatch<AppAction>,
-  options?: { maxUrls?: number; filterPattern?: RegExp }
+  options?: { maxUrls?: number; filterPattern?: RegExp; proxyConfig?: ProxyConfig }
 ): Promise<SiteAnalysisProject> => {
   dispatch({
     type: 'LOG_EVENT',
@@ -76,6 +76,7 @@ export const initFromSitemap = async (
     followSitemapIndex: true,
     maxUrls: options?.maxUrls || 1000,
     filterPattern: options?.filterPattern,
+    proxyConfig: options?.proxyConfig,
   });
 
   if (result.errors.length > 0) {
@@ -207,7 +208,8 @@ export const initFromGscCsv = async (
 export const initFromUrl = async (
   project: SiteAnalysisProject,
   url: string,
-  dispatch: React.Dispatch<AppAction>
+  dispatch: React.Dispatch<AppAction>,
+  proxyConfig?: ProxyConfig
 ): Promise<SiteAnalysisProject> => {
   dispatch({
     type: 'LOG_EVENT',
@@ -224,7 +226,7 @@ export const initFromUrl = async (
   }
 
   // Try to discover sitemap
-  const sitemapUrls = await discoverSitemap(domain);
+  const sitemapUrls = await discoverSitemap(domain, proxyConfig);
 
   if (sitemapUrls.length > 0) {
     dispatch({
@@ -232,7 +234,7 @@ export const initFromUrl = async (
       payload: { service: 'SiteAnalysis', message: `Found sitemap: ${sitemapUrls[0]}`, status: 'info', timestamp: Date.now() }
     });
 
-    return initFromSitemap({ ...project, domain: normalizeDomain(domain) }, sitemapUrls[0], dispatch);
+    return initFromSitemap({ ...project, domain: normalizeDomain(domain) }, sitemapUrls[0], dispatch, { proxyConfig });
   }
 
   // No sitemap found - start with the single URL

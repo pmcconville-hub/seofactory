@@ -118,9 +118,9 @@ const parseSitemapXml = (xmlText: string): { sitemapUrls: string[], pageUrls: st
 };
 
 
-const discoverSitemapUrls = async (domain: string): Promise<string[]> => {
+const discoverSitemapUrls = async (domain: string, proxyConfig?: ProxyConfig): Promise<string[]> => {
     try {
-        const response = await fetchWithProxy(`https://${domain}/robots.txt`);
+        const response = await fetchWithProxy(`https://${domain}/robots.txt`, undefined, proxyConfig);
         if (response.ok) {
             const text = await response.text();
             const matches = text.match(/Sitemap:\s*(.*)/gi);
@@ -136,7 +136,7 @@ const discoverSitemapUrls = async (domain: string): Promise<string[]> => {
     for (const path of commonPaths) {
         try {
             const sitemapUrl = `https://${domain}${path}`;
-            const response = await fetchWithProxy(sitemapUrl);
+            const response = await fetchWithProxy(sitemapUrl, undefined, proxyConfig);
             if (response.ok) {
                 return [sitemapUrl];
             }
@@ -149,9 +149,9 @@ const discoverSitemapUrls = async (domain: string): Promise<string[]> => {
 };
 
 
-export const analyzeCompetitorSitemap = async (domain: string): Promise<string[]> => {
+export const analyzeCompetitorSitemap = async (domain: string, proxyConfig?: ProxyConfig): Promise<string[]> => {
     const fetchFn = async () => {
-        const initialSitemapUrls = await discoverSitemapUrls(domain);
+        const initialSitemapUrls = await discoverSitemapUrls(domain, proxyConfig);
         if (initialSitemapUrls.length === 0) {
             throw new Error(`No sitemap found for ${domain}`);
         }
@@ -170,7 +170,7 @@ export const analyzeCompetitorSitemap = async (domain: string): Promise<string[]
             console.log(`Processing sitemap: ${currentSitemapUrl}`);
 
             try {
-                const response = await fetchWithProxy(currentSitemapUrl);
+                const response = await fetchWithProxy(currentSitemapUrl, undefined, proxyConfig);
                 if (!response.ok) {
                     console.warn(`Failed to fetch sitemap: ${currentSitemapUrl}`);
                     continue;
@@ -193,7 +193,7 @@ export const analyzeCompetitorSitemap = async (domain: string): Promise<string[]
 
         return Array.from(allPageUrls);
     };
-    
+
     // Cache sitemap analysis for 6 hours
     return cacheService.cacheThrough('sitemap', { domain }, fetchFn, 21600);
 };

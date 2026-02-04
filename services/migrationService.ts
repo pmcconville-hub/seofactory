@@ -67,18 +67,66 @@ const parseGscPagesCsv = (csvText: string): Promise<{ url: string; clicks: numbe
     });
 };
 
-const CORS_PROXY_URL = `https://corsproxy.io/?`;
+export interface MigrationProxyConfig {
+    supabaseUrl: string;
+    supabaseAnonKey: string;
+}
 
-const fetchWithProxy = async (url: string): Promise<Response> => {
-    const proxyUrl = `${CORS_PROXY_URL}${encodeURIComponent(url)}`;
-    const response = await fetch(proxyUrl);
-    if (!response.ok) {
-        throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
+const fetchWithProxy = async (url: string, proxyConfig?: MigrationProxyConfig): Promise<Response> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    try {
+        // Preferred: use Supabase fetch-proxy edge function
+        if (proxyConfig?.supabaseUrl && proxyConfig?.supabaseAnonKey) {
+            const proxyUrl = `${proxyConfig.supabaseUrl}/functions/v1/fetch-proxy`;
+            const response = await fetch(proxyUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${proxyConfig.supabaseAnonKey}`,
+                    'apikey': proxyConfig.supabaseAnonKey,
+                },
+                body: JSON.stringify({ url, method: 'GET' }),
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`Edge proxy HTTP error: ${response.status} ${response.statusText}`);
+            }
+
+            const wrapper = await response.json();
+            if (wrapper.error && !wrapper.body) {
+                throw new Error(`Proxy error: ${wrapper.error}`);
+            }
+
+            const responseBody = wrapper.body ?? '';
+            return new Response(typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody), {
+                status: wrapper.status || 0,
+                statusText: wrapper.statusText || '',
+                headers: { 'Content-Type': wrapper.contentType || 'text/xml' },
+            });
+        }
+
+        // Fallback: direct fetch (will fail with CORS in browser)
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
+        }
+        return response;
+    } catch (error) {
+        clearTimeout(timeoutId);
+        if (error instanceof DOMException && error.name === 'AbortError') {
+            throw new Error('The request timed out after 30 seconds.');
+        }
+        throw error;
     }
-    return response;
 };
 
-export const fetchAndParseSitemap = async (sitemapUrl: string, onStatusUpdate?: (msg: string) => void): Promise<string[]> => {
+export const fetchAndParseSitemap = async (sitemapUrl: string, onStatusUpdate?: (msg: string) => void, proxyConfig?: MigrationProxyConfig): Promise<string[]> => {
     const urls = new Set<string>();
     const processedSitemaps = new Set<string>();
     const queue = [sitemapUrl];
@@ -92,7 +140,7 @@ export const fetchAndParseSitemap = async (sitemapUrl: string, onStatusUpdate?: 
         if (onStatusUpdate) onStatusUpdate(`Fetching ${currentUrl}...`);
 
         try {
-            const response = await fetchWithProxy(currentUrl);
+            const response = await fetchWithProxy(currentUrl, proxyConfig);
             const xmlText = await response.text();
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(xmlText, "text/xml");

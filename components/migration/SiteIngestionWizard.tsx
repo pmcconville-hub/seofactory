@@ -54,7 +54,11 @@ export const SiteIngestionWizard: React.FC<SiteIngestionWizardProps> = ({ isOpen
         setSuccessCount(null);
 
         try {
-            const urls = await migrationService.fetchAndParseSitemap(sitemapUrl, (msg) => setStatusMessage(msg));
+            const urls = await migrationService.fetchAndParseSitemap(
+                sitemapUrl,
+                (msg) => setStatusMessage(msg),
+                { supabaseUrl: businessInfo.supabaseUrl, supabaseAnonKey: businessInfo.supabaseAnonKey }
+            );
             
             if (urls.length === 0) {
                 throw new Error("No URLs found in the provided sitemap.");

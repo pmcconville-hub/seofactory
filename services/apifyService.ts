@@ -9,6 +9,11 @@ const WEB_SCRAPER_ACTOR_ID = 'apify/web-scraper';
 const GOOGLE_SEARCH_ACTOR_ID = 'apify/google-search-scraper';
 const WEBSITE_CONTENT_CRAWLER_ID = 'apify/website-content-crawler';
 
+export interface ApifyProxyConfig {
+  supabaseUrl: string;
+  supabaseAnonKey: string;
+}
+
 interface ApifyRun {
   id: string;
   actorId: string;
@@ -20,16 +25,75 @@ interface ApifyRun {
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-export const runApifyActor = async (actorId: string, apiToken: string, runInput: any): Promise<any[]> => {
+/**
+ * Fetch via Supabase edge proxy if config available, otherwise direct fetch.
+ * Apify API may block CORS from some browser origins.
+ */
+const apifyFetch = async (
+  url: string,
+  options?: RequestInit,
+  proxyConfig?: ApifyProxyConfig
+): Promise<Response> => {
+  if (proxyConfig?.supabaseUrl && proxyConfig?.supabaseAnonKey) {
+    const proxyUrl = `${proxyConfig.supabaseUrl}/functions/v1/fetch-proxy`;
+    const method = options?.method || 'GET';
+    const customHeaders: Record<string, string> = {};
+    if (options?.headers) {
+      const h = options.headers;
+      if (h instanceof Headers) {
+        h.forEach((v, k) => { customHeaders[k] = v; });
+      } else if (Array.isArray(h)) {
+        h.forEach(([k, v]) => { customHeaders[k] = v; });
+      } else {
+        Object.assign(customHeaders, h);
+      }
+    }
+
+    const proxyBody: Record<string, unknown> = { url, method, headers: customHeaders };
+    if (options?.body) {
+      proxyBody.body = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
+    }
+
+    const response = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${proxyConfig.supabaseAnonKey}`,
+        'apikey': proxyConfig.supabaseAnonKey,
+      },
+      body: JSON.stringify(proxyBody),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Edge proxy HTTP error: ${response.status} ${response.statusText}`);
+    }
+
+    const wrapper = await response.json();
+    if (wrapper.error && !wrapper.body) {
+      throw new Error(`Proxy error: ${wrapper.error}`);
+    }
+
+    const responseBody = wrapper.body ?? '';
+    return new Response(typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody), {
+      status: wrapper.status || 200,
+      statusText: wrapper.statusText || '',
+      headers: { 'Content-Type': wrapper.contentType || 'application/json' },
+    });
+  }
+
+  return fetch(url, options);
+};
+
+export const runApifyActor = async (actorId: string, apiToken: string, runInput: any, proxyConfig?: ApifyProxyConfig): Promise<any[]> => {
   const startRunUrl = `${API_BASE_URL}/acts/${actorId.replace('/', '~')}/runs?token=${apiToken}`;
 
   console.log('[Apify] Starting actor:', actorId, 'with', runInput.startUrls?.length || 0, 'URLs');
 
-  const startResponse = await fetch(startRunUrl, {
+  const startResponse = await apifyFetch(startRunUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(runInput)
-  });
+  }, proxyConfig);
 
   if (!startResponse.ok) {
     const errorText = await startResponse.text();
@@ -46,7 +110,7 @@ export const runApifyActor = async (actorId: string, apiToken: string, runInput:
   for (let i = 0; i < maxRetries; i++) {
     await sleep(5000);
     const statusUrl = `${API_BASE_URL}/actor-runs/${run.id}?token=${apiToken}`;
-    const statusResponse = await fetch(statusUrl);
+    const statusResponse = await apifyFetch(statusUrl, undefined, proxyConfig);
     if (!statusResponse.ok) {
       console.error('[Apify] Status check failed:', statusResponse.status);
       throw new Error(`Apify status check failed (${statusResponse.status}): ${statusResponse.statusText}`);
@@ -62,7 +126,7 @@ export const runApifyActor = async (actorId: string, apiToken: string, runInput:
 
   console.log('[Apify] Fetching results from dataset:', run.defaultDatasetId);
   const resultsUrl = `${API_BASE_URL}/datasets/${run.defaultDatasetId}/items?token=${apiToken}&format=json`;
-  const resultsResponse = await fetch(resultsUrl);
+  const resultsResponse = await apifyFetch(resultsUrl, undefined, proxyConfig);
   if (!resultsResponse.ok) throw new Error(`Apify fetch results failed: ${resultsResponse.statusText}`);
 
   const results = await resultsResponse.json();
@@ -84,7 +148,7 @@ export const countryNameToCode = (name: string): string | undefined => {
   return map[name.toLowerCase().trim()];
 };
 
-export const collectSerpIntelligence = async (query: string, apiToken: string, targetMarket: string, languageCode: string): Promise<FullSerpData> => {
+export const collectSerpIntelligence = async (query: string, apiToken: string, targetMarket: string, languageCode: string, proxyConfig?: ApifyProxyConfig): Promise<FullSerpData> => {
   if (!apiToken) {
     console.warn("Apify API token not configured. Skipping competitive intelligence gathering.");
     return { organicResults: [], peopleAlsoAsk: [], relatedQueries: [] };
@@ -101,7 +165,7 @@ export const collectSerpIntelligence = async (query: string, apiToken: string, t
     includeRelatedQueries: true,
   };
 
-  const results = await runApifyActor(GOOGLE_SEARCH_ACTOR_ID, apiToken, runInput);
+  const results = await runApifyActor(GOOGLE_SEARCH_ACTOR_ID, apiToken, runInput, proxyConfig);
   if (!Array.isArray(results) || results.length === 0) {
     return { organicResults: [], peopleAlsoAsk: [], relatedQueries: [] };
   }
@@ -119,7 +183,7 @@ export const collectSerpIntelligence = async (query: string, apiToken: string, t
   };
 };
 
-export const scrapeCompetitorContent = async (urls: string[], apiToken: string): Promise<ScrapedContent[]> => {
+export const scrapeCompetitorContent = async (urls: string[], apiToken: string, proxyConfig?: ApifyProxyConfig): Promise<ScrapedContent[]> => {
   if (!apiToken || urls.length === 0) {
     return [];
   }
@@ -156,7 +220,7 @@ export const scrapeCompetitorContent = async (urls: string[], apiToken: string):
       };`
   };
 
-  const results = await runApifyActor(WEBSITE_CONTENT_CRAWLER_ID, apiToken, runInput);
+  const results = await runApifyActor(WEBSITE_CONTENT_CRAWLER_ID, apiToken, runInput, proxyConfig);
 
   return results.map(item => ({
     url: item.url,
@@ -176,13 +240,14 @@ export const scrapeCompetitorContent = async (urls: string[], apiToken: string):
  */
 export const extractPageTechnicalData = async (
   url: string,
-  apiToken: string
+  apiToken: string,
+  proxyConfig?: ApifyProxyConfig
 ): Promise<ApifyPageData | null> => {
   if (!apiToken) {
     throw new Error('Apify API token is required for technical extraction');
   }
 
-  const results = await extractMultiplePagesTechnicalData([url], apiToken);
+  const results = await extractMultiplePagesTechnicalData([url], apiToken, undefined, proxyConfig);
   return results[0] || null;
 };
 
@@ -193,7 +258,8 @@ export const extractPageTechnicalData = async (
 export const extractMultiplePagesTechnicalData = async (
   urls: string[],
   apiToken: string,
-  onProgress?: (completed: number, total: number) => void
+  onProgress?: (completed: number, total: number) => void,
+  proxyConfig?: ApifyProxyConfig
 ): Promise<ApifyPageData[]> => {
   if (!apiToken) {
     throw new Error('Apify API token is required for technical extraction');
@@ -429,7 +495,7 @@ export const extractMultiplePagesTechnicalData = async (
     pseudoUrls: [],
   };
 
-  const results = await runApifyActor(WEB_SCRAPER_ACTOR_ID, apiToken, runInput);
+  const results = await runApifyActor(WEB_SCRAPER_ACTOR_ID, apiToken, runInput, proxyConfig);
 
   return results.map(item => ({
     url: item.url,
@@ -458,7 +524,8 @@ export const extractMultiplePagesTechnicalData = async (
 export const startAsyncTechnicalExtraction = async (
   urls: string[],
   apiToken: string,
-  webhookUrl?: string
+  webhookUrl?: string,
+  proxyConfig?: ApifyProxyConfig
 ): Promise<string> => {
   if (!apiToken) {
     throw new Error('Apify API token is required');
@@ -499,11 +566,11 @@ export const startAsyncTechnicalExtraction = async (
     }];
   }
 
-  const response = await fetch(startRunUrl, {
+  const response = await apifyFetch(startRunUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  });
+  }, proxyConfig);
 
   if (!response.ok) {
     throw new Error(`Failed to start Apify run: ${await response.text()}`);
@@ -518,10 +585,11 @@ export const startAsyncTechnicalExtraction = async (
  */
 export const checkApifyRunStatus = async (
   runId: string,
-  apiToken: string
+  apiToken: string,
+  proxyConfig?: ApifyProxyConfig
 ): Promise<{ status: string; datasetId?: string }> => {
   const statusUrl = `${API_BASE_URL}/actor-runs/${runId}?token=${apiToken}`;
-  const response = await fetch(statusUrl);
+  const response = await apifyFetch(statusUrl, undefined, proxyConfig);
 
   if (!response.ok) {
     throw new Error(`Failed to check Apify run status: ${response.status} ${response.statusText}`);
@@ -540,10 +608,11 @@ export const checkApifyRunStatus = async (
  */
 export const fetchApifyDatasetResults = async <T>(
   datasetId: string,
-  apiToken: string
+  apiToken: string,
+  proxyConfig?: ApifyProxyConfig
 ): Promise<T[]> => {
   const resultsUrl = `${API_BASE_URL}/datasets/${datasetId}/items?token=${apiToken}&format=json`;
-  const response = await fetch(resultsUrl);
+  const response = await apifyFetch(resultsUrl, undefined, proxyConfig);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch dataset: ${response.statusText}`);
