@@ -886,7 +886,8 @@ export async function runQueryNetworkAudit(
         config.seedKeyword,
         config.targetDomain,
         businessInfo.googleKnowledgeGraphApiKey,
-        config.language
+        config.language,
+        { supabaseUrl: businessInfo.supabaseUrl, supabaseAnonKey: businessInfo.supabaseAnonKey }
       );
     }
 

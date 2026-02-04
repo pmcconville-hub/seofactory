@@ -1,5 +1,5 @@
 
-import { runApifyActor } from '../apifyService';
+import { runApifyActor, ApifyProxyConfig } from '../apifyService';
 
 export interface RawDesignTokens {
   colors: {
@@ -38,7 +38,7 @@ export const DesignAnalyzer = {
   /**
    * extracting raw computed styles from a URL
    */
-  async analyzeUrl(url: string, apiToken: string): Promise<RawDesignTokens | null> {
+  async analyzeUrl(url: string, apiToken: string, proxyConfig?: ApifyProxyConfig): Promise<RawDesignTokens | null> {
     if (!apiToken) {
       throw new Error('Apify API token is required for design analysis');
     }
@@ -273,7 +273,7 @@ export const DesignAnalyzer = {
     };
 
     try {
-      const results = await runApifyActor(WEB_SCRAPER_ACTOR_ID, apiToken, runInput);
+      const results = await runApifyActor(WEB_SCRAPER_ACTOR_ID, apiToken, runInput, proxyConfig);
 
       if (!results || results.length === 0) {
         console.warn('[DesignAnalyzer] No results returned from Apify');

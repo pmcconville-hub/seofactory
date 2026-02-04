@@ -137,7 +137,9 @@ async function analyzeTechnicalData(
     // TODO: Consider adding pagination support if needed
     const pages = await extractMultiplePagesTechnicalData(
       [startUrl],
-      config.apifyToken
+      config.apifyToken,
+      undefined,
+      config.proxyConfig
     );
 
     onProgress?.({

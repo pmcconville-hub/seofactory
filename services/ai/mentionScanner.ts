@@ -103,7 +103,8 @@ export async function validateEntityIdentity(
     entityName,
     domain,
     businessInfo.googleKnowledgeGraphApiKey,
-    businessInfo.language || 'en'
+    businessInfo.language || 'en',
+    { supabaseUrl: businessInfo.supabaseUrl, supabaseAnonKey: businessInfo.supabaseAnonKey }
   );
 }
 

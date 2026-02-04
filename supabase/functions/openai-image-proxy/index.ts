@@ -7,6 +7,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { decrypt } from "../_shared/crypto.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,16 +41,17 @@ serve(async (req: Request) => {
       );
     }
 
-    // Create Supabase client with user's auth
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    // Create Supabase clients
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || Deno.env.get("PROJECT_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("ANON_KEY")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SERVICE_ROLE_KEY")!;
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     });
 
     // Verify user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await supabaseAuth.auth.getUser();
     if (userError || !user) {
       return new Response(
         JSON.stringify({ error: "Invalid authentication" }),
@@ -57,24 +59,28 @@ serve(async (req: Request) => {
       );
     }
 
-    // Get user's OpenAI API key from settings
-    const { data: settings, error: settingsError } = await supabase
+    // Use service role client to read settings (settings_data column with AES-GCM encrypted keys)
+    const serviceClient = createClient(supabaseUrl, serviceRoleKey);
+    const { data: settings, error: settingsError } = await serviceClient
       .from('user_settings')
-      .select('openai_api_key_encrypted')
+      .select('settings_data')
       .eq('user_id', user.id)
       .single();
 
-    if (settingsError || !settings?.openai_api_key_encrypted) {
+    const settingsData = settings?.settings_data as Record<string, any> | null;
+    if (settingsError || !settingsData?.openai_api_key) {
       return new Response(
         JSON.stringify({ error: "OpenAI API key not configured. Please add it in Settings." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Decrypt the API key (simple base64 for now, same as frontend)
+    // Decrypt the API key using AES-GCM (same as get-settings)
     let openaiKey: string;
     try {
-      openaiKey = atob(settings.openai_api_key_encrypted);
+      const decrypted = await decrypt(settingsData.openai_api_key);
+      if (!decrypted) throw new Error("Decryption returned null");
+      openaiKey = decrypted;
     } catch {
       return new Response(
         JSON.stringify({ error: "Failed to decrypt OpenAI API key" }),

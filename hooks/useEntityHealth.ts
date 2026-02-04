@@ -39,7 +39,8 @@ export interface UseEntityHealthReturn {
     eavs: SemanticTriple[],
     centralEntity: string,
     coreTopicIds?: string[],
-    googleApiKey?: string
+    googleApiKey?: string,
+    proxyConfig?: { supabaseUrl: string; supabaseAnonKey: string }
   ) => Promise<void>;
 
   markProprietary: (entityName: string) => void;
@@ -91,7 +92,8 @@ export function useEntityHealth(
       eavs: SemanticTriple[],
       centralEntity: string,
       coreTopicIds?: string[],
-      googleApiKey?: string
+      googleApiKey?: string,
+      proxyConfig?: { supabaseUrl: string; supabaseAnonKey: string }
     ): Promise<void> => {
       console.log('[useEntityHealth] Starting entity health analysis...', {
         eavCount: eavs.length,
@@ -119,7 +121,8 @@ export function useEntityHealth(
             console.log('[useEntityHealth] Progress update:', progressUpdate);
             setProgress(progressUpdate);
           },
-          googleApiKey
+          googleApiKey,
+          proxyConfig
         );
 
         console.log('[useEntityHealth] Analysis complete:', {

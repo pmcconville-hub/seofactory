@@ -86,7 +86,13 @@ export async function fetchHtml(
   if (config.apifyToken) {
     try {
       console.log(`[HtmlFetcher] Trying Apify for ${url}`);
-      const apifyResult = await extractPageTechnicalData(url, config.apifyToken);
+      const apifyResult = await extractPageTechnicalData(
+        url,
+        config.apifyToken,
+        config.supabaseUrl && config.supabaseAnonKey
+          ? { supabaseUrl: config.supabaseUrl, supabaseAnonKey: config.supabaseAnonKey }
+          : undefined
+      );
       if (apifyResult?.html && apifyResult.html.length > 500) {
         console.log(`[HtmlFetcher] Apify success for ${url}, size: ${apifyResult.html.length}`);
         return { html: apifyResult.html, provider: 'apify' };

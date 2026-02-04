@@ -1,4 +1,4 @@
-import { runApifyActor } from '../apifyService';
+import { runApifyActor, ApifyProxyConfig } from '../apifyService';
 import type {
   BrandDiscoveryReport,
   DesignFinding,
@@ -17,7 +17,7 @@ export const BrandDiscoveryService = {
   /**
    * Analyze a URL and generate a complete Brand Discovery Report
    */
-  async analyze(url: string, apiToken: string): Promise<BrandDiscoveryReport> {
+  async analyze(url: string, apiToken: string, proxyConfig?: ApifyProxyConfig): Promise<BrandDiscoveryReport> {
     if (!apiToken) {
       throw new Error('Apify API token is required');
     }
@@ -441,7 +441,7 @@ export const BrandDiscoveryService = {
     };
 
     console.log('[BrandDiscovery] Starting Apify playwright-scraper for URL:', url);
-    const results = await runApifyActor(PLAYWRIGHT_SCRAPER_ACTOR_ID, apiToken, runInput);
+    const results = await runApifyActor(PLAYWRIGHT_SCRAPER_ACTOR_ID, apiToken, runInput, proxyConfig);
 
     console.log('[BrandDiscovery] Apify returned', results?.length || 0, 'results');
 

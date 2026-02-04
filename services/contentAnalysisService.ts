@@ -389,6 +389,8 @@ export async function analyzeCompetitorContent(
     skipCache?: boolean;
     jinaApiKey?: string;
     onProgress?: (completed: number, total: number, currentUrl: string) => void;
+    supabaseUrl?: string;
+    supabaseAnonKey?: string;
   } = {}
 ): Promise<CompetitorContentAnalysisResult> {
   const analyses: ContentLayerAnalysis[] = [];
@@ -406,7 +408,10 @@ export async function analyzeCompetitorContent(
       if (!options.jinaApiKey) {
         throw new Error('Jina API key required to fetch competitor content');
       }
-      const jinaResult = await extractPageContent(url, options.jinaApiKey);
+      const proxyConfig = options.supabaseUrl && options.supabaseAnonKey
+        ? { supabaseUrl: options.supabaseUrl, supabaseAnonKey: options.supabaseAnonKey }
+        : undefined;
+      const jinaResult = await extractPageContent(url, options.jinaApiKey, proxyConfig);
       if (!jinaResult?.content) continue;
 
       const parsedContent = parseMarkdownContent(jinaResult.content);

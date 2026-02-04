@@ -148,7 +148,7 @@ async function extractWithProvider(
 
     case 'apify':
       if (apifyToken) {
-        const apifyResults = await extractMultiplePagesTechnicalData([url], apifyToken);
+        const apifyResults = await extractMultiplePagesTechnicalData([url], apifyToken, undefined, proxyConfig);
         technical = apifyResults[0] || null;
       }
       break;
@@ -332,7 +332,8 @@ export const extractPages = async (
             total,
             errors: extractionErrors,
           });
-        }
+        },
+        proxyConfig
       );
 
       // Map results by URL

@@ -235,13 +235,13 @@ Deno.serve(async (req: Request) => {
           }
         }
 
-        // Log audit event
+        // Log audit event (p_target_id is UUID, Stripe IDs are strings - pass in p_new_value instead)
         await serviceClient.rpc('log_audit_event', {
           p_org_id: organizationId,
           p_action: event.type === 'customer.subscription.created' ? 'subscription.created' : 'subscription.updated',
           p_target_type: 'subscription',
-          p_target_id: subscription.id,
           p_new_value: {
+            stripe_subscription_id: subscription.id,
             status: subscription.status,
             items: subscription.items.data.map((i: any) => i.price.id),
           },
@@ -278,12 +278,14 @@ Deno.serve(async (req: Request) => {
           console.log('[stripe-webhook] Canceled subscription for org:', org.id);
         }
 
-        // Log audit event
+        // Log audit event (p_target_id is UUID, Stripe IDs are strings - pass in p_new_value instead)
         await serviceClient.rpc('log_audit_event', {
           p_org_id: org.id,
           p_action: 'subscription.canceled',
           p_target_type: 'subscription',
-          p_target_id: subscription.id,
+          p_new_value: {
+            stripe_subscription_id: subscription.id,
+          },
         });
         break;
       }
@@ -333,12 +335,14 @@ Deno.serve(async (req: Request) => {
 
           console.log('[stripe-webhook] Payment failed for org:', org.id);
 
-          // Log audit event
+          // Log audit event (p_target_id is UUID, Stripe IDs are strings - pass in p_new_value instead)
           await serviceClient.rpc('log_audit_event', {
             p_org_id: org.id,
             p_action: 'payment.failed',
             p_target_type: 'invoice',
-            p_target_id: invoice.id,
+            p_new_value: {
+              stripe_invoice_id: invoice.id,
+            },
           });
         }
         break;

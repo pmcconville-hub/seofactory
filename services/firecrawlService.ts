@@ -6,6 +6,70 @@ import { ApifyPageData } from '../types';
 
 const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v1/scrape';
 
+export interface FirecrawlProxyConfig {
+  supabaseUrl: string;
+  supabaseAnonKey: string;
+}
+
+/**
+ * Fetch via Supabase edge proxy if config available, otherwise direct fetch.
+ * Firecrawl API blocks CORS from browser origins.
+ */
+const firecrawlFetch = async (
+  url: string,
+  options?: RequestInit,
+  proxyConfig?: FirecrawlProxyConfig
+): Promise<Response> => {
+  if (proxyConfig?.supabaseUrl && proxyConfig?.supabaseAnonKey) {
+    const proxyUrl = `${proxyConfig.supabaseUrl}/functions/v1/fetch-proxy`;
+    const method = options?.method || 'GET';
+    const customHeaders: Record<string, string> = {};
+    if (options?.headers) {
+      const h = options.headers;
+      if (h instanceof Headers) {
+        h.forEach((v, k) => { customHeaders[k] = v; });
+      } else if (Array.isArray(h)) {
+        h.forEach(([k, v]) => { customHeaders[k] = v; });
+      } else {
+        Object.assign(customHeaders, h);
+      }
+    }
+
+    const proxyBody: Record<string, unknown> = { url, method, headers: customHeaders };
+    if (options?.body) {
+      proxyBody.body = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
+    }
+
+    const response = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${proxyConfig.supabaseAnonKey}`,
+        'apikey': proxyConfig.supabaseAnonKey,
+      },
+      body: JSON.stringify(proxyBody),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Edge proxy HTTP error: ${response.status} ${response.statusText}`);
+    }
+
+    const wrapper = await response.json();
+    if (wrapper.error && !wrapper.body) {
+      throw new Error(`Proxy error: ${wrapper.error}`);
+    }
+
+    const responseBody = wrapper.body ?? '';
+    return new Response(typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody), {
+      status: wrapper.status || 200,
+      statusText: wrapper.statusText || '',
+      headers: { 'Content-Type': wrapper.contentType || 'application/json' },
+    });
+  }
+
+  return fetch(url, options);
+};
+
 /**
  * Retry configuration for Firecrawl API calls
  */
@@ -189,14 +253,15 @@ const extractImages = (html: string, baseUrl: string): ApifyPageData['images'] =
 export const extractPageWithFirecrawl = async (
   url: string,
   apiKey: string,
-  retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
+  retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG,
+  proxyConfig?: FirecrawlProxyConfig
 ): Promise<ApifyPageData> => {
   // Retry loop with exponential backoff
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < retryConfig.maxRetries; attempt++) {
     try {
-      return await doFirecrawlExtraction(url, apiKey);
+      return await doFirecrawlExtraction(url, apiKey, proxyConfig);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
 
@@ -224,11 +289,12 @@ export const extractPageWithFirecrawl = async (
  */
 const doFirecrawlExtraction = async (
   url: string,
-  apiKey: string
+  apiKey: string,
+  proxyConfig?: FirecrawlProxyConfig
 ): Promise<ApifyPageData> => {
   console.log('[Firecrawl] Extracting:', url);
 
-  const response = await fetch(FIRECRAWL_API_URL, {
+  const response = await firecrawlFetch(FIRECRAWL_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -240,7 +306,7 @@ const doFirecrawlExtraction = async (
       includeTags: ['title', 'meta', 'link', 'script', 'a', 'img'],
       waitFor: 2000, // Wait for dynamic content
     }),
-  });
+  }, proxyConfig);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -312,7 +378,8 @@ export const extractMultiplePagesWithFirecrawl = async (
   urls: string[],
   apiKey: string,
   onProgress?: (completed: number, total: number, currentUrl: string) => void,
-  concurrency: number = 2 // Firecrawl rate limits, so keep concurrency low
+  concurrency: number = 2, // Firecrawl rate limits, so keep concurrency low
+  proxyConfig?: FirecrawlProxyConfig
 ): Promise<Map<string, ApifyPageData>> => {
   const results = new Map<string, ApifyPageData>();
   const errors: string[] = [];
@@ -324,7 +391,7 @@ export const extractMultiplePagesWithFirecrawl = async (
     const batch = urls.slice(i, i + concurrency);
 
     const batchResults = await Promise.allSettled(
-      batch.map(url => extractPageWithFirecrawl(url, apiKey))
+      batch.map(url => extractPageWithFirecrawl(url, apiKey, DEFAULT_RETRY_CONFIG, proxyConfig))
     );
 
     for (let j = 0; j < batchResults.length; j++) {
@@ -359,10 +426,10 @@ export const extractMultiplePagesWithFirecrawl = async (
 /**
  * Check if Firecrawl API key is valid
  */
-export const validateFirecrawlApiKey = async (apiKey: string): Promise<boolean> => {
+export const validateFirecrawlApiKey = async (apiKey: string, proxyConfig?: FirecrawlProxyConfig): Promise<boolean> => {
   try {
     // Try to scrape a simple test URL
-    const response = await fetch(FIRECRAWL_API_URL, {
+    const response = await firecrawlFetch(FIRECRAWL_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -372,7 +439,7 @@ export const validateFirecrawlApiKey = async (apiKey: string): Promise<boolean> 
         url: 'https://example.com',
         formats: ['html'],
       }),
-    });
+    }, proxyConfig);
 
     // 401/403 means invalid key, anything else might be valid
     return response.status !== 401 && response.status !== 403;
@@ -387,11 +454,12 @@ export const validateFirecrawlApiKey = async (apiKey: string): Promise<boolean> 
  */
 export const scrapeUrl = async (
   url: string,
-  apiKey: string
+  apiKey: string,
+  proxyConfig?: FirecrawlProxyConfig
 ): Promise<{ markdown: string; title: string; statusCode: number }> => {
   console.log('[Firecrawl] Scraping URL:', url);
 
-  const response = await fetch(FIRECRAWL_API_URL, {
+  const response = await firecrawlFetch(FIRECRAWL_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -402,7 +470,7 @@ export const scrapeUrl = async (
       formats: ['markdown'],
       waitFor: 2000,
     }),
-  });
+  }, proxyConfig);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -428,7 +496,8 @@ export const scrapeUrl = async (
  */
 export const scrapeForAudit = async (
   url: string,
-  apiKey: string
+  apiKey: string,
+  proxyConfig?: FirecrawlProxyConfig
 ): Promise<{
   url: string;
   title: string;
@@ -441,7 +510,7 @@ export const scrapeForAudit = async (
 }> => {
   console.log('[Firecrawl] Scraping for audit:', url);
 
-  const response = await fetch(FIRECRAWL_API_URL, {
+  const response = await firecrawlFetch(FIRECRAWL_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -453,7 +522,7 @@ export const scrapeForAudit = async (
       includeTags: ['h1', 'h2', 'h3', 'h4', 'a'],
       waitFor: 2000,
     }),
-  });
+  }, proxyConfig);
 
   if (!response.ok) {
     const errorText = await response.text();

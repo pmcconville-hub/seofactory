@@ -26,7 +26,7 @@ import {
   EntityCriticalityResult,
   CRITICALITY_THRESHOLD,
 } from '../lib/entityCriticality';
-import { validateEntityAuthority } from './googleKnowledgeGraphService';
+import { validateEntityAuthority, KGProxyConfig } from './googleKnowledgeGraphService';
 
 /**
  * Extracted entity from EAV triples
@@ -438,7 +438,8 @@ export async function analyzeEntityHealth(
   coreTopicIds?: string[],
   config?: EntityHealthConfig,
   onProgress?: (progress: EntityHealthProgress) => void,
-  googleApiKey?: string
+  googleApiKey?: string,
+  proxyConfig?: KGProxyConfig
 ): Promise<EntityHealthAnalysisResult> {
   const cfg = { ...DEFAULT_CONFIG, ...config };
 
@@ -506,7 +507,8 @@ export async function analyzeEntityHealth(
             extracted.entityName,
             undefined, // domain
             cfg.includeKnowledgeGraph ? googleApiKey : undefined,
-            cfg.language
+            cfg.language,
+            proxyConfig
           );
 
           verificationStatus = authorityResult.verificationStatus as EntityVerificationStatus;
