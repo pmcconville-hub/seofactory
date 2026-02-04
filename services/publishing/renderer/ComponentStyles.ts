@@ -663,13 +663,29 @@ ${visualParams.sectionCard ? `
 /* HERO COMPONENT                                                            */
 /* ------------------------------------------------------------------------- */
 
-.section-hero .hero-content {
+/* Only center hero content when it's the actual article hero (emphasis-hero),
+   not when a content section happens to use the hero component type */
+.emphasis-hero .hero-content {
   text-align: center;
 }
 
-.section-hero .hero-lead {
+.emphasis-hero .hero-lead {
   max-width: 800px;
   margin: 0 auto 2rem;
+}
+
+/* Non-hero emphasis sections using hero component keep left alignment */
+.emphasis-featured .hero-content,
+.emphasis-standard .hero-content,
+.emphasis-supporting .hero-content {
+  text-align: left;
+}
+
+.emphasis-featured .hero-lead,
+.emphasis-standard .hero-lead,
+.emphasis-supporting .hero-lead {
+  max-width: none;
+  margin: 0 0 2rem;
 }
 
 .section-hero .hero-text {
@@ -678,9 +694,18 @@ ${visualParams.sectionCard ? `
   color: ${o.textColor};
 }
 
-.section-hero .hero-details {
+.emphasis-hero .hero-details {
   display: flex;
   justify-content: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+}
+
+.emphasis-featured .hero-details,
+.emphasis-standard .hero-details {
+  display: flex;
+  justify-content: flex-start;
   gap: 2rem;
   flex-wrap: wrap;
   margin-top: 2rem;
