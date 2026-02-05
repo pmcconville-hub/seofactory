@@ -357,6 +357,26 @@ async function determineSectionsNeedingOptimization(
   let listsAssigned = 0;
   let tablesAssigned = 0;
 
+  // Calculate overall prose ratio to determine if we need aggressive list conversion
+  let totalProseChars = 0;
+  let totalStructuredChars = 0;
+  for (const section of sections) {
+    const { proseChars, structuredChars } = measureContentFormat(section.current_content || '');
+    totalProseChars += proseChars;
+    totalStructuredChars += structuredChars;
+  }
+  const overallProseRatio = totalProseChars / Math.max(1, totalProseChars + totalStructuredChars);
+
+  // If prose is too high (>80%), we need to be more aggressive about list conversion
+  // Target is 60-80% prose, so >80% triggers aggressive mode
+  const aggressiveMode = overallProseRatio > 0.80;
+  if (aggressiveMode) {
+    console.log(`[FormatBudgetAnalyzer] Aggressive mode: prose ratio ${(overallProseRatio * 100).toFixed(1)}% exceeds 80% target`);
+  }
+
+  // Track sections that could receive lists in aggressive mode (body sections without lists)
+  const candidatesForAggressiveLists: Array<{ key: string; wordCount: number }> = [];
+
   // PERFORMANCE: Process with periodic yields
   for (let i = 0; i < classifications.length; i++) {
     const classification = classifications[i];
@@ -383,6 +403,14 @@ async function determineSectionsNeedingOptimization(
     ) {
       listsNeeded.push(section.section_key);
       listsAssigned++;
+    } else if (
+      aggressiveMode &&
+      !classification.hasListAlready &&
+      sectionType === 'body'
+    ) {
+      // Track as candidate for aggressive list conversion
+      const wordCount = (section.current_content || '').split(/\s+/).length;
+      candidatesForAggressiveLists.push({ key: section.section_key, wordCount });
     }
 
     // Check if section needs a table (comparison sections only)
@@ -408,6 +436,23 @@ async function determineSectionsNeedingOptimization(
     // PERFORMANCE: Yield every 3 sections
     if (i > 0 && i % 3 === 0) {
       await yieldToMainThread();
+    }
+  }
+
+  // AGGRESSIVE MODE: If prose is still too high, add more sections to list conversion
+  // Prioritize longest sections for list conversion (more content to work with)
+  if (aggressiveMode && listsAssigned < listBudgetRemaining && candidatesForAggressiveLists.length > 0) {
+    // Sort by word count descending - longer sections have more potential for list extraction
+    candidatesForAggressiveLists.sort((a, b) => b.wordCount - a.wordCount);
+
+    // Add candidates until we hit the list budget or run out of candidates
+    for (const candidate of candidatesForAggressiveLists) {
+      if (listsAssigned >= listBudgetRemaining) break;
+      if (listsNeeded.includes(candidate.key)) continue;
+
+      console.log(`[FormatBudgetAnalyzer] Aggressive mode: adding "${candidate.key}" (${candidate.wordCount} words) for list conversion`);
+      listsNeeded.push(candidate.key);
+      listsAssigned++;
     }
   }
 

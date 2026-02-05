@@ -769,9 +769,11 @@ export class ContentGenerationOrchestrator {
       });
     }
 
-    // Apply maxSections limit if specified (accounting for intro + conclusion = 2 reserved)
-    if (options?.maxSections && options.maxSections > 2) {
-      const maxBodySections = options.maxSections - 2; // Reserve spots for intro & conclusion
+    // Apply maxSections limit if specified (accounting for intro only - conclusion is DISABLED)
+    // NOTE: Conclusion sections are no longer generated (see line 785-789 comment)
+    // So we only reserve 1 slot for the introduction section
+    if (options?.maxSections && options.maxSections > 1) {
+      const maxBodySections = options.maxSections - 1; // Reserve 1 spot for intro (conclusion disabled)
       if (bodySections.length > maxBodySections) {
         console.log(`[Orchestrator] Limiting sections: ${bodySections.length} → ${maxBodySections} body sections (maxSections: ${options.maxSections})`);
         // Keep only the first N body sections (which are already importance-ordered)

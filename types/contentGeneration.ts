@@ -43,10 +43,11 @@ export enum AudienceExpertise {
  * Content length presets based on Korayanese framework
  * - minimal: Bridge topics, definitions, simple queries (200-400 words)
  * - short: Outer topics, informational content (500-700 words)
+ * - moderate: Mid-length articles for general topics (800-1200 words)
  * - standard: Standard articles based on SERP analysis (dynamic)
  * - comprehensive: Core topics, quality nodes, pillar content (2000+ words)
  */
-export type ContentLengthPreset = 'minimal' | 'short' | 'standard' | 'comprehensive';
+export type ContentLengthPreset = 'minimal' | 'short' | 'moderate' | 'standard' | 'comprehensive';
 
 /**
  * Preset configuration for content length
@@ -76,6 +77,12 @@ export const LENGTH_PRESETS: Record<ContentLengthPreset, LengthPresetConfig> = {
     maxSections: 5,
     description: 'Outer topics, informational content',
     sectionWordRange: { min: 100, max: 180 }
+  },
+  moderate: {
+    targetWords: 1000,
+    maxSections: 7,
+    description: 'Mid-length articles for general topics',
+    sectionWordRange: { min: 120, max: 200 }
   },
   standard: {
     targetWords: 'serp',  // Dynamic based on competitor analysis

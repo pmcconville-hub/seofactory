@@ -5,6 +5,7 @@ import type { ContentGenerationPriorities } from '../../../../../types/contentGe
 import { BriefCodeParser } from '../briefCodeParser';
 import { PROHIBITED_PATTERNS } from '../validators/prohibitedLanguage';
 import { getLanguageAndRegionInstruction, getLanguageName } from '../../../../../utils/languageUtils';
+import { getAuditPatterns } from '../../passes/auditPatternsMultilingual';
 
 /**
  * Extract contextual bridge links from a ContentBrief
@@ -206,6 +207,68 @@ Secondary focus: ${secondary.label} (${secondary.value}%)
   }
 
   /**
+   * Build language-specific prohibited content (LLM signatures and generic headings)
+   */
+  private static buildLanguageSpecificProhibitions(language: string | undefined): string {
+    const patterns = getAuditPatterns(language);
+    const langName = getLanguageName(language);
+
+    // Get top LLM signature phrases for this language
+    const llmPhrases = patterns.llmSignaturePhrases.slice(0, 15);
+
+    // Get generic headings for this language
+    const genericHeadings = patterns.genericHeadings;
+
+    return `
+## STRICTLY PROHIBITED - ${langName} SPECIFIC
+**LLM Signature Phrases (NEVER use):**
+${llmPhrases.map(p => `- "${p}"`).join('\n')}
+
+**Generic Headings (NEVER use as H2/H3):**
+${genericHeadings.map(h => `- "${h}"`).join('\n')}
+`;
+  }
+
+  /**
+   * Build the subordinate text rule guidance
+   * This is ALWAYS required per Korayanese framework - first sentence must answer heading
+   */
+  private static buildSubordinateTextGuidance(
+    section: BriefSection,
+    centralEntity: string,
+    language: string | undefined
+  ): string {
+    const langName = getLanguageName(language);
+    const patterns = getAuditPatterns(language);
+
+    // Get language-appropriate definitive verbs for examples
+    const definitiveVerbsExample = langName === 'Dutch' ? 'is, zijn, betekent, bestaat uit' :
+      langName === 'German' ? 'ist, sind, bedeutet, besteht aus' :
+      langName === 'French' ? 'est, sont, signifie, consiste en' :
+      langName === 'Spanish' ? 'es, son, significa, consiste en' :
+      'is, are, means, consists of';
+
+    if (section.subordinate_text_hint) {
+      return `
+**MANDATORY FIRST SENTENCE (Subordinate Text Rule)**:
+Your FIRST sentence after the heading MUST be: ${section.subordinate_text_hint}
+This directly answers the heading's implicit question.`;
+    }
+
+    // Even without a hint, enforce the subordinate text rule
+    return `
+**MANDATORY FIRST SENTENCE (Subordinate Text Rule)**:
+The FIRST sentence after your heading MUST:
+1. Directly answer the heading's implicit question
+2. Contain the subject "${centralEntity}" or heading's key term
+3. Use a definitive verb (${definitiveVerbsExample})
+4. Be under 40 words
+5. NOT be a question or introductory fluff
+
+Example structure: "[Subject] [definitive verb] [direct answer to heading]."`;
+  }
+
+  /**
    * Build a comprehensive prompt for section generation
    * Includes all semantic framework rules
    */
@@ -221,18 +284,26 @@ Secondary focus: ${secondary.label} (${secondary.value}%)
     const needsGeneratedHeading = (section as any).generateHeading === true;
     const sectionType = (section as any).section_type || 'body';
 
-    let prompt = `You are an expert content writer following the Koray Tuğberk GÜBÜR Semantic Content Framework.
+    // Get language-specific patterns
+    const langName = getLanguageName(businessInfo.language);
+    const patterns = getAuditPatterns(businessInfo.language);
 
+    // CRITICAL: Language instruction MUST be at the absolute top
+    let prompt = `###### LANGUAGE REQUIREMENT - READ FIRST ######
 ${getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)}
+ALL content below MUST be written in ${langName}. No exceptions.
+################################################
+
+You are an expert content writer following the Koray Tuğberk GÜBÜR Semantic Content Framework.
 Target market: ${businessInfo.targetMarket || 'Global'}.
 
 ## Section to Generate
 ${needsGeneratedHeading ? `**GENERATE HEADING**: Create an appropriate H${section.level} heading for this ${sectionType} section.
 The heading should be:
 - SEO-optimized and keyword-rich
-- Written in the same language as the content
+- Written in ${langName}
 - Contextually relevant to "${brief.title}"
-- NOT generic (avoid "Introduction", "Conclusion", "Summary")
+- NOT generic (avoid: ${patterns.genericHeadings.slice(0, 5).join(', ')})
 - Action-oriented or question-based when appropriate
 
 Topic context: ${brief.targetKeyword || brief.title}` : `Heading: ${section.heading}`}
@@ -241,7 +312,7 @@ ${sectionType !== 'body' ? `Section Type: ${sectionType}` : ''}
 
 ## Format Requirements
 ${formatConstraints}
-${section.subordinate_text_hint ? `\n**MANDATORY FIRST SENTENCE**: ${section.subordinate_text_hint}` : ''}
+${this.buildSubordinateTextGuidance(section, businessInfo.seedKeyword, businessInfo.language)}
 
 ## Article Context
 Title: ${brief.title}
@@ -316,20 +387,28 @@ Place links AFTER defining the concept, never in the first sentence.
 `;
     }
 
-    // Add prohibited patterns
-    prompt += `## STRICTLY PROHIBITED
+    // Add prohibited patterns - both general and language-specific
+    prompt += `## STRICTLY PROHIBITED (General)
 - Stop words: ${PROHIBITED_PATTERNS.STOP_WORDS.slice(0, 8).join(', ')}...
 - Opinions: "I think", "we believe", "unfortunately", "beautiful", "amazing"
 - Analogies: "like a", "similar to", "is like", "imagine"
 - Fluff openers: "In this article", "Let's dive", "Have you ever wondered"
 - Ambiguous pronouns: Use "${businessInfo.seedKeyword}" instead of "it/they/this"
+`;
 
-## MANDATORY RULES
-1. **EAV Density**: Every sentence = Entity + Attribute + Value
-2. **Modality**: Facts use "is/are", possibilities use "can/may"
-3. **Active Voice**: Subject-Predicate-Object structure
-4. **No Repetition**: Each sentence adds NEW information
+    // Add language-specific prohibitions (LLM signatures, generic headings)
+    prompt += this.buildLanguageSpecificProhibitions(businessInfo.language);
+
+    prompt += `
+## MANDATORY RULES (Korayanese Framework)
+1. **EAV Density**: Every sentence = Entity + Attribute + Value (one fact per sentence)
+2. **Modality**: Facts use definitive verbs (is/are/has), NOT hedging (might/could/should)
+3. **Active Voice**: Subject-Predicate-Object structure (entity first, then action)
+4. **No Repetition**: Each sentence adds NEW information (no paraphrasing)
 5. **Complete Sentences**: Never end mid-thought
+6. **First Sentence Rule**: First sentence MUST directly answer the heading (see above)
+7. **Entity Consistency**: Use "${businessInfo.seedKeyword}" consistently, avoid pronouns
+8. **No LLM Signatures**: Avoid AI-sounding phrases listed above
 
 `;
 
