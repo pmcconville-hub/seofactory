@@ -2,6 +2,14 @@
 import { ImagePlaceholder, BusinessInfo } from '../../../../types';
 import { ImageProvider, ImageGenerationOptions, GenerationResult, ProviderConfig } from './types';
 import { SupabaseClient } from '@supabase/supabase-js';
+import {
+  IMAGE_TYPE_PROMPTS,
+  buildNoTextInstruction,
+  getPromptModifiers,
+  getAvoidTerms,
+  normalizeImageType
+} from '../../../../config/imageTypeRouting';
+import { ImageStyle } from '../../../../types/contextualEditor';
 
 const DEFAULT_TIMEOUT_MS = 60000; // 60 seconds for image generation
 
@@ -298,6 +306,7 @@ function getStyleDescription(style?: string): string {
 
 /**
  * Build a detailed prompt for DALL-E image generation
+ * Uses photographic-first routing configuration
  */
 function buildImagePrompt(
   placeholder: ImagePlaceholder,
@@ -306,13 +315,42 @@ function buildImagePrompt(
 ): string {
   const parts: string[] = [];
 
-  // Start with style direction if specified
+  // Normalize the image type to handle legacy mappings
+  const normalizedType = normalizeImageType(placeholder.type as ImageStyle);
+  const mapping = IMAGE_TYPE_PROMPTS[normalizedType];
+
+  // Get avoid terms to filter from description
+  const avoidTerms = getAvoidTerms(normalizedType);
+
+  // Start with tier-appropriate base instruction
+  if (mapping?.tier === 'minimal-diagram') {
+    parts.push('Minimal diagram with simple geometric shapes');
+  } else {
+    parts.push('Professional photograph');
+  }
+
+  // Add style direction if specified (optional override)
   if (options.style) {
     parts.push(getStyleDescription(options.style));
   }
 
-  // Start with the placeholder description
-  parts.push(placeholder.description);
+  // Add the prompt modifiers from the routing configuration
+  const promptModifiers = getPromptModifiers(normalizedType);
+  parts.push(promptModifiers.join(', '));
+
+  // Filter the placeholder description through avoid terms
+  let filteredDescription = placeholder.description;
+  for (const term of avoidTerms) {
+    // Case-insensitive replacement of avoid terms
+    const regex = new RegExp(`\\b${term}\\b`, 'gi');
+    filteredDescription = filteredDescription.replace(regex, '');
+  }
+  // Clean up extra spaces from removed terms
+  filteredDescription = filteredDescription.replace(/\s+/g, ' ').trim();
+
+  if (filteredDescription) {
+    parts.push(filteredDescription);
+  }
 
   // Add text overlay context if provided (but not as literal text)
   if (options.textOverlay) {
@@ -334,12 +372,6 @@ function buildImagePrompt(
     parts.push(`Context: ${businessInfo.industry} industry`);
   }
 
-  // Add style guidance based on image type
-  const typeGuidance = getTypeStyleGuidance(placeholder.type);
-  if (typeGuidance) {
-    parts.push(typeGuidance);
-  }
-
   // Add brand color hints if available
   if (businessInfo.brandKit?.colors?.primary) {
     parts.push(`Consider incorporating the color ${businessInfo.brandKit.colors.primary} where appropriate.`);
@@ -350,32 +382,26 @@ function buildImagePrompt(
     parts.push('Professional quality, clean composition, suitable for a website hero image or blog post.');
   }
 
-  // Important: Tell DALL-E NOT to add text
-  parts.push('Do not include any text, letters, numbers, or words in the image.');
+  // Use comprehensive no-text instruction from routing config
+  parts.push(buildNoTextInstruction(normalizedType));
 
   return parts.join('. ');
 }
 
 /**
  * Get style guidance based on image type
+ * Now uses photographic-first configuration
  */
-function getTypeStyleGuidance(type: string): string | null {
-  switch (type) {
-    case 'HERO':
-      return 'Create a dramatic, attention-grabbing hero image with space on one side for text overlay. Wide cinematic format.';
-    case 'SECTION':
-      return 'Create a clear, focused image that illustrates a specific concept. Clean and professional.';
-    case 'INFOGRAPHIC':
-      return 'Create an abstract or geometric background suitable for an infographic. Clean layout with visual hierarchy.';
-    case 'CHART':
-      return 'Create an abstract data visualization or analytical themed image. Modern, clean, professional.';
-    case 'DIAGRAM':
-      return 'Create a clear, educational visual with simple shapes and clear relationships.';
-    case 'AUTHOR':
-      return 'Create a professional, trustworthy background suitable for an author bio section.';
-    default:
-      return null;
+function getTypeStyleGuidance(type: string): string {
+  // Normalize the type (handles legacy mappings)
+  const normalizedType = normalizeImageType(type as ImageStyle);
+  const mapping = IMAGE_TYPE_PROMPTS[normalizedType];
+
+  if (!mapping) {
+    return 'Professional photography style, clean composition. No text, labels, or words visible in the image.';
   }
+
+  return mapping.promptModifiers.join('. ') + '.';
 }
 
 /**
