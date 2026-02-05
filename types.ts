@@ -747,6 +747,8 @@ export interface ImagePlaceholder {
   specs: ImageSpecs;
   metadata?: ImageMetadata;
   errorMessage?: string; // Error details when status is 'error'
+  /** Figcaption text for the image (displayed below image in <figcaption>) */
+  figcaption?: string;
 }
 
 // Image Generation Progress Types

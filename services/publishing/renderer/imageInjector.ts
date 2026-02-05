@@ -27,6 +27,8 @@ export interface InjectableImage {
   type?: 'HERO' | 'SECTION' | 'INFOGRAPHIC' | 'CHART' | 'DIAGRAM' | 'AUTHOR';
   width?: number;
   height?: number;
+  /** Figcaption text for the image (falls back to altText if not provided) */
+  figcaption?: string;
 }
 
 /**
@@ -180,14 +182,32 @@ function determineImageType(description: string): 'HERO' | 'SECTION' | 'INFOGRAP
 }
 
 /**
- * Generate an <img> tag for an image
+ * Generate an <img> tag wrapped in <figure> with <figcaption>
+ *
+ * Wraps images in semantic figure elements with captions.
+ * For HERO images, uses eager loading and high fetch priority.
  */
-function generateImgTag(image: InjectableImage, altText: string): string {
+function generateImgTag(image: InjectableImage, altText: string, isFirst: boolean = false): string {
   const width = image.width || 800;
   const height = image.height || 450;
-  const loading = image.type === 'HERO' ? 'eager' : 'lazy';
+  const isHero = image.type === 'HERO';
+  const loading = isHero || isFirst ? 'eager' : 'lazy';
+  const figcaption = image.figcaption || altText;
 
-  return `<img src="${image.url}" alt="${altText}" width="${width}" height="${height}" loading="${loading}" class="ctc-injected-image" />`;
+  // Escape HTML entities in alt text and figcaption to prevent XSS
+  const escapedAlt = altText.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const escapedCaption = figcaption.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  return `<figure class="ctc-image-figure">
+  <img src="${image.url}"
+       alt="${escapedAlt}"
+       width="${width}"
+       height="${height}"
+       loading="${loading}"
+       ${isHero || isFirst ? 'fetchpriority="high"' : ''}
+       class="ctc-injected-image" />
+  <figcaption class="ctc-figcaption">${escapedCaption}</figcaption>
+</figure>`;
 }
 
 /**
@@ -228,6 +248,7 @@ export function injectImagesIntoContent(
   const usedImageIds = new Set<string>();
   const unresolvedPlaceholders: ImageInjectionResult['unresolvedPlaceholders'] = [];
   let injectedCount = 0;
+  let isFirstImage = true;
 
   // Combine all images with priority (generated first, then brand)
   const allImages = [...images.generated, ...images.brand];
@@ -250,7 +271,9 @@ export function injectImagesIntoContent(
     if (matchedImage) {
       usedImageIds.add(matchedImage.id);
       injectedCount++;
-      return generateImgTag(matchedImage, altText);
+      const imgHtml = generateImgTag(matchedImage, altText, isFirstImage);
+      isFirstImage = false; // Only first image gets eager loading
+      return imgHtml;
     }
 
     // No match found
@@ -297,6 +320,7 @@ export function placeholdersToInjectableImages(
       type: p.type,
       width: p.specs?.width,
       height: p.specs?.height,
+      figcaption: p.figcaption, // Include figcaption if available
     }))
     .filter(img => img.url); // Only keep images with valid URLs
 }
