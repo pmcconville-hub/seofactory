@@ -99,7 +99,34 @@ export interface RewriteResult {
 // IMAGE PROMPT TYPES
 // ============================================================================
 
-export type ImageStyle = 'photograph' | 'illustration' | 'diagram' | 'infographic';
+// Three-tier image classification system for photographic-first visual semantics
+export type ImageStyle =
+  // Tier 1: Photographic (no text)
+  | 'photograph'      // Generic photo (legacy, maps to SCENE)
+  | 'scene'           // Environmental/contextual photography
+  | 'object'          // Product/item close-ups
+  | 'action'          // People performing activities
+  | 'concept'         // Abstract photorealistic visuals
+  | 'portrait'        // Professional headshots
+  // Tier 2: Minimal diagram (shapes only, no labels)
+  | 'flowchart'       // Process flow with boxes + arrows
+  | 'relationship'    // Connection diagram with circles + lines
+  | 'hierarchy'       // Tree structure diagram
+  | 'comparison'      // Side-by-side visual comparison
+  // Legacy (deprecated - map to new types)
+  | 'illustration'    // Maps to 'concept'
+  | 'diagram'         // Maps to 'flowchart'
+  | 'infographic';    // Maps to 'concept' (avoid text-heavy)
+
+export type ImageTier = 'photographic' | 'minimal-diagram' | 'captioned';
+
+/** Mapping from image style to tier and prompt configuration */
+export interface ImageTypeMapping {
+  style: ImageStyle;
+  tier: ImageTier;
+  readonly promptModifiers: string[];
+  readonly avoidTerms: string[];
+}
 export type AspectRatio = '16:9' | '4:3' | '1:1' | '3:4';
 export type ImagePlacement = 'before_heading' | 'after_paragraph' | 'inline';
 
