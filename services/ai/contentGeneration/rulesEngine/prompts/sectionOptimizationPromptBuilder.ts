@@ -387,7 +387,7 @@ ${section.current_content}
 ## Title: ${holistic.articleStructure.title}
 
 ${isFirstSection ? `
-## HERO IMAGE REQUIRED (KORAYANESE FRAMEWORK)
+## HERO IMAGE REQUIRED (PHOTOGRAPHIC-FIRST APPROACH)
 This is the INTRODUCTION section. You MUST insert a HERO image.
 
 ### HERO IMAGE POSITIONING RULE:
@@ -396,16 +396,18 @@ The hero image MUST be placed:
 - BEFORE any subsequent paragraphs
 - NEVER between the heading and the first paragraph
 
-### HERO IMAGE TYPE:
-- Must be ENGAGING (infographic, diagram, labeled visual) NOT expressive (generic stock photo)
-- Should include text overlay with H1/title concept
+### HERO IMAGE TYPE: SCENE PHOTOGRAPH
+- Must be a PHOTOGRAPH, not an infographic or diagram
+- Should visually represent the central topic through imagery
+- NO TEXT OVERLAYS - all text goes in figcaption
+- Wide cinematic composition (16:9 aspect ratio)
 - Must represent the central entity "${holistic.centralEntity}"
 
 ### CORRECT STRUCTURE:
 ## [Heading]
 [First paragraph - the definition/centerpiece annotation]
 
-[IMAGE: HERO infographic showing key aspects of ${holistic.centralEntity} with title overlay | alt="vocabulary-extending alt describing ${holistic.centralEntity}"]
+[IMAGE: SCENE photograph showing ${holistic.centralEntity} in context | alt="vocabulary-extending alt describing ${holistic.centralEntity}"]
 
 [Second paragraph onwards...]
 
@@ -437,19 +439,31 @@ WRONG: Heading → Image → Paragraph
 The sentence BEFORE or AFTER an image must reference what the image shows.
 - Example: "De onderstaande afbeelding toont..." or "...zoals weergegeven in het diagram hieronder."
 
-### RULE 4: ENGAGING OVER EXPRESSIVE
-- Prefer: Infographics, diagrams, labeled visuals, charts
-- Avoid: Generic stock photos, decorative images without information
+### RULE 4: PHOTOGRAPHIC OVER DIAGRAMMATIC
+- Prefer: Scene photographs, object photos, action shots, concept imagery
+- Use sparingly: Minimal flowcharts (only for explicit processes)
+- NEVER use: Infographics with text, labeled diagrams, charts with numbers
+
+AI image generators cannot reliably render text. All explanatory text belongs in:
+- <figcaption> elements below the image
+- Alt text attributes
+- Surrounding paragraph text
 
 ## Image Placeholder Format:
-[IMAGE: detailed description of ENGAGING visual | alt="vocabulary-extending alt text with NEW terms not in headings"]
+[IMAGE: detailed description of PHOTOGRAPHIC visual | alt="vocabulary-extending alt text with NEW terms not in headings"]
 
-## Image Types:
-- **HERO**: ONLY for intro section - infographic with title overlay
-- **INFOGRAPHIC**: For summarizing multiple points visually
-- **DIAGRAM**: For processes, flows, structures
-- **CHART**: For statistical data, comparisons
-- **TABLE-VISUAL**: Visual representation of comparative data
+## Image Types (PHOTOGRAPHIC-FIRST):
+- **SCENE**: Environmental/contextual photographs (DEFAULT)
+- **OBJECT**: Product or item close-up photographs
+- **ACTION**: People performing activities
+- **CONCEPT**: Abstract photorealistic imagery for ideas/data
+- **FLOWCHART**: ONLY for explicit step-by-step processes (minimal shapes, NO labels)
+- **COMPARISON**: ONLY for explicit A vs B content (visual contrast, NO text)
+
+## DEPRECATED (DO NOT USE):
+- ~~INFOGRAPHIC~~ → Use CONCEPT photograph instead
+- ~~CHART~~ → Use CONCEPT photograph instead
+- ~~DIAGRAM with labels~~ → Use FLOWCHART with shapes only
 
 ## Vocabulary Terms to AVOID in Alt Text (already overused):
 ${holistic.vocabularyMetrics.overusedTerms.slice(0, 5).map(t => t.term).join(', ')}
@@ -457,7 +471,7 @@ ${holistic.vocabularyMetrics.overusedTerms.slice(0, 5).map(t => t.term).join(', 
 ## Instructions:
 1. ${isFirstSection ? 'Insert HERO image AFTER first paragraph' : 'Insert 0-2 section images AFTER explanation paragraphs'}
 2. NEVER place image between heading and first paragraph
-3. Use ENGAGING image types (infographic, diagram) over expressive (photos)
+3. Use PHOTOGRAPHIC image types (scene, object, action, concept) over diagrams
 4. Use vocabulary-extending alt text with synonyms/related terms
 5. Write in ${regionalLang}
 
@@ -556,15 +570,28 @@ ${briefVisualSemantics.length > 0 ? `
 ${briefVisualSemantics.slice(0, 5).map((vs, i) => `${i + 1}. ${vs.description} (${vs.type || 'SECTION'})`).join('\n')}
 ` : ''}
 
-## KORAYANESE IMAGE RULES:
+## PHOTOGRAPHIC-FIRST IMAGE RULES:
 1. **NEVER** place image between heading and first paragraph
 2. Pattern: Heading → Answer paragraph → Image → Next content
-3. HERO image (intro only): After first definition paragraph, with title overlay
-4. Use ENGAGING types: infographics, diagrams, charts (NOT stock photos)
+3. HERO image (intro only): After first definition paragraph, scene photograph
+4. Use PHOTOGRAPHIC types: scene, object, action, concept photos (NOT infographics)
 5. Alt text must extend vocabulary (use synonyms, NOT heading words)
+6. NO TEXT OVERLAYS - AI cannot render text reliably. All text goes in figcaption.
 
 ## Image Placeholder Format:
-[IMAGE: detailed description of ENGAGING visual | alt="vocabulary-extending alt text"]
+[IMAGE: detailed description of PHOTOGRAPHIC visual | alt="vocabulary-extending alt text"]
+
+## Image Types (PHOTOGRAPHIC-FIRST):
+- **SCENE**: Environmental/contextual photographs (DEFAULT)
+- **OBJECT**: Product or item close-up photographs
+- **ACTION**: People performing activities
+- **CONCEPT**: Abstract photorealistic imagery for ideas/data
+- **FLOWCHART**: ONLY for explicit step-by-step processes (minimal shapes, NO labels)
+
+## DEPRECATED (DO NOT USE):
+- ~~INFOGRAPHIC~~ → Use CONCEPT photograph instead
+- ~~CHART~~ → Use CONCEPT photograph instead
+- ~~DIAGRAM with labels~~ → Use FLOWCHART with shapes only
 
 ## Vocabulary Terms to AVOID in Alt Text:
 ${holistic.vocabularyMetrics.overusedTerms.slice(0, 5).map(t => t.term).join(', ')}
