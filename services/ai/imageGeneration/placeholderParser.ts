@@ -46,26 +46,53 @@ export function parsePlaceholders(content: string): ParsedPlaceholder[] {
   return placeholders;
 }
 
+/**
+ * Detect the image type from description using photographic-first approach.
+ *
+ * Priority order:
+ * 1. HERO - First image or explicit hero/featured keywords
+ * 2. Tier 2: Minimal diagrams - Only for explicit process/structure content
+ * 3. Tier 1: Photographic types - Default for most content
+ * 4. SCENE - Default fallback (environmental photography)
+ */
 export function determineImageType(description: string, position: number, isFirst: boolean): ImageType {
-  const lowerDesc = description.toLowerCase();
+  const lower = description.toLowerCase();
 
-  if (isFirst || lowerDesc.includes('hero') || lowerDesc.includes('featured')) {
+  // Hero detection (first image in content)
+  if (isFirst || lower.includes('hero') || lower.includes('featured')) {
     return 'HERO';
   }
-  if (lowerDesc.includes('chart') || lowerDesc.includes('graph') || lowerDesc.includes('data')) {
-    return 'CHART';
+
+  // Tier 2: Minimal diagrams (only explicit process content)
+  if (lower.includes('flowchart') || lower.includes('flow chart') || lower.includes('process flow')) {
+    return 'FLOWCHART';
   }
-  if (lowerDesc.includes('infographic') || lowerDesc.includes('statistics')) {
-    return 'INFOGRAPHIC';
+  if (lower.includes('hierarchy') || lower.includes('tree structure') || lower.includes('organigram') || lower.includes('organization chart')) {
+    return 'HIERARCHY';
   }
-  if (lowerDesc.includes('diagram') || lowerDesc.includes('flow') || lowerDesc.includes('process')) {
-    return 'DIAGRAM';
+  if (lower.includes('comparison') || lower.includes('versus') || lower.includes(' vs ') || lower.includes('side by side')) {
+    return 'COMPARISON';
   }
-  if (lowerDesc.includes('author') || lowerDesc.includes('profile')) {
-    return 'AUTHOR';
+  if (lower.includes('relationship') || lower.includes('network diagram') || lower.includes('connection diagram')) {
+    return 'RELATIONSHIP';
   }
 
-  return 'SECTION';
+  // Tier 1: Photographic types (default)
+  if (lower.includes('portrait') || lower.includes('headshot') || lower.includes('team photo') || lower.includes('profile')) {
+    return 'PORTRAIT';
+  }
+  if (lower.includes('product') || lower.includes('object') || lower.includes('close-up') || lower.includes('closeup') || lower.includes('detail shot')) {
+    return 'OBJECT';
+  }
+  if (lower.includes('action') || lower.includes('activity') || lower.includes('demonstrat') || lower.includes('showing how') || lower.includes('in use')) {
+    return 'ACTION';
+  }
+  if (lower.includes('concept') || lower.includes('abstract') || lower.includes('metaphor') || lower.includes('symbolic') || lower.includes('representing')) {
+    return 'CONCEPT';
+  }
+
+  // Default to SCENE (environmental photography) - this is the photographic-first default
+  return 'SCENE';
 }
 
 export function createImagePlaceholder(

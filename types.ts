@@ -732,7 +732,26 @@ export interface DiscourseAnchorEntry {
 }
 
 // Image Generation Types
-export type ImageType = 'HERO' | 'SECTION' | 'INFOGRAPHIC' | 'CHART' | 'DIAGRAM' | 'AUTHOR';
+// Photographic-first image types (Tier 1: Photography, Tier 2: Minimal diagrams)
+export type ImageType =
+  // Tier 1: Photographic types (default)
+  | 'HERO'        // Featured/hero image at top of content
+  | 'SCENE'       // Environmental photography (default fallback)
+  | 'OBJECT'      // Product/object close-ups
+  | 'ACTION'      // Activity/demonstration shots
+  | 'CONCEPT'     // Abstract/metaphorical imagery
+  | 'PORTRAIT'    // People portraits/headshots
+  // Tier 2: Minimal diagrams (only for explicit process content)
+  | 'FLOWCHART'   // Process flows
+  | 'HIERARCHY'   // Tree structures/org charts
+  | 'COMPARISON'  // Side-by-side comparisons
+  | 'RELATIONSHIP' // Network/connection diagrams
+  // Legacy types (maintained for backward compatibility)
+  | 'SECTION'     // Generic section image (maps to SCENE)
+  | 'INFOGRAPHIC' // Statistics/infographics
+  | 'CHART'       // Data charts/graphs
+  | 'DIAGRAM'     // Generic diagrams
+  | 'AUTHOR';     // Author profile images
 
 export interface ImagePlaceholder {
   id: string;

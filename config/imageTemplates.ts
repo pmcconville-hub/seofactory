@@ -48,12 +48,71 @@ export const DEFAULT_HERO_TEMPLATES: HeroTemplate[] = [
 ];
 
 export const IMAGE_SPECS_BY_TYPE: Record<string, Omit<ImageSpecs, 'textOverlay' | 'logoOverlay'>> = {
+  // Tier 1: Photographic types
   HERO: {
     width: 1200,
     height: 630,
     format: 'avif' as const,
     maxFileSize: 100,
   },
+  SCENE: {
+    width: 800,
+    height: 600,
+    format: 'webp' as const,
+    maxFileSize: 80,
+  },
+  OBJECT: {
+    width: 800,
+    height: 800,
+    format: 'webp' as const,
+    maxFileSize: 80,
+  },
+  ACTION: {
+    width: 800,
+    height: 600,
+    format: 'webp' as const,
+    maxFileSize: 80,
+  },
+  CONCEPT: {
+    width: 800,
+    height: 600,
+    format: 'webp' as const,
+    maxFileSize: 80,
+  },
+  PORTRAIT: {
+    width: 600,
+    height: 800,
+    format: 'webp' as const,
+    maxFileSize: 60,
+  },
+
+  // Tier 2: Minimal diagrams
+  FLOWCHART: {
+    width: 1000,
+    height: 600,
+    format: 'png' as const,
+    maxFileSize: 150,
+  },
+  HIERARCHY: {
+    width: 1000,
+    height: 800,
+    format: 'png' as const,
+    maxFileSize: 150,
+  },
+  COMPARISON: {
+    width: 1000,
+    height: 600,
+    format: 'png' as const,
+    maxFileSize: 150,
+  },
+  RELATIONSHIP: {
+    width: 1000,
+    height: 800,
+    format: 'png' as const,
+    maxFileSize: 150,
+  },
+
+  // Legacy types (maintained for backward compatibility)
   SECTION: {
     width: 800,
     height: 600,
