@@ -190,6 +190,44 @@ async function processIntroOrConclusion(
       content = fixGenericIntroHeading(content, holisticContext.centralEntity);
     }
 
+    // CRITICAL: Preserve image placeholders from the original content
+    // Pass 6 adds hero image to intro section - don't lose it when rewriting
+    const originalImagePlaceholders = (section.current_content || '').match(/\[IMAGE:[^\]]+\]/g) || [];
+    if (originalImagePlaceholders.length > 0 && !content.includes('[IMAGE:')) {
+      log.log(` Preserving ${originalImagePlaceholders.length} image placeholder(s) from original intro`);
+      // Re-insert image placeholder after first paragraph (after heading + first para)
+      const lines = content.split('\n');
+      let insertIndex = -1;
+      let foundHeading = false;
+      let foundFirstPara = false;
+
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith('##')) {
+          foundHeading = true;
+        } else if (foundHeading && lines[i].trim() && !lines[i].startsWith('#')) {
+          // Found first content line after heading
+          if (!foundFirstPara) {
+            foundFirstPara = true;
+          } else if (lines[i].trim() === '') {
+            // Found empty line after first paragraph - insert here
+            insertIndex = i;
+            break;
+          }
+        }
+      }
+
+      if (insertIndex > 0) {
+        lines.splice(insertIndex + 1, 0, '', originalImagePlaceholders[0]);
+        content = lines.join('\n');
+      } else {
+        // Fallback: append after first double newline
+        const firstParaEnd = content.indexOf('\n\n');
+        if (firstParaEnd > 0) {
+          content = content.slice(0, firstParaEnd) + '\n\n' + originalImagePlaceholders[0] + content.slice(firstParaEnd);
+        }
+      }
+    }
+
     // Update section
     await orchestrator.upsertSection({
       ...section,

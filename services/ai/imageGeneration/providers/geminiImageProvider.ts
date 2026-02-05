@@ -170,6 +170,8 @@ async function generateWithModel(
   } catch (error) {
     clearTimeout(timeoutId);
 
+    console.error('[Gemini Imagen] Generation error:', error);
+
     if (error instanceof Error) {
       if (error.name === 'AbortError') {
         return {
@@ -177,9 +179,25 @@ async function generateWithModel(
           error: `Image generation timed out after ${timeoutMs / 1000} seconds.`,
         };
       }
+
+      // Try to extract more detailed error info
+      const errorAny = error as any;
+      let detailedError = error.message;
+
+      // Google SDK sometimes puts details in nested properties
+      if (errorAny.details) {
+        detailedError += ` Details: ${JSON.stringify(errorAny.details)}`;
+      }
+      if (errorAny.status) {
+        detailedError += ` (Status: ${errorAny.status})`;
+      }
+      if (errorAny.errorDetails) {
+        detailedError += ` ${JSON.stringify(errorAny.errorDetails)}`;
+      }
+
       return {
         success: false,
-        error: error.message,
+        error: detailedError,
       };
     }
 

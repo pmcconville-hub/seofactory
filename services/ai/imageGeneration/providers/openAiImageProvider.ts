@@ -129,21 +129,44 @@ async function generateViaProxy(
     clearTimeout(timeoutId);
 
     if (error) {
-      // Try to extract the actual error message from the response data
+      // Try to extract the actual error message from the response
       // Supabase SDK may put the response body in data even on error
       let errorMessage = 'Image generation proxy failed';
 
       if (data?.error) {
-        // The edge function returned a JSON error response
+        // The edge function returned a JSON error response with the actual error
         errorMessage = data.error;
+        // Add more context if available
+        if (data.code) {
+          errorMessage += ` (code: ${data.code})`;
+        }
+        if (data.type) {
+          errorMessage += ` [${data.type}]`;
+        }
       } else if (error.message) {
         // Check if it's a generic Supabase error vs actual error
         if (error.message.includes('non-2xx')) {
-          errorMessage = 'OpenAI image proxy returned an error. Check your API key configuration in Settings.';
+          // Try to parse the error context from the error object
+          const errorContext = (error as any)?.context?.body || (error as any)?.context;
+          if (errorContext && typeof errorContext === 'string') {
+            try {
+              const parsed = JSON.parse(errorContext);
+              if (parsed.error) {
+                errorMessage = parsed.error;
+              }
+            } catch {
+              // Couldn't parse - use generic message
+              errorMessage = 'OpenAI image proxy returned an error. Check your API key configuration in Settings.';
+            }
+          } else {
+            errorMessage = 'OpenAI image proxy returned an error. Check your API key configuration in Settings.';
+          }
         } else {
           errorMessage = error.message;
         }
       }
+
+      console.error('[DALL-E Provider] Proxy error:', { error, data, errorMessage });
 
       return {
         success: false,
