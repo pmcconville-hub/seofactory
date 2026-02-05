@@ -1643,6 +1643,45 @@ ${visualParams.heroStyle === 'clean-light' || visualParams.heroStyle === 'flat' 
 }
 
 /* ------------------------------------------------------------------------- */
+/* FIGCAPTION STYLES - Photographic-first image captions                     */
+/* ------------------------------------------------------------------------- */
+
+.ctc-image-figure {
+  margin: 1.5rem 0;
+  position: relative;
+}
+
+.ctc-injected-image {
+  width: 100%;
+  height: auto;
+  border-radius: ${o.radiusMedium};
+  display: block;
+}
+
+.ctc-figcaption {
+  margin-top: 0.75rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  color: ${o.textMuted};
+  text-align: center;
+  font-style: italic;
+  line-height: 1.4;
+  background: ${o.surfaceColor};
+  border-radius: ${o.radiusSmall};
+  border-left: 3px solid ${o.primaryColor};
+}
+
+/* Hero image figcaption - more prominent */
+.hero-image .ctc-figcaption,
+.ctc-image-figure:first-of-type .ctc-figcaption {
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 500;
+  text-align: left;
+  padding: 1rem 1.5rem;
+}
+
+/* ------------------------------------------------------------------------- */
 /* RESPONSIVE ADJUSTMENTS                                                    */
 /* ------------------------------------------------------------------------- */
 
