@@ -953,23 +953,36 @@ Write a NEW introduction following STRICT Korayanese framework rules. This intro
 ## Current Introduction (to be COMPLETELY REWRITTEN)
 ${section.current_content}
 
-## MANDATORY KORAYANESE RULES FOR INTRODUCTION
+## MANDATORY RULES FOR INTRODUCTION
 
-### RULE 1: 400-CHARACTER DEFINITION (CENTERPIECE ANNOTATION)
-**FIRST SENTENCE MUST BE "X is Y" FORMAT:**
-- The absolute definition of "${holistic.centralEntity}" MUST appear in the FIRST 400 characters
-- Start immediately with: "${holistic.centralEntity} is..." or "${holistic.centralEntity} zijn..."
-- NO hooks, stories, rhetorical questions, or marketing language before the definition
-- WRONG: "Welkom bij onze gids over..." / "Heeft u zich ooit afgevraagd..." / "In dit artikel..."
-- CORRECT: "${holistic.centralEntity} is een [definitie]..."
+### RULE 1: BUSINESS-CONTEXT OPENING (Replaces rigid "X is Y")
+**WEAVE the definition into business context, don't isolate it:**
+- Start by connecting the topic to ${businessInfo.projectName || 'the business'}'s expertise
+- The definition should emerge naturally, not as a standalone sentence
+- WRONG: "${holistic.centralEntity} is een [definitie]. ${businessInfo.projectName || 'Wij'} biedt..." (disconnected)
+- CORRECT: "${businessInfo.projectName || 'Wij'} specialiseert zich in ${holistic.centralEntity.toLowerCase()}, de [woven definition]..."
+- ALSO CORRECT: "Voor [target audience], betekent ${holistic.centralEntity.toLowerCase()} [definition] - en ${businessInfo.projectName || 'wij'} helpt daarbij."
+- The central entity "${holistic.centralEntity}" MUST still appear in the first 400 characters (Centerpiece Annotation)
 
-### RULE 2: ABSTRACTIVE SUMMARY (Article Preview)
-**The introduction must summarize ALL H2 sections in ORDER:**
+### RULE 2: HUMAN READABILITY
+**Write for humans first, search engines second:**
+- Use natural sentence flow, not keyword-stuffed facts
+- Vary sentence structure (not all "X is Y" patterns)
+- Include the reader: "u", "uw", "voor u"
+- Conversational connectors allowed: "daarom", "dat betekent", "in de praktijk"
+- ONE clear value proposition for the reader in first paragraph
+
+### RULE 3: COVER KEY SECTIONS (Not exhaustive list)
+**Mention what matters, not everything:**
+Article H2 topics to reference (pick 2-3 MOST IMPORTANT):
 ${h2Topics.join('\n')}
 
-After the definition, write ONE paragraph that mentions key concepts from EACH of these H2s in the SAME order they appear in the article. This is the "extractive alignment" - if someone read only the intro, they'd know exactly what topics the article covers.
+- Reference only the most important topics, NOT all of them
+- NOT: "In dit artikel behandelen we [topic1], [topic2], [topic3], [topic4], [topic5]..."
+- CORRECT: "Ontdek hoe [key topic] werkt en waarom [benefit]."
+- Let the article structure speak for itself
 
-### RULE 3: TOPIC-SPECIFIC HEADING
+### RULE 4: TOPIC-SPECIFIC HEADING
 **BANNED GENERIC TERMS (never use these in heading):**
 - Dutch: "Introductie", "Inleiding", "Overzicht", "Een Overzicht", "Samenvatting"
 - English: "Introduction", "Overview", "An Overview", "Summary"
@@ -979,12 +992,12 @@ After the definition, write ONE paragraph that mentions key concepts from EACH o
 - "Wat is ${holistic.centralEntity}?" (question format)
 - "${holistic.centralEntity}: De Complete Gids" (comprehensive)
 - "Alles over ${holistic.centralEntity}" (informative)
-- "${holistic.centralEntity}: Kernprincipes en Toepassingen" (specific)
 
-### RULE 4: NO FLUFF
-- Remove ALL filler words: "ook", "eigenlijk", "gewoon", "echt", "zeer"
-- Every sentence = Entity + Attribute + Value (a FACT)
-- NO sentences without new information
+### RULE 5: KEEP SEMANTIC VALUE
+**Still optimize, but naturally:**
+- Central entity "${holistic.centralEntity}" MUST appear in first 400 characters
+- Include 1-2 EAV triples naturally (not forced)
+- Definition can be implicit (helping with X implies what X is)
 
 ## Article Info
 Title: ${holistic.articleStructure.title}
@@ -995,14 +1008,15 @@ ${holistic.featuredSnippetTarget ? `Featured Snippet Target: ${holistic.featured
 ## OUTPUT FORMAT
 ## [Topic-specific heading containing "${holistic.centralEntity}"]
 
-[First sentence: "${holistic.centralEntity} is/zijn [direct definition]..."]
+[First sentence: Connect ${businessInfo.projectName || 'the business'} with ${holistic.centralEntity.toLowerCase()}, weaving in the definition naturally]
 
-[Second paragraph: Preview of ALL H2 topics in order - "Dit artikel behandelt [topic1], [topic2], [topic3]..."]
+[Second paragraph: Value proposition for reader + mention 2-3 key topics from article]
 
-[Optional: 1-2 more sentences with key facts, NO MORE]
+[Optional: 1-2 more sentences with key facts or reader benefits]
 
-**WORD COUNT: 150-200 words maximum. Information density over length.**
-**LANGUAGE: ${regionalLang} ONLY**`;
+**WORD COUNT: 150-250 words. Quality and human readability over strict brevity.**
+**LANGUAGE: ${regionalLang} ONLY**
+**TONE: Professional but conversational, NOT robotic or AI-sounding**`;
 }
 
 // ============================================

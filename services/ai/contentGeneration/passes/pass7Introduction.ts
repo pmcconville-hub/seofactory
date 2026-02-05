@@ -9,16 +9,19 @@ import { createLogger } from '../../../../utils/debugLogger';
 const log = createLogger('Pass7');
 
 /**
- * Pass 7: Introduction & Conclusion Synthesis
+ * Pass 7: Introduction Synthesis
  *
- * Rewrites both introduction AND conclusion AFTER the body is fully polished.
- * This ensures the intro/conclusion can accurately summarize the polished content.
+ * Rewrites the introduction AFTER the body is fully polished.
+ * This ensures the intro can accurately summarize the polished content.
+ *
+ * NOTE: Conclusion sections are NO LONGER GENERATED
+ * User feedback: "I really dislike them also only AI does that"
+ * The introduction serves as the ONLY summary of the article.
+ * Articles end with their last substantive H2 section.
  *
  * Uses holistic context to:
  * - Synthesize intro with all H2/H3 topics in correct order with centerpiece annotation
- * - Synthesize conclusion with key takeaways and topic-specific heading
- *
- * Both sections get topic-specific headings (not generic "Introduction"/"Conclusion").
+ * - Intro gets topic-specific heading (not generic "Introduction")
  */
 export async function executePass7(
   orchestrator: ContentGenerationOrchestrator,

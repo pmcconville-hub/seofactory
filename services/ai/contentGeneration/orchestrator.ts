@@ -654,16 +654,22 @@ export class ContentGenerationOrchestrator {
   ): SectionDefinition[] {
     const sections: SectionDefinition[] = [];
 
-    // Patterns to detect intro/conclusion sections in structured_outline
+    // Patterns to detect intro sections in structured_outline
     // These patterns match common headings in multiple languages
     const introPatterns = /^(introduction|intro|what\s+is|overview|getting\s+started|inleiding|wat\s+is|overzicht|einleitung|was\s+ist|überblick|introduction|qu'est-ce|aperçu|introducción|qué\s+es|resumen)/i;
+
+    // IMPORTANT: Conclusions are DISABLED
+    // User feedback: "I really dislike them also only AI does that"
+    // Articles should end with the last substantive H2 section, NOT a conclusion
+    // The introduction (Pass 7) serves as the ONLY summary
     const conclusionPatterns = /^(conclusion|summary|next\s+steps|final\s+thoughts|key\s+takeaways|wrap\s+up|conclusie|samenvatting|volgende\s+stappen|schlussfolgerung|zusammenfassung|nächste\s+schritte|conclusion|résumé|prochaines\s+étapes|conclusión|resumen|próximos\s+pasos)/i;
 
-    // Check if structured_outline has intro/conclusion sections
+    // Check if structured_outline has intro section
+    // NOTE: Conclusion detection is disabled - we skip conclusion sections entirely
     let hasIntroInOutline = false;
-    let hasConclusionInOutline = false;
+    let hasConclusionInOutline = false; // Always false now - conclusions disabled
     let introFromOutline: SectionDefinition | null = null;
-    let conclusionFromOutline: SectionDefinition | null = null;
+    const conclusionFromOutline: SectionDefinition | null = null; // Always null - conclusions disabled
 
     if (brief.structured_outline && brief.structured_outline.length > 0) {
       const firstSection = brief.structured_outline[0];
@@ -683,18 +689,15 @@ export class ContentGenerationOrchestrator {
         };
       }
 
-      // Check if last section is a conclusion (only if different from first)
+      // CONCLUSION DETECTION DISABLED
+      // Even if the brief has a conclusion section, we skip it
+      // Articles should end with the last substantive content section
+      // If the brief has a conclusion-patterned heading, treat it as a body section
+      // (the pattern detection is kept for filtering in body section loop)
       if (lastSection && brief.structured_outline.length > 1 && conclusionPatterns.test(lastSection.heading || '')) {
+        // Mark as detected but DON'T create a conclusion section
         hasConclusionInOutline = true;
-        conclusionFromOutline = {
-          key: 'conclusion',
-          heading: lastSection.heading,
-          level: lastSection.level || 2,
-          order: 999,
-          subordinateTextHint: lastSection.subordinate_text_hint,
-          methodologyNote: lastSection.methodology_note,
-          section_type: 'conclusion'
-        };
+        // conclusionFromOutline stays null - we're not adding it
       }
     }
 
@@ -779,22 +782,11 @@ export class ContentGenerationOrchestrator {
     // Add limited body sections
     sections.push(...bodySections);
 
-    // Add conclusion section
-    // If outline has conclusion, use it; otherwise let AI generate heading
-    if (conclusionFromOutline) {
-      sections.push(conclusionFromOutline);
-    } else {
-      // NO HARDCODED HEADINGS - let AI generate contextually appropriate heading
-      const topic = brief.targetKeyword || brief.title || 'topic';
-      sections.push({
-        key: 'conclusion',
-        heading: `[GENERATE_HEADING:conclusion:${topic}]`, // Placeholder for AI-generated heading
-        level: 2,
-        order: 999,
-        section_type: 'conclusion',
-        generateHeading: true
-      });
-    }
+    // CONCLUSION SECTION DISABLED
+    // User feedback: "I really dislike them also only AI does that"
+    // The article ends with the last substantive H2 section
+    // The introduction (rewritten in Pass 7) serves as the ONLY summary
+    // This creates more natural, human-like articles
 
     return sections.sort((a, b) => a.order - b.order);
   }
