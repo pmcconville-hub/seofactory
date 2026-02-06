@@ -1280,10 +1280,13 @@ export function useContentGeneration({
       // Uses visual_semantics from content brief as primary guide
       if (updatedJob.current_pass === 6) {
         onLog('Pass 6: Adding visual semantics section-by-section...', 'info');
+        // Get change tracker for this job to track brief deviations (images added beyond brief plan)
+        const changeTracker = orchestrator.getChangeTracker(updatedJob.id, updatedJob.brief_id);
         await executePass6(
           orchestrator, updatedJob, activeBrief, safeBusinessInfo,
           makeSectionProgressCallback(6, 'Visuals'),
-          shouldAbort
+          shouldAbort,
+          changeTracker
         );
         if (shouldAbort()) return;
         // CRITICAL: Use refreshJobState to update React state for UI sync
@@ -1484,6 +1487,21 @@ export function useContentGeneration({
           if (onComplete) {
             onComplete(updatedJob.draft_content || '', updatedJob.final_audit_score || 0);
           }
+        }
+
+        // Persist generation changes (brief deviations like added images) to content_briefs
+        await orchestrator.finalizeChangeTracker(updatedJob.id);
+
+        // Refresh brief to get updated generation_changes for UI
+        const { data: refreshedBrief } = await supabase
+          .from('content_briefs')
+          .select('*')
+          .eq('id', activeBrief.id)
+          .single();
+
+        if (refreshedBrief) {
+          console.log('[useContentGeneration] Brief updated with generation changes:',
+            (refreshedBrief as any).generation_summary);
         }
 
         // Build quality report from audit details and job state
