@@ -5,6 +5,7 @@ import { performanceLogger, setCurrentJobId } from '../../performanceLogger';
 import { Json } from '../../../database.types';
 import { deduplicateContent, stripH1FromMarkdown, validateContentForExport } from './contentValidator';
 import { slugify } from '../../../utils/helpers';
+import { BriefChangeTracker } from './briefChangeTracker';
 
 /**
  * Extract contextual bridge links from a ContentBrief
@@ -220,6 +221,12 @@ export class ContentGenerationOrchestrator {
     sections: ContentGenerationSection[];
     timestamp: number;
   }> = new Map();
+
+  /**
+   * Change trackers per job for tracking brief modifications during generation.
+   * Key: jobId, Value: BriefChangeTracker instance
+   */
+  private changeTrackers: Map<string, BriefChangeTracker> = new Map();
 
   /**
    * Cache TTL in milliseconds (30 seconds)
@@ -493,6 +500,27 @@ export class ContentGenerationOrchestrator {
    */
   async getSections(jobId: string): Promise<ContentGenerationSection[]> {
     return this.getCachedSections(jobId);
+  }
+
+  /**
+   * Get or create change tracker for a job
+   */
+  getChangeTracker(jobId: string, briefId: string): BriefChangeTracker {
+    if (!this.changeTrackers.has(jobId)) {
+      this.changeTrackers.set(jobId, new BriefChangeTracker(briefId, this.supabase));
+    }
+    return this.changeTrackers.get(jobId)!;
+  }
+
+  /**
+   * Persist and clean up change tracker after job completion
+   */
+  async finalizeChangeTracker(jobId: string): Promise<void> {
+    const tracker = this.changeTrackers.get(jobId);
+    if (tracker) {
+      await tracker.persistChanges();
+      this.changeTrackers.delete(jobId);
+    }
   }
 
   async upsertSection(section: Partial<ContentGenerationSection> & { job_id: string; section_key: string }): Promise<void> {
