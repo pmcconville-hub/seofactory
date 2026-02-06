@@ -10,6 +10,7 @@ import {
 import { ContentGenerationOrchestrator } from '../orchestrator';
 import { executeSectionPass } from './baseSectionPass';
 import { buildPass4Prompt, buildPass4BatchPrompt } from '../rulesEngine/prompts/sectionOptimizationPromptBuilder';
+import { BriefChangeTracker } from '../briefChangeTracker';
 
 /**
  * Pass 6: Visual Semantics (exported as executePass6 via index.ts)
@@ -28,7 +29,8 @@ export async function executePass4(
   brief: ContentBrief,
   businessInfo: BusinessInfo,
   onSectionProgress?: SectionProgressCallback,
-  shouldAbort?: () => boolean
+  shouldAbort?: () => boolean,
+  changeTracker?: BriefChangeTracker
 ): Promise<string> {
   return executeSectionPass(
     orchestrator,
@@ -45,27 +47,59 @@ export async function executePass4(
       batchSize: 5,
       buildBatchPrompt: buildPass4BatchPrompt,
 
-      // Selective processing: Sections needing images + ALWAYS include intro for hero image
+      // Brief-led processing: Only sections designated by brief for images + justified additions
       filterSections: (sections: ContentGenerationSection[], budget: ContentFormatBudget) => {
-        return sections.filter(s => {
-          // Always process intro section for HERO image (Korayanese framework requirement)
-          const isIntroSection = s.section_key === 'intro' ||
-            s.section_order === 0 ||
-            s.section_heading?.toLowerCase().includes('introductie') ||
-            s.section_heading?.toLowerCase().includes('introduction') ||
-            s.section_heading?.toLowerCase().startsWith('wat is');
+        // Build set of brief-designated image sections
+        const briefImageSections = new Set<string>();
+        if (brief.enhanced_visual_semantics?.section_images) {
+          Object.keys(brief.enhanced_visual_semantics.section_images).forEach(key => {
+            briefImageSections.add(key.toLowerCase());
+            briefImageSections.add(key.toLowerCase().replace(/-/g, '_'));
+            briefImageSections.add(key.toLowerCase().replace(/_/g, '-'));
+          });
+        }
+        // Always include intro for hero image
+        briefImageSections.add('intro');
 
-          if (isIntroSection) {
-            // Check if intro already has an image - if not, force processing
-            const hasImage = (s.current_content || '').includes('[IMAGE:');
-            if (!hasImage) {
-              console.log('[Pass4] Forcing intro section processing for hero image');
-              return true;
-            }
+        return sections.filter(s => {
+          const sectionKeyLower = s.section_key.toLowerCase();
+          const sectionKeyNormalized = sectionKeyLower.replace(/-/g, '_');
+
+          // 1. Always process if brief designates this section for an image
+          if (briefImageSections.has(sectionKeyLower) || briefImageSections.has(sectionKeyNormalized)) {
+            return true;
           }
 
-          // Otherwise use budget-based selection
-          return budget.sectionsNeedingOptimization.images.includes(s.section_key);
+          // 2. Check if section already has an image (from Pass 1)
+          const hasImage = (s.current_content || '').includes('[IMAGE:');
+          if (hasImage) {
+            return true;
+          }
+
+          // 3. Evaluate if adding an image is justified
+          const isFSTarget = brief.featured_snippet_target?.question?.toLowerCase().includes(
+            s.section_heading?.toLowerCase().split(' ')[0] || ''
+          ) || false;
+
+          const evaluation = BriefChangeTracker.evaluateImageAddition(
+            s.current_content || '',
+            s.section_heading || '',
+            false,
+            isFSTarget
+          );
+
+          if (evaluation.justified && changeTracker) {
+            changeTracker.logImageAdded(
+              4,
+              s.section_key,
+              `Auto-generated visual for ${s.section_heading}`,
+              evaluation.criteria,
+              evaluation.reason
+            );
+            return true;
+          }
+
+          return false;
         });
       }
     },
