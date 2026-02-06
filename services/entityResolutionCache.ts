@@ -232,7 +232,21 @@ export async function cacheEntities(
 
   console.log('[EntityCache] Caching', entities.length, 'entities');
 
-  const rows = entities.map(entity => ({
+  // De-duplicate entities by (user_id, entity_name, entity_type) to prevent
+  // "ON CONFLICT DO UPDATE command cannot affect row a second time" error
+  const uniqueEntitiesMap = new Map<string, ResolvedEntity>();
+  for (const entity of entities) {
+    const key = `${userId}|${entity.name}|${entity.type}`;
+    // Keep the later entity if duplicates exist (assumes more recent is better)
+    uniqueEntitiesMap.set(key, entity);
+  }
+  const uniqueEntities = Array.from(uniqueEntitiesMap.values());
+
+  if (uniqueEntities.length !== entities.length) {
+    console.log(`[EntityCache] De-duplicated ${entities.length} -> ${uniqueEntities.length} entities`);
+  }
+
+  const rows = uniqueEntities.map(entity => ({
     user_id: userId,
     entity_name: entity.name,
     entity_type: entity.type,
