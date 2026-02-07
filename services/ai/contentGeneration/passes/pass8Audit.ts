@@ -47,6 +47,14 @@ export async function executePass8(
 
   log.log(` Auditing ${draft.length} chars from ${sections.length} sections`);
 
+  // Detect soft validation failures from Pass 1 (marked with HTML comments)
+  const softValidationFailures = sections.filter(s =>
+    (s.content || '').includes('<!-- SOFT_VALIDATION_FAILED:')
+  ).length;
+  if (softValidationFailures > 0) {
+    log.warn(` ${softValidationFailures} section(s) have soft validation failures from Pass 1`);
+  }
+
   // Build holistic context for enhanced audit metrics
   // NOTE: buildHolisticSummary is now async and yields internally to prevent browser freeze
   const holisticContext = await buildHolisticSummary(sections, brief, businessInfo);
@@ -140,8 +148,14 @@ export async function executePass8(
     }
   }
 
-  // Combined final score: 60% algorithmic + 40% compliance - cross-page penalty
-  const finalScore = Math.max(0, Math.round(algorithmicScore * 0.6 + complianceResult.overall * 0.4) - crossPagePenalty);
+  // Soft validation penalty: -2 per failed section, max -10
+  const softValidationPenalty = Math.min(softValidationFailures * 2, 10);
+  if (softValidationPenalty > 0) {
+    log.warn(` Applying soft validation penalty: -${softValidationPenalty} points`);
+  }
+
+  // Combined final score: 60% algorithmic + 40% compliance - penalties
+  const finalScore = Math.max(0, Math.round(algorithmicScore * 0.6 + complianceResult.overall * 0.4) - crossPagePenalty - softValidationPenalty);
 
   // Quality enforcement thresholds
   const CRITICAL_THRESHOLD = 70;  // Below this, content is blocked — enterprise SEO standard
