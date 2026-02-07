@@ -188,6 +188,19 @@ async function processIntroOrConclusion(
     // Validate and fix generic headings for intro sections
     if (type === 'intro') {
       content = fixGenericIntroHeading(content, holisticContext.centralEntity);
+
+      // Ensure intro content has an H2 heading - AI sometimes returns content without one
+      const hasH2 = /^##\s+.+$/m.test(content);
+      if (!hasH2) {
+        const originalHeading = (section.current_content || '').match(/^##\s+.+$/m)?.[0];
+        if (originalHeading) {
+          content = `${originalHeading}\n\n${content}`;
+          console.warn(`[Pass7] AI omitted H2 heading - restored from original: "${originalHeading}"`);
+        } else if (section.section_heading) {
+          content = `## ${section.section_heading}\n\n${content}`;
+          console.warn(`[Pass7] AI omitted H2 heading - restored from section definition: "${section.section_heading}"`);
+        }
+      }
     }
 
     // CRITICAL: Preserve image placeholders from the original content

@@ -28,6 +28,14 @@ const BusinessInfoPage: React.FC = () => {
             authorProfile: formData.authorProfile,
             domain: formData.domain,
             projectName: formData.projectName,
+            websiteType: formData.websiteType,
+            region: formData.region,
+            expertise: formData.expertise,
+            conversionGoal: formData.conversionGoal,
+            uniqueDataAssets: formData.uniqueDataAssets,
+            authorName: formData.authorName,
+            authorBio: formData.authorBio,
+            authorCredentials: formData.authorCredentials,
         };
 
         dispatch({ type: 'UPDATE_MAP_DATA', payload: { mapId, data: { business_info: strategicInfo } } });

@@ -1,7 +1,7 @@
 // components/imageGeneration/ImageManagementPanel.tsx
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ImagePlaceholder, BusinessInfo, ImageGenerationProgress, ImageStyle } from '../../types';
-import { generateImage, uploadImage, initImageGeneration } from '../../services/ai/imageGeneration/orchestrator';
+import { generateImage, uploadImage, initImageGeneration, ensureClientReady } from '../../services/ai/imageGeneration/orchestrator';
 import { ImageCard } from './ImageCard';
 import { Button } from '../ui/Button';
 import { useAppState } from '../../state/appState';
@@ -104,8 +104,17 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
     return getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
   }, [state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
 
+  const [isClientReady, setIsClientReady] = useState(false);
+
   useEffect(() => {
-    initImageGeneration(supabase);
+    if (supabase) {
+      initImageGeneration(supabase);
+      ensureClientReady().then(() => {
+        setIsClientReady(true);
+      });
+    } else {
+      setIsClientReady(true);
+    }
   }, [supabase]);
 
   // Persist generated image to database so it's not lost on navigation
@@ -292,7 +301,7 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
 
   // Process queue
   useEffect(() => {
-    if (queue.length === 0 || currentlyGenerating) return;
+    if (queue.length === 0 || currentlyGenerating || !isClientReady) return;
 
     const nextId = queue[0];
     const placeholder = placeholders.find(p => p.id === nextId);
@@ -344,7 +353,7 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
         setQueue(q => q.slice(1));
         setProgress(null);
       });
-  }, [queue, currentlyGenerating, placeholders, businessInfo, generatedImages, selectedStyle, customInstructions, persistGeneratedImage]);
+  }, [queue, currentlyGenerating, placeholders, businessInfo, generatedImages, selectedStyle, customInstructions, persistGeneratedImage, isClientReady]);
 
   // Handlers
   const handleSelectAll = useCallback(() => {
