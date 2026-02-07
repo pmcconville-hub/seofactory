@@ -56,6 +56,8 @@ interface ContentGenerationProgressProps {
   onResume: () => void;
   onCancel: () => void;
   onRetry?: () => void;
+  onRerunFromPass?: (passNumber: number) => void;
+  onApproveCheckpoint?: () => void;
   error?: string | null;
   /** Template name being used for generation (from brief.selectedTemplate) */
   templateName?: string;
@@ -239,6 +241,8 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
   onResume,
   onCancel,
   onRetry,
+  onRerunFromPass,
+  onApproveCheckpoint,
   error,
   templateName,
   templateConfidence
@@ -504,7 +508,7 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
             Resume
           </button>
         )}
-        {job.status === 'failed' && onRetry && (
+        {(job.status === 'failed' || (job.status as string) === 'audit_failed') && onRetry && (
           <button
             onClick={onRetry}
             className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm flex items-center gap-2"
@@ -515,7 +519,41 @@ export const ContentGenerationProgress: React.FC<ContentGenerationProgressProps>
             Retry
           </button>
         )}
-        {(job.status === 'in_progress' || job.status === 'paused' || job.status === 'failed') && (
+        {(job.status as string) === 'audit_failed' && onRerunFromPass && (
+          <button
+            onClick={() => {
+              const suggestion = (job.audit_details as any)?.rerunSuggestion;
+              onRerunFromPass(suggestion?.targetPass || 1);
+            }}
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded text-sm flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Re-run from suggested pass
+          </button>
+        )}
+        {(job.status as string) === 'checkpoint' && (
+          <div className="flex gap-2">
+            {onApproveCheckpoint && (
+              <button
+                onClick={onApproveCheckpoint}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm"
+              >
+                Approve & Continue
+              </button>
+            )}
+            {onRerunFromPass && (
+              <button
+                onClick={() => onRerunFromPass(Math.max(1, (job.current_pass || 1) - 1))}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded text-sm"
+              >
+                Rollback
+              </button>
+            )}
+          </div>
+        )}
+        {(job.status === 'in_progress' || job.status === 'paused' || job.status === 'failed' || (job.status as string) === 'audit_failed' || (job.status as string) === 'checkpoint') && (
           <button
             onClick={onCancel}
             className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm"

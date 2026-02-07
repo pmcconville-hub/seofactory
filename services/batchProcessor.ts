@@ -121,8 +121,10 @@ export class BatchProcessor {
                     activeMap.topics || [],
                     activeMap.pillars, // Safe: Checked in guard clause above
                     state.knowledgeGraph,
-                    ResponseCode.INFORMATIONAL, 
-                    this.dispatch
+                    ResponseCode.INFORMATIONAL,
+                    this.dispatch,
+                    undefined,
+                    activeMap.eavs || []
                 );
 
                 const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);

@@ -6,6 +6,8 @@ import { Json } from '../../../database.types';
 import { deduplicateContent, stripH1FromMarkdown, validateContentForExport } from './contentValidator';
 import { slugify } from '../../../utils/helpers';
 import { BriefChangeTracker } from './briefChangeTracker';
+import { getWebsiteTypeConfig } from '../../../config/websiteTypeTemplates';
+import { WebsiteType } from '../../../types';
 
 /**
  * Extract contextual bridge links from a ContentBrief
@@ -518,8 +520,16 @@ export class ContentGenerationOrchestrator {
   async finalizeChangeTracker(jobId: string): Promise<void> {
     const tracker = this.changeTrackers.get(jobId);
     if (tracker) {
-      await tracker.persistChanges();
-      this.changeTrackers.delete(jobId);
+      try {
+        const result = await tracker.persistChanges();
+        if (!result.success) {
+          console.error(`[Orchestrator] Failed to persist change tracker for job ${jobId}:`, result.error);
+        }
+      } catch (err) {
+        console.error(`[Orchestrator] Exception finalizing change tracker for job ${jobId}:`, err);
+      } finally {
+        this.changeTrackers.delete(jobId);
+      }
     }
   }
 
@@ -577,6 +587,27 @@ export class ContentGenerationOrchestrator {
   async cancelJob(jobId: string): Promise<void> {
     await this.updateJob(jobId, { status: 'cancelled' });
     this.abortController.abort();
+  }
+
+  /**
+   * Rollback all sections to their content at a given pass.
+   * Uses pass_contents versioning stored by baseSectionPass.
+   */
+  async rollbackSectionsToPass(jobId: string, targetPass: number): Promise<void> {
+    const sections = await this.getSections(jobId);
+    for (const section of sections) {
+      const passKey = `pass_${targetPass}`;
+      const previousContent = section.pass_contents?.[passKey];
+      if (previousContent) {
+        await this.upsertSection({
+          ...section,
+          current_content: previousContent,
+          current_pass: targetPass,
+        });
+      }
+    }
+    // Invalidate cache after rollback
+    this.invalidateSectionCache(jobId);
   }
 
   /**
@@ -678,7 +709,7 @@ export class ContentGenerationOrchestrator {
    */
   parseSectionsFromBrief(
     brief: ContentBrief,
-    options?: { maxSections?: number; language?: string }
+    options?: { maxSections?: number; language?: string; websiteType?: string }
   ): SectionDefinition[] {
     const sections: SectionDefinition[] = [];
 
@@ -686,18 +717,23 @@ export class ContentGenerationOrchestrator {
     // These patterns match common headings in multiple languages
     const introPatterns = /^(introduction|intro|what\s+is|overview|getting\s+started|inleiding|wat\s+is|overzicht|einleitung|was\s+ist|überblick|introduction|qu'est-ce|aperçu|introducción|qué\s+es|resumen)/i;
 
-    // IMPORTANT: Conclusions are DISABLED
-    // User feedback: "I really dislike them also only AI does that"
-    // Articles should end with the last substantive H2 section, NOT a conclusion
-    // The introduction (Pass 7) serves as the ONLY summary
+    // Conclusions are DISABLED by default per user feedback: "I really dislike them also only AI does that"
+    // BUT: enabled for monetization website types (ECOMMERCE, SAAS, SERVICE_B2B, AFFILIATE_REVIEW)
+    // where CTA sections drive conversions.
     const conclusionPatterns = /^(conclusion|summary|next\s+steps|final\s+thoughts|key\s+takeaways|wrap\s+up|conclusie|samenvatting|volgende\s+stappen|schlussfolgerung|zusammenfassung|nächste\s+schritte|conclusion|résumé|prochaines\s+étapes|conclusión|resumen|próximos\s+pasos)/i;
 
+    // Check if conclusions are enabled for this website type
+    let conclusionEnabled = false;
+    if (options?.websiteType) {
+      const config = getWebsiteTypeConfig(options.websiteType as WebsiteType);
+      conclusionEnabled = config.enableConclusion ?? false;
+    }
+
     // Check if structured_outline has intro section
-    // NOTE: Conclusion detection is disabled - we skip conclusion sections entirely
     let hasIntroInOutline = false;
-    let hasConclusionInOutline = false; // Always false now - conclusions disabled
+    let hasConclusionInOutline = false;
     let introFromOutline: SectionDefinition | null = null;
-    const conclusionFromOutline: SectionDefinition | null = null; // Always null - conclusions disabled
+    let conclusionFromOutline: SectionDefinition | null = null;
 
     if (brief.structured_outline && brief.structured_outline.length > 0) {
       const firstSection = brief.structured_outline[0];
@@ -717,15 +753,21 @@ export class ContentGenerationOrchestrator {
         };
       }
 
-      // CONCLUSION DETECTION DISABLED
-      // Even if the brief has a conclusion section, we skip it
-      // Articles should end with the last substantive content section
-      // If the brief has a conclusion-patterned heading, treat it as a body section
-      // (the pattern detection is kept for filtering in body section loop)
+      // Conclusion detection: only enabled for website types that benefit from CTA sections
       if (lastSection && brief.structured_outline.length > 1 && conclusionPatterns.test(lastSection.heading || '')) {
-        // Mark as detected but DON'T create a conclusion section
         hasConclusionInOutline = true;
-        // conclusionFromOutline stays null - we're not adding it
+        if (conclusionEnabled) {
+          conclusionFromOutline = {
+            key: 'conclusion',
+            heading: lastSection.heading,
+            level: lastSection.level || 2,
+            order: 999, // Will be reassigned
+            subordinateTextHint: lastSection.subordinate_text_hint,
+            methodologyNote: lastSection.methodology_note,
+            section_type: 'conclusion'
+          };
+        }
+        // If not enabled, conclusionFromOutline stays null — conclusion is skipped
       }
     }
 
@@ -802,14 +844,12 @@ export class ContentGenerationOrchestrator {
       });
     }
 
-    // Apply maxSections limit if specified (accounting for intro only - conclusion is DISABLED)
-    // NOTE: Conclusion sections are no longer generated (see line 785-789 comment)
-    // So we only reserve 1 slot for the introduction section
-    if (options?.maxSections && options.maxSections > 1) {
-      const maxBodySections = options.maxSections - 1; // Reserve 1 spot for intro (conclusion disabled)
+    // Apply maxSections limit (reserve slots for intro + optional conclusion)
+    const reservedSlots = 1 + (conclusionFromOutline ? 1 : 0);
+    if (options?.maxSections && options.maxSections > reservedSlots) {
+      const maxBodySections = options.maxSections - reservedSlots;
       if (bodySections.length > maxBodySections) {
         console.log(`[Orchestrator] Limiting sections: ${bodySections.length} → ${maxBodySections} body sections (maxSections: ${options.maxSections})`);
-        // Keep only the first N body sections (which are already importance-ordered)
         bodySections.splice(maxBodySections);
       }
     }
@@ -817,11 +857,12 @@ export class ContentGenerationOrchestrator {
     // Add limited body sections
     sections.push(...bodySections);
 
-    // CONCLUSION SECTION DISABLED
-    // User feedback: "I really dislike them also only AI does that"
-    // The article ends with the last substantive H2 section
-    // The introduction (rewritten in Pass 7) serves as the ONLY summary
-    // This creates more natural, human-like articles
+    // Conclusion: only added if enabled for this website type
+    // Default behavior (informational): no conclusion — article ends with last substantive section
+    if (conclusionFromOutline) {
+      conclusionFromOutline.order = sections.length;
+      sections.push(conclusionFromOutline);
+    }
 
     return sections.sort((a, b) => a.order - b.order);
   }

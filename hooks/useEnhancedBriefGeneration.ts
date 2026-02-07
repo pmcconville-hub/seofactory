@@ -14,7 +14,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { BusinessInfo, EnrichedTopic, SEOPillars, ResponseCode, ContentBrief } from '../types';
+import { BusinessInfo, EnrichedTopic, SEOPillars, ResponseCode, ContentBrief, SemanticTriple } from '../types';
 import { KnowledgeGraph } from '../lib/knowledgeGraph';
 import {
   MarketPatterns,
@@ -141,7 +141,8 @@ export function useEnhancedBriefGeneration() {
     knowledgeGraph: KnowledgeGraph,
     responseCode: ResponseCode,
     dispatch: React.Dispatch<any>,
-    options: EnhancedBriefGenerationOptions = {}
+    options: EnhancedBriefGenerationOptions = {},
+    eavs?: SemanticTriple[]
   ): Promise<EnhancedBriefGenerationResult> => {
     const {
       analysisDepth = 'standard',
@@ -333,7 +334,8 @@ export function useEnhancedBriefGeneration() {
         knowledgeGraph,
         responseCode,
         dispatch,
-        marketPatterns || undefined
+        marketPatterns || undefined,
+        eavs
       );
 
       setState(prev => ({ ...prev, isGeneratingBrief: false }));

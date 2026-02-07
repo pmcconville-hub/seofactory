@@ -208,6 +208,42 @@ export function findCannibalizationRisks(
 }
 
 /**
+ * Detect potential cannibalization during map generation using title/query word overlap.
+ * Doesn't require a KG — uses Jaccard similarity on canonical queries.
+ */
+export function detectTitleCannibalization(
+  topics: EnrichedTopic[]
+): Array<{ topicA: EnrichedTopic; topicB: EnrichedTopic; similarity: number; recommendation: string }> {
+  const risks: Array<{ topicA: EnrichedTopic; topicB: EnrichedTopic; similarity: number; recommendation: string }> = [];
+
+  for (let i = 0; i < topics.length; i++) {
+    for (let j = i + 1; j < topics.length; j++) {
+      const a = topics[i];
+      const b = topics[j];
+
+      const queryA = (a.canonical_query || a.title).toLowerCase();
+      const queryB = (b.canonical_query || b.title).toLowerCase();
+
+      // Jaccard similarity on words (filter stopwords by length)
+      const wordsA = new Set(queryA.split(/\s+/).filter(w => w.length > 2));
+      const wordsB = new Set(queryB.split(/\s+/).filter(w => w.length > 2));
+      const intersection = new Set([...wordsA].filter(w => wordsB.has(w)));
+      const union = new Set([...wordsA, ...wordsB]);
+      const similarity = union.size > 0 ? intersection.size / union.size : 0;
+
+      if (similarity > 0.7) {
+        risks.push({
+          topicA: a, topicB: b, similarity,
+          recommendation: `Consider merging "${a.title}" and "${b.title}" (${Math.round(similarity * 100)}% word overlap)`,
+        });
+      }
+    }
+  }
+
+  return risks.sort((a, b) => b.similarity - a.similarity);
+}
+
+/**
  * Suggest optimal hub-spoke structure based on semantic distance.
  * Identifies potential hubs and their ideal spokes.
  */

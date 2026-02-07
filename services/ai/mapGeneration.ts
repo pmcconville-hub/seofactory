@@ -357,13 +357,32 @@ export const enrichTopicMetadata = async (
         openrouter: () => openRouterService.enrichTopicMetadata(topics, businessInfo, dispatch),
     });
 
-    // 2. Apply Momentum Algorithm for Publication Dates
-    // Logic: Start 3 days from now, space items by 3 days.
-    // This prevents "date clumping" and simulates a content calendar.
+    // 2. Dependency-aware publication scheduling
+    // Sort: informational parents first, then monetization children
+    // This ensures foundational content is published before commercial content
+    const sortedForPublication = [...aiResults].sort((a: any, b: any) => {
+        // Informational before monetization
+        const classOrder: Record<string, number> = { informational: 0, monetization: 1 };
+        const aClass = classOrder[a.topic_class] ?? 0;
+        const bClass = classOrder[b.topic_class] ?? 0;
+        if (aClass !== bClass) return aClass - bClass;
+
+        // Parents before children
+        if (a.id === b.parent_topic_id) return -1;
+        if (b.id === a.parent_topic_id) return 1;
+
+        // Core before outer
+        const typeOrder: Record<string, number> = { core: 0, outer: 1 };
+        const aType = typeOrder[a.type] ?? 1;
+        const bType = typeOrder[b.type] ?? 1;
+        return aType - bType;
+    });
+
+    // Assign dates with 3-day spacing based on dependency-sorted order
     const baseDate = new Date();
     baseDate.setDate(baseDate.getDate() + 3); // Start 3 days out
 
-    const enrichedWithDates = aiResults.map((item: any, index: number) => {
+    const enrichedWithDates = sortedForPublication.map((item: any, index: number) => {
         const pubDate = new Date(baseDate);
         pubDate.setDate(baseDate.getDate() + (index * 3)); // 3-day spacing
         return {

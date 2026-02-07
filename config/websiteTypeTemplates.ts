@@ -97,6 +97,8 @@ export interface WebsiteTypeConfig {
     max: number;
   };
   stylometryDefault: 'ACADEMIC_FORMAL' | 'DIRECT_TECHNICAL' | 'PERSUASIVE_SALES' | 'INSTRUCTIONAL_CLEAR';
+  /** Whether to generate a conclusion/CTA section for this website type */
+  enableConclusion: boolean;
 }
 
 // =============================================================================
@@ -194,7 +196,8 @@ export const ECOMMERCE_CONFIG: WebsiteTypeConfig = {
     max: 10
   },
 
-  stylometryDefault: 'PERSUASIVE_SALES'
+  stylometryDefault: 'PERSUASIVE_SALES',
+  enableConclusion: true // CTA section for conversions
 };
 
 export const SAAS_CONFIG: WebsiteTypeConfig = {
@@ -288,7 +291,8 @@ export const SAAS_CONFIG: WebsiteTypeConfig = {
     max: 9
   },
 
-  stylometryDefault: 'DIRECT_TECHNICAL'
+  stylometryDefault: 'DIRECT_TECHNICAL',
+  enableConclusion: true // CTA section for signups
 };
 
 export const SERVICE_B2B_CONFIG: WebsiteTypeConfig = {
@@ -382,7 +386,8 @@ export const SERVICE_B2B_CONFIG: WebsiteTypeConfig = {
     max: 7
   },
 
-  stylometryDefault: 'ACADEMIC_FORMAL'
+  stylometryDefault: 'ACADEMIC_FORMAL',
+  enableConclusion: true // CTA section for contact
 };
 
 export const INFORMATIONAL_CONFIG: WebsiteTypeConfig = {
@@ -476,7 +481,8 @@ export const INFORMATIONAL_CONFIG: WebsiteTypeConfig = {
     max: 12
   },
 
-  stylometryDefault: 'INSTRUCTIONAL_CLEAR'
+  stylometryDefault: 'INSTRUCTIONAL_CLEAR',
+  enableConclusion: false // No conclusion per user preference
 };
 
 export const AFFILIATE_REVIEW_CONFIG: WebsiteTypeConfig = {
@@ -570,7 +576,8 @@ export const AFFILIATE_REVIEW_CONFIG: WebsiteTypeConfig = {
     max: 12
   },
 
-  stylometryDefault: 'DIRECT_TECHNICAL'
+  stylometryDefault: 'DIRECT_TECHNICAL',
+  enableConclusion: true // CTA section for affiliate links
 };
 
 // =============================================================================

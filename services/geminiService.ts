@@ -722,10 +722,11 @@ export const generateContentBrief = async (
     knowledgeGraph: KnowledgeGraph,
     responseCode: ResponseCode,
     dispatch: React.Dispatch<any>,
-    marketPatterns?: import('../types/competitiveIntelligence').MarketPatterns
+    marketPatterns?: import('../types/competitiveIntelligence').MarketPatterns,
+    eavs?: import('../types').SemanticTriple[]
 ): Promise<Omit<ContentBrief, 'id' | 'topic_id' | 'articleDraft'>> => {
     const sanitizer = new AIResponseSanitizer(dispatch);
-    const prompt = prompts.GENERATE_CONTENT_BRIEF_PROMPT(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, marketPatterns);
+    const prompt = prompts.GENERATE_CONTENT_BRIEF_PROMPT(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, marketPatterns, eavs);
 
     // Using the detailed sanitizer schema as a fallback/parser for the structured output
     const sanitizerSchema = {

@@ -1,4 +1,4 @@
-// services/ai/contentGeneration/passes/pass6Discourse.ts
+// services/ai/contentGeneration/passes/pass4Discourse.ts
 import {
   ContentBrief,
   ContentGenerationJob,
@@ -12,7 +12,7 @@ import { executeSectionPass } from './baseSectionPass';
 import { buildPass6Prompt, buildPass6BatchPrompt } from '../rulesEngine/prompts/sectionOptimizationPromptBuilder';
 
 /**
- * Pass 4: Discourse Integration (exported as executePass4 via index.ts)
+ * Pass 4: Discourse Integration
  *
  * Uses format budget-aware selective processing:
  * - Only processes sections identified as needing discourse improvement
@@ -22,7 +22,7 @@ import { buildPass6Prompt, buildPass6BatchPrompt } from '../rulesEngine/prompts/
  *
  * Batches sections to reduce API calls.
  */
-export async function executePass6(
+export async function executePass4(
   orchestrator: ContentGenerationOrchestrator,
   job: ContentGenerationJob,
   brief: ContentBrief,
@@ -80,7 +80,6 @@ export async function executePass6(
           if (paragraphs.length >= 2) {
             let weakTransitions = 0;
             for (let i = 1; i < paragraphs.length; i++) {
-              const firstWord = paragraphs[i].trim().split(/\s+/)[0]?.toLowerCase() || '';
               // Check if paragraph starts without a connecting word/phrase
               const hasConnector = /^(however|therefore|additionally|moreover|furthermore|similarly|consequently|thus|hence|also|deze|dit|daarom|echter|bovendien|verder|daarnaast|hierdoor)/.test(paragraphs[i].trim().toLowerCase());
               if (!hasConnector) {

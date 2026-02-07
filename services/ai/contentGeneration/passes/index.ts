@@ -20,19 +20,19 @@ export { executePass1 } from './pass1DraftGeneration';
 // Pass 2: Header Optimization
 export { executePass2 } from './pass2Headers';
 
-// Pass 3: Lists & Tables (file: pass3Lists.ts)
+// Pass 3: Lists & Tables
 export { executePass3 } from './pass3Lists';
 
-// Pass 4: Discourse Integration (file: pass6Discourse.ts, aliased)
-export { executePass6 as executePass4 } from './pass6Discourse';
+// Pass 4: Discourse Integration
+export { executePass4 } from './pass4Discourse';
 
-// Pass 5: Micro Semantics (file: pass5MicroSemantics.ts)
+// Pass 5: Micro Semantics
 export { executePass5 } from './pass5MicroSemantics';
 
-// Pass 6: Visual Semantics (file: pass4Visuals.ts, aliased)
-export { executePass4 as executePass6 } from './pass4Visuals';
+// Pass 6: Visual Semantics
+export { executePass6 } from './pass6Visuals';
 
-// Pass 7: Introduction Synthesis (file: pass7Introduction.ts) - NOW AFTER BODY POLISH
+// Pass 7: Introduction Synthesis - NOW AFTER BODY POLISH
 export { executePass7 } from './pass7Introduction';
 
 // Pass 8: Final Polish

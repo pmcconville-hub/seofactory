@@ -660,11 +660,41 @@ ${jsonResponseInstruction}
 Respond with a JSON object containing "responseCode" and "reasoning".
 `;
 
-export const GENERATE_CONTENT_BRIEF_PROMPT = (info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, knowledgeGraph: KnowledgeGraph, responseCode: ResponseCode, marketPatterns?: MarketPatterns): string => {
-    // Extract first 15 node terms from knowledge graph (simplified from SPARQL query)
+export const GENERATE_CONTENT_BRIEF_PROMPT = (info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, knowledgeGraph: KnowledgeGraph, responseCode: ResponseCode, marketPatterns?: MarketPatterns, eavs?: SemanticTriple[]): string => {
+    // Extract up to 30 topic-relevant nodes from knowledge graph (sorted by relevance to current topic)
     const kgContext = knowledgeGraph
-        ? JSON.stringify(Array.from(knowledgeGraph.getNodes().values()).slice(0, 15).map(n => ({ term: n.term })), null, 2)
+        ? (() => {
+            const allNodes = Array.from(knowledgeGraph.getNodes().values());
+            const topicTerms = [topic.title, topic.canonical_query, topic.attribute_focus]
+              .filter(Boolean).map(s => s!.toLowerCase());
+
+            // Score nodes by relevance to this specific topic
+            const scored = allNodes.map(n => {
+              const termLower = n.term.toLowerCase();
+              let relevance = 0;
+              for (const t of topicTerms) {
+                if (t.includes(termLower) || termLower.includes(t)) relevance += 3;
+                else if (t.split(/\s+/).some((w: string) => w.length > 2 && termLower.includes(w))) relevance += 1;
+              }
+              return { node: n, relevance };
+            });
+
+            const topNodes = scored
+              .sort((a, b) => b.relevance - a.relevance || a.node.term.localeCompare(b.node.term))
+              .slice(0, 30)
+              .map(s => ({ term: s.node.term }));
+
+            return JSON.stringify(topNodes, null, 2);
+          })()
         : "No Knowledge Graph available.";
+
+    // Format EAVs for prompt inclusion
+    const eavContext = eavs && eavs.length > 0
+        ? `\n**Semantic Triples (Entity-Attribute-Value) for this topic:**\n${eavs.slice(0, 30).map((eav, i) => {
+            const category = eav.predicate?.category || 'UNCLASSIFIED';
+            return `${i + 1}. [${category}] ${eav.subject?.label || '?'} → ${eav.predicate?.relation || '?'} → ${eav.object?.value || '?'}`;
+          }).join('\n')}\n\nYou MUST incorporate these semantic triples into the structured_outline. Each section should map to at least one triple. Prioritize UNIQUE and ROOT triples in early sections. Populate the brief's 'eavs' field with these triples.\n`
+        : '';
 
     const userContextInstruction = topic.metadata?.userContext ? `\n**USER GUIDANCE:** The user specifically requested: "${topic.metadata.userContext}". Ensure the brief aligns with this intent.` : "";
 
@@ -688,8 +718,18 @@ ${userContextInstruction}
 ${businessContext(info)}
 **SEO Pillars:** ${JSON.stringify(pillars, null, 2)}
 **Knowledge Graph Context:** ${kgContext}
-**Available Topics for Linking:** ${allTopics.map(t => t.title).join(', ')}
-
+**Available Topics for Linking (with relationships):**
+${allTopics.slice(0, 20).map(t => {
+  const isParent = topic.parent_topic_id === t.id;
+  const isSibling = topic.parent_topic_id && topic.parent_topic_id === t.parent_topic_id && t.id !== topic.id;
+  const isChild = t.parent_topic_id === topic.id;
+  const isSelf = t.id === topic.id;
+  if (isSelf) return null;
+  const relationship = isParent ? 'PARENT' : isChild ? 'CHILD' : isSibling ? 'SIBLING' : 'RELATED';
+  return `- "${t.title}" [${relationship}] (${t.type || 'topic'})`;
+}).filter(Boolean).join('\n')}
+Prioritize PARENT and SIBLING topics for internal links. CHILD topics are good for "learn more" links.
+${eavContext}
 ---
 
 ### **STRICT EXECUTION RULES**
@@ -698,6 +738,7 @@ ${businessContext(info)}
 1.  **Central Entity Focus (Rule I.A):** Every heading and sub-heading must modify the Central Entity ("${pillars.centralEntity}"). Reject broad generalizations.
 2.  **Source Context Alignment (Rule I.B):** Filter attributes based on the Source Context ("${pillars.sourceContext}"). Only include attributes relevant to the monetization intent (e.g., if context is "Enterprise", exclude "Free" or "Cheap").
 3.  **Attribute Prioritization (Rule I.D):** Structure the 'outline' to prioritize **Unique Attributes** (definitive features/IDs) FIRST, followed by **Root Attributes** (Definitions/Nature), then **Rare Attributes** (Specific details).
+4.  **EAV-Section Mapping (Rule I.E):** For each section in 'structured_outline', include a 'mapped_eavs' field listing which Semantic Triples (by index from the list above) that section is responsible for covering. Every UNIQUE and ROOT triple MUST appear in at least one section's mapped_eavs. Example: { "heading": "Robot Materials", "mapped_eavs": [2, 5, 8] }
 
 #### **II. STRUCTURE & FLOW**
 1.  **Contextual Vector (Rule II.B):** Ensure a strictly ordered heading hierarchy (H1 -> H2 -> H3) that creates a logical dependency chain.
@@ -781,7 +822,8 @@ Respond with a SINGLE valid JSON object. Generate the 'structured_outline' FIRST
       "subordinate_text_hint": "string (First-sentence syntax instruction)",
       "methodology_note": "string",
       "required_phrases": ["string"],
-      "anchor_texts": [{ "phrase": "string", "target_topic_id": "string" }]
+      "anchor_texts": [{ "phrase": "string", "target_topic_id": "string" }],
+      "mapped_eavs": [0, 1, 2]
     }
   ],
   "title": "string",

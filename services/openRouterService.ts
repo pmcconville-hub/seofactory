@@ -286,9 +286,10 @@ export const suggestResponseCode = async (info: BusinessInfo, topic: string, dis
 };
 
 export const generateContentBrief = async (info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, kg: KnowledgeGraph, code: ResponseCode, dispatch: React.Dispatch<any>,
-    marketPatterns?: import('../types/competitiveIntelligence').MarketPatterns) => {
+    marketPatterns?: import('../types/competitiveIntelligence').MarketPatterns,
+    eavs?: import('../types').SemanticTriple[]) => {
     const sanitizer = new AIResponseSanitizer(dispatch);
-    const prompt = prompts.GENERATE_CONTENT_BRIEF_PROMPT(info, topic, allTopics, pillars, kg, code, marketPatterns);
+    const prompt = prompts.GENERATE_CONTENT_BRIEF_PROMPT(info, topic, allTopics, pillars, kg, code, marketPatterns, eavs);
     const schema = {
         title: String, slug: String, metaDescription: String, keyTakeaways: Array, outline: String,
         structured_outline: Array, perspectives: Array, methodology_note: String,

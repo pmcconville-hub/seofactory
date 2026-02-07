@@ -77,7 +77,7 @@ Multi-provider abstraction supporting Gemini, OpenAI, Anthropic, Perplexity, and
 - UI: `EavDiscoveryWizard.tsx`, `EavCompletenessCard.tsx`
 
 ### Multi-Pass Content Generation
-The `services/ai/contentGeneration/` module implements a 9-pass article generation system:
+The `services/ai/contentGeneration/` module implements a 10-pass article generation system:
 
 1. **Pass 1 - Draft Generation**: Section-by-section content creation with resumability
 2. **Pass 2 - Header Optimization**: Heading hierarchy and contextual overlap

@@ -1,4 +1,4 @@
-import { AppStep, BusinessInfo, EnrichedTopic, FreshnessProfile } from '../types';
+import { AppStep, BusinessInfo, EnrichedTopic, FreshnessProfile, SemanticTriple } from '../types';
 import { AppState, AppAction } from '../state/appState';
 import type { BlueprintConfig } from '../components/wizards/WebsiteBlueprintWizard';
 import { getSupabaseClient } from '../services/supabaseClient';
@@ -7,6 +7,9 @@ import * as aiService from '../services/aiService';
 import * as foundationPagesService from '../services/ai/foundationPages';
 import { v4 as uuidv4 } from 'uuid';
 import { slugify, cleanSlug } from '../utils/helpers';
+import { validateEAVCoverage } from '../services/ai/eavCoverageValidator';
+import { detectTitleCannibalization } from '../services/ai/clustering';
+import { validateContentFlow } from '../services/ai/contentFlowValidator';
 
 export const useMapGeneration = (
     state: AppState,
@@ -197,6 +200,48 @@ export const useMapGeneration = (
                         status: 'warning',
                         timestamp: Date.now()
                     }
+                });
+            }
+
+            // Validate EAV coverage across generated topics
+            if (currentMap.eavs && currentMap.eavs.length > 0) {
+                const eavCoverage = validateEAVCoverage(validTopics, currentMap.eavs as SemanticTriple[]);
+                if (eavCoverage.warnings.length > 0) {
+                    eavCoverage.warnings.forEach(w => {
+                        dispatch({
+                            type: 'LOG_EVENT',
+                            payload: { service: 'MapGeneration', message: w, status: 'warning', timestamp: Date.now() }
+                        });
+                    });
+                }
+                console.log(`[MapGeneration] EAV Coverage: ${eavCoverage.coveragePercentage}% (${eavCoverage.coveredTriples.length}/${currentMap.eavs.length} triples covered)`);
+            }
+
+            // Check for cannibalization risks (title/query word overlap > 70%)
+            const cannibalizationRisks = detectTitleCannibalization(validTopics);
+            if (cannibalizationRisks.length > 0) {
+                cannibalizationRisks.forEach(risk => {
+                    dispatch({
+                        type: 'LOG_EVENT',
+                        payload: { service: 'MapGeneration', message: risk.recommendation, status: 'warning', timestamp: Date.now() },
+                    });
+                });
+                console.warn(`[MapGeneration] ${cannibalizationRisks.length} cannibalization risks detected`);
+            }
+
+            // Validate content flow (informational topics should support monetization topics)
+            const flowResult = validateContentFlow(validTopics);
+            if (flowResult.issues.length > 0) {
+                flowResult.issues.forEach(issue => {
+                    dispatch({
+                        type: 'LOG_EVENT',
+                        payload: {
+                            service: 'MapGeneration',
+                            message: `[${issue.severity.toUpperCase()}] ${issue.monetizationTopic}: ${issue.missingFoundation}`,
+                            status: issue.severity === 'warning' ? 'warning' : 'info',
+                            timestamp: Date.now(),
+                        },
+                    });
                 });
             }
 

@@ -358,6 +358,24 @@ generate appropriate images based on the content.
 `
       : '';
 
+  // Check visual_placement_map for this section's specific placement data
+  const placementEntry = brief?.visual_placement_map?.find(
+    (vp: any) => vp.section_heading?.toLowerCase() === section.section_heading?.toLowerCase()
+  );
+  const placementMapSection = placementEntry
+    ? `
+## VISUAL PLACEMENT MAP (EAV-grounded)
+This section has a specific image placement from the content brief:
+- **Entity Anchor:** ${placementEntry.entity_anchor || 'N/A'}
+- **Placement:** ${placementEntry.placement || 'after first paragraph'}
+- **Image Type:** ${placementEntry.image_type || 'SCENE'}${placementEntry.eav_reference ? `
+- **EAV Reference:** ${placementEntry.eav_reference.subject || '?'} → ${placementEntry.eav_reference.predicate || '?'} → ${placementEntry.eav_reference.object || '?'}
+- Use this EAV in the alt text to ground the image semantically.` : ''}
+
+Use this placement data to generate a precise, EAV-grounded image placeholder.
+`
+    : '';
+
   // Add deduplication warning if there are already images in the article
   const deduplicationWarning = existingImageDescriptions.length > 0
     ? `
@@ -423,6 +441,7 @@ For body sections (non-intro):
 - NEVER place image between heading and its answer
 `}
 ${visualSemanticsSection}
+${placementMapSection}
 ${deduplicationWarning}
 ## KORAYANESE IMAGE POSITIONING RULES:
 

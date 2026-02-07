@@ -260,7 +260,9 @@ async function executeCreateBriefFromGap(
         mapData.pillars,
         knowledgeGraph,
         responseCode,
-        dispatch
+        dispatch,
+        undefined,
+        (mapData.eavs || []) as SemanticTriple[]
       );
 
       // Save the brief

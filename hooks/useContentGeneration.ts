@@ -346,6 +346,7 @@ interface UseContentGenerationReturn {
   isPaused: boolean;
   isComplete: boolean;
   isFailed: boolean;
+  isAuditFailed: boolean;
   progress: number;
   currentPassName: string;
   startGeneration: () => Promise<void>;
@@ -353,6 +354,7 @@ interface UseContentGenerationReturn {
   resumeGeneration: () => Promise<void>;
   cancelGeneration: () => Promise<void>;
   retryGeneration: () => Promise<void>;
+  rerunFromPass: (passNumber: number) => Promise<void>;
   triggerJobRefresh: () => void; // Trigger re-check of job state (for re-run scenarios)
   error: string | null;
 }
@@ -728,20 +730,19 @@ export function useContentGeneration({
 
     // Helper to refresh job state from database and update React state
     // This ensures UI stays in sync and pass transitions work correctly
+    // Uses lightweight getJobStatus for passes 1-8 (no draft assembly needed)
+    // Uses full getJobWithDraft for pass 9+ when UI needs final content
     const refreshJobState = async (passNumber: number): Promise<ContentGenerationJob> => {
-      const refreshed = await orchestrator.getJobWithDraft(updatedJob.id);
+      const needsDraft = passNumber >= 9;
+      const refreshed = needsDraft
+        ? await orchestrator.getJobWithDraft(updatedJob.id)
+        : await orchestrator.getJobStatus(updatedJob.id);
+
       if (refreshed) {
         setJob(refreshed); // Update React state for UI
         console.log(`[runPasses] After Pass ${passNumber}: current_pass=${refreshed.current_pass}, status=${refreshed.status}`);
         return refreshed;
       } else {
-        console.warn(`[runPasses] getJobWithDraft returned null after Pass ${passNumber}, using fallback`);
-        // Fallback to getJobStatus
-        const status = await orchestrator.getJobStatus(updatedJob.id);
-        if (status) {
-          setJob(status);
-          return status;
-        }
         console.error(`[runPasses] CRITICAL: Could not refresh job state after Pass ${passNumber}`);
         return updatedJob; // Return existing state as last resort
       }
@@ -945,9 +946,9 @@ export function useContentGeneration({
               ...existingScores,
               [`pass_${passNumber}`]: result.scoreAfter
             },
-            // Add quality warning if severe regression
-            ...(result.hasSevereRegression ? {
-              quality_warning: `Pass ${passNumber} caused significant quality regression (${result.scoreBefore}% → ${result.scoreAfter}%)`
+            // Add quality warning if any meaningful regression (-5+ points)
+            ...(result.hasRegression ? {
+              quality_warning: `Pass ${passNumber} caused quality regression (${result.scoreBefore}% → ${result.scoreAfter}%)`
             } : {})
           } as any);
         } catch (dbErr) {
@@ -1029,6 +1030,10 @@ export function useContentGeneration({
 
         if (gateResult.warnings.length > 0) {
           console.warn(`[ValidationGate] Warnings after Pass ${passNumber}:`, gateResult.warnings);
+          // Surface first 2 warnings to the UI via onLog callback
+          gateResult.warnings.slice(0, 2).forEach(w => {
+            onLog(`Pass ${passNumber}: ${w}`, 'warning');
+          });
         }
 
         // In checkpoint mode with issues, set job to checkpoint status
@@ -1662,6 +1667,44 @@ export function useContentGeneration({
     await runPasses(orchestratorRef.current, updatedJob);
   }, [job, brief, businessInfo, onLog]);
 
+  const rerunFromPass = useCallback(async (passNumber: number) => {
+    if (!orchestratorRef.current || !job) return;
+    abortRef.current = false;
+    setError(null);
+
+    // Rollback sections to the pass before the target
+    const rollbackTo = Math.max(1, passNumber - 1);
+    onLog(`Rolling back to Pass ${rollbackTo} and re-running from Pass ${passNumber}...`, 'info');
+    await orchestratorRef.current.rollbackSectionsToPass(job.id, rollbackTo);
+
+    // Build reset passes_status: keep completed passes before target, reset target and after
+    const resetPassesStatus = { ...job.passes_status };
+    for (const key of Object.keys(resetPassesStatus)) {
+      const match = key.match(/^pass_(\d+)_/);
+      if (match && parseInt(match[1]) >= passNumber) {
+        (resetPassesStatus as any)[key] = 'pending';
+      }
+    }
+
+    await orchestratorRef.current.updateJob(job.id, {
+      status: 'in_progress',
+      current_pass: passNumber,
+      last_error: null as unknown as string,
+      passes_status: resetPassesStatus,
+    });
+
+    const updatedJob = {
+      ...job,
+      status: 'in_progress' as const,
+      current_pass: passNumber,
+      last_error: undefined,
+      passes_status: resetPassesStatus,
+    };
+    setJob(updatedJob);
+
+    await runPasses(orchestratorRef.current, updatedJob);
+  }, [job, brief, businessInfo, onLog]);
+
   const progress = job ? orchestratorRef.current?.calculateProgress(job) || 0 : 0;
   const currentPassName = job ? PASS_NAMES[job.current_pass] || 'Unknown' : '';
 
@@ -1671,7 +1714,8 @@ export function useContentGeneration({
     isGenerating: job?.status === 'in_progress',
     isPaused: job?.status === 'paused',
     isComplete: job?.status === 'completed',
-    isFailed: job?.status === 'failed',
+    isFailed: job?.status === 'failed' || (job?.status as string) === 'audit_failed',
+    isAuditFailed: (job?.status as string) === 'audit_failed',
     progress,
     currentPassName,
     startGeneration,
@@ -1679,6 +1723,7 @@ export function useContentGeneration({
     resumeGeneration,
     cancelGeneration,
     retryGeneration,
+    rerunFromPass,
     triggerJobRefresh, // Allows external components to trigger a re-check of job state
     error
   };

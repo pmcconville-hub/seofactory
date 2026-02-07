@@ -125,8 +125,8 @@ export async function executePass8(
 
       if (!crossPageResult.isConsistent) {
         crossPageContradictions = crossPageResult.contradictions;
-        // Apply penalty: -2 points per contradiction, max -10 points
-        crossPagePenalty = Math.min(crossPageResult.contradictions.length * 2, 10);
+        // Apply penalty: -5 per factual contradiction, no cap
+        crossPagePenalty = crossPageResult.contradictions.length * 5;
         log.warn(` Cross-page contradictions found: ${crossPageResult.contradictions.length}`);
         for (const contradiction of crossPageResult.contradictions) {
           log.warn(`   - "${contradiction.entity}" ${contradiction.attribute}: "${contradiction.currentValue}" vs "${contradiction.conflictingValue}" in "${contradiction.conflictingArticle.title}"`);
@@ -161,16 +161,22 @@ export async function executePass8(
     log.error(` Quality audit FAILED: Score ${finalScore}% below ${CRITICAL_THRESHOLD}% threshold`);
     log.error(` Failing rules: ${failingRules.map(r => r.ruleName || 'unknown').join(', ')}`);
 
-    // Update job with failure status before throwing
+    // Identify which pass to re-run based on failing rules
+    const rerunSuggestion = identifyRerunTarget(failingRules);
+
+    // Update job with audit_failed status and re-run suggestion (not hard 'failed')
     await orchestrator.updateJob(job.id, {
-      last_error: `Quality audit failed: Score ${finalScore}% below ${CRITICAL_THRESHOLD}% threshold. Critical issues: ${criticalFailures.map(r => r.ruleName || 'unknown').join(', ')}`,
+      status: 'audit_failed' as any,
+      final_audit_score: finalScore,
+      audit_details: { ...auditDetails, rerunSuggestion } as any,
+      last_error: `Audit score ${finalScore}% below ${CRITICAL_THRESHOLD}% threshold. Suggested: re-run from Pass ${rerunSuggestion.targetPass} (${rerunSuggestion.reason}).`,
       passes_status: { ...job.passes_status, pass_9_audit: 'failed' }
     });
 
     throw new Error(
       `Quality audit failed: Score ${finalScore}% is below the ${CRITICAL_THRESHOLD}% minimum threshold. ` +
       `${failingRules.length} rules failed: ${failingRules.slice(0, 5).map(r => r.ruleName || 'unknown').join(', ')}${failingRules.length > 5 ? '...' : ''}. ` +
-      `Regenerate content with stricter adherence to quality guidelines.`
+      `Suggested: re-run from Pass ${rerunSuggestion.targetPass}.`
     );
   }
 
@@ -218,4 +224,38 @@ export async function executePass8(
   }
 
   return { draft, score: finalScore, details: auditDetails, holisticContext };
+}
+
+/**
+ * Map failing audit rules to the pass most likely to fix them.
+ * Returns the earliest pass that addresses the most failures.
+ */
+function identifyRerunTarget(
+  failingRules: Array<{ ruleName?: string; isPassing: boolean }>
+): { targetPass: number; reason: string } {
+  const ruleToPass: Record<string, number> = {
+    'CENTERPIECE': 1,
+    'HEADING_HIERARCHY': 2,
+    'LIST_LOGIC': 3,
+    'IMAGE_PLACEMENT': 6,
+    'EAV_DENSITY': 5,
+    'LLM_SIGNATURE': 5,
+    'WORD_COUNT': 1,
+    'LANGUAGE': 1,
+  };
+
+  const passCounts: Record<number, number> = {};
+  for (const rule of failingRules) {
+    const pass = ruleToPass[rule.ruleName || ''] || 1;
+    passCounts[pass] = (passCounts[pass] || 0) + 1;
+  }
+
+  const entries = Object.entries(passCounts).sort((a, b) => b[1] - a[1]);
+  const targetPass = entries.length > 0 ? parseInt(entries[0][0]) : 1;
+  const count = entries.length > 0 ? entries[0][1] : failingRules.length;
+
+  return {
+    targetPass,
+    reason: `${count} failing rule(s) addressable by Pass ${targetPass}`,
+  };
 }

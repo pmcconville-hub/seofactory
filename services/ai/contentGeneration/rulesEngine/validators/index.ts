@@ -23,6 +23,8 @@ import { ReadabilityValidator } from './readabilityValidator';
 import { DiscourseChainingValidator } from './discourseChainingValidator';
 import { EavPerSentenceValidator } from './eavPerSentenceValidator';
 import { AttributeOrderingValidator } from './attributeOrderingValidator';
+import { EavPresenceValidator } from './eavPresenceValidator';
+import { FactConsistencyValidator } from './factConsistencyValidator';
 
 export class RulesValidator {
   /**
@@ -58,6 +60,12 @@ export class RulesValidator {
     // 1. Prohibited Language (with language-aware patterns)
     // Always run - AI-speak should be caught early
     violations.push(...ProhibitedLanguageValidator.validate(content, context));
+
+    // 1b. EAV Presence (lightweight check: do assigned EAVs appear at all?)
+    // Run in Pass 1 as warnings - triggers retry with fix instructions
+    if (isPass1 || runAll) {
+      violations.push(...EavPresenceValidator.validate(content, context));
+    }
 
     // 2. EAV Density (with language-aware verb patterns)
     // Skip in Pass 1 - later passes add semantic richness
@@ -176,6 +184,12 @@ export class RulesValidator {
       violations.push(...DiscourseChainingValidator.validate(content, context));
     }
 
+    // 21. Fact Consistency (hallucination detection via brief data cross-reference)
+    // Skip in Pass 1 - content isn't complete enough for cross-referencing yet
+    if (runAll || !isPass1) {
+      violations.push(...FactConsistencyValidator.validate(content, context));
+    }
+
     // Build fix instructions
     const fixInstructions = this.buildFixInstructions(violations);
 
@@ -236,5 +250,7 @@ export { validateCrossPageEavConsistency } from './crossPageEavValidator';
 export type { EavContradiction, EavConsistencyWarning, EavConsistencyResult } from './crossPageEavValidator';
 export { EavPerSentenceValidator } from './eavPerSentenceValidator';
 export { AttributeOrderingValidator } from './attributeOrderingValidator';
+export { EavPresenceValidator } from './eavPresenceValidator';
+export { FactConsistencyValidator } from './factConsistencyValidator';
 export { LinkInsertionValidator, validateLinkInsertion, extractContextualBridgeLinks, generateMissingLinksFallback } from './linkInsertionValidator';
 export type { LinkInsertionResult } from './linkInsertionValidator';

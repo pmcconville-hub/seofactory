@@ -1,7 +1,6 @@
 // services/entityResolutionCache.ts
 // Entity resolution cache service for storing and retrieving resolved entities from Supabase
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type {
   ResolvedEntity,
   SchemaEntityType,
@@ -13,16 +12,10 @@ import {
   batchResolveEntities as wikidataBatchResolve
 } from './wikidataService';
 import { verifiedUpsert } from './verifiedDatabaseService';
+import { getSupabaseClient } from './supabaseClient';
 
 // Cache expiration (30 days)
 const CACHE_EXPIRATION_DAYS = 30;
-
-/**
- * Get Supabase client for entity cache operations
- */
-function getSupabaseClient(supabaseUrl: string, supabaseKey: string): SupabaseClient {
-  return createClient(supabaseUrl, supabaseKey);
-}
 
 /**
  * Check if a cache entry is stale

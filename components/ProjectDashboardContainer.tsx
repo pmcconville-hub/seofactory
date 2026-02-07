@@ -541,7 +541,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             : effectiveBusinessInfo;
 
         try {
-            const briefData = await aiService.generateContentBrief(configToUse, topic, allTopics, activeMap.pillars, safeKG, responseCode, dispatch);
+            const briefData = await aiService.generateContentBrief(configToUse, topic, allTopics, activeMap.pillars, safeKG, responseCode, dispatch, undefined, activeMap.eavs || []);
 
             // MERGE STRATEGY: Fix "Untitled Topic" Bug
             const newBrief: ContentBrief = {

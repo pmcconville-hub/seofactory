@@ -141,27 +141,36 @@ export class BriefChangeTracker {
 
   /**
    * Persist changes to the brief in database
+   * Returns success status so callers can handle failures appropriately
    */
-  async persistChanges(): Promise<void> {
+  async persistChanges(): Promise<{ success: boolean; error?: string }> {
     if (this.changes.length === 0) {
       console.log('[BriefChangeTracker] No changes to persist');
-      return;
+      return { success: true };
     }
 
     const summary = this.getSummary();
 
-    const { error } = await this.supabase
-      .from('content_briefs')
-      .update({
-        generation_changes: this.changes,
-        generation_summary: summary
-      })
-      .eq('id', this.briefId);
+    try {
+      const { error } = await this.supabase
+        .from('content_briefs')
+        .update({
+          generation_changes: this.changes,
+          generation_summary: summary
+        })
+        .eq('id', this.briefId);
 
-    if (error) {
-      console.error('[BriefChangeTracker] Failed to persist changes:', error);
-    } else {
+      if (error) {
+        console.error('[BriefChangeTracker] Failed to persist changes:', error);
+        return { success: false, error: error.message };
+      }
+
       console.log(`[BriefChangeTracker] Persisted ${this.changes.length} changes to brief ${this.briefId}`);
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[BriefChangeTracker] Exception persisting changes:', err);
+      return { success: false, error: message };
     }
   }
 }

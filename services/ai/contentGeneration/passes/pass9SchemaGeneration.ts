@@ -1,7 +1,7 @@
 // services/ai/contentGeneration/passes/pass9SchemaGeneration.ts
 // Pass 9: Schema Generation - Final pass to generate comprehensive JSON-LD schema
 
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseClient } from '../../../supabaseClient';
 import type {
   ContentBrief,
   BusinessInfo,
@@ -44,7 +44,7 @@ export async function executePass9(
   config?: Partial<Pass9Config>,
   onProgress?: (message: string) => void
 ): Promise<Pass9Result> {
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  const supabase = getSupabaseClient(supabaseUrl, supabaseKey);
   const fullConfig: Pass9Config = { ...DEFAULT_PASS9_CONFIG, ...config };
 
   // Fetch current job to get existing passes_status for merging
@@ -302,7 +302,7 @@ export async function regenerateSchema(
   onProgress?: (message: string) => void
 ): Promise<Pass9Result> {
   // Mark as in progress - fetch current passes_status first to preserve it
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  const supabase = getSupabaseClient(supabaseUrl, supabaseKey);
 
   const { data: currentJob } = await supabase
     .from('content_generation_jobs')

@@ -478,7 +478,7 @@
 │  │  ┌─────────────────┐                                                     │  │
 │  │  │ From Map:       │                                                     │  │
 │  │  │ • pillars       │  (centralEntity, sourceContext, centralSearchIntent)│  │
-│  │  │ • eavs          │  (semantic triples for this topic)                  │  │
+│  │  │ • eavs          │  ★ SEMANTIC TRIPLES passed to AI prompt            │  │
 │  │  │ • competitors   │  (competitor URLs for analysis)                     │  │
 │  │  │ • business_info │  (language, audience, industry, author profile)     │  │
 │  │  └─────────────────┘                                                     │  │
@@ -976,7 +976,7 @@
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │  PASS 4: DISCOURSE INTEGRATION                                                  │
 │  ─────────────────────────────────────────────────────────────────────────────  │
-│  File: pass6Discourse.ts (aliased to Pass 4)                                    │
+│  File: pass4Discourse.ts                                                        │
 │  Goal: Add contextual bridges, transitions, internal linking                    │
 │                                                                                 │
 │  ┌──────────────────────────────────────────────────────────────────────────┐  │
@@ -1019,7 +1019,7 @@
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │  PASS 6: VISUAL SEMANTICS (Images)                                              │
 │  ─────────────────────────────────────────────────────────────────────────────  │
-│  File: pass4Visuals.ts (aliased to Pass 6)                                      │
+│  File: pass6Visuals.ts                                                          │
 │  Goal: Add semantic images with vocabulary-extending alt text                   │
 │                                                                                 │
 │  ┌──────────────────────────────────────────────────────────────────────────┐  │

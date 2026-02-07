@@ -593,6 +593,9 @@ export interface BriefSection {
 
     subsections?: BriefSection[]; // Nested subsections (H3s under H2s)
 
+    // EAV-to-section mapping
+    mapped_eavs?: number[];  // Indices of SemanticTriple[] that this section covers
+
     // Backwards-compatible properties for legacy code
     key_points?: string[];        // Key points for this section
     content_brief?: string;       // Brief description of section content
@@ -683,6 +686,8 @@ export interface SectionGenerationContext {
     heading: string;
     content?: string;
   };
+  /** EAVs assigned to this specific section via brief.mapped_eavs */
+  sectionEavs?: SemanticTriple[];
 }
 
 export interface VisualSemantics {

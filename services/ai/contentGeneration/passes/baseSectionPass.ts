@@ -32,6 +32,14 @@ const yieldToMainThread = (): Promise<void> => {
 const CHECKPOINT_INTERVAL = 3;
 
 /**
+ * Result of a section pass, including any failures.
+ */
+interface SectionPassResult {
+  processedCount: number;
+  failedSections: Array<{ sectionKey: string; error: string }>;
+}
+
+/**
  * Check if a section should be processed based on pass number.
  * Intro/conclusion sections are excluded from passes 2-6 (body polish)
  * because they get rewritten in Pass 7: Introduction Synthesis.
@@ -179,9 +187,11 @@ export async function executeSectionPass(
   const batchSize = config.batchSize || 1;
   const useBatchProcessing = batchSize > 1 && config.buildBatchPrompt;
 
+  let passResult: SectionPassResult;
+
   if (useBatchProcessing) {
     // Batch processing mode
-    await processSectionsBatched(
+    passResult = await processSectionsBatched(
       orchestrator,
       sortedSections,
       sectionsToProcess,
@@ -195,7 +205,7 @@ export async function executeSectionPass(
     );
   } else {
     // Individual section processing (original mode)
-    await processSectionsIndividually(
+    passResult = await processSectionsIndividually(
       orchestrator,
       sortedSections,
       sectionsToProcess,
@@ -207,6 +217,16 @@ export async function executeSectionPass(
       onSectionProgress,
       shouldAbort
     );
+  }
+
+  // Surface section failures to the user via onLog callback
+  if (passResult.failedSections.length > 0) {
+    const failedKeys = passResult.failedSections.map(f => f.sectionKey).join(', ');
+    log.warn(`Pass ${config.passNumber}: ${passResult.failedSections.length} section(s) failed: ${failedKeys}`);
+    if (onSectionProgress) {
+      // Use the progress callback to signal the failure count
+      onSectionProgress(`__failed__`, passResult.failedSections.length, totalSections);
+    }
   }
 
   // Assemble final draft from all sections
@@ -239,7 +259,7 @@ async function processSectionsBatched(
   config: SectionPassConfig,
   onSectionProgress?: SectionProgressCallback,
   shouldAbort?: () => boolean
-): Promise<void> {
+): Promise<SectionPassResult> {
   const log = createPassLogger(config.passNumber);
   const batchSize = config.batchSize || 3;
   const batches = createBatches(sectionsToProcess, batchSize);
@@ -247,6 +267,7 @@ async function processSectionsBatched(
   log.log(`Processing ${sectionsToProcess.length} sections in ${batches.length} batches (batch size: ${batchSize})`);
 
   let processedCount = 0;
+  const failedSections: SectionPassResult['failedSections'] = [];
   const jobId = sectionsToProcess[0]?.job_id;
 
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
@@ -344,22 +365,27 @@ async function processSectionsBatched(
 
       processedCount += batch.length;
 
-      // Checkpoint: Save progress after each batch
+      // Checkpoint: Save progress after each batch (lightweight - no draft assembly)
       if (jobId) {
         log.log(`Checkpoint: Saving progress after batch ${batchIndex + 1}/${batches.length} (${processedCount}/${sectionsToProcess.length} sections)`);
-        const partialDraft = await orchestrator.assembleDraft(jobId);
         await orchestrator.updateJob(jobId, {
-          draft_content: partialDraft,
           completed_sections: processedCount,
           updated_at: new Date().toISOString()
         });
       }
 
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       log.error(`Error processing batch ${batchIndex + 1}:`, error);
+      // Track all sections in the failed batch
+      for (const section of batch) {
+        failedSections.push({ sectionKey: section.section_key, error: errorMsg });
+      }
       // Continue with next batch - don't fail entire pass for one batch
     }
   }
+
+  return { processedCount, failedSections };
 }
 
 /**
@@ -378,10 +404,11 @@ async function processSectionsIndividually(
   config: SectionPassConfig,
   onSectionProgress?: SectionProgressCallback,
   shouldAbort?: () => boolean
-): Promise<void> {
+): Promise<SectionPassResult> {
   const log = createPassLogger(config.passNumber);
   const totalSections = sectionsToProcess.length;
   let processedCount = 0;
+  const failedSections: SectionPassResult['failedSections'] = [];
 
   for (let i = 0; i < sectionsToProcess.length; i++) {
     if (shouldAbort && shouldAbort()) {
@@ -446,13 +473,10 @@ async function processSectionsIndividually(
       processedCount++;
       log.log(`Section ${section.section_key} optimized: ${sectionContent.length} → ${cleanedContent.length} chars`);
 
-      // Checkpoint: Save progress every CHECKPOINT_INTERVAL sections
+      // Checkpoint: Save progress every CHECKPOINT_INTERVAL sections (lightweight - no draft assembly)
       if (processedCount % CHECKPOINT_INTERVAL === 0) {
         log.log(`Checkpoint: Saving progress after ${processedCount}/${totalSections} sections`);
-        // Assemble and save partial draft to ensure progress is preserved
-        const partialDraft = await orchestrator.assembleDraft(section.job_id);
         await orchestrator.updateJob(section.job_id, {
-          draft_content: partialDraft,
           completed_sections: processedCount,
           updated_at: new Date().toISOString()
         });
@@ -462,12 +486,16 @@ async function processSectionsIndividually(
       await yieldToMainThread();
 
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       log.error(`Error optimizing section ${section.section_key}:`, error);
+      failedSections.push({ sectionKey: section.section_key, error: errorMsg });
       // Continue to next section - don't fail entire pass for one section
       // Still yield on error to prevent UI freeze
       await yieldToMainThread();
     }
   }
+
+  return { processedCount, failedSections };
 }
 
 /**

@@ -377,6 +377,13 @@ async function generateSectionWithRetry(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      // Extract EAVs mapped to this section via brief.mapped_eavs
+      const sectionEavs = briefSection.mapped_eavs && brief.eavs
+        ? briefSection.mapped_eavs
+            .filter(idx => idx >= 0 && idx < brief.eavs!.length)
+            .map(idx => brief.eavs![idx])
+        : [];
+
       // Build SectionGenerationContext
       const context: SectionGenerationContext = {
         section: briefSection,
@@ -389,6 +396,7 @@ async function generateSectionWithRetry(
         language: businessInfo.language, // Pass language for multilingual validation
         lengthGuidance, // Content length guidance from settings
         flowGuidance, // Flow guidance for transitions and article structure
+        sectionEavs, // Section-specific EAVs for semantic grounding
       };
 
       // Use SectionPromptBuilder instead of legacy prompt

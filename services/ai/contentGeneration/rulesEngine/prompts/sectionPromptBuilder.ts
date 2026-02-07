@@ -408,6 +408,19 @@ Place links AFTER defining the concept, never in the first sentence.
 `;
     }
 
+    // Add section-specific EAV enforcement
+    if (context.sectionEavs && context.sectionEavs.length > 0) {
+      prompt += `## Semantic Triples to Cover in This Section
+This section MUST incorporate the following Entity-Attribute-Value facts:
+${context.sectionEavs.map(eav => {
+  const category = eav.predicate?.category || 'UNCLASSIFIED';
+  return `- [${category}] ${eav.subject?.label || '?'} → ${eav.predicate?.relation || '?'} → ${eav.object?.value || '?'}`;
+}).join('\n')}
+Each triple must appear as a factual statement. Use the entity name explicitly (no pronouns).
+
+`;
+    }
+
     // Add prohibited patterns - both general and language-specific
     prompt += `## STRICTLY PROHIBITED (General)
 - Stop words: ${PROHIBITED_PATTERNS.STOP_WORDS.slice(0, 8).join(', ')}...

@@ -1,5 +1,5 @@
 
-import { BusinessInfo, ResponseCode, ContentBrief, EnrichedTopic, SEOPillars, KnowledgeGraph, ContentIntegrityResult, SchemaGenerationResult, AuditRuleResult, BriefVisualSemantics, StreamingProgressCallback, HolisticSummary, CompetitorSpecs } from '../../types';
+import { BusinessInfo, ResponseCode, ContentBrief, EnrichedTopic, SEOPillars, KnowledgeGraph, ContentIntegrityResult, SchemaGenerationResult, AuditRuleResult, BriefVisualSemantics, StreamingProgressCallback, HolisticSummary, CompetitorSpecs, SemanticTriple } from '../../types';
 import { MarketPatterns } from '../../types/competitiveIntelligence';
 import * as geminiService from '../geminiService';
 import * as openAiService from '../openAiService';
@@ -423,7 +423,8 @@ export const generateContentBrief = async (
     knowledgeGraph: KnowledgeGraph,
     responseCode: ResponseCode,
     dispatch: React.Dispatch<any>,
-    marketPatterns?: MarketPatterns  // Optional: competitor-derived market patterns
+    marketPatterns?: MarketPatterns,  // Optional: competitor-derived market patterns
+    eavs?: SemanticTriple[]  // Semantic triples from topical map
 ): Promise<Omit<ContentBrief, 'id' | 'topic_id' | 'articleDraft'>> => {
     // Validate language and region settings before generation
     validateLanguageAndRegion(businessInfo, dispatch);
@@ -442,11 +443,11 @@ export const generateContentBrief = async (
     }
 
     const brief = await dispatchToProvider(businessInfo, {
-        gemini: () => geminiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns),
-        openai: () => openAiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns),
-        anthropic: () => anthropicService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns),
-        perplexity: () => perplexityService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns),
-        openrouter: () => openRouterService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns),
+        gemini: () => geminiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs),
+        openai: () => openAiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs),
+        anthropic: () => anthropicService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs),
+        perplexity: () => perplexityService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs),
+        openrouter: () => openRouterService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs),
     });
 
     // Validate monetization briefs meet minimum requirements
@@ -465,11 +466,35 @@ export const generateContentBrief = async (
         ? convertToCompetitorSpecs(marketPatterns)
         : undefined;
 
+    // Validate featured snippet target is achievable by the outline
+    if (enrichedBrief.featured_snippet_target && enrichedBrief.structured_outline) {
+        const fsTarget = enrichedBrief.featured_snippet_target;
+        const outlineHeadings = enrichedBrief.structured_outline.map(s => s.heading?.toLowerCase() || '');
+        const questionWords = (fsTarget.question || '').toLowerCase().split(/\s+/).filter(w => w.length > 3);
+
+        const hasMatchingSection = outlineHeadings.some(h =>
+            questionWords.some(w => h.includes(w))
+        );
+
+        if (!hasMatchingSection && questionWords.length > 0) {
+            dispatch({
+                type: 'LOG_EVENT',
+                payload: {
+                    service: 'BriefGeneration',
+                    message: `Featured snippet target "${fsTarget.question}" may not be answered by any section in the outline`,
+                    status: 'warning',
+                    timestamp: Date.now(),
+                },
+            });
+        }
+    }
+
     return {
         ...enrichedBrief,
         suggestedLengthPreset: lengthSuggestion.preset,
         suggestedLengthReason: lengthSuggestion.reason,
         competitorSpecs,
+        eavs: eavs || [],
     };
 };
 

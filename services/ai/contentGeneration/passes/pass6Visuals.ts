@@ -1,4 +1,4 @@
-// services/ai/contentGeneration/passes/pass4Visuals.ts
+// services/ai/contentGeneration/passes/pass6Visuals.ts
 import {
   ContentBrief,
   ContentGenerationJob,
@@ -13,7 +13,7 @@ import { buildPass4Prompt, buildPass4BatchPrompt } from '../rulesEngine/prompts/
 import { BriefChangeTracker } from '../briefChangeTracker';
 
 /**
- * Pass 6: Visual Semantics (exported as executePass6 via index.ts)
+ * Pass 6: Visual Semantics
  *
  * Uses format budget-aware selective processing:
  * - Only processes sections identified as needing images
@@ -23,7 +23,7 @@ import { BriefChangeTracker } from '../briefChangeTracker';
  *
  * Batches sections to reduce API calls.
  */
-export async function executePass4(
+export async function executePass6(
   orchestrator: ContentGenerationOrchestrator,
   job: ContentGenerationJob,
   brief: ContentBrief,
@@ -90,7 +90,7 @@ export async function executePass4(
 
           if (evaluation.justified && changeTracker) {
             changeTracker.logImageAdded(
-              4,
+              6,
               s.section_key,
               `Auto-generated visual for ${s.section_heading}`,
               evaluation.criteria,
