@@ -129,33 +129,25 @@ async function generateViaProxy(
     clearTimeout(timeoutId);
 
     if (error) {
-      // Try to extract the actual error message from the response
-      // Supabase SDK may put the response body in data even on error
       let errorMessage = 'Image generation proxy failed';
 
       if (data?.error) {
-        // The edge function returned a JSON error response with the actual error
         errorMessage = data.error;
-        // Add more context if available
-        if (data.code) {
-          errorMessage += ` (code: ${data.code})`;
-        }
-        if (data.type) {
-          errorMessage += ` [${data.type}]`;
-        }
+        if (data.code) errorMessage += ` (code: ${data.code})`;
+        if (data.type) errorMessage += ` [${data.type}]`;
       } else if (error.message) {
-        // Check if it's a generic Supabase error vs actual error
         if (error.message.includes('non-2xx')) {
-          // Try to parse the error context from the error object
-          const errorContext = (error as any)?.context?.body || (error as any)?.context;
-          if (errorContext && typeof errorContext === 'string') {
+          const errorContext = (error as any)?.context;
+          // Handle already-parsed object (modern Supabase SDK)
+          if (errorContext && typeof errorContext === 'object' && errorContext.error) {
+            errorMessage = errorContext.error;
+            if (errorContext.code) errorMessage += ` (code: ${errorContext.code})`;
+            if (errorContext.type) errorMessage += ` [${errorContext.type}]`;
+          } else if (errorContext && typeof errorContext === 'string') {
             try {
               const parsed = JSON.parse(errorContext);
-              if (parsed.error) {
-                errorMessage = parsed.error;
-              }
+              if (parsed.error) errorMessage = parsed.error;
             } catch {
-              // Couldn't parse - use generic message
               errorMessage = 'OpenAI image proxy returned an error. Check your API key configuration in Settings.';
             }
           } else {

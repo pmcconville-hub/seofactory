@@ -68,7 +68,7 @@ serve(async (req: Request) => {
       .single();
 
     const settingsData = settings?.settings_data as Record<string, any> | null;
-    if (settingsError || !settingsData?.openai_api_key) {
+    if (settingsError || !settingsData?.openAiApiKey) {
       return new Response(
         JSON.stringify({ error: "OpenAI API key not configured. Please add it in Settings." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -78,7 +78,7 @@ serve(async (req: Request) => {
     // Decrypt the API key using AES-GCM (same as get-settings)
     let openaiKey: string;
     try {
-      const decrypted = await decrypt(settingsData.openai_api_key);
+      const decrypted = await decrypt(settingsData.openAiApiKey);
       if (!decrypted) throw new Error("Decryption returned null");
       openaiKey = decrypted;
     } catch {
