@@ -22,8 +22,8 @@ ${this.info.authorProfile ? `- Author: ${this.info.authorProfile.name} (${this.i
 `;
     }
 
-    getInitialMapPrompt(pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[]): string {
-        return prompts.GENERATE_INITIAL_TOPICAL_MAP_PROMPT(this.info, pillars, eavs, competitors);
+    getInitialMapPrompt(pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], serpIntel?: import('../../../config/prompts').SerpIntelligenceForMap): string {
+        return prompts.GENERATE_INITIAL_TOPICAL_MAP_PROMPT(this.info, pillars, eavs, competitors, serpIntel);
     }
 
     getTopicExpansionPrompt(pillars: SEOPillars, coreTopic: EnrichedTopic, allTopics: EnrichedTopic[], kg: KnowledgeGraph, mode: ExpansionMode, userContext?: string): string {

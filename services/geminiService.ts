@@ -561,9 +561,9 @@ export const expandSemanticTriples = async (businessInfo: BusinessInfo, pillars:
     return allNewTriples.slice(0, count); // Ensure we don't return more than requested
 };
 
-export const generateInitialTopicalMap = async (businessInfo: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>): Promise<{ coreTopics: EnrichedTopic[], outerTopics: EnrichedTopic[] }> => {
+export const generateInitialTopicalMap = async (businessInfo: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>, serpIntel?: import('../config/prompts').SerpIntelligenceForMap): Promise<{ coreTopics: EnrichedTopic[], outerTopics: EnrichedTopic[] }> => {
     const sanitizer = new AIResponseSanitizer(dispatch);
-    const prompt = prompts.GENERATE_INITIAL_TOPICAL_MAP_PROMPT(businessInfo, pillars, eavs, competitors);
+    const prompt = prompts.GENERATE_INITIAL_TOPICAL_MAP_PROMPT(businessInfo, pillars, eavs, competitors, serpIntel);
     
     // Define the response schema for the API call
     // FIX: Added 'required' fields to enforce the 1:7 ratio logic. The model MUST return 'spokes'.

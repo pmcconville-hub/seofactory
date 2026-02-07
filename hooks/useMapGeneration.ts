@@ -10,6 +10,9 @@ import { slugify, cleanSlug } from '../utils/helpers';
 import { validateEAVCoverage } from '../services/ai/eavCoverageValidator';
 import { detectTitleCannibalization } from '../services/ai/clustering';
 import { validateContentFlow } from '../services/ai/contentFlowValidator';
+import { batchInferSerpData } from '../services/ai/serpInference';
+import { buildSerpIntelligenceForMap } from '../config/prompts';
+import type { SerpIntelligenceForMap } from '../config/prompts';
 
 export const useMapGeneration = (
     state: AppState,
@@ -136,6 +139,54 @@ export const useMapGeneration = (
                 throw new Error("Missing pillars or EAVs for generation.");
             }
 
+            // 2a. Gather SERP intelligence for pillar queries (non-blocking — falls back to no data)
+            let serpIntel: SerpIntelligenceForMap | undefined;
+            try {
+                // Build seed queries from available pillar data
+                const seedQueries: string[] = [currentMap.pillars.centralEntity];
+                if (currentMap.pillars.sourceContext) seedQueries.push(`${currentMap.pillars.centralEntity} ${currentMap.pillars.sourceContext}`);
+                if (currentMap.pillars.centralSearchIntent) seedQueries.push(currentMap.pillars.centralSearchIntent);
+                // Add top EAV subjects as additional SERP queries
+                if (currentMap.eavs) {
+                    const uniqueSubjects = [...new Set(
+                        currentMap.eavs
+                            .map((e: any) => e.subject?.label)
+                            .filter((l: any): l is string => typeof l === 'string' && l.length > 2)
+                    )].slice(0, 3);
+                    seedQueries.push(...uniqueSubjects);
+                }
+                const pillarQueries = seedQueries.slice(0, 6); // Limit to 6 queries to keep latency reasonable
+
+                dispatch({
+                    type: 'LOG_EVENT',
+                    payload: { service: 'MapGeneration', message: `Inferring SERP landscape for ${pillarQueries.length} pillar queries...`, status: 'info', timestamp: Date.now() }
+                });
+
+                const serpResults = await batchInferSerpData(
+                    pillarQueries,
+                    effectiveBusinessInfo,
+                    (completed, total) => {
+                        dispatch({
+                            type: 'LOG_EVENT',
+                            payload: { service: 'MapGeneration', message: `SERP inference: ${completed}/${total} queries analyzed`, status: 'info', timestamp: Date.now() }
+                        });
+                    }
+                );
+
+                serpIntel = buildSerpIntelligenceForMap(pillarQueries, serpResults);
+                dispatch({
+                    type: 'LOG_EVENT',
+                    payload: { service: 'MapGeneration', message: `SERP intelligence gathered: ${serpIntel.pillarInsights.length} pillar insights`, status: 'success', timestamp: Date.now() }
+                });
+            } catch (serpError) {
+                // SERP inference is non-blocking — log and continue without it
+                console.warn('[MapGeneration] SERP inference failed, continuing without:', serpError);
+                dispatch({
+                    type: 'LOG_EVENT',
+                    payload: { service: 'MapGeneration', message: `SERP inference skipped: ${serpError instanceof Error ? serpError.message : 'unknown error'}`, status: 'warning', timestamp: Date.now() }
+                });
+            }
+
             console.log('Step 2: Generating initial topical map with AI...');
 
             const { coreTopics, outerTopics } = await aiService.generateInitialTopicalMap(
@@ -143,7 +194,8 @@ export const useMapGeneration = (
                 currentMap.pillars,
                 currentMap.eavs,
                 currentMap.competitors || [],
-                dispatch
+                dispatch,
+                serpIntel
             );
 
             // 3. Process and ID assignment

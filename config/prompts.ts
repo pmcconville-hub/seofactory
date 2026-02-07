@@ -6,6 +6,76 @@ import { KnowledgeGraph } from '../lib/knowledgeGraph';
 import { getWebsiteTypeConfig } from './websiteTypeTemplates';
 import { getMonetizationPromptEnhancement, shouldApplyMonetizationEnhancement } from '../utils/monetizationPromptUtils';
 import { getLanguageName, getLanguageAndRegionInstruction, getRegionalLanguageVariant } from '../utils/languageUtils';
+import type { InferredSerpData } from '../services/ai/serpInference';
+
+/**
+ * Condensed SERP intelligence for topic map generation.
+ * Built from batchInferSerpData() results on pillar queries.
+ */
+export interface SerpIntelligenceForMap {
+    /** Per-pillar SERP analysis */
+    pillarInsights: Array<{
+        pillar: string;
+        intent: string;
+        contentType: string;
+        difficulty: string;
+        difficultyScore: number;
+        serpFeatures: string[];
+        paaQuestions: string[];
+        headlinePatterns: string[];
+        opportunities: string[];
+        estimatedWordCount: { min: number; max: number };
+    }>;
+}
+
+/**
+ * Build a SerpIntelligenceForMap from batch inferred data
+ */
+export function buildSerpIntelligenceForMap(
+    pillarQueries: string[],
+    serpResults: Map<string, InferredSerpData>
+): SerpIntelligenceForMap {
+    const pillarInsights = pillarQueries.map(query => {
+        const data = serpResults.get(query);
+        if (!data) {
+            return {
+                pillar: query,
+                intent: 'unknown',
+                contentType: 'unknown',
+                difficulty: 'unknown',
+                difficultyScore: 50,
+                serpFeatures: [],
+                paaQuestions: [],
+                headlinePatterns: [],
+                opportunities: [],
+                estimatedWordCount: { min: 800, max: 2000 },
+            };
+        }
+        const features: string[] = [];
+        if (data.likelyFeatures.featuredSnippet.likely) features.push(`Featured Snippet (${data.likelyFeatures.featuredSnippet.type || 'paragraph'})`);
+        if (data.likelyFeatures.peopleAlsoAsk.likely) features.push('People Also Ask');
+        if (data.likelyFeatures.imagesPack) features.push('Image Pack');
+        if (data.likelyFeatures.videoCarousel) features.push('Video Carousel');
+        if (data.likelyFeatures.localPack) features.push('Local Pack');
+        if (data.likelyFeatures.knowledgePanel) features.push('Knowledge Panel');
+        if (data.likelyFeatures.faq) features.push('FAQ Rich Result');
+
+        return {
+            pillar: query,
+            intent: data.dominantIntent,
+            contentType: data.dominantContentType,
+            difficulty: data.competitiveLandscape.difficulty,
+            difficultyScore: data.competitiveLandscape.difficultyScore,
+            serpFeatures: features,
+            paaQuestions: data.likelyFeatures.peopleAlsoAsk.estimatedQuestions || [],
+            headlinePatterns: data.estimatedHeadlinePatterns || [],
+            opportunities: data.competitiveLandscape.opportunities || [],
+            estimatedWordCount: { min: data.estimatedWordCount.min, max: data.estimatedWordCount.max },
+        };
+    });
+
+    return { pillarInsights };
+}
 
 // Re-export for use in content generation passes
 export { getLanguageAndRegionInstruction };
@@ -13,6 +83,35 @@ export { getLanguageAndRegionInstruction };
 const jsonResponseInstruction = `
 Respond with a valid JSON object. Do not include any explanatory text or markdown formatting before or after the JSON.
 `;
+
+/**
+ * Build a SERP intelligence block for map generation prompts.
+ * Returns empty string if no SERP data available.
+ */
+const buildSerpIntelligenceBlock = (serpIntel?: SerpIntelligenceForMap): string => {
+    if (!serpIntel || serpIntel.pillarInsights.length === 0) return '';
+
+    const insights = serpIntel.pillarInsights.map(p => {
+        const features = p.serpFeatures.length > 0 ? p.serpFeatures.join(', ') : 'none detected';
+        const paa = p.paaQuestions.length > 0 ? `\n    PAA Questions: ${p.paaQuestions.slice(0, 3).join(' | ')}` : '';
+        const opps = p.opportunities.length > 0 ? `\n    Opportunities: ${p.opportunities.slice(0, 2).join(' | ')}` : '';
+        return `  - "${p.pillar}": intent=${p.intent}, type=${p.contentType}, difficulty=${p.difficulty} (${p.difficultyScore}/100)
+    SERP Features: ${features}
+    Word Count Range: ${p.estimatedWordCount.min}-${p.estimatedWordCount.max}${paa}${opps}`;
+    }).join('\n');
+
+    return `
+**SEARCH LANDSCAPE INTELLIGENCE (use this to inform topic structure):**
+${insights}
+
+**How to use this data:**
+- Prioritize topics where difficulty is "easy" or "medium" for faster ranking
+- Create Featured Snippet-optimized content for pillars with FS likelihood
+- Use PAA questions as spoke topic ideas
+- Target identified opportunities as content gaps to fill
+- Adjust content depth (word count) to match or exceed SERP expectations
+`;
+};
 
 export const businessContext = (info: BusinessInfo): string => {
     const typeConfig = info.websiteType ? getWebsiteTypeConfig(info.websiteType) : null;
@@ -383,7 +482,7 @@ ${jsonResponseInstruction}
 **FINAL CHECK: Your response MUST contain EXACTLY ${count} triple objects in the array. Count them before responding.**
 `;
 
-export const GENERATE_INITIAL_TOPICAL_MAP_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[]): string => {
+export const GENERATE_INITIAL_TOPICAL_MAP_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], serpIntel?: SerpIntelligenceForMap): string => {
     const typeConfig = info.websiteType ? getWebsiteTypeConfig(info.websiteType) : null;
     const hubSpokeRatio = typeConfig?.hubSpokeRatio.optimal || 7;
     const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
@@ -400,6 +499,7 @@ Strategic Inputs:
 - SEO Pillars: ${JSON.stringify(pillars, null, 2)}
 - Core Semantic Triples (EAVs): ${JSON.stringify(eavs.slice(0, 20), null, 2)}
 - Key Competitors: ${competitors.join(', ')}
+${buildSerpIntelligenceBlock(serpIntel)}
 
 ${businessContext(info)}
 
@@ -474,7 +574,7 @@ ${jsonResponseInstruction}
 };
 
 // Section-specific prompts for chunked generation to avoid token truncation
-export const GENERATE_MONETIZATION_SECTION_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[]): string => {
+export const GENERATE_MONETIZATION_SECTION_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], serpIntel?: SerpIntelligenceForMap): string => {
     const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
     const regionalLang = getRegionalLanguageVariant(info.language, info.region);
 
@@ -488,6 +588,7 @@ Strategic Inputs:
 - SEO Pillars: ${JSON.stringify(pillars, null, 2)}
 - Core Semantic Triples (EAVs): ${JSON.stringify(eavs.slice(0, 15), null, 2)}
 - Key Competitors: ${competitors.join(', ')}
+${buildSerpIntelligenceBlock(serpIntel)}
 
 ${businessContext(info)}
 
@@ -529,7 +630,7 @@ ${jsonResponseInstruction}
 `;
 };
 
-export const GENERATE_INFORMATIONAL_SECTION_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[]): string => {
+export const GENERATE_INFORMATIONAL_SECTION_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], serpIntel?: SerpIntelligenceForMap): string => {
     const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
     const regionalLang = getRegionalLanguageVariant(info.language, info.region);
 
@@ -543,6 +644,7 @@ Strategic Inputs:
 - SEO Pillars: ${JSON.stringify(pillars, null, 2)}
 - Core Semantic Triples (EAVs): ${JSON.stringify(eavs.slice(0, 15), null, 2)}
 - Key Competitors: ${competitors.join(', ')}
+${buildSerpIntelligenceBlock(serpIntel)}
 
 ${businessContext(info)}
 

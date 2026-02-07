@@ -256,9 +256,9 @@ export const expandSemanticTriples = async (info: BusinessInfo, pillars: SEOPill
     return allNewTriples.slice(0, count);
 };
 
-export const generateInitialTopicalMap = async (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>) => {
+export const generateInitialTopicalMap = async (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>, serpIntel?: import('../config/prompts').SerpIntelligenceForMap) => {
     const sanitizer = new AIResponseSanitizer(dispatch);
-    const prompt = prompts.GENERATE_INITIAL_TOPICAL_MAP_PROMPT(info, pillars, eavs, competitors);
+    const prompt = prompts.GENERATE_INITIAL_TOPICAL_MAP_PROMPT(info, pillars, eavs, competitors, serpIntel);
     const fallback = { monetizationSection: [], informationalSection: [] };
     const result = await callApi(prompt, info, dispatch, (text) => sanitizer.sanitize(text, { monetizationSection: Array, informationalSection: Array }, fallback));
     

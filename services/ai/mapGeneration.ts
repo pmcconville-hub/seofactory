@@ -127,6 +127,158 @@ export const assignClusterRoles = (
     return { coreTopics: enrichedCoreTopics, outerTopics: enrichedOuterTopics, hubSpokeAnalysis };
 };
 
+// ============================================
+// HUB-SPOKE AUTO-CORRECTION
+// Automatically rebalances topic clusters when
+// hub-spoke ratios fall outside website type bounds.
+// ============================================
+
+export interface HubSpokeCorrection {
+    type: 'split_hub' | 'reassign_spoke' | 'promote_spoke';
+    description: string;
+    affectedTopicIds: string[];
+}
+
+/**
+ * Auto-correct hub-spoke ratios by rebalancing topic clusters.
+ *
+ * For over-spoke hubs (spokeCount > max):
+ *   - Promotes the spoke with most sub-relations to a new core topic (sub-hub)
+ *   - Reassigns nearby spokes to the new sub-hub
+ *
+ * For under-spoke hubs (spokeCount < min):
+ *   - Steals the most distant spoke from the most over-spoke hub
+ *   - Reassigns it to the under-spoke hub
+ *
+ * Returns corrected topics + log of corrections applied.
+ */
+export const correctHubSpokeRatios = (
+    coreTopics: EnrichedTopic[],
+    outerTopics: EnrichedTopic[],
+    websiteType?: WebsiteType
+): { coreTopics: EnrichedTopic[], outerTopics: EnrichedTopic[], corrections: HubSpokeCorrection[] } => {
+    if (!websiteType) {
+        return { coreTopics, outerTopics, corrections: [] };
+    }
+
+    const config = getWebsiteTypeConfig(websiteType);
+    const { min, max } = config.hubSpokeRatio;
+    const corrections: HubSpokeCorrection[] = [];
+
+    // Work with mutable copies
+    let mutableCore = coreTopics.map(c => ({ ...c }));
+    let mutableOuter = outerTopics.map(o => ({ ...o }));
+
+    // Build spoke count map
+    const getSpokeCount = (coreId: string) =>
+        mutableOuter.filter(o => o.parent_topic_id === coreId).length;
+
+    // ── Phase 1: Fix over-spoke hubs by splitting ──
+    // Iterate until no hub exceeds max (with safety limit)
+    for (let iteration = 0; iteration < 5; iteration++) {
+        const overSpokeHub = mutableCore.find(c => getSpokeCount(c.id) > max);
+        if (!overSpokeHub) break;
+
+        const spokes = mutableOuter.filter(o => o.parent_topic_id === overSpokeHub.id);
+        if (spokes.length <= max) break;
+
+        // Pick the spoke with the longest title (heuristic: more specific = better sub-hub)
+        const bestSubHub = spokes.reduce((best, s) =>
+            s.title.length > best.title.length ? s : best, spokes[0]);
+
+        // Find spokes most similar to the new sub-hub (by word overlap)
+        const subHubWords = new Set(bestSubHub.title.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+        const scored = spokes
+            .filter(s => s.id !== bestSubHub.id)
+            .map(s => {
+                const sWords = s.title.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+                const overlap = sWords.filter(w => subHubWords.has(w)).length;
+                return { spoke: s, overlap };
+            })
+            .sort((a, b) => b.overlap - a.overlap);
+
+        // Move enough spokes to bring original hub to optimal range
+        const spokesToMove = Math.min(
+            Math.ceil((spokes.length - max) / 2) + 1,
+            scored.length
+        );
+        const movedSpokes = scored.slice(0, spokesToMove).map(s => s.spoke);
+
+        // Remove bestSubHub from outer, add to core
+        mutableOuter = mutableOuter.filter(o => o.id !== bestSubHub.id);
+        const newCore: EnrichedTopic = {
+            ...bestSubHub,
+            type: 'core',
+            parent_topic_id: null,
+            cluster_role: 'pillar',
+            metadata: {
+                ...bestSubHub.metadata,
+                cluster_role: 'pillar',
+                promoted_from: overSpokeHub.id,
+            }
+        };
+        mutableCore.push(newCore);
+
+        // Reassign moved spokes to the new sub-hub
+        for (const spoke of movedSpokes) {
+            const idx = mutableOuter.findIndex(o => o.id === spoke.id);
+            if (idx >= 0) {
+                mutableOuter[idx] = { ...mutableOuter[idx], parent_topic_id: bestSubHub.id };
+            }
+        }
+
+        corrections.push({
+            type: 'split_hub',
+            description: `Split "${overSpokeHub.title}" (${spokes.length} spokes > max ${max}): promoted "${bestSubHub.title}" to sub-hub with ${movedSpokes.length} reassigned spokes`,
+            affectedTopicIds: [overSpokeHub.id, bestSubHub.id, ...movedSpokes.map(s => s.id)],
+        });
+    }
+
+    // ── Phase 2: Fix under-spoke hubs by stealing from over-spoke hubs ──
+    for (let iteration = 0; iteration < 5; iteration++) {
+        const underSpokeHub = mutableCore.find(c => {
+            const count = getSpokeCount(c.id);
+            return count > 0 && count < min; // Only fix hubs that have SOME spokes
+        });
+        if (!underSpokeHub) break;
+
+        // Find the hub with the most spokes to steal from
+        const donorHub = mutableCore
+            .filter(c => c.id !== underSpokeHub.id)
+            .map(c => ({ hub: c, count: getSpokeCount(c.id) }))
+            .sort((a, b) => b.count - a.count)[0];
+
+        if (!donorHub || donorHub.count <= min) break; // No donor has spokes to spare
+
+        // Find the donor's spoke whose title is most similar to the under-spoke hub
+        const underWords = new Set(underSpokeHub.title.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+        const donorSpokes = mutableOuter.filter(o => o.parent_topic_id === donorHub.hub.id);
+        const bestMatch = donorSpokes
+            .map(s => {
+                const sWords = s.title.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+                const overlap = sWords.filter(w => underWords.has(w)).length;
+                return { spoke: s, overlap };
+            })
+            .sort((a, b) => b.overlap - a.overlap)[0];
+
+        if (!bestMatch) break;
+
+        // Reassign the spoke
+        const idx = mutableOuter.findIndex(o => o.id === bestMatch.spoke.id);
+        if (idx >= 0) {
+            mutableOuter[idx] = { ...mutableOuter[idx], parent_topic_id: underSpokeHub.id };
+        }
+
+        corrections.push({
+            type: 'reassign_spoke',
+            description: `Reassigned "${bestMatch.spoke.title}" from "${donorHub.hub.title}" (${donorHub.count} spokes) to "${underSpokeHub.title}" (${getSpokeCount(underSpokeHub.id)} spokes) — below min ${min}`,
+            affectedTopicIds: [underSpokeHub.id, donorHub.hub.id, bestMatch.spoke.id],
+        });
+    }
+
+    return { coreTopics: mutableCore, outerTopics: mutableOuter, corrections };
+};
+
 /**
  * Hub-spoke analysis result
  */
@@ -202,7 +354,8 @@ export const expandSemanticTriples = (
 };
 
 export const generateInitialTopicalMap = async (
-    businessInfo: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>
+    businessInfo: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>,
+    serpIntel?: import('../../config/prompts').SerpIntelligenceForMap
 ): Promise<{ coreTopics: EnrichedTopic[], outerTopics: EnrichedTopic[] }> => {
     // Validate language and region settings before generation
     const validation = validateLanguageSettings(businessInfo.language, businessInfo.region);
@@ -218,13 +371,13 @@ export const generateInitialTopicalMap = async (
         });
     }
 
-    // Step 1: Get raw topics from AI provider
+    // Step 1: Get raw topics from AI provider (with SERP intelligence if available)
     const rawResult = await dispatchToProvider(businessInfo, {
-        gemini: () => geminiService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch),
-        openai: () => openAiService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch),
-        anthropic: () => anthropicService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch),
-        perplexity: () => perplexityService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch),
-        openrouter: () => openRouterService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch),
+        gemini: () => geminiService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel),
+        openai: () => openAiService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel),
+        anthropic: () => anthropicService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel),
+        perplexity: () => perplexityService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel),
+        openrouter: () => openRouterService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel),
     });
 
     // Step 2: Apply cluster_role assignment based on hub-spoke structure (website type aware)
@@ -265,6 +418,49 @@ export const generateInitialTopicalMap = async (
                 timestamp: Date.now()
             }
         });
+    }
+
+    // Step 3: Auto-correct hub-spoke ratios if outside bounds
+    if (!hubSpokeAnalysis.isOptimal) {
+        const correctionResult = correctHubSpokeRatios(
+            enrichedResult.coreTopics,
+            enrichedResult.outerTopics,
+            businessInfo.websiteType
+        );
+
+        if (correctionResult.corrections.length > 0) {
+            // Log each correction
+            correctionResult.corrections.forEach(c => {
+                dispatch({
+                    type: 'LOG_EVENT',
+                    payload: {
+                        service: 'MapGeneration',
+                        message: `Hub-Spoke Auto-Fix (${c.type}): ${c.description}`,
+                        status: 'info',
+                        timestamp: Date.now()
+                    }
+                });
+            });
+
+            // Re-run cluster role assignment on corrected topics
+            const reEnriched = assignClusterRoles(
+                correctionResult.coreTopics,
+                correctionResult.outerTopics,
+                businessInfo.websiteType
+            );
+
+            dispatch({
+                type: 'LOG_EVENT',
+                payload: {
+                    service: 'MapGeneration',
+                    message: `Hub-Spoke corrected: ${correctionResult.corrections.length} adjustment(s). New ratio: ${reEnriched.hubSpokeAnalysis.averageRatio.toFixed(1)} (was ${hubSpokeAnalysis.averageRatio.toFixed(1)})`,
+                    status: reEnriched.hubSpokeAnalysis.isOptimal ? 'success' : 'warning',
+                    timestamp: Date.now()
+                }
+            });
+
+            return { coreTopics: reEnriched.coreTopics, outerTopics: reEnriched.outerTopics };
+        }
     }
 
     return { coreTopics: enrichedResult.coreTopics, outerTopics: enrichedResult.outerTopics };
