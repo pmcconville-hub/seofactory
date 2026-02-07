@@ -1518,7 +1518,7 @@ export function useContentGeneration({
           passDeltas: collectedDeltas, // Real tracking data from pass execution
           systemicChecks: buildSystemicChecks(updatedJob),
           generatedAt: new Date().toISOString(),
-          generationMode: 'autonomous'
+          generationMode: generationSettings?.checkpointAfterPass1 ? 'supervised' : 'autonomous'
         };
 
         // Mark job as completed and save quality report
