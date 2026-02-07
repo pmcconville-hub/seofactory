@@ -21,6 +21,7 @@ import { GoogleGenAI } from "@google/genai";
 import { fetchSerpResults } from '../serpApiService';
 import { extractPageContent } from '../jinaService';
 import { validateEntityAuthority } from '../googleKnowledgeGraphService';
+import { sanitizeTextInput, validateUrl } from '../../utils/inputValidation';
 
 // Progress callback type
 type ProgressCallback = (progress: QueryNetworkAuditProgress) => void;
@@ -171,6 +172,9 @@ export async function generateQueryNetwork(
   businessInfo: BusinessInfo,
   maxQueries: number = 20
 ): Promise<QueryNetworkNode[]> {
+  // Sanitize external seed keyword input
+  seedKeyword = sanitizeTextInput(seedKeyword, 200);
+
   const prompt = `Generate a comprehensive query network for the seed keyword: "${seedKeyword}"
 
 Context:
@@ -234,6 +238,9 @@ export async function classifyQueryIntent(
   query: string,
   businessInfo: BusinessInfo
 ): Promise<QueryIntent> {
+  // Sanitize external query input
+  query = sanitizeTextInput(query, 200);
+
   const prompt = `Classify the search intent of this query: "${query}"
 
 Return ONLY one of these values:
@@ -282,13 +289,15 @@ export async function fetchCompetitorData(
       { supabaseUrl: businessInfo.supabaseUrl, supabaseAnonKey: businessInfo.supabaseAnonKey }
     );
 
-    return serpResults.slice(0, maxCompetitors).map((result, index) => ({
-      url: result.link,
-      title: result.title,
-      position: index + 1,
-      domain: new URL(result.link).hostname,
-      featuredSnippet: false // Not captured in current SERP API response
-    }));
+    return serpResults.slice(0, maxCompetitors)
+      .filter(result => validateUrl(result.link)) // Validate external SERP URLs
+      .map((result, index) => ({
+        url: result.link,
+        title: result.title,
+        position: index + 1,
+        domain: new URL(result.link).hostname,
+        featuredSnippet: false // Not captured in current SERP API response
+      }));
   } catch (error) {
     console.error('[QueryNetworkAudit] Error fetching SERP results:', error);
     return [];
@@ -302,6 +311,12 @@ export async function analyzePageStructure(
   url: string,
   businessInfo: BusinessInfo
 ): Promise<HeadingHierarchy | null> {
+  // Validate external competitor URL
+  if (!validateUrl(url)) {
+    console.warn('[QueryNetworkAudit] Invalid URL provided for page structure analysis:', url);
+    return null;
+  }
+
   if (!businessInfo.jinaApiKey) {
     console.warn('[QueryNetworkAudit] Jina API key not configured');
     return null;
@@ -743,6 +758,13 @@ export async function runQueryNetworkAudit(
   const maxCompetitors = config.maxCompetitors || 5;
   const totalSteps = 5;
 
+  // Sanitize external config inputs at the system boundary
+  config = {
+    ...config,
+    seedKeyword: sanitizeTextInput(config.seedKeyword, 200),
+    targetDomain: config.targetDomain ? sanitizeTextInput(config.targetDomain, 253) : config.targetDomain,
+  };
+
   try {
     // Step 1: Generate Query Network
     updateProgress('generating_network', 'Generating query network...', 0, totalSteps);
@@ -778,6 +800,12 @@ export async function runQueryNetworkAudit(
     }
 
     for (const url of [...uniqueUrls].slice(0, maxCompetitors)) {
+      // Validate external competitor URLs before processing
+      if (!validateUrl(url)) {
+        console.warn(`[QueryNetworkAudit] Skipping invalid URL: ${url}`);
+        continue;
+      }
+
       try {
         // Extract page content
         if (businessInfo.jinaApiKey) {

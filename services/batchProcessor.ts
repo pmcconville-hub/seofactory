@@ -9,6 +9,7 @@ import { getSupabaseClient } from './supabaseClient';
 import React from 'react';
 import { sanitizeBriefFromDb } from '../utils/parsers';
 import { verifiedInsert } from './verifiedDatabaseService';
+import type { Json } from '../database.types';
 
 export class BatchProcessor {
     private dispatch: React.Dispatch<AppAction>;
@@ -145,24 +146,24 @@ export class BatchProcessor {
                         topic_id: topic.id,
                         title: briefData.title,
                         meta_description: briefData.metaDescription,
-                        key_takeaways: sanitizedTakeaways as any,
+                        key_takeaways: sanitizedTakeaways as unknown as Json,
                         user_id: user.id,
                         // Core fields
                         outline: briefData.outline,
-                        serp_analysis: briefData.serpAnalysis as any,
-                        visuals: briefData.visuals as any,
-                        contextual_vectors: briefData.contextualVectors as any,
-                        contextual_bridge: briefData.contextualBridge as any,
+                        serp_analysis: briefData.serpAnalysis as unknown as Json,
+                        visuals: briefData.visuals as unknown as Json,
+                        contextual_vectors: briefData.contextualVectors as unknown as Json,
+                        contextual_bridge: briefData.contextualBridge as unknown as Json,
                         // Holistic SEO fields
-                        perspectives: briefData.perspectives as any,
+                        perspectives: briefData.perspectives as unknown as Json,
                         methodology_note: briefData.methodology_note,
-                        structured_outline: briefData.structured_outline as any,
+                        structured_outline: briefData.structured_outline as unknown as Json,
                         predicted_user_journey: briefData.predicted_user_journey,
                         // New fields
                         query_type_format: briefData.query_type_format,
-                        featured_snippet_target: briefData.featured_snippet_target as any,
-                        visual_semantics: briefData.visual_semantics as any,
-                        discourse_anchors: briefData.discourse_anchors as any,
+                        featured_snippet_target: briefData.featured_snippet_target as unknown as Json,
+                        visual_semantics: briefData.visual_semantics as unknown as Json,
+                        discourse_anchors: briefData.discourse_anchors as unknown as Json,
                     }
                 );
 
@@ -170,7 +171,7 @@ export class BatchProcessor {
                     throw new Error(result.error || `Brief for "${topic.title}" was not saved - verification failed`);
                 }
 
-                const newBriefRow = result.data as { id: string } & typeof result.data;
+                const newBriefRow = result.data as unknown as { id: string };
 
                 // Construct the new brief object for state
                 const rawBrief = {

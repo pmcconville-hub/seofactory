@@ -224,6 +224,10 @@ export class DiscourseChainingValidator {
       });
     }
 
+    // Check for pronoun resolution issues (pronouns at sentence start without clear antecedents)
+    const pronounViolations = this.checkPronounResolution(content, language);
+    violations.push(...pronounViolations);
+
     return violations;
   }
 
@@ -243,6 +247,129 @@ export class DiscourseChainingValidator {
       pl: 'To, Ten, Ta, Te, Tym',
     };
     return examples[lang] || examples.en;
+  }
+
+  /**
+   * Pronouns that require a clear antecedent when used at sentence start.
+   * Organized by language code. These are a subset of chaining pronouns that
+   * are specifically ambiguous without a preceding noun reference.
+   */
+  private static readonly RESOLUTION_PRONOUNS: Record<string, string[]> = {
+    en: ['it', 'they', 'this', 'these', 'those'],
+    nl: ['het', 'zij', 'ze', 'dit', 'deze', 'die'],
+    de: ['es', 'sie', 'dies', 'diese', 'jene'],
+    fr: ['il', 'elle', 'ils', 'elles', 'ce', 'ceci', 'cela'],
+    es: ['ello', 'ellos', 'ellas', 'esto', 'estos', 'esas', 'esos'],
+    it: ['esso', 'essa', 'essi', 'esse', 'questo', 'questa', 'ciò'],
+    pt: ['isto', 'isso', 'eles', 'elas', 'este', 'esta'],
+    pl: ['to', 'te', 'ci', 'oni', 'one'],
+  };
+
+  /**
+   * Check that pronouns (it, they, this, these, those) appearing at sentence
+   * start have clear antecedents in the preceding sentence.
+   *
+   * A "clear antecedent" means the previous sentence contains at least one
+   * noun phrase (content word of 4+ characters) that could be the referent.
+   * Additionally, sentence-initial pronouns at the very start of content
+   * (first sentence) always lack antecedents.
+   */
+  private static checkPronounResolution(content: string, language?: string): ValidationViolation[] {
+    const violations: ValidationViolation[] = [];
+    const lang = (language || 'en').toLowerCase().substring(0, 2);
+    const resolutionPronouns = this.RESOLUTION_PRONOUNS[lang] || this.RESOLUTION_PRONOUNS.en;
+    const functionWords = getFunctionWords(language);
+
+    // Strip HTML and split into sentences
+    const cleanContent = content.replace(/<[^>]*>/g, ' ').trim();
+    const sentences = this.splitIntoSentences(cleanContent);
+
+    if (sentences.length < 2) return violations;
+
+    for (let i = 0; i < sentences.length; i++) {
+      const sentence = sentences[i];
+      const sentenceLower = sentence.toLowerCase();
+
+      // Extract the first word of this sentence
+      const wordMatches = [...sentenceLower.matchAll(/[\p{L}\p{N}]+/gu)];
+      if (wordMatches.length === 0) continue;
+      const firstWord = wordMatches[0][0];
+
+      // Check if this sentence starts with a resolution pronoun
+      if (!resolutionPronouns.includes(firstWord)) continue;
+
+      // First sentence with a pronoun start always lacks an antecedent
+      if (i === 0) {
+        violations.push({
+          rule: 'D5_PRONOUN_RESOLUTION',
+          text: `Sentence starts with "${wordMatches[0][0]}" but has no preceding sentence to establish antecedent`,
+          position: this.findSentencePosition(content, sentence),
+          suggestion: `The opening sentence starts with the pronoun "${wordMatches[0][0]}" which has no antecedent. Replace with an explicit noun phrase to improve clarity.`,
+          severity: 'warning',
+        });
+        continue;
+      }
+
+      // Check if the previous sentence has a clear antecedent (a noun-like content word)
+      const prevSentence = sentences[i - 1];
+      const prevWords = [...prevSentence.matchAll(/[\p{L}\p{N}]+/gu)].map(m => m[0]);
+      const prevContentWords = prevWords.filter(
+        w => w.length >= 4 && !functionWords.includes(w.toLowerCase())
+      );
+
+      // If the previous sentence has no substantial content words,
+      // the pronoun has no clear antecedent
+      if (prevContentWords.length === 0) {
+        violations.push({
+          rule: 'D5_PRONOUN_RESOLUTION',
+          text: `"${sentence.substring(0, 60)}${sentence.length > 60 ? '...' : ''}"`,
+          position: this.findSentencePosition(content, sentence),
+          suggestion: `Sentence starts with "${firstWord}" but the preceding sentence has no clear noun antecedent. Replace the pronoun with an explicit noun phrase for clarity.`,
+          severity: 'warning',
+        });
+        continue;
+      }
+
+      // Additional check: if the pronoun is "it" or singular equivalent and the previous
+      // sentence ends with a clause rather than a clear noun object, flag it
+      const singularPronouns: Record<string, string[]> = {
+        en: ['it'],
+        nl: ['het'],
+        de: ['es'],
+        fr: ['il', 'elle'],
+        es: ['ello'],
+        it: ['esso', 'essa'],
+        pt: ['isto', 'isso'],
+        pl: ['to'],
+      };
+      const langSingularPronouns = singularPronouns[lang] || singularPronouns.en;
+
+      if (langSingularPronouns.includes(firstWord)) {
+        // Check if previous sentence ends with a conjunction or preposition (weak ending)
+        const prevLastWord = prevWords[prevWords.length - 1]?.toLowerCase();
+        const weakEndings = ['and', 'or', 'but', 'that', 'which', 'while', 'when', 'if',
+          'en', 'of', 'maar', 'und', 'oder', 'aber', 'et', 'ou', 'mais', 'y', 'o', 'pero'];
+        if (prevLastWord && weakEndings.includes(prevLastWord)) {
+          violations.push({
+            rule: 'D5_PRONOUN_RESOLUTION',
+            text: `"${sentence.substring(0, 60)}${sentence.length > 60 ? '...' : ''}"`,
+            position: this.findSentencePosition(content, sentence),
+            suggestion: `Sentence starts with "${firstWord}" after a sentence ending with "${prevLastWord}", making the antecedent ambiguous. Use an explicit noun instead.`,
+            severity: 'warning',
+          });
+        }
+      }
+    }
+
+    return violations;
+  }
+
+  /**
+   * Find approximate position of a sentence within the full content
+   */
+  private static findSentencePosition(content: string, sentence: string): number {
+    const idx = content.indexOf(sentence);
+    return idx >= 0 ? idx : 0;
   }
 
   /**

@@ -33,6 +33,15 @@ const MULTILINGUAL_MODALITY_PATTERNS: Record<string, LanguageModalityPatterns> =
       /\bmisschien\s+\w+/gi,
       /\bmogelijk\s+\w+/gi,
       /\bwellicht\s+\w+/gi,
+      // Modal verbs: kunnen, moeten, zullen, mogen, willen
+      /\b(?:zou|zouden)\s+moeten\b/gi,
+      /\b(?:zou|zouden)\s+mogen\b/gi,
+      /\b(?:zou|zouden)\s+willen\b/gi,
+      /\b(?:zou|zouden)\s+zullen\b/gi,
+      /\bmoeten\s+(?:zijn|hebben|kunnen)\b/gi,
+      /\bzullen\s+(?:zijn|hebben|kunnen)\b/gi,
+      /\bmogen\s+(?:zijn|hebben|worden)\b/gi,
+      /\bwillen\s+(?:zijn|hebben|worden)\b/gi,
     ],
     possibilityContexts: [
       'risico', 'gevaar', 'waarschuwing', 'voorzichtigheid', 'bijwerking',
@@ -48,6 +57,15 @@ const MULTILINGUAL_MODALITY_PATTERNS: Record<string, LanguageModalityPatterns> =
       /\bvielleicht\s+\w+/gi,
       /\bmöglicherweise\s+\w+/gi,
       /\beventuell\s+\w+/gi,
+      // Modal verbs: können, müssen, sollen, dürfen, wollen
+      /\b(?:müsste|müssten)\s+\w+/gi,
+      /\b(?:sollte|sollten)\s+\w+/gi,
+      /\b(?:dürfte|dürften)\s+\w+/gi,
+      /\b(?:wollte|wollten)\s+\w+/gi,
+      /\bmüssen\s+(?:sein|haben|werden)\b/gi,
+      /\bsollen\s+(?:sein|haben|werden)\b/gi,
+      /\bdürfen\s+(?:sein|haben|werden)\b/gi,
+      /\bwollen\s+(?:sein|haben|werden)\b/gi,
     ],
     possibilityContexts: [
       'risiko', 'gefahr', 'warnung', 'vorsicht', 'nebenwirkung',
@@ -63,6 +81,12 @@ const MULTILINGUAL_MODALITY_PATTERNS: Record<string, LanguageModalityPatterns> =
       /\bpeut-être\s+\w+/gi,
       /\bpossiblement\s+\w+/gi,
       /\béventuellement\s+\w+/gi,
+      // Modal verbs: pouvoir, devoir, falloir, vouloir
+      /\b(?:devrait|devraient)\s+\w+/gi,
+      /\b(?:doit|doivent)\s+(?:être|avoir|pouvoir)\b/gi,
+      /\b(?:faudrait|il\s+faut)\s+\w+/gi,
+      /\b(?:voudrait|voudraient)\s+\w+/gi,
+      /\b(?:veut|veulent)\s+(?:être|avoir|dire)\b/gi,
     ],
     possibilityContexts: [
       'risque', 'danger', 'avertissement', 'précaution', 'effet secondaire',
@@ -78,6 +102,13 @@ const MULTILINGUAL_MODALITY_PATTERNS: Record<string, LanguageModalityPatterns> =
       /\btal\s+vez\s+\w+/gi,
       /\bquizás\s+\w+/gi,
       /\bposiblemente\s+\w+/gi,
+      // Modal verbs: poder, deber, tener que, querer
+      /\b(?:debería|deberían)\s+\w+/gi,
+      /\b(?:debe|deben)\s+(?:ser|tener|haber)\b/gi,
+      /\btiene\s+que\s+(?:ser|haber|poder)\b/gi,
+      /\btienen\s+que\s+(?:ser|haber|poder)\b/gi,
+      /\b(?:querría|querrían)\s+\w+/gi,
+      /\b(?:quiere|quieren)\s+(?:ser|tener|decir)\b/gi,
     ],
     possibilityContexts: [
       'riesgo', 'peligro', 'advertencia', 'precaución', 'efecto secundario',

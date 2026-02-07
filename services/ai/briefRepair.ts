@@ -12,6 +12,11 @@ import * as anthropicService from '../anthropicService';
 import * as perplexityService from '../perplexityService';
 import * as openRouterService from '../openRouterService';
 import { getGenerateTextFunction } from './providerDispatcher';
+import {
+  META_DESCRIPTION_LENGTH,
+  GUIDE_WORD_COUNT,
+  DEFAULT_WORD_COUNT,
+} from '../../config/scoringConstants';
 
 /**
  * Get the appropriate AI service generateText function based on provider
@@ -104,7 +109,7 @@ async function repairMetaDescription(
   dispatch: React.Dispatch<any>
 ): Promise<Partial<ContentBrief>> {
   const generateText = getGenerateText(businessInfo);
-  const prompt = `Generate a compelling meta description (150-160 characters) for this article:
+  const prompt = `Generate a compelling meta description (${META_DESCRIPTION_LENGTH.min}-${META_DESCRIPTION_LENGTH.max} characters) for this article:
 
 Title: ${brief.title || topic.title}
 Topic: ${topic.description}
@@ -191,7 +196,7 @@ async function repairSerpWordCount(
   // Use a reasonable default based on topic type
   const isGuide = topic.title.toLowerCase().includes('guide') ||
                   topic.title.toLowerCase().includes('how to');
-  const avgWordCount = isGuide ? 2500 : 1800;
+  const avgWordCount = isGuide ? GUIDE_WORD_COUNT : DEFAULT_WORD_COUNT;
 
   return {
     serpAnalysis: {
@@ -236,7 +241,7 @@ Return ONLY a JSON array of question strings, like:
     return {
       serpAnalysis: {
         ...brief.serpAnalysis,
-        avgWordCount: brief.serpAnalysis?.avgWordCount || 1800,
+        avgWordCount: brief.serpAnalysis?.avgWordCount || DEFAULT_WORD_COUNT,
         competitorHeadings: brief.serpAnalysis?.competitorHeadings || [],
         peopleAlsoAsk: questions,
       }

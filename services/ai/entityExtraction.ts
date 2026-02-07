@@ -9,6 +9,11 @@ import type {
   SemanticTriple
 } from '../../types';
 import { suggestEntityType } from '../wikidataService';
+import {
+  CONTENT_SAMPLE_SIZE,
+  ENTITY_CONTENT_LIMIT,
+  DEFAULT_MAX_ENTITIES,
+} from '../../config/scoringConstants';
 
 // Entity extraction prompt template
 const ENTITY_EXTRACTION_PROMPT = `Analyze the following content and extract all named entities that should be included in structured data schema.
@@ -78,7 +83,7 @@ export async function extractEntitiesWithAI(
   aiService: (prompt: string) => Promise<string>
 ): Promise<EntityCandidate[]> {
   const prompt = ENTITY_EXTRACTION_PROMPT
-    .replace('{{content}}', content.slice(0, 8000)) // Limit content length
+    .replace('{{content}}', content.slice(0, ENTITY_CONTENT_LIMIT)) // Limit content length
     .replace('{{title}}', title)
     .replace('{{keyword}}', keyword || '')
     .replace('{{domain}}', businessInfo.domain || '')
@@ -269,7 +274,7 @@ export function extractEntitiesFromContext(
   }
 
   // 5. Extract proper nouns from content (limited scan)
-  const contentSample = content.slice(0, 3000);
+  const contentSample = content.slice(0, CONTENT_SAMPLE_SIZE);
   const contentNouns = contentSample.match(/[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,2}/g);
   if (contentNouns) {
     // Count occurrences and sort by frequency
@@ -298,7 +303,7 @@ export function extractEntitiesFromContext(
  */
 export function prioritizeEntities(
   candidates: EntityCandidate[],
-  maxEntities: number = 10
+  maxEntities: number = DEFAULT_MAX_ENTITIES
 ): EntityCandidate[] {
   // Score each candidate
   const scored = candidates.map(candidate => {

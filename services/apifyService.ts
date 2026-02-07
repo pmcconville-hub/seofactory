@@ -23,6 +23,31 @@ interface ApifyRun {
   defaultDatasetId: string;
 }
 
+/** Shape of an individual organic result from Apify's Google Search Scraper */
+interface ApifySerpOrganicResult {
+  position?: number;
+  title: string;
+  url: string;
+  description?: string;
+}
+
+/** Shape of a "People Also Ask" item from Apify's Google Search Scraper */
+interface ApifySerpPaaItem {
+  question: string;
+}
+
+/** Shape of a related query item from Apify's Google Search Scraper */
+interface ApifySerpRelatedQueryItem {
+  query: string;
+}
+
+/** Shape of the top-level SERP result object from Apify's Google Search Scraper */
+interface ApifySerpResult {
+  organicResults?: ApifySerpOrganicResult[];
+  peopleAlsoAsk?: ApifySerpPaaItem[];
+  relatedQueries?: ApifySerpRelatedQueryItem[];
+}
+
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
@@ -170,16 +195,16 @@ export const collectSerpIntelligence = async (query: string, apiToken: string, t
     return { organicResults: [], peopleAlsoAsk: [], relatedQueries: [] };
   }
 
-  const firstResult = results[0];
+  const firstResult = results[0] as ApifySerpResult;
   return {
-    organicResults: firstResult.organicResults?.map((item: any, index: number) => ({
+    organicResults: firstResult.organicResults?.map((item: ApifySerpOrganicResult, index: number) => ({
       position: item.position || index + 1,
       title: item.title,
       link: item.url,
       snippet: item.description || ''
     })) || [],
-    peopleAlsoAsk: firstResult.peopleAlsoAsk?.map((item: any) => item.question) || [],
-    relatedQueries: firstResult.relatedQueries?.map((item: any) => item.query) || [],
+    peopleAlsoAsk: firstResult.peopleAlsoAsk?.map((item: ApifySerpPaaItem) => item.question) || [],
+    relatedQueries: firstResult.relatedQueries?.map((item: ApifySerpRelatedQueryItem) => item.query) || [],
   };
 };
 
@@ -558,7 +583,7 @@ export const startAsyncTechnicalExtraction = async (
 
   const startRunUrl = `${API_BASE_URL}/acts/${WEB_SCRAPER_ACTOR_ID.replace('/', '~')}/runs?token=${apiToken}`;
 
-  const body: any = runInput;
+  const body: typeof runInput & { webhooks?: { eventTypes: string[]; requestUrl: string }[] } = runInput;
   if (webhookUrl) {
     body.webhooks = [{
       eventTypes: ['ACTOR.RUN.SUCCEEDED', 'ACTOR.RUN.FAILED'],

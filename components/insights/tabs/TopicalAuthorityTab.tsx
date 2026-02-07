@@ -288,7 +288,7 @@ export const TopicalAuthorityTab: React.FC<TopicalAuthorityTabProps> = ({
             <div className="text-xs text-gray-500 mt-1">
               {topicalAuthority.informationDensity.averageFactsPerTopic >= 5
                 ? 'Good density'
-                : 'Consider adding more facts'}
+                : 'Run Query Network Audit to discover competitor EAVs'}
             </div>
           </div>
           <div className="p-4 bg-gray-800/50 rounded-lg text-center">

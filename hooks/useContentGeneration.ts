@@ -1540,6 +1540,61 @@ export function useContentGeneration({
 
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
+      const isAuditFailure = message.includes('Quality audit failed');
+
+      // Auto-retry logic: if audit failed and we haven't retried yet, auto-retry once
+      if (isAuditFailure) {
+        const auditRetryCount = (updatedJob as any).audit_retry_count || 0;
+        const rerunMatch = message.match(/re-run from Pass (\d+)/);
+        const targetPass = rerunMatch ? parseInt(rerunMatch[1]) : null;
+
+        if (auditRetryCount < 1 && targetPass) {
+          onLog(`Audit failed — auto-retrying from Pass ${targetPass} (attempt ${auditRetryCount + 1}/1)...`, 'warning');
+
+          // Track retry count in job metadata
+          await orchestrator.updateJob(updatedJob.id, {
+            status: 'in_progress',
+            last_error: `Auto-retrying from Pass ${targetPass}: ${message}`,
+            audit_retry_count: auditRetryCount + 1,
+          });
+
+          // Rollback sections and re-run from target pass
+          const rollbackTo = Math.max(1, targetPass - 1);
+          await orchestrator.rollbackSectionsToPass(updatedJob.id, rollbackTo);
+
+          const resetPassesStatus = { ...updatedJob.passes_status };
+          for (const key of Object.keys(resetPassesStatus)) {
+            const match = key.match(/^pass_(\d+)_/);
+            if (match && parseInt(match[1]) >= targetPass) {
+              (resetPassesStatus as any)[key] = 'pending';
+            }
+          }
+
+          await orchestrator.updateJob(updatedJob.id, {
+            current_pass: targetPass,
+            passes_status: resetPassesStatus,
+          });
+
+          const retryJob = {
+            ...updatedJob,
+            status: 'in_progress' as const,
+            current_pass: targetPass,
+            passes_status: resetPassesStatus,
+          };
+          setJob(retryJob);
+
+          // Re-run the pipeline from the target pass
+          await runPasses(orchestrator, retryJob);
+          return;
+        }
+
+        // Already retried or no target pass — keep audit_failed status (already set by pass8Audit)
+        setError(message);
+        onLog(`Audit failed after auto-retry. Score below threshold. Review and re-run manually.`, 'failure');
+        return;
+      }
+
+      // Non-audit failure — set failed status
       setError(message);
       onLog(`Error: ${message}`, 'failure');
       await orchestrator.updateJob(updatedJob.id, {
@@ -1560,7 +1615,7 @@ export function useContentGeneration({
 
       if (existingJob) {
         // If existing job failed, cancelled, or completed - delete it and start fresh
-        if (existingJob.status === 'failed' || existingJob.status === 'cancelled' || existingJob.status === 'completed') {
+        if (existingJob.status === 'failed' || existingJob.status === 'cancelled' || existingJob.status === 'completed' || existingJob.status === 'audit_failed') {
           onLog(existingJob.status === 'completed' ? 'Clearing previous draft for regeneration...' : 'Clearing failed job...', 'info');
           await orchestratorRef.current.deleteJob(existingJob.id);
 

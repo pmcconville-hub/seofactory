@@ -17,6 +17,19 @@
  * en elke H2/H3 daaronder gebruikt het woord 'water' in zijn context."
  */
 
+import {
+  ENTITY_MIN_WORD_LENGTH,
+  ENTITY_TOP_N_TERMS,
+  ENTITY_SCHEMA_CONFIDENCE,
+  ENTITY_H1_CONFIDENCE,
+  ENTITY_TITLE_CONFIDENCE,
+  ENTITY_FREQUENCY_CONFIDENCE,
+  ENTITY_MAJOR_DRIFT_PENALTY,
+  ENTITY_MINOR_DRIFT_PENALTY,
+  ENTITY_HEADING_RATIO_THRESHOLD,
+  ENTITY_DISTRIBUTION_THRESHOLD,
+} from '../../config/scoringConstants';
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -222,7 +235,7 @@ function splitIntoThirds<T>(items: T[]): [T[], T[], T[]] {
 /**
  * Extract most frequent meaningful words from text
  */
-function extractFrequentTerms(text: string, minLength = 4, topN = 10): string[] {
+function extractFrequentTerms(text: string, minLength = ENTITY_MIN_WORD_LENGTH, topN = ENTITY_TOP_N_TERMS): string[] {
   const words = text.toLowerCase()
     .replace(/[^a-z\s]/g, ' ')
     .split(/\s+/)
@@ -288,7 +301,7 @@ export function detectCentralEntity(content: ParsedContent): DetectedEntity {
   if (content.schema?.about?.name) {
     primaryCandidate = content.schema.about.name;
     sources.push('schema');
-    confidence = 0.95;
+    confidence = ENTITY_SCHEMA_CONFIDENCE;
   }
 
   // Priority 2: H1 (most reliable semantic signal)
@@ -296,14 +309,14 @@ export function detectCentralEntity(content: ParsedContent): DetectedEntity {
     // Extract main noun phrase from H1
     primaryCandidate = extractMainNoun(content.h1);
     sources.push('h1');
-    confidence = 0.85;
+    confidence = ENTITY_H1_CONFIDENCE;
   }
 
   // Priority 3: Title tag
   if (!primaryCandidate && content.title) {
     primaryCandidate = extractMainNoun(content.title);
     sources.push('title');
-    confidence = 0.75;
+    confidence = ENTITY_TITLE_CONFIDENCE;
   }
 
   // Priority 4: Frequency analysis
@@ -312,7 +325,7 @@ export function detectCentralEntity(content: ParsedContent): DetectedEntity {
     if (frequentTerms.length > 0) {
       primaryCandidate = frequentTerms[0];
       sources.push('frequency');
-      confidence = 0.6;
+      confidence = ENTITY_FREQUENCY_CONFIDENCE;
     }
   }
 
@@ -498,8 +511,8 @@ export function detectContextualDrift(
     }
   }
 
-  const vectorScore = Math.max(0, 100 - (driftPoints.filter(d => d.severity === 'major').length * 20) -
-    (driftPoints.filter(d => d.severity === 'minor').length * 5));
+  const vectorScore = Math.max(0, 100 - (driftPoints.filter(d => d.severity === 'major').length * ENTITY_MAJOR_DRIFT_PENALTY) -
+    (driftPoints.filter(d => d.severity === 'minor').length * ENTITY_MINOR_DRIFT_PENALTY));
 
   return {
     isConsistent: driftPoints.filter(d => d.severity === 'major').length === 0,
@@ -546,7 +559,7 @@ export function identifyIssues(
     });
   }
 
-  if (consistency.headingPresence.ratio < 0.3) {
+  if (consistency.headingPresence.ratio < ENTITY_HEADING_RATIO_THRESHOLD) {
     issues.push({
       issue: 'low_heading_presence',
       severity: 'warning',
@@ -555,7 +568,7 @@ export function identifyIssues(
     });
   }
 
-  if (consistency.bodyPresence.distributionScore < 66) {
+  if (consistency.bodyPresence.distributionScore < ENTITY_DISTRIBUTION_THRESHOLD) {
     issues.push({
       issue: 'uneven_distribution',
       severity: 'warning',

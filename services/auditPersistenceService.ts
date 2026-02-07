@@ -7,7 +7,17 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { QueryNetworkAnalysisResult, MentionScannerResult, CorpusAuditResult } from '../types';
 import { EnhancedAuditMetrics } from './reportGenerationService';
-import { verifiedInsert } from './verifiedDatabaseService';
+import { verifiedInsert, VerifiedResult } from './verifiedDatabaseService';
+
+/** Response shape expected from verifiedInsert when selecting 'id' column */
+interface InsertedRow extends Record<string, unknown> {
+  id?: string;
+}
+
+/** Extract the saved ID from a VerifiedResult, returning null if not present */
+function extractSavedId(result: VerifiedResult<InsertedRow>): string | null {
+  return result.data?.id ?? null;
+}
 
 // Types for stored audits
 export interface StoredQueryNetworkAudit {
@@ -142,9 +152,9 @@ export async function saveQueryNetworkAudit(
     return null;
   }
 
-  const savedId = (insertResult.data as { id?: string })?.id;
+  const savedId = extractSavedId(insertResult);
   console.log('[saveQueryNetworkAudit] Successfully saved audit:', savedId);
-  return savedId || null;
+  return savedId;
 }
 
 /**
@@ -188,9 +198,9 @@ export async function saveEATScannerAudit(
     return null;
   }
 
-  const savedId = (insertResult.data as { id?: string })?.id;
+  const savedId = extractSavedId(insertResult);
   console.log('[saveEATScannerAudit] Successfully saved audit:', savedId);
-  return savedId || null;
+  return savedId;
 }
 
 /**
@@ -232,9 +242,9 @@ export async function saveCorpusAudit(
     return null;
   }
 
-  const savedId = (insertResult.data as { id?: string })?.id;
+  const savedId = extractSavedId(insertResult);
   console.log('[saveCorpusAudit] Successfully saved audit:', savedId);
-  return savedId || null;
+  return savedId;
 }
 
 /**
@@ -286,9 +296,9 @@ export async function saveEnhancedMetricsSnapshot(
     return null;
   }
 
-  const savedId = (insertResult.data as { id?: string })?.id;
+  const savedId = extractSavedId(insertResult);
   console.log('[saveEnhancedMetricsSnapshot] Successfully saved snapshot:', savedId);
-  return savedId || null;
+  return savedId;
 }
 
 /**

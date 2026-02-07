@@ -900,6 +900,9 @@ const ContentBriefModal: React.FC<ContentBriefModalProps> = ({ allTopics, onGene
                 )}
                 <Button onClick={handleClose} variant="secondary">Close</Button>
             </div>
+            {!canGenerateContent && !featureLoading && featureReason && (
+                <p className="text-sm text-amber-600 mt-1 text-right">{featureReason}</p>
+            )}
         </div>
     ) : null;
 

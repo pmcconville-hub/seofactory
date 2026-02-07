@@ -1,4 +1,12 @@
 import { BusinessInfo, EnrichedTopic, MergeSuggestion, KnowledgeGraph as KnowledgeGraphType } from '../../types';
+import {
+  DEFAULT_DISTANCE_THRESHOLD,
+  OPTIMAL_SEMANTIC_DISTANCE,
+  CANNIBALIZATION_THRESHOLD,
+  TITLE_CANNIBALIZATION_THRESHOLD,
+  IDEAL_SPOKE_DISTANCE,
+  OPTIMAL_SPOKE_COUNT,
+} from '../../config/scoringConstants';
 import * as geminiService from '../geminiService';
 import * as openAiService from '../openAiService';
 import * as anthropicService from '../anthropicService';
@@ -40,7 +48,7 @@ export interface LinkingCandidate {
 export function clusterTopicsSemanticDistance(
     topics: EnrichedTopic[],
     knowledgeGraph: KnowledgeGraph,
-    distanceThreshold: number = 0.5
+    distanceThreshold: number = DEFAULT_DISTANCE_THRESHOLD
 ): SemanticCluster[] {
     if (topics.length === 0) return [];
 
@@ -146,7 +154,7 @@ export function findSemanticLinkingCandidates(
 
         if (distanceResult.shouldLink) {
             // Calculate relevance score (highest in middle of range)
-            const distFromOptimal = Math.abs(distanceResult.distance - 0.5);
+            const distFromOptimal = Math.abs(distanceResult.distance - OPTIMAL_SEMANTIC_DISTANCE);
             const relevanceScore = 1 - (distFromOptimal * 2); // 1.0 at 0.5, 0.0 at 0.0 or 1.0
 
             candidates.push({
@@ -190,7 +198,7 @@ export function findCannibalizationRisks(
                 topics[j].title
             );
 
-            if (distanceResult.distance < 0.2) {
+            if (distanceResult.distance < CANNIBALIZATION_THRESHOLD) {
                 risks.push({
                     topicA: topics[i],
                     topicB: topics[j],
@@ -231,7 +239,7 @@ export function detectTitleCannibalization(
       const union = new Set([...wordsA, ...wordsB]);
       const similarity = union.size > 0 ? intersection.size / union.size : 0;
 
-      if (similarity > 0.7) {
+      if (similarity > TITLE_CANNIBALIZATION_THRESHOLD) {
         risks.push({
           topicA: a, topicB: b, similarity,
           recommendation: `Consider merging "${a.title}" and "${b.title}" (${Math.round(similarity * 100)}% word overlap)`,
@@ -250,7 +258,7 @@ export function detectTitleCannibalization(
 export function suggestHubSpokeStructure(
     topics: EnrichedTopic[],
     knowledgeGraph: KnowledgeGraph,
-    optimalSpokeCount: number = 7
+    optimalSpokeCount: number = OPTIMAL_SPOKE_COUNT
 ): Array<{
     hub: EnrichedTopic;
     suggestedSpokes: EnrichedTopic[];
@@ -280,7 +288,7 @@ export function suggestHubSpokeStructure(
             );
 
             // Ideal spokes are in the 0.3-0.6 range (close but not duplicate)
-            if (distanceResult.distance >= 0.3 && distanceResult.distance <= 0.6) {
+            if (distanceResult.distance >= IDEAL_SPOKE_DISTANCE.min && distanceResult.distance <= IDEAL_SPOKE_DISTANCE.max) {
                 spokeCandidates.push({
                     topic: spoke,
                     distance: distanceResult.distance
@@ -330,8 +338,8 @@ function calculateHubSpokeQuality(
     const ratioScore = 1 - Math.abs(spokeCount - optimalCount) / optimalCount;
 
     // Distance quality: prefer ~0.45 average (middle of ideal range)
-    const distanceOptimal = 0.45;
-    const distanceScore = 1 - Math.abs(avgDistance - distanceOptimal) / 0.45;
+    const distanceOptimal = OPTIMAL_SEMANTIC_DISTANCE;
+    const distanceScore = 1 - Math.abs(avgDistance - distanceOptimal) / OPTIMAL_SEMANTIC_DISTANCE;
 
     // Combined score
     return (ratioScore * 0.5 + distanceScore * 0.5);

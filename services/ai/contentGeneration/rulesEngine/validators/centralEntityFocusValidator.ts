@@ -165,25 +165,45 @@ export class CentralEntityFocusValidator {
 
     if (!centralEntity || content.length < 200) return violations;
 
-    const entityLower = centralEntity.toLowerCase();
     const contentLower = content.toLowerCase();
     const wordCount = content.split(/\s+/).filter(w => w.length > 0).length;
 
-    // Check for entity presence
+    // Check for entity presence and count mentions
     const entityTerms = centralEntity.toLowerCase().split(/\s+/).filter(t => t.length > 3);
-    const hasEntityMention = entityTerms.some(term =>
-      contentLower.includes(term)
-    );
+    let totalMentions = 0;
+    entityTerms.forEach(term => {
+      const regex = new RegExp(`\\b${this.escapeRegex(term)}\\b`, 'gi');
+      const matches = content.match(regex);
+      if (matches) totalMentions += matches.length;
+    });
 
-    // LENIENT: Only flag substantial sections with no entity mention
+    const hasEntityMention = totalMentions > 0;
+
+    // Flag substantial sections with no entity mention at all
     if (!hasEntityMention && wordCount >= this.MIN_SECTION_WORDS) {
       violations.push({
         rule: 'CENTRAL_ENTITY_FOCUS',
         text: content.substring(0, 100) + '...',
         position: 0,
         suggestion: `Section doesn't mention the central entity "${centralEntity}". Consider relating content back to the main topic.`,
-        severity: 'warning',  // Warning, not error - lenient approach
+        severity: 'warning',
       });
+    }
+
+    // Escalate to 'warning' when mention density drops below 1 per 200 words
+    // (MENTIONS_PER_100_WORDS = 0.5, i.e., 1 mention per 200 words)
+    if (hasEntityMention && wordCount >= this.MIN_SECTION_WORDS) {
+      const densityPer100 = (totalMentions / wordCount) * 100;
+      if (densityPer100 < this.MENTIONS_PER_100_WORDS * 100) {
+        const expectedMentions = Math.ceil(wordCount * this.MENTIONS_PER_100_WORDS / 100);
+        violations.push({
+          rule: 'CENTRAL_ENTITY_FOCUS',
+          text: `Entity density: ${totalMentions} mention(s) in ${wordCount} words (expected at least ${expectedMentions})`,
+          position: 0,
+          suggestion: `Central entity "${centralEntity}" mention density is below 1 per 200 words. Reinforce entity focus by naturally weaving the central entity into the content.`,
+          severity: 'warning',  // Escalated from 'info' - low density undermines topical authority
+        });
+      }
     }
 
     return violations;

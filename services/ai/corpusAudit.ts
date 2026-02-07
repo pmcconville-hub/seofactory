@@ -16,6 +16,17 @@ import type {
 } from '../../types';
 
 import { analyzeCompetitorSitemap, ProxyConfig } from '../serpApiService';
+import {
+  CONTENT_OVERLAP_THRESHOLD,
+  OVERLAP_DUPLICATE,
+  OVERLAP_NEAR_DUPLICATE,
+  OVERLAP_PARTIAL,
+  THIN_PAGE_WORD_COUNT,
+  MAX_PAGES_DEFAULT,
+  CORPUS_RATE_LIMIT_DELAY,
+  COVERAGE_THRESHOLD,
+  COVERAGE_HIGH_SEVERITY,
+} from '../../config/scoringConstants';
 import { extractPageContent } from '../jinaService';
 
 // Progress callback type
@@ -108,7 +119,7 @@ export async function analyzePage(
  */
 export function detectContentOverlaps(
   pages: CorpusPage[],
-  threshold: number = 0.3
+  threshold: number = CONTENT_OVERLAP_THRESHOLD
 ): ContentOverlap[] {
   const overlaps: ContentOverlap[] = [];
 
@@ -133,11 +144,11 @@ export function detectContentOverlaps(
 
       if (overlapPercentage >= threshold) {
         let overlapType: ContentOverlap['overlapType'];
-        if (overlapPercentage >= 0.8) {
+        if (overlapPercentage >= OVERLAP_DUPLICATE) {
           overlapType = 'duplicate';
-        } else if (overlapPercentage >= 0.6) {
+        } else if (overlapPercentage >= OVERLAP_NEAR_DUPLICATE) {
           overlapType = 'near_duplicate';
-        } else if (overlapPercentage >= 0.4) {
+        } else if (overlapPercentage >= OVERLAP_PARTIAL) {
           overlapType = 'partial';
         } else {
           overlapType = 'thematic';
@@ -300,13 +311,13 @@ export function identifyIssues(
   }
 
   // Thin content issues
-  const thinPages = pages.filter(p => p.wordCount < 300);
+  const thinPages = pages.filter(p => p.wordCount < THIN_PAGE_WORD_COUNT);
   if (thinPages.length > 0) {
     issues.push({
       type: 'thin_content',
       severity: thinPages.length > pages.length * 0.2 ? 'high' : 'medium',
       affectedUrls: thinPages.map(p => p.url),
-      description: `${thinPages.length} page(s) have thin content (<300 words).`,
+      description: `${thinPages.length} page(s) have thin content (<${THIN_PAGE_WORD_COUNT} words).`,
     });
   }
 
@@ -347,10 +358,10 @@ export function identifyIssues(
   }
 
   // Coverage gaps
-  if (metrics.topicalCoverage < 70) {
+  if (metrics.topicalCoverage < COVERAGE_THRESHOLD) {
     issues.push({
       type: 'coverage_gap',
-      severity: metrics.topicalCoverage < 50 ? 'high' : 'medium',
+      severity: metrics.topicalCoverage < COVERAGE_HIGH_SEVERITY ? 'high' : 'medium',
       affectedUrls: [],
       description: `Topical coverage is only ${metrics.topicalCoverage}% of target topics.`,
     });
@@ -498,7 +509,7 @@ export async function runCorpusAudit(
     const proxyConfig: ProxyConfig | undefined = businessInfo.supabaseUrl && businessInfo.supabaseAnonKey
       ? { supabaseUrl: businessInfo.supabaseUrl, supabaseAnonKey: businessInfo.supabaseAnonKey }
       : undefined;
-    const pageUrls = await discoverPages(config.domain, config.maxPages || 50, proxyConfig);
+    const pageUrls = await discoverPages(config.domain, config.maxPages || MAX_PAGES_DEFAULT, proxyConfig);
 
     if (pageUrls.length === 0) {
       throw new Error('No pages found in sitemap');
@@ -519,7 +530,7 @@ export async function runCorpusAudit(
       }
 
       // Rate limiting
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, CORPUS_RATE_LIMIT_DELAY));
     }
 
     // Step 3: Detect content overlaps

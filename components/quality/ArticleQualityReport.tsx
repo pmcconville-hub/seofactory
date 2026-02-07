@@ -23,6 +23,8 @@ import {
 } from '../../services/ai/contentGeneration/rulesEngine/ruleRegistry';
 import type { PassDelta } from '../../services/ai/contentGeneration/tracking';
 import { ValidationViolation, BusinessInfo } from '../../types';
+import { PillarAlignmentValidator } from '../../services/ai/contentGeneration/rulesEngine/validators/pillarAlignmentValidator';
+import { ReadabilityValidator } from '../../services/ai/contentGeneration/rulesEngine/validators/readabilityValidator';
 
 // =============================================================================
 // Types
@@ -148,29 +150,58 @@ function generateSystemicChecks(
     details: regionConfigured ? undefined : 'Configure region in Business Info',
   });
 
-  // S3: Pillar Alignment Check (placeholder - would need actual analysis)
-  // TODO: Calculate actual pillar alignment from content vs businessInfo.seedKeyword
+  // S3: Pillar Alignment Check — uses real PillarAlignmentValidator
   const hasPillars = !!businessInfo?.seedKeyword;
-  checks.push({
-    checkId: 'S3',
-    name: 'Pillar Alignment',
-    status: hasPillars ? 'pass' : 'warning',
-    value: hasPillars ? 'Aligned' : 'Not analyzed',
-    expected: businessInfo?.seedKeyword ? `Topic: ${businessInfo.seedKeyword}` : 'Configure seed keyword',
-    details: hasPillars ? `Content targets "${businessInfo?.seedKeyword}"` : 'Configure seed keyword for pillar alignment',
-  });
+  if (hasPillars && content) {
+    const alignment = PillarAlignmentValidator.calculateAlignment(content, {
+      centralEntity: businessInfo?.seedKeyword || '',
+      sourceContext: businessInfo?.valueProp || businessInfo?.industry || '',
+      centralSearchIntent: 'informational',
+    });
+    checks.push({
+      checkId: 'S3',
+      name: 'Pillar Alignment',
+      status: alignment.passing ? 'pass' : alignment.overallScore >= 50 ? 'warning' : 'fail',
+      value: `${Math.round(alignment.overallScore)}%`,
+      expected: '≥ 70%',
+      details: `Entity: ${Math.round(alignment.centralEntityScore)}%, Context: ${Math.round(alignment.sourceContextScore)}%, Intent: ${Math.round(alignment.searchIntentScore)}%`,
+    });
+  } else {
+    checks.push({
+      checkId: 'S3',
+      name: 'Pillar Alignment',
+      status: 'warning',
+      value: 'Not analyzed',
+      expected: 'Configure seed keyword',
+      details: 'Configure seed keyword for pillar alignment',
+    });
+  }
 
-  // S4: Readability Level Check (placeholder - would need actual analysis)
-  // TODO: Calculate actual readability from content using Flesch-Kincaid or similar
+  // S4: Readability Level Check — uses real Flesch-Kincaid calculation
   const hasAudience = !!businessInfo?.audience;
-  checks.push({
-    checkId: 'S4',
-    name: 'Target Audience',
-    status: hasAudience ? 'pass' : 'warning',
-    value: hasAudience ? businessInfo?.audience?.slice(0, 50) || '' : 'Not configured',
-    expected: 'Defined audience',
-    details: hasAudience ? undefined : 'Configure target audience in Business Info',
-  });
+  if (content && content.length > 100) {
+    const fkResult = ReadabilityValidator.calculateFleschKincaidGrade(content, businessInfo?.language);
+    const gradeLevel = Math.round(fkResult.gradeLevel * 10) / 10;
+    // Grade 6-8 = general audience, 9-12 = professional, 13+ = academic
+    const isAppropriate = gradeLevel >= 6 && gradeLevel <= 14;
+    checks.push({
+      checkId: 'S4',
+      name: 'Readability',
+      status: isAppropriate ? 'pass' : gradeLevel < 6 ? 'warning' : 'warning',
+      value: `Grade ${gradeLevel}`,
+      expected: hasAudience ? businessInfo?.audience?.slice(0, 30) || 'Grade 8-12' : 'Grade 8-12',
+      details: `Flesch-Kincaid: Grade ${gradeLevel} (${fkResult.wordCount} words, ${fkResult.sentenceCount} sentences)`,
+    });
+  } else {
+    checks.push({
+      checkId: 'S4',
+      name: 'Target Audience',
+      status: hasAudience ? 'pass' : 'warning',
+      value: hasAudience ? businessInfo?.audience?.slice(0, 50) || '' : 'Not configured',
+      expected: 'Defined audience',
+      details: hasAudience ? undefined : 'Configure target audience in Business Info',
+    });
+  }
 
   // S5: Author Profile Check
   const hasAuthor = !!(businessInfo?.authorProfile?.name || businessInfo?.authorName);
@@ -371,6 +402,22 @@ function getBarColor(score: number): string {
 }
 
 /**
+ * Get actionable suggestion for a quality category
+ */
+function getCategorySuggestion(category: string): string {
+  const suggestions: Record<string, string> = {
+    'Structure': 'Re-run Pass 2 (Header Optimization)',
+    'Semantic SEO': 'Review EAV coverage and re-run Pass 5',
+    'Content Quality': 'Re-run Pass 1 with stricter prompts',
+    'Readability': 'Re-run Pass 5 (Micro Semantics)',
+    'Technical': 'Check heading hierarchy and image alt text',
+    'Links': 'Review internal linking in Pass 6',
+    'Compliance': 'Check brief alignment in audit details',
+  };
+  return suggestions[category] || 'Review failing rules and re-run relevant pass';
+}
+
+/**
  * Get systemic check status color
  */
 function getCheckStatusColor(status: SystemicCheckResult['status']): string {
@@ -481,6 +528,9 @@ const CategoryBar: React.FC<CategoryBarProps> = ({ category, onClick }) => {
       </div>
       <div className="text-xs text-gray-500 mt-1">
         {category.passing}/{category.total} rules passing
+        {category.score < 70 && (
+          <span className="ml-2 text-amber-500">{getCategorySuggestion(category.category)}</span>
+        )}
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import type {
   SchemaEntityType,
   EntityCandidate
 } from '../types';
+import { sanitizeTextInput } from '../utils/inputValidation';
 
 // Wikidata API endpoints
 const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
@@ -97,6 +98,9 @@ export async function searchWikidata(
   language: string = 'en',
   limit: number = 5
 ): Promise<WikidataSearchResult[]> {
+  // Sanitize external entity name input before sending to Wikidata API
+  query = sanitizeTextInput(query, 300);
+
   const params = new URLSearchParams({
     action: 'wbsearchentities',
     search: query,
@@ -287,6 +291,8 @@ export async function resolveEntity(
 ): Promise<ResolvedEntity | null> {
   // Guard against undefined inputs
   if (!name) return null;
+  // Sanitize external entity name input
+  name = sanitizeTextInput(name, 300);
   const safeContext = context || '';
 
   // Search for the entity
@@ -449,6 +455,9 @@ export async function batchResolveEntities(
  * Useful for finding all entities of a certain type in a domain
  */
 export async function sparqlQuery(query: string): Promise<any[]> {
+  // Sanitize SPARQL query input (allow longer queries since SPARQL can be verbose)
+  query = sanitizeTextInput(query, 5000);
+
   const params = new URLSearchParams({
     query,
     format: 'json'

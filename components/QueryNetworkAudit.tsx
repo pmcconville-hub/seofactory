@@ -39,7 +39,7 @@ export const QueryNetworkAudit: React.FC<QueryNetworkAuditProps> = ({
   mapId,
   onClose,
 }) => {
-  const { state } = useAppState();
+  const { state, dispatch } = useAppState();
   const [seedKeyword, setSeedKeyword] = useState(initialKeyword);
   const [targetDomain, setTargetDomain] = useState(state.businessInfo.domain || '');
   const [isRunning, setIsRunning] = useState(false);
@@ -54,6 +54,9 @@ export const QueryNetworkAudit: React.FC<QueryNetworkAuditProps> = ({
   const [maxCompetitors, setMaxCompetitors] = useState(5);
   const [includeEntityValidation, setIncludeEntityValidation] = useState(true);
   const [includeOwnContent, setIncludeOwnContent] = useState(true);
+
+  // EAV import feedback
+  const [importMessage, setImportMessage] = useState<string | null>(null);
 
   // History state
   const [showHistory, setShowHistory] = useState(false);
@@ -444,27 +447,22 @@ export const QueryNetworkAudit: React.FC<QueryNetworkAuditProps> = ({
       return selectedEAVs.has(key);
     });
 
-    // TODO: Integrate with app state to add these EAVs
-    // For now, export as JSON that can be imported
-    const exportData = eavsToImport.map(eav => ({
+    const semanticTriples = eavsToImport.map(eav => ({
       subject: { label: eav.entity, uri: '' },
-      predicate: { relation: eav.attribute, type: 'ATTRIBUTE' },
+      predicate: { relation: eav.attribute, type: 'ATTRIBUTE' as const },
       object: { value: eav.value, uri: '' },
       category: eav.category || 'COMMON',
-      classification: 'TYPE',
+      classification: 'TYPE' as const,
       source: eav.source,
       confidence: eav.confidence
     }));
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `imported-eavs-${result.seedKeyword.replace(/\s+/g, '-')}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const mapId = state.activeMapId;
+    if (mapId) {
+      dispatch({ type: 'ADD_EAVS', payload: { mapId, eavs: semanticTriples as any } });
+      setImportMessage(`Added ${semanticTriples.length} EAVs to your map. Review them in the EAV panel.`);
+      setTimeout(() => setImportMessage(null), 5000);
+    }
 
     setSelectedEAVs(new Set());
   };
@@ -501,10 +499,13 @@ export const QueryNetworkAudit: React.FC<QueryNetworkAuditProps> = ({
                 size="sm"
                 onClick={handleImportSelectedEAVs}
               >
-                Export Selected ({selectedEAVs.size})
+                Add Selected to Map ({selectedEAVs.size})
               </Button>
             )}
           </div>
+          {importMessage && (
+            <p className="text-sm text-green-400 mt-1">{importMessage}</p>
+          )}
         </div>
 
         {/* Scrollable container */}

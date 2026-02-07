@@ -201,6 +201,7 @@ export type AppAction =
   | { type: 'UPDATE_MAP_DATA'; payload: { mapId: string; data: Partial<TopicalMap> } }
   | { type: 'SET_PILLARS'; payload: { mapId: string, pillars: SEOPillars } }
   | { type: 'SET_EAVS'; payload: { mapId: string, eavs: SemanticTriple[] } }
+  | { type: 'ADD_EAVS'; payload: { mapId: string, eavs: SemanticTriple[] } }
   | { type: 'SET_COMPETITORS'; payload: { mapId: string, competitors: string[] } }
   | { type: 'SET_TOPICS_FOR_MAP'; payload: { mapId: string; topics: EnrichedTopic[] } }
   | { type: 'ADD_TOPIC'; payload: { mapId: string; topic: EnrichedTopic } }
@@ -390,6 +391,7 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
         case 'UPDATE_MAP_DATA':
         case 'SET_PILLARS':
         case 'SET_EAVS':
+        case 'ADD_EAVS':
         case 'SET_COMPETITORS':
         case 'SET_TOPICS_FOR_MAP':
         case 'SET_BRIEFS_FOR_MAP':
@@ -699,6 +701,17 @@ const mapReducer = (map: TopicalMap, action: any): TopicalMap => {
         case 'UPDATE_MAP_DATA': return { ...map, ...action.payload.data };
         case 'SET_PILLARS': return { ...map, pillars: action.payload.pillars };
         case 'SET_EAVS': return { ...map, eavs: action.payload.eavs };
+        case 'ADD_EAVS': {
+            const existing = map.eavs || [];
+            const existingKeys = new Set(existing.map((e: SemanticTriple) =>
+                `${e.subject?.label}:${e.predicate?.relation}:${e.object?.value}`.toLowerCase()
+            ));
+            const newEavs = action.payload.eavs.filter((e: SemanticTriple) => {
+                const key = `${e.subject?.label}:${e.predicate?.relation}:${e.object?.value}`.toLowerCase();
+                return !existingKeys.has(key);
+            });
+            return { ...map, eavs: [...existing, ...newEavs] };
+        }
         case 'SET_COMPETITORS': return { ...map, competitors: action.payload.competitors };
         case 'SET_TOPICS_FOR_MAP': return { ...map, topics: action.payload.topics };
         case 'ADD_TOPIC': {

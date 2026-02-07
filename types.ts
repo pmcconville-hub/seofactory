@@ -3202,6 +3202,9 @@ export interface ContentGenerationJob {
 
   // Pass quality scores for tracking quality trends
   pass_quality_scores?: Record<string, number>;
+
+  // Audit auto-retry count (max 1 auto-retry before manual intervention)
+  audit_retry_count?: number;
 }
 
 export interface AuditDetails {

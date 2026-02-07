@@ -6,6 +6,13 @@
  */
 
 import { SemanticTriple, ContentBrief, EnrichedTopic } from '../../types';
+import {
+  EAV_CRITICAL_PENALTY,
+  EAV_WARNING_PENALTY,
+  EAV_INFO_PENALTY,
+  EAV_BASE_SCORE,
+  EAV_GRADE_THRESHOLDS,
+} from '../../config/scoringConstants';
 
 /**
  * Inconsistency severity levels
@@ -234,10 +241,10 @@ export const auditEavs = (eavs: SemanticTriple[]): EavAuditReport => {
   };
 
   // Calculate score (100 - penalties)
-  const criticalPenalty = summary.critical * 15;
-  const warningPenalty = summary.warning * 5;
-  const infoPenalty = summary.info * 1;
-  const score = Math.max(0, 100 - criticalPenalty - warningPenalty - infoPenalty);
+  const criticalPenalty = summary.critical * EAV_CRITICAL_PENALTY;
+  const warningPenalty = summary.warning * EAV_WARNING_PENALTY;
+  const infoPenalty = summary.info * EAV_INFO_PENALTY;
+  const score = Math.max(0, EAV_BASE_SCORE - criticalPenalty - warningPenalty - infoPenalty);
 
   return {
     timestamp: new Date().toISOString(),
@@ -325,10 +332,10 @@ export const auditBriefEavConsistency = (
     info: inconsistencies.filter(i => i.severity === 'info').length
   };
 
-  const criticalPenalty = summary.critical * 15;
-  const warningPenalty = summary.warning * 5;
-  const infoPenalty = summary.info * 1;
-  const score = Math.max(0, 100 - criticalPenalty - warningPenalty - infoPenalty);
+  const criticalPenalty = summary.critical * EAV_CRITICAL_PENALTY;
+  const warningPenalty = summary.warning * EAV_WARNING_PENALTY;
+  const infoPenalty = summary.info * EAV_INFO_PENALTY;
+  const score = Math.max(0, EAV_BASE_SCORE - criticalPenalty - warningPenalty - infoPenalty);
 
   return {
     timestamp: new Date().toISOString(),
@@ -399,11 +406,11 @@ export const getAuditGrade = (score: number): {
   label: string;
   color: string;
 } => {
-  if (score >= 95) return { grade: 'A+', label: 'Excellent Consistency', color: '#22c55e' };
-  if (score >= 90) return { grade: 'A', label: 'Great Consistency', color: '#22c55e' };
-  if (score >= 80) return { grade: 'B', label: 'Good Consistency', color: '#84cc16' };
-  if (score >= 70) return { grade: 'C', label: 'Acceptable', color: '#eab308' };
-  if (score >= 60) return { grade: 'D', label: 'Needs Attention', color: '#f97316' };
+  if (score >= EAV_GRADE_THRESHOLDS.excellent) return { grade: 'A+', label: 'Excellent Consistency', color: '#22c55e' };
+  if (score >= EAV_GRADE_THRESHOLDS.good) return { grade: 'A', label: 'Great Consistency', color: '#22c55e' };
+  if (score >= EAV_GRADE_THRESHOLDS.fair) return { grade: 'B', label: 'Good Consistency', color: '#84cc16' };
+  if (score >= EAV_GRADE_THRESHOLDS.needsWork) return { grade: 'C', label: 'Acceptable', color: '#eab308' };
+  if (score >= EAV_GRADE_THRESHOLDS.poor) return { grade: 'D', label: 'Needs Attention', color: '#f97316' };
   return { grade: 'F', label: 'Inconsistent', color: '#ef4444' };
 };
 

@@ -4,6 +4,7 @@
 // FIX: Added React import to resolve namespace error.
 import { SerpResult, BusinessInfo } from '../types';
 import { cacheService } from './cacheService';
+import { sanitizeTextInput, validateUrl } from '../utils/inputValidation';
 import React from 'react';
 
 export interface ProxyConfig {
@@ -150,6 +151,9 @@ const discoverSitemapUrls = async (domain: string, proxyConfig?: ProxyConfig): P
 
 
 export const analyzeCompetitorSitemap = async (domain: string, proxyConfig?: ProxyConfig): Promise<string[]> => {
+    // Sanitize external domain input (strip HTML tags, trim, truncate)
+    domain = sanitizeTextInput(domain, 253);
+
     const fetchFn = async () => {
         const initialSitemapUrls = await discoverSitemapUrls(domain, proxyConfig);
         if (initialSitemapUrls.length === 0) {
@@ -200,6 +204,9 @@ export const analyzeCompetitorSitemap = async (domain: string, proxyConfig?: Pro
 
 
 export const fetchSerpResults = async (query: string, login: string, password: string, locationName: string, languageCode: string, proxyConfig?: ProxyConfig): Promise<SerpResult[]> => {
+    // Sanitize the external query input before using it
+    query = sanitizeTextInput(query, 200);
+
     const cacheKey = `serp:dataforseo:${JSON.stringify({ query, locationName, languageCode })}`;
 
     // Check cache first
@@ -363,6 +370,9 @@ export const fetchFullSerpData = async (
   languageCode: string,
   proxyConfig?: ProxyConfig
 ): Promise<FullSerpResult> => {
+  // Sanitize the external query input before using it
+  query = sanitizeTextInput(query, 200);
+
   const fetchFn = async (): Promise<FullSerpResult> => {
     const postData = [{
       keyword: query,
@@ -702,6 +712,11 @@ export const discoverInitialCompetitors = async (
     // Filter and score results
     const filteredResults = rawResults
         .filter(result => {
+            // Validate that the link from the external SERP API is a proper URL
+            if (!validateUrl(result.link)) {
+                return false;
+            }
+
             // Exclude publication/generic sites
             if (isExcludedDomain(result.link)) {
                 dispatch({ type: 'LOG_EVENT', payload: {
@@ -762,6 +777,9 @@ export const fetchKeywordSearchVolume = async (
   languageCode: string = 'en',
   proxyConfig?: ProxyConfig
 ): Promise<Map<string, number>> => {
+  // Sanitize external keyword inputs
+  keywords = keywords.map(k => sanitizeTextInput(k, 200));
+
   const fetchFn = async () => {
     const postData = [{
       keywords: keywords.slice(0, 100), // API limit

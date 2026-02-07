@@ -70,8 +70,10 @@ export const normalizeRpcData = <T>(data: unknown): T => {
  * Parses raw JSON into a strictly typed SEOPillars object.
  * Ensures all fields are strings, preventing object-injection crashes.
  */
-export const parsePillars = (json: any): SEOPillars => {
-    const safeJson = json && typeof json === 'object' ? json : {};
+export const parsePillars = (json: unknown): SEOPillars => {
+    const safeJson: UnknownRecord = (json !== null && json !== undefined && typeof json === 'object' && !Array.isArray(json))
+        ? json as UnknownRecord
+        : {};
     return {
         centralEntity: safeString(safeJson.centralEntity),
         sourceContext: safeString(safeJson.sourceContext),

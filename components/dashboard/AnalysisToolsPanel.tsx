@@ -106,18 +106,30 @@ const AnalysisToolsPanel: React.FC<AnalysisToolsPanelProps> = ({
                 <Button onClick={onCalculateTopicalAuthority} disabled={isLoading.authority} variant="secondary">{isLoading.authority ? <SmartLoader context="analyzing" size="sm" showText={false} /> : 'Authority'}</Button>
                 <Button onClick={onGeneratePublicationPlan} disabled={isLoading.plan} variant="secondary">{isLoading.plan ? <SmartLoader context="analyzing" size="sm" showText={false} /> : 'Plan'}</Button>
                 <Button onClick={onRunUnifiedAudit} disabled={isLoading.unifiedAudit} className="bg-purple-700 hover:bg-purple-600">{renderAuditButton()}</Button>
-                {onQueryNetworkAudit && (
-                    <Button onClick={onQueryNetworkAudit} className="bg-blue-700 hover:bg-blue-600">Query Network</Button>
-                )}
-                {onMentionScanner && (
-                    <Button onClick={onMentionScanner} className="bg-green-700 hover:bg-green-600">E-A-T Scanner</Button>
-                )}
-                {onCorpusAudit && (
-                    <Button onClick={onCorpusAudit} className="bg-indigo-700 hover:bg-indigo-600">Corpus Audit</Button>
-                )}
-                {onComprehensiveAudit && (
-                    <Button onClick={onComprehensiveAudit} className="bg-amber-700 hover:bg-amber-600">Full Research</Button>
-                )}
+                <Button
+                    onClick={onQueryNetworkAudit || undefined}
+                    disabled={!onQueryNetworkAudit}
+                    title={!onQueryNetworkAudit ? 'Complete topic enrichment first' : 'Run competitive gap analysis'}
+                    className={onQueryNetworkAudit ? 'bg-blue-700 hover:bg-blue-600' : 'bg-blue-700/40 cursor-not-allowed'}
+                >Query Network</Button>
+                <Button
+                    onClick={onMentionScanner || undefined}
+                    disabled={!onMentionScanner}
+                    title={!onMentionScanner ? 'Configure API keys first' : 'Scan for brand mentions and E-A-T signals'}
+                    className={onMentionScanner ? 'bg-green-700 hover:bg-green-600' : 'bg-green-700/40 cursor-not-allowed'}
+                >E-A-T Scanner</Button>
+                <Button
+                    onClick={onCorpusAudit || undefined}
+                    disabled={!onCorpusAudit}
+                    title={!onCorpusAudit ? 'Add your website domain first' : 'Audit existing content corpus'}
+                    className={onCorpusAudit ? 'bg-indigo-700 hover:bg-indigo-600' : 'bg-indigo-700/40 cursor-not-allowed'}
+                >Corpus Audit</Button>
+                <Button
+                    onClick={onComprehensiveAudit || undefined}
+                    disabled={!onComprehensiveAudit}
+                    title={!onComprehensiveAudit ? 'Generate a topical map first' : 'Run full research audit'}
+                    className={onComprehensiveAudit ? 'bg-amber-700 hover:bg-amber-600' : 'bg-amber-700/40 cursor-not-allowed'}
+                >Full Research</Button>
             </div>
 
             {/* Progress bar when audit is running */}

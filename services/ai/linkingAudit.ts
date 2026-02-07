@@ -32,6 +32,20 @@ import {
   SEOPillars,
 } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  MAX_LINKS_PER_PAGE,
+  MAX_ANCHOR_TEXT_REPETITION,
+  MAX_HEADER_LINKS,
+  MAX_FOOTER_LINKS,
+  LINK_CRITICAL_PENALTY,
+  LINK_WARNING_PENALTY,
+  LINK_SUGGESTION_PENALTY,
+  LINK_QUALITY_NODE_THRESHOLD,
+  LINK_DILUTION_HIGH,
+  LINK_DILUTION_MEDIUM,
+  LINK_DILUTION_LOW,
+  LINK_EXCESSIVE_OUTBOUND,
+} from '../../config/scoringConstants';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // ============================================
@@ -285,7 +299,7 @@ export const runNavigationPass = (ctx: LinkingAuditContext): LinkingPassResult =
 
   // N-01: Header link limit
   const headerCount = ctx.navigation.header.primary_nav.length + (ctx.navigation.header.cta_button ? 1 : 0);
-  const headerLimit = ctx.navigation.max_header_links || 10;
+  const headerLimit = ctx.navigation.max_header_links || MAX_HEADER_LINKS;
 
   if (headerCount > headerLimit) {
     issues.push({
@@ -303,7 +317,7 @@ export const runNavigationPass = (ctx: LinkingAuditContext): LinkingPassResult =
   // N-02: Footer link limit
   const footerCount = ctx.navigation.footer.sections.reduce((acc, s) => acc + s.links.length, 0)
     + ctx.navigation.footer.legal_links.length;
-  const footerLimit = ctx.navigation.max_footer_links || 30;
+  const footerLimit = ctx.navigation.max_footer_links || MAX_FOOTER_LINKS;
 
   if (footerCount > footerLimit) {
     issues.push({
@@ -648,7 +662,7 @@ export const runLinkingAudit = (ctx: LinkingAuditContext): LinkingAuditResult =>
 
   // Weighted scoring: critical = -10, warning = -3, suggestion = -1
   const maxScore = 100;
-  const penalty = (criticalCount * 10) + (warningCount * 3) + (suggestionCount * 1);
+  const penalty = (criticalCount * LINK_CRITICAL_PENALTY) + (warningCount * LINK_WARNING_PENALTY) + (suggestionCount * LINK_SUGGESTION_PENALTY);
   const overallScore = Math.max(0, maxScore - penalty);
 
   // Build summary
@@ -697,8 +711,8 @@ export const runLinkingAudit = (ctx: LinkingAuditContext): LinkingAuditResult =>
 // ============================================
 
 export const DEFAULT_LINKING_RULES: InternalLinkingRules = {
-  maxLinksPerPage: 150,
-  maxAnchorTextRepetition: 3,
+  maxLinksPerPage: MAX_LINKS_PER_PAGE,
+  maxAnchorTextRepetition: MAX_ANCHOR_TEXT_REPETITION,
   prioritizeMainContentLinks: true,
   useDescriptiveAnchorText: true,
   avoidGenericAnchors: GENERIC_ANCHORS,
@@ -706,7 +720,7 @@ export const DEFAULT_LINKING_RULES: InternalLinkingRules = {
   delayLowRelevanceLinks: true,
   hubSpokeFlowDirection: 'spoke_to_hub', // Author → Core
   linkToQualityNodesFirst: true,
-  qualityNodeThreshold: 70,
+  qualityNodeThreshold: LINK_QUALITY_NODE_THRESHOLD,
 };
 
 // ============================================
@@ -1363,8 +1377,8 @@ const calculateDilutionRisk = (
   totalLinks: number,
   topTargets: { target: string; count: number }[]
 ): 'none' | 'low' | 'medium' | 'high' => {
-  if (totalLinks > 150) return 'high';
-  if (totalLinks > 100) return 'medium';
+  if (totalLinks > LINK_DILUTION_HIGH) return 'high';
+  if (totalLinks > LINK_DILUTION_MEDIUM) return 'medium';
 
   // Check if links are concentrated on few targets
   if (topTargets.length > 0) {
@@ -1372,7 +1386,7 @@ const calculateDilutionRisk = (
     if (topTargetRatio > 0.3) return 'medium'; // >30% to single target
   }
 
-  if (totalLinks > 50) return 'low';
+  if (totalLinks > LINK_DILUTION_LOW) return 'low';
   return 'none';
 };
 
@@ -1409,13 +1423,13 @@ export const runSiteLinkCountAudit = (ctx: LinkingAuditContext): SiteLinkAuditRe
       total: navLinkCount + bridgeLinks.length + childCount + parentLink,
     };
 
-    const isOverLimit = linkCounts.total > (ctx.rules.maxLinksPerPage || 150);
+    const isOverLimit = linkCounts.total > (ctx.rules.maxLinksPerPage || MAX_LINKS_PER_PAGE);
     const dilutionRisk = calculateDilutionRisk(linkCounts.total, topTargets);
 
     // Generate recommendations
     const recommendations: string[] = [];
     if (isOverLimit) {
-      recommendations.push(`Reduce links by ${linkCounts.total - 150} to meet the <150 guideline.`);
+      recommendations.push(`Reduce links by ${linkCounts.total - MAX_LINKS_PER_PAGE} to meet the <${MAX_LINKS_PER_PAGE} guideline.`);
     }
     if (dilutionRisk === 'high') {
       recommendations.push('High PageRank dilution risk. Consolidate or remove low-value links.');
@@ -1583,7 +1597,7 @@ export const analyzePageRankFlow = (ctx: LinkingAuditContext): LinkFlowAnalysis 
   // 4. Link hoarding: Too many outgoing links
   for (const topic of ctx.topics) {
     const outgoing = outgoingLinks[topic.id] || [];
-    if (outgoing.length > 20) {
+    if (outgoing.length > LINK_EXCESSIVE_OUTBOUND) {
       flowViolations.push({
         type: 'excessive_outbound',
         sourcePage: topic.id,

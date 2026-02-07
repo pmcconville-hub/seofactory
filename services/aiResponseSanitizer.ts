@@ -2,6 +2,7 @@
 import { GenerationLogEntry } from '../types';
 // FIX: Corrected import path to be a relative path.
 import { AppAction } from '../state/appState';
+import { sanitizeExternalData } from '../utils/inputValidation';
 import React from 'react';
 
 // A type guard to check if an object is a plain object
@@ -332,13 +333,63 @@ export class AIResponseSanitizer {
                         expectedTypeOrSchema,
                         fallbackValue as Record<string, any>
                     ) as T[keyof T];
+                } else if (typeof receivedValue === 'string' && isObject(fallbackValue)) {
+                    // Common AI failure: returns a string instead of an expected object.
+                    // Attempt to parse the string as JSON; if that fails, use sanitizeExternalData
+                    // to produce a default-structured object from the nested schema.
+                    this.log(`Key "${key}" was a string instead of expected object. Attempting JSON parse recovery.`, { receivedValue });
+                    try {
+                        const parsed = JSON.parse(receivedValue);
+                        if (isObject(parsed)) {
+                            sanitizedObject[keyTyped] = this.sanitize(
+                                parsed as Record<string, any>,
+                                expectedTypeOrSchema,
+                                fallbackValue as Record<string, any>
+                            ) as T[keyof T];
+                        } else {
+                            this.log(`Key "${key}" parsed to non-object. Using default structure.`, { parsed });
+                            // Build a schema map from the expectedTypeOrSchema for sanitizeExternalData
+                            const schemaMap: Record<string, 'string' | 'number' | 'boolean' | 'object' | 'array'> = {};
+                            for (const nestedKey of Object.keys(expectedTypeOrSchema)) {
+                                const nestedType = expectedTypeOrSchema[nestedKey];
+                                if (nestedType === Array) schemaMap[nestedKey] = 'array';
+                                else if (nestedType === String) schemaMap[nestedKey] = 'string';
+                                else if (nestedType === Number) schemaMap[nestedKey] = 'number';
+                                else if (nestedType === Boolean) schemaMap[nestedKey] = 'boolean';
+                                else if (isObject(nestedType)) schemaMap[nestedKey] = 'object';
+                                else schemaMap[nestedKey] = 'string';
+                            }
+                            sanitizedObject[keyTyped] = sanitizeExternalData(parsed, schemaMap) as T[keyof T];
+                        }
+                    } catch {
+                        this.log(`Key "${key}" string could not be parsed as JSON. Using default.`, { receivedValue });
+                        sanitizedObject[keyTyped] = fallbackValue;
+                    }
                 } else {
                     this.log(`Key "${key}" was not a valid object as expected by the nested schema. Using default.`, { receivedValue });
                     sanitizedObject[keyTyped] = fallbackValue;
                 }
             } else if (expectedTypeOrSchema === Array && !Array.isArray(receivedValue)) {
-                this.log(`Key "${key}" was not an array as expected. Using default.`, { receivedValue });
-                sanitizedObject[keyTyped] = fallbackValue;
+                // Common AI failure: returns a string instead of an expected array.
+                // Attempt to parse strings as JSON arrays before falling back.
+                if (typeof receivedValue === 'string') {
+                    try {
+                        const parsed = JSON.parse(receivedValue);
+                        if (Array.isArray(parsed)) {
+                            this.log(`Key "${key}" was a string but parsed as valid array.`, { receivedValue });
+                            sanitizedObject[keyTyped] = parsed as T[keyof T];
+                        } else {
+                            this.log(`Key "${key}" string parsed to non-array. Using default.`, { receivedValue });
+                            sanitizedObject[keyTyped] = fallbackValue;
+                        }
+                    } catch {
+                        this.log(`Key "${key}" was not an array as expected and could not be parsed. Using default.`, { receivedValue });
+                        sanitizedObject[keyTyped] = fallbackValue;
+                    }
+                } else {
+                    this.log(`Key "${key}" was not an array as expected. Using default.`, { receivedValue });
+                    sanitizedObject[keyTyped] = fallbackValue;
+                }
             } else if (expectedTypeOrSchema === String && typeof receivedValue !== 'string') {
                  this.log(`Key "${key}" was not a string as expected. Coercing to string.`, { receivedValue });
                  sanitizedObject[keyTyped] = String(receivedValue) as any;
