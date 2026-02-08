@@ -1,15 +1,9 @@
 // =============================================================================
 // AiCssGenerator — AI-powered CSS generation from target website screenshot
 // =============================================================================
-// Uses multi-provider AI vision to generate a complete CSS stylesheet that
-// matches a target website's visual identity, targeting semantic HTML elements.
 
 import type { CrawledCssTokens, ValidationResult, PremiumDesignConfig, BusinessContext } from './types';
 
-/**
- * Generates CSS stylesheets using AI vision models.
- * Supports Gemini, Anthropic (Claude), and OpenAI providers.
- */
 export class AiCssGenerator {
   private config: PremiumDesignConfig;
 
@@ -17,27 +11,19 @@ export class AiCssGenerator {
     this.config = config;
   }
 
-  /**
-   * Generate initial CSS based on target website screenshot and crawled tokens.
-   */
   async generateInitialCss(
     targetScreenshot: string,
     crawledTokens: CrawledCssTokens,
     articleHtml: string,
     businessContext?: BusinessContext
   ): Promise<string> {
-    const htmlPreview = articleHtml.substring(0, 8000);
+    const htmlPreview = articleHtml.substring(0, 6000);
     const sectionTypes = this.extractSectionTypes(articleHtml);
-
     const prompt = this.buildInitialPrompt(crawledTokens, htmlPreview, sectionTypes, businessContext);
-
     const css = await this.callVisionAI(targetScreenshot, null, prompt);
     return this.sanitizeCss(css);
   }
 
-  /**
-   * Refine existing CSS based on comparison between target and current output.
-   */
   async refineCss(
     currentCss: string,
     targetScreenshot: string,
@@ -49,80 +35,109 @@ export class AiCssGenerator {
     return this.sanitizeCss(css);
   }
 
-  /**
-   * Build the initial CSS generation prompt.
-   */
   private buildInitialPrompt(
     tokens: CrawledCssTokens,
     htmlPreview: string,
     sectionTypes: string[],
     businessContext?: BusinessContext
   ): string {
-    const colorList = tokens.colors.map(c => `  ${c.hex} (${c.usage}, from: ${c.source})`).join('\n');
-    const fontList = tokens.fonts.map(f => `  ${f.family} (weight: ${f.weight}, ${f.usage})`).join('\n');
-    const radiusList = tokens.borderRadius.join(', ') || 'none detected';
-    const shadowList = tokens.shadows.join('; ') || 'none detected';
-    const spacingList = tokens.spacingPatterns.join(', ') || 'none detected';
-    const varList = Object.entries(tokens.cssVariables).map(([k, v]) => `  ${k}: ${v}`).join('\n') || 'none';
+    const primary = tokens.colors.find(c => c.usage === 'primary')?.hex || '#1a1a2e';
+    const secondary = tokens.colors.find(c => c.usage === 'secondary')?.hex || '#16213e';
+    const accent = tokens.colors.find(c => c.usage === 'accent')?.hex || primary;
+    const bg = tokens.colors.find(c => c.usage === 'background')?.hex || '#ffffff';
+    const text = tokens.colors.find(c => c.usage === 'text')?.hex || '#1a1a1a';
+    const textMuted = tokens.colors.find(c => c.usage === 'text-muted')?.hex || '#6b7280';
+    const surface = tokens.colors.find(c => c.usage === 'surface')?.hex || '#f9fafb';
+    const border = tokens.colors.find(c => c.usage === 'border')?.hex || '#e5e7eb';
+    const headingFont = tokens.fonts.find(f => f.usage === 'heading')?.family || 'system-ui, sans-serif';
+    const bodyFont = tokens.fonts.find(f => f.usage === 'body')?.family || 'system-ui, sans-serif';
+    const radius = tokens.borderRadius[0] || '8px';
+    const shadow = tokens.shadows[0] || '0 4px 6px rgba(0,0,0,0.07)';
 
-    return `You are an expert CSS designer. Generate a COMPLETE CSS stylesheet for an article page that matches the visual identity shown in the screenshot.
+    return `You are a senior web designer at a top design agency. Study the screenshot of the target website carefully. Your job is to write CSS that makes an article page feel like a native page on that website — matching its exact visual DNA: color palette, typography, spacing rhythm, and visual sophistication.
 
-## Target Brand Design Tokens (extracted from the website)
+SCREENSHOT: The attached image is the target website. Observe its:
+- Header/hero styling, background treatment
+- Card/section styling patterns, shadows, borders
+- Button and link styling
+- Whitespace rhythm and spacing patterns
+- Decorative elements (gradients, borders, subtle backgrounds)
 
-**Colors:**
-${colorList}
+## Extracted Brand Tokens
 
-**Fonts:**
-${fontList}
+:root {
+  --brand-primary: ${primary};
+  --brand-secondary: ${secondary};
+  --brand-accent: ${accent};
+  --brand-bg: ${bg};
+  --brand-text: ${text};
+  --brand-text-muted: ${textMuted};
+  --brand-surface: ${surface};
+  --brand-border: ${border};
+  --brand-radius: ${radius};
+  --brand-shadow: ${shadow};
+  --font-heading: ${headingFont};
+  --font-body: ${bodyFont};
+}
 
-**Border Radius:** ${radiusList}
-**Shadows:** ${shadowList}
-**Spacing Patterns:** ${spacingList}
-
-**CSS Variables found:**
-${varList}
-
-## Article HTML Structure (first 8000 chars)
+## HTML to style (truncated)
 
 \`\`\`html
 ${htmlPreview}
 \`\`\`
 
-## Section Content Types Detected
-${sectionTypes.join(', ')}
+Content types present: ${sectionTypes.join(', ')}
+${businessContext ? `Industry: ${businessContext.industry} | Audience: ${businessContext.audience}` : ''}
 
-${businessContext ? `## Business Context
-- Industry: ${businessContext.industry}
-- Audience: ${businessContext.audience}
-- Purpose: ${businessContext.articlePurpose}
-` : ''}
+## Design Requirements — Agency Quality
 
-## CSS Requirements
+Write a COMPLETE CSS stylesheet (300-600 lines, quality over quantity). The result must look like a premium editorial page designed by a professional agency, NOT a generic blog.
 
-1. Write a COMPLETE, self-contained CSS stylesheet (2000-4000 lines target)
-2. Target semantic elements ONLY — no class selectors. Use:
-   - Element selectors: \`article\`, \`section\`, \`h1\`–\`h4\`, \`p\`, \`ul\`, \`ol\`, \`table\`, \`blockquote\`, \`figure\`, \`nav\`, \`details\`, \`summary\`
-   - Attribute selectors: \`[data-content-type="faq"]\`, \`[data-content-type="cta"]\`, \`[data-section-id]\`
-3. Use the EXACT hex color values and font families from the tokens above
-4. Include:
-   - \`:root\` CSS variables derived from the brand tokens
-   - Responsive breakpoints at 768px and 1024px
-   - Hover states and focus-visible styles for accessibility
-   - Print styles (\`@media print\`)
-   - Dark mode (\`@media (prefers-color-scheme: dark)\`) — derive from brand colors
-5. Add decorative elements ONLY via CSS \`::before\`/\`::after\` pseudo-elements (no HTML changes)
-6. Scope ALL rules under \`article\` to prevent style leaks
-7. Handle all section content types: prose, FAQ (\`details/summary\`), comparison tables, step lists, checklists, CTA
-8. Style the \`nav.toc\` (table of contents) with brand colors
+### Mandatory Design Patterns
 
-## Output Format
+1. **Page structure**: White/light background body, centered content column (max-width: 720px), generous vertical rhythm (section margins: 3-4rem)
 
-Return ONLY the CSS code. No markdown fences, no explanations. Just pure CSS starting with \`:root {\`.`;
+2. **Hero header**: The article \`header\` must be visually prominent — use a subtle background gradient or tinted band using the brand primary color at low opacity (5-12%). Add generous padding (3rem+). The h1 should be large (2.2-2.8rem), bold, with tight line-height.
+
+3. **Section cards**: Alternate some sections with a subtle surface background (\`var(--brand-surface)\`) and rounded corners (\`var(--brand-radius)\`) with padding to create visual rhythm. NOT every section — roughly every 2nd or 3rd.
+
+4. **Table of Contents (nav.toc)**: Styled as a compact sidebar-style card with surface background, clear visual separation, and brand-colored active links.
+
+5. **Typography hierarchy**: Clear visual distinction between h1 > h2 > h3 > h4. Use heading font for headings, body font for text. h2 should have a decorative left border or underline using brand primary.
+
+6. **Links**: Brand primary color, no underline by default, underline on hover. Subtle transition.
+
+7. **Tables**: Clean with horizontal borders only (no grid), alternating row backgrounds, rounded container.
+
+8. **Blockquotes**: Left border in brand primary, subtle surface background, italic.
+
+9. **FAQ sections** (\`[data-content-type="faq"]\`): details/summary styled as expandable cards with brand-colored marker and hover effects.
+
+10. **CTA section** (\`[data-content-type="cta"]\`): Prominent card with brand primary background, white text, rounded corners, centered content, subtle shadow. Must look like a conversion element.
+
+11. **Visual separators**: Use subtle \`::after\` pseudo-elements on sections for decorative dividers (thin lines, dots, or gradient fades — match the brand's style from the screenshot).
+
+12. **Images/figures**: Full-width within content, subtle border-radius, optional subtle shadow. Captions in muted text, small font.
+
+13. **Lists**: Custom styled bullets/numbers using brand color. Adequate spacing between items.
+
+14. **Responsive**: At 768px reduce font sizes, stack elements. At 480px further reduce padding.
+
+15. **Print**: Clean black-on-white, show URLs after links, hide decorative elements.
+
+### Critical Rules
+
+- Use the exact brand token values from :root variables above
+- Target semantic elements and \`[data-*]\` attribute selectors — no class names
+- Do NOT apply solid brand color as background to text sections (this makes text unreadable)
+- White or very light backgrounds for text content sections, brand colors only for accents, borders, and CTAs
+- The body/main text must always have high contrast (dark text on light bg or vice versa)
+
+## Output
+
+Return ONLY CSS. No markdown fences. No explanations. Start with \`:root {\`.`;
   }
 
-  /**
-   * Build the refinement prompt with specific fix instructions.
-   */
   private buildRefinementPrompt(
     currentCss: string,
     validationResult: ValidationResult
@@ -131,37 +146,31 @@ Return ONLY the CSS code. No markdown fences, no explanations. Just pure CSS sta
       .map((fix, i) => `${i + 1}. ${fix}`)
       .join('\n');
 
-    return `You are an expert CSS designer reviewing and refining a stylesheet.
+    return `You are refining a CSS stylesheet to better match a target website design.
 
 ## Current Scores
 - Overall: ${validationResult.overallScore}/100
-- Color Match: ${validationResult.colorMatch.score}/100 — ${validationResult.colorMatch.notes}
-- Typography: ${validationResult.typographyMatch.score}/100 — ${validationResult.typographyMatch.notes}
-- Spacing: ${validationResult.spacingMatch.score}/100 — ${validationResult.spacingMatch.notes}
-- Visual Depth: ${validationResult.visualDepth.score}/100 — ${validationResult.visualDepth.notes}
-- Brand Fit: ${validationResult.brandFit.score}/100 — ${validationResult.brandFit.notes}
+- Color Match: ${validationResult.colorMatch.score} — ${validationResult.colorMatch.notes}
+- Typography: ${validationResult.typographyMatch.score} — ${validationResult.typographyMatch.notes}
+- Spacing: ${validationResult.spacingMatch.score} — ${validationResult.spacingMatch.notes}
+- Visual Depth: ${validationResult.visualDepth.score} — ${validationResult.visualDepth.notes}
+- Brand Fit: ${validationResult.brandFit.score} — ${validationResult.brandFit.notes}
 
-## Specific CSS Fixes Required
+## Required Fixes
 ${fixes}
 
-## Current CSS (to revise)
+## Current CSS
 \`\`\`css
-${currentCss.substring(0, 12000)}
+${currentCss.substring(0, 10000)}
 \`\`\`
 
-## Instructions
+IMAGE 1 = target website, IMAGE 2 = current output.
 
-The first image is the TARGET website design. The second image is the CURRENT output of the CSS above.
+Apply ALL fixes. Return the COMPLETE revised CSS (not a diff). Maintain professional editorial quality — the page must look like it was designed by an agency, not auto-generated. Keep text readable (dark on light or light on dark, never colored bg on body text).
 
-Apply ALL the specific fixes listed above. Return a COMPLETE revised CSS stylesheet (not a diff).
-Keep everything that works well. Fix what doesn't match.
-
-Return ONLY the CSS code. No markdown fences, no explanations.`;
+Return ONLY CSS. No markdown fences. No explanations.`;
   }
 
-  /**
-   * Extract section content types from HTML for the prompt.
-   */
   private extractSectionTypes(html: string): string[] {
     const types = new Set<string>();
     const regex = /data-content-type="([^"]+)"/g;
@@ -172,23 +181,16 @@ Return ONLY the CSS code. No markdown fences, no explanations.`;
     return Array.from(types);
   }
 
-  /**
-   * Call the AI vision API based on configured provider.
-   */
   private async callVisionAI(
     image1Base64: string,
     image2Base64: string | null,
     prompt: string
   ): Promise<string> {
     switch (this.config.aiProvider) {
-      case 'gemini':
-        return this.callGemini(image1Base64, image2Base64, prompt);
-      case 'anthropic':
-        return this.callClaude(image1Base64, image2Base64, prompt);
-      case 'openai':
-        return this.callOpenAI(image1Base64, image2Base64, prompt);
-      default:
-        return this.callGemini(image1Base64, image2Base64, prompt);
+      case 'gemini': return this.callGemini(image1Base64, image2Base64, prompt);
+      case 'anthropic': return this.callClaude(image1Base64, image2Base64, prompt);
+      case 'openai': return this.callOpenAI(image1Base64, image2Base64, prompt);
+      default: return this.callGemini(image1Base64, image2Base64, prompt);
     }
   }
 
@@ -205,11 +207,10 @@ Return ONLY the CSS code. No markdown fences, no explanations.`;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts }],
-          generationConfig: { maxOutputTokens: 16384, temperature: 0.3 },
+          generationConfig: { maxOutputTokens: 8192, temperature: 0.4 },
         }),
       }
     );
-
     const data = await response.json();
     return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   }
@@ -231,13 +232,8 @@ Return ONLY the CSS code. No markdown fences, no explanations.`;
         'x-api-key': this.config.apiKey,
         'anthropic-version': '2024-01-01',
       },
-      body: JSON.stringify({
-        model,
-        max_tokens: 16384,
-        messages: [{ role: 'user', content }],
-      }),
+      body: JSON.stringify({ model, max_tokens: 8192, messages: [{ role: 'user', content }] }),
     });
-
     const data = await response.json();
     return data.content?.[0]?.text || '';
   }
@@ -258,33 +254,24 @@ Return ONLY the CSS code. No markdown fences, no explanations.`;
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.config.apiKey}`,
       },
-      body: JSON.stringify({
-        model,
-        max_tokens: 16384,
-        messages: [{ role: 'user', content }],
-      }),
+      body: JSON.stringify({ model, max_tokens: 8192, messages: [{ role: 'user', content }] }),
     });
-
     const data = await response.json();
     return data.choices?.[0]?.message?.content || '';
   }
 
-  /**
-   * Clean up AI-generated CSS: strip markdown fences, validate basic structure.
-   */
   private sanitizeCss(raw: string): string {
     let css = raw.trim();
-
-    // Strip markdown code fences
     css = css.replace(/^```(?:css)?\s*/i, '').replace(/\s*```\s*$/i, '');
 
-    // Strip any leading explanation text before CSS
     const rootIndex = css.indexOf(':root');
     const articleIndex = css.indexOf('article');
+    const bodyIndex = css.indexOf('body');
     const starIndex = css.indexOf('*');
     const firstSelector = Math.min(
       rootIndex >= 0 ? rootIndex : Infinity,
       articleIndex >= 0 ? articleIndex : Infinity,
+      bodyIndex >= 0 ? bodyIndex : Infinity,
       starIndex >= 0 ? starIndex : Infinity
     );
     if (firstSelector !== Infinity && firstSelector > 0) {

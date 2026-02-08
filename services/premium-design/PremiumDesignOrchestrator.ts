@@ -4,11 +4,13 @@
 // Flow: Capture target → Generate HTML → AI CSS → Render → Validate → Iterate
 
 import { v4 as uuidv4 } from 'uuid';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { BrandDiscoveryService } from '../design-analysis/BrandDiscoveryService';
 import { SemanticHtmlGenerator } from './SemanticHtmlGenerator';
 import { AiCssGenerator } from './AiCssGenerator';
 import { ScreenshotService } from './ScreenshotService';
 import { DesignValidationService } from './DesignValidationService';
+import { savePremiumDesign } from './designPersistence';
 import { QUICK_EXPORT_CSS } from '../quickExportStylesheet';
 import type {
   PremiumDesignSession,
@@ -16,9 +18,18 @@ import type {
   CrawledCssTokens,
   BusinessContext,
   DesignIteration,
+  SavedPremiumDesign,
 } from './types';
 
 export type ProgressCallback = (session: PremiumDesignSession) => void;
+
+export interface PersistenceOptions {
+  supabase: SupabaseClient;
+  userId: string;
+  topicId: string;
+  briefId?: string;
+  mapId?: string;
+}
 
 /**
  * Orchestrates the full premium design pipeline:
@@ -63,8 +74,9 @@ export class PremiumDesignOrchestrator {
     title: string,
     targetUrl: string,
     onProgress?: ProgressCallback,
-    businessContext?: BusinessContext
-  ): Promise<PremiumDesignSession> {
+    businessContext?: BusinessContext,
+    persistence?: PersistenceOptions
+  ): Promise<PremiumDesignSession & { savedDesign?: SavedPremiumDesign | null }> {
     const session: PremiumDesignSession = {
       id: uuidv4(),
       articleHtml: '',
@@ -178,7 +190,26 @@ export class PremiumDesignOrchestrator {
       session.status = 'complete';
       emit();
 
-      return session;
+      // Save to database if persistence is configured
+      let savedDesign: SavedPremiumDesign | null = null;
+      if (persistence) {
+        try {
+          savedDesign = await savePremiumDesign(
+            persistence.supabase,
+            persistence.userId,
+            persistence.topicId,
+            session,
+            { briefId: persistence.briefId, mapId: persistence.mapId }
+          );
+          if (savedDesign) {
+            console.log('[PremiumDesignOrchestrator] Design saved, version:', savedDesign.version);
+          }
+        } catch (saveErr) {
+          console.error('[PremiumDesignOrchestrator] Failed to persist design:', saveErr);
+        }
+      }
+
+      return { ...session, savedDesign };
     } catch (err) {
       console.error('[PremiumDesignOrchestrator] Pipeline failed:', err);
       session.status = 'error';

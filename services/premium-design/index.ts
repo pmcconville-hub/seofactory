@@ -9,6 +9,7 @@ export type {
   ValidationResult,
   PremiumDesignConfig,
   BusinessContext,
+  SavedPremiumDesign,
 } from './types';
 
 export { SemanticHtmlGenerator } from './SemanticHtmlGenerator';
@@ -16,4 +17,11 @@ export { AiCssGenerator } from './AiCssGenerator';
 export { ScreenshotService } from './ScreenshotService';
 export { DesignValidationService } from './DesignValidationService';
 export { PremiumDesignOrchestrator } from './PremiumDesignOrchestrator';
-export type { ProgressCallback } from './PremiumDesignOrchestrator';
+export type { ProgressCallback, PersistenceOptions } from './PremiumDesignOrchestrator';
+export {
+  savePremiumDesign,
+  loadLatestDesign,
+  loadDesignHistory,
+  loadDesignById,
+  deleteDesign,
+} from './designPersistence';

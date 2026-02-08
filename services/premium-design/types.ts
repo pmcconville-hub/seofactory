@@ -61,3 +61,28 @@ export interface BusinessContext {
   ctaText?: string;
   ctaUrl?: string;
 }
+
+// =============================================================================
+// Database Persistence
+// =============================================================================
+
+export interface SavedPremiumDesign {
+  id: string;
+  user_id: string;
+  topic_id: string;
+  brief_id?: string;
+  map_id?: string;
+  version: number;
+  target_url: string;
+  final_css: string;
+  final_html: string;
+  final_score: number;
+  target_screenshot?: string;      // base64 (nullable to save space)
+  output_screenshot?: string;      // base64 (nullable to save space)
+  validation_result: ValidationResult | null;
+  crawled_tokens: CrawledCssTokens | null;
+  iterations_count: number;
+  status: 'complete' | 'error';
+  created_at: string;
+  updated_at: string;
+}
