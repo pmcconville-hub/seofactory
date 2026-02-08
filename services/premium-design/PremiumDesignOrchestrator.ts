@@ -20,6 +20,7 @@ import type {
   DesignIteration,
   SavedPremiumDesign,
 } from './types';
+import type { BriefSection } from '../../types';
 
 export type ProgressCallback = (session: PremiumDesignSession) => void;
 
@@ -75,7 +76,8 @@ export class PremiumDesignOrchestrator {
     targetUrl: string,
     onProgress?: ProgressCallback,
     businessContext?: BusinessContext,
-    persistence?: PersistenceOptions
+    persistence?: PersistenceOptions,
+    structuredOutline?: BriefSection[]
   ): Promise<PremiumDesignSession & { savedDesign?: SavedPremiumDesign | null }> {
     const session: PremiumDesignSession = {
       id: uuidv4(),
@@ -104,7 +106,7 @@ export class PremiumDesignOrchestrator {
       emit();
 
       // ── Step 2: Generate semantic HTML ──
-      session.articleHtml = this.htmlGenerator.generate(articleMarkdown, title, businessContext);
+      session.articleHtml = this.htmlGenerator.generate(articleMarkdown, title, businessContext, structuredOutline);
       emit();
 
       // ── Step 3–6: Generate CSS → Render → Validate → Iterate ──
@@ -219,7 +221,7 @@ export class PremiumDesignOrchestrator {
       // Fallback: return Quick Export version
       session.finalCss = QUICK_EXPORT_CSS;
       session.finalHtml = this.buildFinalDocument(
-        session.articleHtml || this.htmlGenerator.generate(articleMarkdown, title, businessContext),
+        session.articleHtml || this.htmlGenerator.generate(articleMarkdown, title, businessContext, structuredOutline),
         QUICK_EXPORT_CSS,
         title
       );

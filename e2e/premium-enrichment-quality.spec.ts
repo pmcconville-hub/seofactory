@@ -108,12 +108,29 @@ Minimaal jaarlijks, of na significante wijzigingen in uw IT-infrastructuur.`;
     // 12. Proper escaping (no raw HTML injection)
     expect(html).not.toContain('<script');
 
+    // 13. Phase 3: Section intelligence — data-section-role values
+    expect(html).toContain('data-section-role="definition"');   // "Wat is een pentest?"
+    expect(html).toContain('data-section-role="list"');          // "Voordelen" with <ul>
+    expect(html).toContain('data-section-role="steps"');         // "Stappen in het pentestproces"
+    expect(html).toContain('data-section-role="comparison"');    // "Pentest vergelijking"
+    expect(html).toContain('data-section-role="faq"');           // "Veelgestelde vragen"
+
+    // 14. Semantic weights vary (not all the same)
+    const weights = (html.match(/data-semantic-weight="(\d)"/g) || [])
+      .map(m => m.match(/\d/)![0]);
+    const uniqueWeights = new Set(weights);
+    expect(uniqueWeights.size).toBeGreaterThanOrEqual(2);
+
+    // 15. Emphasis levels are present
+    expect(html).toContain('data-emphasis=');
+
     // Log the enrichment markers for visual inspection
     const markers = [
       'data-hero-content', 'data-hero-subtitle', 'data-feature-grid',
       'data-pull-quote', 'data-step-list', 'data-highlight-box',
       'data-comparison-table', 'data-content-type="cta"', 'data-content-type="faq"',
       'data-section-index', 'data-prose-section', 'data-intro-text',
+      'data-section-role', 'data-semantic-weight', 'data-emphasis',
     ];
     for (const marker of markers) {
       const found = html.includes(marker);

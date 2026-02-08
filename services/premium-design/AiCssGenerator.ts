@@ -92,39 +92,42 @@ ${htmlPreview}
 
 ${sectionManifest}
 
-Sections marked (prose-only) have NO special content patterns — they MUST receive visual card treatment, decorative headings, and styled intro paragraphs to avoid looking like unstyled prose.
+Each section has a role, weight (1-5), and emphasis level (hero/featured/standard/supporting/minimal). The manifest shows design suggestions per section — follow them.
 ${businessContext ? `\nIndustry: ${businessContext.industry} | Audience: ${businessContext.audience}` : ''}
 
 ## Design Requirements — Agency Quality
 
 Write a COMPLETE CSS stylesheet (400-700 lines, quality over quantity). The result must look like a premium page designed by a top agency — with bold visual components, not just styled paragraphs.
 
-### Mandatory CSS Seed Patterns — Customize these to match the brand
+### Visual Hierarchy Philosophy
 
-You MUST include variations of ALL these patterns in your output, adapted to the brand colors and style:
+CRITICAL: Do NOT style all sections identically. Each emphasis level must look visually distinct:
 
-\`\`\`css
-/* Section card treatment — every section gets this */
-section[data-section-id] { background: var(--brand-bg); border-radius: var(--brand-radius); padding: 2.5rem 2rem; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: box-shadow 0.2s; }
-section[data-section-id]:hover { box-shadow: var(--brand-shadow); }
+- **hero** (weight 5): Bold treatment — generous padding (3-4rem), gradient or colored background, large heading (2rem+), accent borders, optional subtle animation
+- **featured** (weight 4): Prominent — accent left/top border, elevated shadow, larger heading, standout background
+- **standard** (weight 3): Clean card — surface/white background, standard shadow, normal heading
+- **supporting** (weight 2): Compact — reduced padding (1.5rem), smaller heading, minimal decoration, muted borders
+- **minimal** (weight 1): Lightweight — no shadow, tight padding, small heading, very subtle styling
 
-/* Surface variant — visually distinct from default */
-[data-variant="surface"] { background: var(--brand-surface); border: 1px solid var(--brand-border); }
+Section role → component guidance:
+- \`[data-section-role="introduction"]\` → Lead paragraph (larger text, subtle background)
+- \`[data-section-role="definition"]\` → Standout card with accent border
+- \`[data-section-role="steps"]\` → Numbered step cards or timeline
+- \`[data-section-role="comparison"]\` → Styled table with branded headers
+- \`[data-section-role="faq"]\` → Accordion cards, compact when supporting
+- \`[data-section-role="summary"]\` → Key takeaways box
+- \`[data-section-role="list"]\` → Feature grid cards
+- \`[data-section-role="testimonial"]\` → Decorative blockquote
 
-/* Prose-only sections — gradient left border accent */
-[data-prose-section] { border-left: 4px solid transparent; border-image: linear-gradient(180deg, var(--brand-primary), var(--brand-accent, var(--brand-secondary))) 1; }
+Use emphasis selectors for hierarchy: \`[data-emphasis="hero"]\`, \`[data-emphasis="featured"]\`, etc.
+Use weight selectors for fine-tuning: \`[data-semantic-weight="5"]\`, etc.
 
-/* Intro text — first paragraph after h2, larger muted text */
-[data-intro-text] { font-size: 1.15rem; color: var(--brand-text-muted); line-height: 1.7; margin-bottom: 1.5rem; }
+TOC styling:
+- \`nav.toc[data-toc-count]\` for count-aware sizing
+- \`nav.toc[data-toc-compact]\` → 2-column layout for long TOCs (12+ sections)
+- Keep TOC compact — it should not dominate the page
 
-/* h2 decorative bottom gradient border */
-h2 { padding-bottom: 0.75rem; border-bottom: 3px solid transparent; border-image: linear-gradient(90deg, var(--brand-primary), transparent) 1; margin-bottom: 1.5rem; }
-
-/* Content body flex column with gap */
-[data-content-body] { display: flex; flex-direction: column; gap: 1.5rem; max-width: 780px; margin: 0 auto; padding: 2rem; }
-\`\`\`
-
-### Mandatory Design Patterns
+### Core Layout Patterns
 
 1. **Page layout**: Full-width body. Content sections max-width 780px centered. Hero and CTA sections can break out to full width.
 
@@ -195,7 +198,11 @@ ${sectionManifest ? `\n## Section Manifest (full article structure)\n\n${section
 - \`[data-section-id]\` — Every section
 - \`[data-section-index="N"]\` — Section by index (0-based)
 - \`[data-section-count="N"]\` — Total section count
-- \`[data-content-type="prose|faq|steps|comparison|timeline|checklist|cta"]\`
+- \`[data-content-type="..."]\` — Content type (prose, faq, steps, comparison, etc.)
+- \`[data-section-role="..."]\` — Semantic role (introduction, definition, steps, faq, comparison, summary, list, explanation, etc.)
+- \`[data-semantic-weight="1|2|3|4|5"]\` — Importance level (5=highest)
+- \`[data-emphasis="hero|featured|standard|supporting|minimal"]\` — Visual treatment level
+- \`[data-content-zone="SUPPLEMENTARY"]\` — Non-main content zone
 - \`[data-variant="surface"]\` — Alternating surface sections
 - \`[data-prose-section]\` — Prose-only sections (no enrichment hooks)
 - \`[data-intro-text]\` — First paragraph after each h2
@@ -206,17 +213,18 @@ ${sectionManifest ? `\n## Section Manifest (full article structure)\n\n${section
 - \`[data-highlight-box]\` — Important/tip callout
 - \`[data-comparison-table]\` — Comparison table wrapper
 - \`[data-cta-button]\` — CTA link button
+- \`[data-toc-count="N"]\` — TOC section count
+- \`[data-toc-compact]\` — Long TOC needing 2-column layout
 - \`[data-article-footer]\`, \`[data-footer-text]\` — Footer
 
 ## Required Fixes
 ${fixes}
 
-IMPORTANT: If Layout Sophistication is below 75, you MUST add visual components:
-- Every section must have card treatment (background, radius, shadow)
-- \`[data-prose-section]\` must get a decorative left border accent
-- \`[data-intro-text]\` must be styled larger/muted (1.15rem)
-- h2 must have decorative bottom gradient border
-- Create visual variety between sections — avoid uniform styling
+IMPORTANT: Visual hierarchy is critical. Sections with different \`data-emphasis\` values MUST look visually different:
+- \`[data-emphasis="hero"]\` and \`[data-emphasis="featured"]\` need more visual weight (bolder backgrounds, larger headings, accent borders) than \`[data-emphasis="supporting"]\` or \`[data-emphasis="minimal"]\`
+- Use \`[data-section-role="..."]\` selectors to give each content type appropriate styling (definition cards, step timelines, FAQ accordions, etc.)
+- At least 3 distinct visual treatments must be visible across the page
+- If all sections look identical → Layout Sophistication will score below 50
 
 ## Current CSS
 \`\`\`css
@@ -232,22 +240,40 @@ Return ONLY CSS. No markdown fences. No explanations.`;
 
   private extractSectionManifest(html: string): string {
     const lines: string[] = [];
-    const sectionRegex = /<section[^>]*data-section-id="([^"]*)"[^>]*data-content-type="([^"]*)"[^>]*>/gi;
+    const sectionRegex = /<section[^>]*data-section-id="([^"]*)"[^>]*>/gi;
     let match;
+
+    // Count H2s for TOC line
+    const tocMatch = html.match(/data-toc-count="(\d+)"/);
+    const tocCount = tocMatch ? parseInt(tocMatch[1]) : 0;
+    if (tocCount > 0) {
+      lines.push(`TOC: ${tocCount} sections${html.includes('data-toc-compact') ? ' (compact 2-col)' : ''}`);
+    }
+
     while ((match = sectionRegex.exec(html)) !== null) {
       const tag = match[0];
-      const contentType = match[2];
       const indexMatch = tag.match(/data-section-index="(\d+)"/);
       const index = indexMatch ? indexMatch[1] : '?';
 
-      const flags: string[] = [];
-      if (tag.includes('data-variant="surface"')) flags.push('surface');
-      if (tag.includes('data-prose-section')) flags.push('prose-only');
+      // Extract new intelligence attributes
+      const roleMatch = tag.match(/data-section-role="([^"]*)"/);
+      const weightMatch = tag.match(/data-semantic-weight="(\d)"/);
+      const emphasisMatch = tag.match(/data-emphasis="([^"]*)"/);
+      const zoneMatch = tag.match(/data-content-zone="([^"]*)"/);
 
-      // Find enrichment hooks in this section's content (up to next </section>)
+      const role = roleMatch ? roleMatch[1] : 'prose';
+      const weight = weightMatch ? weightMatch[1] : '3';
+      const emphasis = emphasisMatch ? emphasisMatch[1] : 'standard';
+      const zone = zoneMatch ? zoneMatch[1] : 'MAIN';
+
+      // Find heading text from section content
       const sectionStart = match.index;
       const sectionEnd = html.indexOf('</section>', sectionStart);
       const sectionContent = sectionEnd > sectionStart ? html.substring(sectionStart, sectionEnd) : '';
+      const headingMatch = sectionContent.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
+      const headingText = headingMatch ? headingMatch[1].replace(/<[^>]+>/g, '').trim() : '';
+
+      // Find enrichment hooks
       const hooks: string[] = [];
       if (sectionContent.includes('data-feature-grid')) hooks.push('feature-grid');
       if (sectionContent.includes('data-pull-quote')) hooks.push('pull-quote');
@@ -256,17 +282,61 @@ Return ONLY CSS. No markdown fences. No explanations.`;
       if (sectionContent.includes('data-comparison-table')) hooks.push('comparison-table');
       if (sectionContent.includes('data-intro-text')) hooks.push('intro-text');
 
-      const flagStr = flags.length > 0 ? ` (${flags.join(', ')})` : '';
       const hookStr = hooks.length > 0 ? ` {${hooks.join(', ')}}` : '';
-      lines.push(`#${index} [${contentType}]${flagStr}${hookStr}`);
+      const zoneStr = zone !== 'MAIN' ? ` zone:${zone}` : '';
+
+      // Build rich manifest line
+      let line = `#${index} "${headingText}" [${role}] weight:${weight}/5 emphasis:${emphasis}${zoneStr}${hookStr}`;
+
+      // Add design suggestion based on role + emphasis
+      const suggestion = this.getDesignSuggestion(role, emphasis);
+      if (suggestion) {
+        line += `\n   -> ${suggestion}`;
+      }
+
+      lines.push(line);
     }
 
     // Check for CTA section
     if (html.includes('data-content-type="cta"')) {
-      lines.push('#cta [cta]');
+      lines.push('#cta [cta] weight:3/5 emphasis:featured\n   -> Full-width gradient CTA banner with prominent button');
     }
 
     return lines.length > 0 ? lines.join('\n') : 'No sections detected';
+  }
+
+  /** Generate a design suggestion based on section role and emphasis level */
+  private getDesignSuggestion(role: string, emphasis: string): string {
+    const prefix = emphasis === 'hero' || emphasis === 'featured' ? `${emphasis.toUpperCase()}: ` : '';
+
+    switch (role) {
+      case 'introduction':
+        return `${prefix}Lead paragraph with larger text, subtle background`;
+      case 'definition':
+        return `${prefix}Standout card with accent border, clear heading`;
+      case 'explanation':
+        return `${prefix}Clean prose section with readable typography`;
+      case 'list':
+        return `${prefix}Card grid layout for visual interest`;
+      case 'steps':
+        return `${prefix}Numbered step cards or timeline layout`;
+      case 'comparison':
+        return `${prefix}Styled table with branded headers`;
+      case 'faq':
+        return emphasis === 'supporting' || emphasis === 'minimal'
+          ? 'SUPPORTING: Compact accordion cards'
+          : `${prefix}Clean accordion cards with expand indicators`;
+      case 'summary':
+        return emphasis === 'supporting' || emphasis === 'minimal'
+          ? 'SUPPORTING: Compact summary box'
+          : `${prefix}Key takeaways card`;
+      case 'testimonial':
+        return `${prefix}Styled blockquote with decorative marks`;
+      case 'data':
+        return `${prefix}Data visualization with stat highlights`;
+      default:
+        return `${prefix}Visual card treatment`;
+    }
   }
 
   private async callVisionAI(

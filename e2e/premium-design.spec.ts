@@ -319,7 +319,7 @@ test.describe('SemanticHtmlGenerator', () => {
     expect(result).toContain('<footer data-article-footer>');
   });
 
-  test('sections have data-section-id and data-content-type attributes', async () => {
+  test('sections have data-section-id, data-content-type, and section intelligence attributes', async () => {
     const { SemanticHtmlGenerator } = await import('../services/premium-design');
 
     const generator = new SemanticHtmlGenerator();
@@ -330,6 +330,10 @@ test.describe('SemanticHtmlGenerator', () => {
 
     expect(result).toContain('data-section-id=');
     expect(result).toContain('data-content-type=');
+    // Phase 3: section intelligence attributes
+    expect(result).toContain('data-section-role=');
+    expect(result).toContain('data-semantic-weight=');
+    expect(result).toContain('data-emphasis=');
   });
 
   test('alternating sections get data-variant="surface"', async () => {
@@ -415,6 +419,83 @@ test.describe('SemanticHtmlGenerator', () => {
     );
 
     expect(result).toContain('data-content-type="faq"');
+  });
+
+  test('detects introduction, definition, and summary content types', async () => {
+    const { SemanticHtmlGenerator } = await import('../services/premium-design');
+
+    const generator = new SemanticHtmlGenerator();
+    const result = generator.generate(
+      '## Wat is SEO?\n\nSEO staat voor search engine optimization.\n\n## Overzicht van SEO\n\nSEO is een breed vakgebied.\n\n## Voordelen van SEO\n\nSEO heeft veel voordelen.\n\n## Hoe werkt SEO?\n\nZoekmachines crawlen je site.\n\n## Conclusie\n\nSEO is essentieel.',
+      'SEO Gids'
+    );
+
+    // "Wat is SEO?" should be detected as definition
+    expect(result).toContain('data-section-role="definition"');
+    // "Overzicht" should be detected as introduction
+    expect(result).toContain('data-section-role="introduction"');
+    // "Conclusie" should be detected as summary
+    expect(result).toContain('data-section-role="summary"');
+  });
+
+  test('semantic weight varies across sections — not all identical', async () => {
+    const { SemanticHtmlGenerator } = await import('../services/premium-design');
+
+    const generator = new SemanticHtmlGenerator();
+    const result = generator.generate(
+      '## Wat is een pentest?\n\nEen pentest is een test.\n\n## Voordelen\n\n- Veiligheid\n- Compliance\n- Inzicht\n\n## Stappen\n\n1. Scope\n2. Test\n3. Rapport\n\n## Veelgestelde vragen\n\n### Hoe lang duurt het?\n\nEen week.\n\n### Wat kost het?\n\nVarieert.\n\n### Hoe vaak?\n\nJaarlijks.\n\n## Conclusie\n\nPentests zijn belangrijk.',
+      'Pentest Gids'
+    );
+
+    // Extract all semantic weights
+    const weights = (result.match(/data-semantic-weight="(\d)"/g) || [])
+      .map(m => m.match(/\d/)![0]);
+
+    // Should have some variation — not all the same value
+    const uniqueWeights = new Set(weights);
+    expect(uniqueWeights.size).toBeGreaterThanOrEqual(2);
+  });
+
+  test('smart TOC strips H3s for articles with 8+ H2 sections', async () => {
+    const { SemanticHtmlGenerator } = await import('../services/premium-design');
+
+    const generator = new SemanticHtmlGenerator();
+    // Generate article with 9 H2 sections, some with H3 subsections
+    const sections = Array.from({ length: 9 }, (_, i) =>
+      `## Section ${i + 1}\n\nContent for section ${i + 1}.${i < 3 ? `\n\n### Subsection ${i + 1}a\n\nSubsection content.` : ''}`
+    ).join('\n\n');
+
+    const result = generator.generate(sections, 'Long Article');
+
+    // TOC should have data-toc-count
+    expect(result).toContain('data-toc-count=');
+
+    // With 9 H2s, H3 TOC entries should be stripped
+    expect(result).not.toContain('toc-h3');
+  });
+
+  test('brief data enriches sections with weight and zone', async () => {
+    const { SemanticHtmlGenerator } = await import('../services/premium-design');
+    const generator = new SemanticHtmlGenerator();
+
+    const briefSections = [
+      { heading: 'Wat is een pentest?', level: 2, attribute_category: 'UNIQUE' as const, format_code: 'DEFINITIVE' as const, content_zone: 'MAIN' as const },
+      { heading: 'Veelgestelde vragen', level: 2, attribute_category: 'COMMON' as const, format_code: 'PAA' as const, content_zone: 'SUPPLEMENTARY' as const },
+    ];
+
+    const result = generator.generate(
+      '## Wat is een pentest?\n\nEen pentest is een beveiligingstest.\n\n## Veelgestelde vragen\n\n### Hoe lang duurt het?\n\nEen week.\n\n### Wat kost het?\n\nVarieert.\n\n### Hoe vaak?\n\nJaarlijks.',
+      'Pentest Gids',
+      undefined,
+      briefSections
+    );
+
+    // UNIQUE attribute_category should produce higher weight (5 = 3 base + 2 UNIQUE)
+    expect(result).toContain('data-semantic-weight="5"');
+    // COMMON should produce lower weight (3 base + 0 COMMON)
+    expect(result).toContain('data-semantic-weight="3"');
+    // SUPPLEMENTARY zone should appear
+    expect(result).toContain('data-content-zone="SUPPLEMENTARY"');
   });
 
   test('enriches lists with data-feature-grid when items are short', async () => {

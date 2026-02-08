@@ -426,7 +426,8 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
           audience: topicalMap?.business_info?.audience || '',
           articlePurpose: 'informational',
         },
-        persistenceOpts
+        persistenceOpts,
+        brief?.structured_outline
       );
       setSession(result);
 
