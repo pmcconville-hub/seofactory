@@ -1,0 +1,63 @@
+// =============================================================================
+// Premium Design Studio — Type Definitions
+// =============================================================================
+
+export interface PremiumDesignSession {
+  id: string;
+  articleHtml: string;
+  targetUrl: string;
+  targetScreenshot: string;       // base64
+  crawledCssTokens: CrawledCssTokens;
+  iterations: DesignIteration[];
+  currentIteration: number;
+  status: 'capturing' | 'generating-css' | 'rendering' | 'validating' | 'iterating' | 'complete' | 'error';
+  finalScore: number;
+  finalCss: string;
+  finalHtml: string;
+  errorMessage?: string;
+}
+
+export interface CrawledCssTokens {
+  colors: { hex: string; usage: string; source: string }[];
+  fonts: { family: string; weight: string; usage: string }[];
+  cssVariables: Record<string, string>;
+  borderRadius: string[];
+  shadows: string[];
+  spacingPatterns: string[];
+}
+
+export interface DesignIteration {
+  iteration: number;
+  css: string;
+  screenshotBase64: string;
+  validationResult: ValidationResult;
+  durationMs: number;
+}
+
+export interface ValidationResult {
+  overallScore: number;
+  colorMatch: { score: number; notes: string };
+  typographyMatch: { score: number; notes: string };
+  spacingMatch: { score: number; notes: string };
+  visualDepth: { score: number; notes: string };
+  brandFit: { score: number; notes: string };
+  cssFixInstructions: string[];
+  passesThreshold: boolean;
+}
+
+export interface PremiumDesignConfig {
+  targetScore: number;           // default 85
+  maxIterations: number;         // default 3
+  aiProvider: 'gemini' | 'anthropic' | 'openai';
+  apiKey: string;
+  model?: string;
+  apifyToken?: string;
+}
+
+export interface BusinessContext {
+  industry: string;
+  audience: string;
+  articlePurpose: 'informational' | 'commercial' | 'transactional';
+  ctaText?: string;
+  ctaUrl?: string;
+}

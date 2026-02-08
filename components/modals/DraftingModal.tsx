@@ -28,6 +28,7 @@ import { ContentGenerationJob } from '../../types';
 import JSZip from 'jszip';
 import { PublishToWordPressModal } from '../wordpress';
 import { StylePublishModal } from '../publishing';
+import { PremiumDesignModal } from '../premium-design/PremiumDesignModal';
 import { AuditIssuesPanel } from '../drafting/AuditIssuesPanel';
 import { GenerationChangesPanel } from '../drafting/GenerationChangesPanel';
 import { AuditIssue } from '../../types';
@@ -43,6 +44,7 @@ import {
   RelatedTopicLink,
   generateSlug,
 } from '../../services/contentAssemblyService';
+import { QUICK_EXPORT_CSS, injectHeadingIds, generateTableOfContentsHtml } from '../../services/quickExportStylesheet';
 import { useFeatureGate } from '../../hooks/usePermissions';
 import { QualityRulePanel, ArticleQualityReport } from '../quality';
 import { PassDiffViewer } from '../drafting/PassDiffViewer';
@@ -204,6 +206,7 @@ const DraftingModal: React.FC<DraftingModalProps> = ({ isOpen, onClose, brief: b
   // WordPress Publish State
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showStylePublishModal, setShowStylePublishModal] = useState(false);
+  const [showPremiumDesignModal, setShowPremiumDesignModal] = useState(false);
 
   // Social Media Posts State
   const [showSocialModal, setShowSocialModal] = useState(false);
@@ -1723,6 +1726,9 @@ ${JSON.stringify(schemaData, null, 2)}
       : '';
 
     // 1. Create the Article (HTML) - nicely formatted for reading with SEO markup
+    const zipContentBody = injectHeadingIds(convertMarkdownToBasicHtml(replaceImagePlaceholdersWithUrls(draftContent, imagePlaceholders)));
+    const zipTocHtml = generateTableOfContentsHtml(zipContentBody);
+
     const articleHtml = `<!DOCTYPE html>
 <html lang="${zipArticleLanguage}">
 <head>
@@ -1735,45 +1741,21 @@ ${JSON.stringify(schemaData, null, 2)}
   <title>${brief.title}</title>
   ${ogTags}
   ${schemaScript}
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: Georgia, 'Times New Roman', serif; line-height: 1.8; max-width: 750px; margin: 0 auto; padding: 2rem; color: #2d2d2d; background: #fafafa; }
-    h1 { font-size: 2.2rem; color: #1a1a1a; margin-top: 0; margin-bottom: 0.5rem; line-height: 1.2; }
-    h2 { font-size: 1.5rem; color: #1a1a1a; margin-top: 2.5rem; border-bottom: 2px solid #e0e0e0; padding-bottom: 0.5rem; }
-    h3 { font-size: 1.25rem; color: #333; margin-top: 2rem; }
-    h4 { font-size: 1.1rem; color: #444; margin-top: 1.5rem; }
-    p { margin: 1rem 0; }
-    img { max-width: 100%; height: auto; border-radius: 8px; margin: 1.5rem 0; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    figure { margin: 2rem 0; text-align: center; }
-    figcaption { font-size: 0.9rem; color: #666; font-style: italic; margin-top: 0.5rem; }
-    table { border-collapse: collapse; width: 100%; margin: 1.5rem 0; font-size: 0.95rem; }
-    th, td { border: 1px solid #ddd; padding: 0.75rem; text-align: left; }
-    th { background: #f0f0f0; font-weight: 600; }
-    tr:nth-child(even) { background: #f9f9f9; }
-    code { background: #f0f0f0; padding: 0.2em 0.4em; border-radius: 3px; font-size: 0.9em; font-family: 'Consolas', monospace; }
-    pre { background: #f5f5f5; padding: 1rem; border-radius: 8px; overflow-x: auto; }
-    blockquote { border-left: 4px solid #0066cc; margin: 1.5rem 0; padding: 0.5rem 1rem; background: #f9f9f9; font-style: italic; }
-    a { color: #0066cc; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    ul, ol { padding-left: 1.5rem; margin: 1rem 0; }
-    li { margin: 0.5rem 0; }
-    .header-meta { color: #666; font-size: 0.9rem; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #e0e0e0; font-family: system-ui, sans-serif; }
-    .header-meta strong { color: #333; }
-    hr { border: none; border-top: 1px solid #e0e0e0; margin: 2rem 0; }
-  </style>
+  <style>${QUICK_EXPORT_CSS}</style>
 </head>
 <body>
   <article itemscope itemtype="https://schema.org/Article">
     <header>
       <h1 itemprop="headline">${brief.title}</h1>
-      <div class="header-meta">
+      <div class="byline">
         <strong>Word Count:</strong> <span itemprop="wordCount">${wordCount.toLocaleString()}</span> words
         ${auditScore ? ` · <strong>Quality Score:</strong> ${auditScore}/100` : ''}${authorByline}
         <meta itemprop="datePublished" content="${new Date().toISOString()}">
       </div>
     </header>
+    ${zipTocHtml}
     <div itemprop="articleBody">
-    ${convertMarkdownToBasicHtml(replaceImagePlaceholdersWithUrls(draftContent, imagePlaceholders))}
+    ${zipContentBody}
     </div>
   </article>
 </body>
@@ -2312,6 +2294,9 @@ ${post.image_instructions ? `Media: ${post.image_instructions.description || 'Im
 
     // Build HTML following SEO best practices
     // Rule: DOM under 1500 nodes, minified, semantic tags, centerpiece in first 400 chars
+    const contentBody = injectHeadingIds(convertMarkdownToSemanticHtml(cleanedContent, { imageUrlMap, ogImageUrl }));
+    const tocHtml = generateTableOfContentsHtml(contentBody);
+
     const articleHtml = `<!DOCTYPE html>
 <html lang="${articleLanguage}">
 <head>
@@ -2326,7 +2311,7 @@ ${canonicalUrl ? `<link rel="canonical" href="${canonicalUrl}">` : '<!-- Add can
 ${lcpPreload}
 ${ogTags}
 ${schemaScript}
-<style>*{box-sizing:border-box}body{font-family:Georgia,'Times New Roman',serif;line-height:1.8;max-width:750px;margin:0 auto;padding:2rem;color:#2d2d2d;background:#fafafa}main{display:block}article{display:block}section{margin-bottom:2rem}h1{font-size:2.2rem;color:#1a1a1a;margin-top:0;margin-bottom:0.5rem;line-height:1.2}h2{font-size:1.5rem;color:#1a1a1a;margin-top:2.5rem;border-bottom:2px solid #e0e0e0;padding-bottom:0.5rem}h3{font-size:1.25rem;color:#333;margin-top:2rem}h4{font-size:1.1rem;color:#444;margin-top:1.5rem}p{margin:1rem 0}img{max-width:100%;height:auto;border-radius:8px;margin:1.5rem 0;box-shadow:0 4px 12px rgba(0,0,0,0.1)}figure{margin:2rem 0;text-align:center}figcaption{font-size:0.9rem;color:#666;font-style:italic;margin-top:0.5rem}table{border-collapse:collapse;width:100%;margin:1.5rem 0;font-size:0.95rem}th,td{border:1px solid #ddd;padding:0.75rem;text-align:left}th{background:#f0f0f0;font-weight:600}tr:nth-child(even){background:#f9f9f9}code{background:#f0f0f0;padding:0.2em 0.4em;border-radius:3px;font-size:0.9em;font-family:'Consolas',monospace}pre{background:#f5f5f5;padding:1rem;border-radius:8px;overflow-x:auto}blockquote{border-left:4px solid #0066cc;margin:1.5rem 0;padding:0.5rem 1rem;background:#f9f9f9;font-style:italic}a{color:#0066cc;text-decoration:none}a:hover{text-decoration:underline}ul,ol{padding-left:1.5rem;margin:1rem 0}li{margin:0.5rem 0}.byline{color:#666;font-size:0.9rem;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid #e0e0e0}hr{border:none;border-top:1px solid #e0e0e0;margin:2rem 0}.related-topics{background:#f8f9fa;border:1px solid #e0e0e0;border-radius:8px;padding:1.5rem 2rem;margin-top:2.5rem}.related-topics h2{border:none;margin-top:0;font-size:1.2rem;padding-bottom:0.25rem}</style>
+<style>${QUICK_EXPORT_CSS}</style>
 </head>
 <body>
 <main>
@@ -2336,7 +2321,8 @@ ${schemaScript}
 <p class="byline">${businessInfo.authorName ? `By <strong>${businessInfo.authorName}</strong> · ` : ''}<time datetime="${publishDate}">${new Date().toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' })}</time> · ${wordCount.toLocaleString()} words</p>
 </header>
 <p><strong>${centerpiece}</strong></p>
-${convertMarkdownToSemanticHtml(cleanedContent, { imageUrlMap, ogImageUrl })}
+${tocHtml}
+${contentBody}
 </article>
 </main>
 </body>
@@ -3906,9 +3892,16 @@ ${schemaScript}`;
                         }}
                         items={[
                             {
-                                id: 'style-publish',
-                                label: 'Style & Publish',
+                                id: 'premium-design',
+                                label: 'Export & Design',
                                 icon: '🎨',
+                                onClick: () => setShowPremiumDesignModal(true),
+                                divider: true
+                            },
+                            {
+                                id: 'style-publish-legacy',
+                                label: 'Style & Publish (Legacy)',
+                                icon: '🖌️',
                                 onClick: () => {
                                     if (asPage && routeParams.projectId && routeParams.mapId && routeParams.topicId) {
                                         routeNavigate(`/p/${routeParams.projectId}/m/${routeParams.mapId}/topics/${routeParams.topicId}/style`);
@@ -3916,7 +3909,6 @@ ${schemaScript}`;
                                         setShowStylePublishModal(true);
                                     }
                                 },
-                                divider: true
                             },
                             {
                                 id: 'publish-wp',
@@ -4242,6 +4234,19 @@ ${schemaScript}`;
               payload: 'Content published successfully with styled formatting'
             });
           }}
+        />
+      )}
+
+      {/* Premium Design Modal */}
+      {activeBriefTopic && draftContent && (
+        <PremiumDesignModal
+          isOpen={showPremiumDesignModal}
+          onClose={() => setShowPremiumDesignModal(false)}
+          topic={activeBriefTopic}
+          articleDraft={draftContent}
+          brief={brief}
+          topicalMap={activeMap}
+          projectId={activeMap?.project_id}
         />
       )}
 

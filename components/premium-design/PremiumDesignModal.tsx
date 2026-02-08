@@ -1,0 +1,556 @@
+// =============================================================================
+// PremiumDesignModal — Two-path export: Quick Export + Premium AI Design
+// =============================================================================
+
+import React, { useState, useCallback, useRef } from 'react';
+import type { EnrichedTopic, ContentBrief, TopicalMap } from '../../types';
+import { useAppState } from '../../state/appState';
+import { buildFullHtmlDocument, extractCenterpiece, cleanForExport, generateSlug } from '../../services/contentAssemblyService';
+import { QUICK_EXPORT_CSS } from '../../services/quickExportStylesheet';
+import {
+  PremiumDesignOrchestrator,
+  type PremiumDesignSession,
+  type PremiumDesignConfig,
+  type ValidationResult,
+} from '../../services/premium-design';
+
+// =============================================================================
+// Types
+// =============================================================================
+
+interface PremiumDesignModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  articleDraft: string;
+  topic: EnrichedTopic;
+  brief?: ContentBrief;
+  topicalMap?: TopicalMap;
+  projectId?: string;
+}
+
+type ModalView = 'fork' | 'quick-export' | 'premium-design';
+type PipelineStep = 'capturing' | 'generating-css' | 'rendering' | 'validating' | 'iterating' | 'complete' | 'error';
+
+const PIPELINE_STEPS: { key: PipelineStep; label: string }[] = [
+  { key: 'capturing', label: 'Capturing Target' },
+  { key: 'generating-css', label: 'Generating CSS' },
+  { key: 'rendering', label: 'Rendering Output' },
+  { key: 'validating', label: 'Validating Match' },
+  { key: 'complete', label: 'Complete' },
+];
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+function downloadFile(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function getScoreColor(score: number): string {
+  if (score >= 80) return 'text-green-400';
+  if (score >= 60) return 'text-yellow-400';
+  return 'text-red-400';
+}
+
+function getScoreBg(score: number): string {
+  if (score >= 80) return 'bg-green-900/30 border-green-500/30';
+  if (score >= 60) return 'bg-yellow-900/30 border-yellow-500/30';
+  return 'bg-red-900/30 border-red-500/30';
+}
+
+// =============================================================================
+// Sub-components
+// =============================================================================
+
+const DesignProgress: React.FC<{ status: PipelineStep; iteration: number; maxIterations: number }> = ({
+  status,
+  iteration,
+  maxIterations,
+}) => {
+  const activeIndex = PIPELINE_STEPS.findIndex(s => s.key === status);
+  const isIterating = status === 'iterating';
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        {PIPELINE_STEPS.map((step, i) => {
+          const isActive = i === activeIndex || (isIterating && step.key === 'generating-css');
+          const isDone = i < activeIndex;
+          return (
+            <React.Fragment key={step.key}>
+              <div className="flex items-center gap-1.5">
+                <div
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium border ${
+                    isDone
+                      ? 'bg-green-500/20 border-green-500/50 text-green-400'
+                      : isActive
+                        ? 'bg-blue-500/20 border-blue-500/50 text-blue-400 animate-pulse'
+                        : 'bg-zinc-800 border-zinc-700 text-zinc-500'
+                  }`}
+                >
+                  {isDone ? '\u2713' : i + 1}
+                </div>
+                <span className={`text-xs ${isActive ? 'text-blue-400' : isDone ? 'text-green-400' : 'text-zinc-500'}`}>
+                  {step.label}
+                </span>
+              </div>
+              {i < PIPELINE_STEPS.length - 1 && (
+                <div className={`flex-1 h-px ${isDone ? 'bg-green-500/30' : 'bg-zinc-700'}`} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+      {(isIterating || status === 'validating') && iteration > 1 && (
+        <p className="text-xs text-zinc-400">Refinement {iteration} of {maxIterations}</p>
+      )}
+    </div>
+  );
+};
+
+const ScoreDimension: React.FC<{ label: string; score: number; notes: string }> = ({ label, score, notes }) => (
+  <div className="flex items-center gap-3">
+    <div className="w-24 text-xs text-zinc-400">{label}</div>
+    <div className="flex-1">
+      <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${
+            score >= 80 ? 'bg-green-500' : score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+          }`}
+          style={{ width: `${score}%` }}
+        />
+      </div>
+    </div>
+    <span className={`text-xs font-medium w-8 text-right ${getScoreColor(score)}`}>{score}</span>
+  </div>
+);
+
+const ComparisonView: React.FC<{
+  targetScreenshot: string;
+  outputScreenshot: string;
+  score: number;
+  validation?: ValidationResult;
+}> = ({ targetScreenshot, outputScreenshot, score, validation }) => (
+  <div className="space-y-3">
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <p className="text-xs text-zinc-500 mb-1">Target Website</p>
+        <div className="border border-zinc-700 rounded-lg overflow-hidden bg-white">
+          <img
+            src={`data:image/jpeg;base64,${targetScreenshot}`}
+            alt="Target website"
+            className="w-full h-auto"
+          />
+        </div>
+      </div>
+      <div>
+        <p className="text-xs text-zinc-500 mb-1">Generated Output</p>
+        <div className="border border-zinc-700 rounded-lg overflow-hidden bg-white">
+          <img
+            src={`data:image/jpeg;base64,${outputScreenshot}`}
+            alt="Generated output"
+            className="w-full h-auto"
+          />
+        </div>
+      </div>
+    </div>
+    {validation && (
+      <div className={`p-3 rounded-lg border ${getScoreBg(score)} space-y-2`}>
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-zinc-400 uppercase tracking-wide">Brand Match</span>
+          <span className={`text-lg font-bold ${getScoreColor(score)}`}>{score}%</span>
+        </div>
+        <ScoreDimension label="Colors" score={validation.colorMatch.score} notes={validation.colorMatch.notes} />
+        <ScoreDimension label="Typography" score={validation.typographyMatch.score} notes={validation.typographyMatch.notes} />
+        <ScoreDimension label="Spacing" score={validation.spacingMatch.score} notes={validation.spacingMatch.notes} />
+        <ScoreDimension label="Visual Depth" score={validation.visualDepth.score} notes={validation.visualDepth.notes} />
+        <ScoreDimension label="Brand Fit" score={validation.brandFit.score} notes={validation.brandFit.notes} />
+      </div>
+    )}
+  </div>
+);
+
+// =============================================================================
+// Main Component
+// =============================================================================
+
+export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
+  isOpen,
+  onClose,
+  articleDraft,
+  topic,
+  brief,
+  topicalMap,
+}) => {
+  const { state, dispatch } = useAppState();
+  const [view, setView] = useState<ModalView>('fork');
+  const [targetUrl, setTargetUrl] = useState(
+    topicalMap?.business_info?.domain || ''
+  );
+  const [session, setSession] = useState<PremiumDesignSession | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const [quickExportHtml, setQuickExportHtml] = useState('');
+  const orchestratorRef = useRef<PremiumDesignOrchestrator | null>(null);
+
+  // Generate Quick Export HTML
+  const generateQuickExport = useCallback(() => {
+    if (!brief) return;
+    const cleaned = cleanForExport(articleDraft);
+    const centerpiece = extractCenterpiece(cleaned, 300) || brief.metaDescription || '';
+    const html = buildFullHtmlDocument(cleaned, {
+      title: brief.title,
+      metaDescription: brief.metaDescription,
+      targetKeyword: brief.targetKeyword,
+      centerpiece,
+      authorName: topicalMap?.business_info?.authorName || '',
+      language: topicalMap?.business_info?.language || 'en',
+    });
+    setQuickExportHtml(html);
+    setView('quick-export');
+  }, [articleDraft, brief, topicalMap]);
+
+  // Start Premium Design pipeline
+  const startPremiumDesign = useCallback(async () => {
+    if (!brief || !targetUrl.trim()) return;
+
+    const bi = state.businessInfo;
+    const apiKey = bi?.geminiApiKey || bi?.anthropicApiKey || bi?.openAiApiKey || '';
+    const provider: PremiumDesignConfig['aiProvider'] =
+      bi?.geminiApiKey ? 'gemini' :
+      bi?.anthropicApiKey ? 'anthropic' :
+      bi?.openAiApiKey ? 'openai' : 'gemini';
+
+    if (!apiKey) {
+      dispatch({ type: 'SET_ERROR', payload: 'No AI API key configured. Add a Gemini, Anthropic, or OpenAI key in Settings.' });
+      return;
+    }
+
+    const config: PremiumDesignConfig = {
+      targetScore: 85,
+      maxIterations: 3,
+      aiProvider: provider,
+      apiKey,
+      apifyToken: bi?.apifyToken || '',
+    };
+
+    if (!config.apifyToken) {
+      dispatch({ type: 'SET_ERROR', payload: 'Apify API token required for website capture. Add it in Settings.' });
+      return;
+    }
+
+    setIsRunning(true);
+    const orchestrator = new PremiumDesignOrchestrator(config);
+    orchestratorRef.current = orchestrator;
+
+    try {
+      const result = await orchestrator.run(
+        articleDraft,
+        brief.title,
+        targetUrl,
+        (progressSession) => setSession(structuredClone(progressSession)),
+        {
+          industry: topicalMap?.business_info?.industry || '',
+          audience: topicalMap?.business_info?.audience || '',
+          articlePurpose: 'informational',
+        }
+      );
+      setSession(result);
+    } catch (err) {
+      console.error('[PremiumDesignModal] Pipeline error:', err);
+      dispatch({ type: 'SET_ERROR', payload: `Design pipeline failed: ${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      setIsRunning(false);
+    }
+  }, [brief, targetUrl, articleDraft, topicalMap, state.businessInfo, dispatch]);
+
+  // Download final HTML
+  const handleDownload = useCallback((html: string, prefix: string = '') => {
+    const slug = brief?.slug || generateSlug(brief?.title || topic.title) || 'article';
+    const filename = prefix ? `${slug}-${prefix}.html` : `${slug}.html`;
+    downloadFile(new Blob([html], { type: 'text/html' }), filename);
+    dispatch({ type: 'SET_NOTIFICATION', payload: `Downloaded: ${filename}` });
+  }, [brief, topic, dispatch]);
+
+  // Copy HTML to clipboard
+  const handleCopy = useCallback(async (html: string) => {
+    try {
+      await navigator.clipboard.writeText(html);
+      dispatch({ type: 'SET_NOTIFICATION', payload: 'HTML copied to clipboard' });
+    } catch {
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to copy to clipboard' });
+    }
+  }, [dispatch]);
+
+  if (!isOpen) return null;
+
+  const latestIteration = session?.iterations[session.iterations.length - 1];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-800">
+          <h2 className="text-sm font-medium text-zinc-200">
+            {view === 'fork' ? 'Export & Design' : view === 'quick-export' ? 'Quick Export' : 'Premium Design Studio'}
+          </h2>
+          <div className="flex items-center gap-2">
+            {view !== 'fork' && (
+              <button
+                onClick={() => { setView('fork'); setSession(null); }}
+                className="text-xs text-zinc-400 hover:text-zinc-200 px-2 py-1"
+                disabled={isRunning}
+              >
+                Back
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-zinc-400 hover:text-zinc-200 p-1"
+              disabled={isRunning}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5">
+          {/* ── Fork Screen ── */}
+          {view === 'fork' && (
+            <div className="grid grid-cols-2 gap-4 max-w-2xl mx-auto mt-8">
+              {/* Quick Export Card */}
+              <button
+                onClick={generateQuickExport}
+                className="p-6 rounded-xl border border-zinc-700 hover:border-zinc-500 bg-zinc-800/50 hover:bg-zinc-800 text-left transition-all group"
+              >
+                <div className="text-2xl mb-3">&#9889;</div>
+                <h3 className="text-sm font-medium text-zinc-200 mb-1">Quick Export</h3>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Professional HTML with responsive design, dark mode, TOC, and print styles. Instant download.
+                </p>
+                <span className="text-xs text-blue-400 mt-3 block group-hover:text-blue-300">
+                  Instant &rarr;
+                </span>
+              </button>
+
+              {/* Premium Design Card */}
+              <button
+                onClick={() => setView('premium-design')}
+                className="p-6 rounded-xl border border-zinc-700 hover:border-purple-500/50 bg-zinc-800/50 hover:bg-zinc-800 text-left transition-all group"
+              >
+                <div className="text-2xl mb-3">&#127912;</div>
+                <h3 className="text-sm font-medium text-zinc-200 mb-1">Premium Design</h3>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  AI generates a custom CSS stylesheet matching your brand website. Validated with visual comparison.
+                </p>
+                <span className="text-xs text-purple-400 mt-3 block group-hover:text-purple-300">
+                  AI-powered &rarr;
+                </span>
+              </button>
+            </div>
+          )}
+
+          {/* ── Quick Export View ── */}
+          {view === 'quick-export' && quickExportHtml && (
+            <div className="space-y-4">
+              {/* Preview */}
+              <div className="border border-zinc-700 rounded-lg overflow-hidden bg-white" style={{ maxHeight: '60vh' }}>
+                <iframe
+                  srcDoc={quickExportHtml}
+                  title="Quick Export Preview"
+                  className="w-full border-0"
+                  style={{ height: '60vh' }}
+                  sandbox="allow-same-origin"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-3 justify-end">
+                <button
+                  onClick={() => handleCopy(quickExportHtml)}
+                  className="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded-lg transition-colors"
+                >
+                  Copy HTML
+                </button>
+                <button
+                  onClick={() => handleDownload(quickExportHtml)}
+                  className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+                >
+                  Download HTML
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Premium Design View ── */}
+          {view === 'premium-design' && (
+            <div className="space-y-5">
+              {/* URL Input (before pipeline starts) */}
+              {!session && (
+                <div className="space-y-3 max-w-lg mx-auto mt-4">
+                  <label className="block text-xs text-zinc-400">Target Website URL</label>
+                  <input
+                    type="url"
+                    value={targetUrl}
+                    onChange={(e) => setTargetUrl(e.target.value)}
+                    placeholder="https://example.com"
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+                  />
+                  <p className="text-xs text-zinc-500">
+                    Enter the website whose visual style you want to match. We'll capture a screenshot and extract design tokens.
+                  </p>
+                  <button
+                    onClick={startPremiumDesign}
+                    disabled={!targetUrl.trim() || isRunning}
+                    className="w-full px-4 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    {isRunning ? 'Running...' : 'Start Design'}
+                  </button>
+                </div>
+              )}
+
+              {/* Pipeline Progress */}
+              {session && session.status !== 'complete' && session.status !== 'error' && (
+                <div className="space-y-4">
+                  <DesignProgress
+                    status={session.status}
+                    iteration={session.currentIteration}
+                    maxIterations={3}
+                  />
+
+                  {/* Show comparison once we have screenshots */}
+                  {latestIteration && session.targetScreenshot && (
+                    <ComparisonView
+                      targetScreenshot={session.targetScreenshot}
+                      outputScreenshot={latestIteration.screenshotBase64}
+                      score={latestIteration.validationResult.overallScore}
+                      validation={latestIteration.validationResult}
+                    />
+                  )}
+
+                  {/* Accept early button */}
+                  {latestIteration && (
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => {
+                          if (session) {
+                            const updatedSession = { ...session, status: 'complete' as const, finalHtml: session.finalHtml };
+                            setSession(updatedSession);
+                            setIsRunning(false);
+                          }
+                        }}
+                        className="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded-lg transition-colors"
+                      >
+                        Accept Current Design
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Error State */}
+              {session?.status === 'error' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-lg">
+                    <p className="text-sm text-red-400">Pipeline failed: {session.errorMessage}</p>
+                    <p className="text-xs text-zinc-400 mt-1">Falling back to Quick Export styling.</p>
+                  </div>
+                  {session.finalHtml && (
+                    <div className="flex items-center gap-3 justify-end">
+                      <button
+                        onClick={() => handleCopy(session.finalHtml)}
+                        className="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded-lg transition-colors"
+                      >
+                        Copy Fallback HTML
+                      </button>
+                      <button
+                        onClick={() => handleDownload(session.finalHtml, 'fallback')}
+                        className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+                      >
+                        Download Fallback HTML
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Complete State */}
+              {session?.status === 'complete' && (
+                <div className="space-y-4">
+                  {/* Final comparison */}
+                  {latestIteration && session.targetScreenshot && (
+                    <ComparisonView
+                      targetScreenshot={session.targetScreenshot}
+                      outputScreenshot={latestIteration.screenshotBase64}
+                      score={session.finalScore}
+                      validation={latestIteration.validationResult}
+                    />
+                  )}
+
+                  {/* Iteration History */}
+                  {session.iterations.length > 1 && (
+                    <details className="group">
+                      <summary className="text-xs text-zinc-400 cursor-pointer hover:text-zinc-300">
+                        Iteration History ({session.iterations.length} iterations)
+                      </summary>
+                      <div className="mt-2 space-y-2">
+                        {session.iterations.map((iter, i) => (
+                          <div key={i} className="flex items-center gap-3 p-2 bg-zinc-800/50 rounded-lg">
+                            <span className="text-xs text-zinc-500 w-16">Round {iter.iteration}</span>
+                            <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${
+                                  iter.validationResult.overallScore >= 80 ? 'bg-green-500' :
+                                  iter.validationResult.overallScore >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                                }`}
+                                style={{ width: `${iter.validationResult.overallScore}%` }}
+                              />
+                            </div>
+                            <span className={`text-xs font-medium ${getScoreColor(iter.validationResult.overallScore)}`}>
+                              {iter.validationResult.overallScore}%
+                            </span>
+                            <span className="text-xs text-zinc-600">
+                              {(iter.durationMs / 1000).toFixed(1)}s
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-3 justify-end border-t border-zinc-800 pt-4">
+                    <button
+                      onClick={() => handleCopy(session.finalHtml)}
+                      className="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded-lg transition-colors"
+                    >
+                      Copy HTML
+                    </button>
+                    <button
+                      onClick={() => handleDownload(session.finalHtml, 'premium')}
+                      className="px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors"
+                    >
+                      Download Premium HTML
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default PremiumDesignModal;

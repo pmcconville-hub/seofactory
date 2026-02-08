@@ -11,6 +11,8 @@
  * Created: January 13, 2026
  */
 
+import { QUICK_EXPORT_CSS, injectHeadingIds, generateTableOfContentsHtml } from './quickExportStylesheet';
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -599,6 +601,10 @@ export function buildFullHtmlDocument(markdown: string, options: FullHtmlOptions
     }
   }
 
+  // Post-process: inject heading IDs for anchor links and TOC
+  contentHtml = injectHeadingIds(contentHtml);
+  const tocHtml = generateTableOfContentsHtml(contentHtml);
+
   // Build the full document
   return `<!DOCTYPE html>
 <html lang="${language}">
@@ -614,7 +620,7 @@ ${canonicalUrl ? `<link rel="canonical" href="${canonicalUrl}">` : '<!-- Add can
 ${lcpPreload}
 ${ogTags}
 ${schemaScript}
-<style>*{box-sizing:border-box}body{font-family:Georgia,'Times New Roman',serif;line-height:1.8;max-width:750px;margin:0 auto;padding:2rem;color:#2d2d2d;background:#fafafa}main{display:block}article{display:block}section{margin-bottom:2rem}h1{font-size:2.2rem;color:#1a1a1a;margin-top:0;margin-bottom:0.5rem;line-height:1.2}h2{font-size:1.5rem;color:#1a1a1a;margin-top:2.5rem;border-bottom:2px solid #e0e0e0;padding-bottom:0.5rem}h3{font-size:1.25rem;color:#333;margin-top:2rem}h4{font-size:1.1rem;color:#444;margin-top:1.5rem}p{margin:1rem 0}img{max-width:100%;height:auto;border-radius:8px;margin:1.5rem 0;box-shadow:0 4px 12px rgba(0,0,0,0.1)}figure{margin:2rem 0;text-align:center}figcaption{font-size:0.9rem;color:#666;font-style:italic;margin-top:0.5rem}table{border-collapse:collapse;width:100%;margin:1.5rem 0;font-size:0.95rem}th,td{border:1px solid #ddd;padding:0.75rem;text-align:left}th{background:#f0f0f0;font-weight:600}tr:nth-child(even){background:#f9f9f9}code{background:#f0f0f0;padding:0.2em 0.4em;border-radius:3px;font-size:0.9em;font-family:'Consolas',monospace}pre{background:#f5f5f5;padding:1rem;border-radius:8px;overflow-x:auto}blockquote{border-left:4px solid #0066cc;margin:1.5rem 0;padding:0.5rem 1rem;background:#f9f9f9;font-style:italic}a{color:#0066cc;text-decoration:none}a:hover{text-decoration:underline}ul,ol{padding-left:1.5rem;margin:1rem 0}li{margin:0.5rem 0}.byline{color:#666;font-size:0.9rem;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid #e0e0e0}hr{border:none;border-top:1px solid #e0e0e0;margin:2rem 0}.related-topics{background:#f8f9fa;border:1px solid #e0e0e0;border-radius:8px;padding:1.5rem 2rem;margin-top:2.5rem}.related-topics h2{border:none;margin-top:0;font-size:1.2rem;padding-bottom:0.25rem}${hasImagePlaceholders ? '.image-placeholder{border:2px dashed #ccc;border-radius:8px;background:linear-gradient(135deg,#f5f5f5 0%,#fafafa 100%);padding:2rem;margin:1.5rem 0;text-align:center}.image-placeholder .placeholder-content{display:flex;flex-direction:column;align-items:center;gap:0.5rem;color:#999}.image-placeholder .placeholder-label{font-size:0.9rem;font-weight:500;color:#666}.image-placeholder figcaption{margin-top:1rem;font-size:0.85rem;color:#666;font-style:italic}' : ''}</style>
+<style>${QUICK_EXPORT_CSS}</style>
 </head>
 <body>
 <main>
@@ -624,6 +630,7 @@ ${schemaScript}
 <p class="byline">${authorName ? `By <strong>${authorName}</strong> · ` : ''}<time datetime="${publishDate.toISOString()}">${publishDate.toLocaleDateString(({ nl: 'nl-NL', de: 'de-DE', fr: 'fr-FR', es: 'es-ES', it: 'it-IT', pt: 'pt-PT', en: 'en-US' } as Record<string, string>)[language] || language || 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</time> · ${wordCount.toLocaleString()} words</p>
 </header>
 ${centerpiece ? `<p><strong>${centerpiece}</strong></p>` : ''}
+${tocHtml}
 ${contentHtml}
 </article>
 </main>
