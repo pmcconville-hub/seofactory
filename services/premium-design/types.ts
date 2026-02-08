@@ -41,6 +41,7 @@ export interface ValidationResult {
   spacingMatch: { score: number; notes: string };
   visualDepth: { score: number; notes: string };
   brandFit: { score: number; notes: string };
+  layoutSophistication: { score: number; notes: string };
   cssFixInstructions: string[];
   passesThreshold: boolean;
 }

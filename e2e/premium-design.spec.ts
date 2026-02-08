@@ -390,6 +390,51 @@ test.describe('SemanticHtmlGenerator', () => {
     expect(result).toContain('data-content-type="faq"');
   });
 
+  test('enriches lists with data-feature-grid when items are short', async () => {
+    const { SemanticHtmlGenerator } = await import('../services/premium-design');
+
+    const generator = new SemanticHtmlGenerator();
+    const result = generator.generate(
+      '## Key Features\n\n- Fast performance\n- Easy to use\n- Secure by default\n- Great documentation',
+      'Feature Test'
+    );
+
+    expect(result).toContain('data-feature-grid');
+  });
+
+  test('hero includes subtitle when businessContext provided', async () => {
+    const { SemanticHtmlGenerator } = await import('../services/premium-design');
+
+    const generator = new SemanticHtmlGenerator();
+    const result = generator.generate(
+      '## Introduction\n\nTest content.',
+      'Test Article',
+      {
+        industry: 'Technology',
+        audience: 'Developers',
+        articlePurpose: 'informational',
+      }
+    );
+
+    expect(result).toContain('data-hero-content');
+    expect(result).toContain('data-hero-subtitle');
+    expect(result).toContain('Technology');
+    expect(result).toContain('Developers');
+  });
+
+  test('hero has data-hero-content wrapper even without businessContext', async () => {
+    const { SemanticHtmlGenerator } = await import('../services/premium-design');
+
+    const generator = new SemanticHtmlGenerator();
+    const result = generator.generate(
+      '## Introduction\n\nTest content.',
+      'Test Article'
+    );
+
+    expect(result).toContain('data-hero-content');
+    expect(result).not.toContain('data-hero-subtitle');
+  });
+
   test('HTML is properly escaped in title and CTA', async () => {
     const { SemanticHtmlGenerator } = await import('../services/premium-design');
 

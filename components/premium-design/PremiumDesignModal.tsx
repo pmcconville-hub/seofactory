@@ -198,6 +198,7 @@ const ComparisonView: React.FC<{
         <ScoreDimension label="Spacing" score={validation.spacingMatch.score} notes={validation.spacingMatch.notes} />
         <ScoreDimension label="Visual Depth" score={validation.visualDepth.score} notes={validation.visualDepth.notes} />
         <ScoreDimension label="Brand Fit" score={validation.brandFit.score} notes={validation.brandFit.notes} />
+        <ScoreDimension label="Layout" score={validation.layoutSophistication?.score ?? 50} notes={validation.layoutSophistication?.notes ?? ''} />
       </div>
     )}
   </div>

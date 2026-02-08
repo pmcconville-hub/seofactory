@@ -54,14 +54,14 @@ export class AiCssGenerator {
     const radius = tokens.borderRadius[0] || '8px';
     const shadow = tokens.shadows[0] || '0 4px 6px rgba(0,0,0,0.07)';
 
-    return `You are a senior web designer at a top design agency. Study the screenshot of the target website carefully. Your job is to write CSS that makes an article page feel like a native page on that website — matching its exact visual DNA: color palette, typography, spacing rhythm, and visual sophistication.
+    return `You are a senior web designer at a top design agency. Study the target website screenshot. Create a VISUALLY STUNNING article page that captures the brand's energy and feels like a premium page on that website. Go beyond matching — elevate the content with sophisticated visual design.
 
 SCREENSHOT: The attached image is the target website. Observe its:
-- Header/hero styling, background treatment
+- Header/hero styling, background treatment, color intensity
 - Card/section styling patterns, shadows, borders
 - Button and link styling
 - Whitespace rhythm and spacing patterns
-- Decorative elements (gradients, borders, subtle backgrounds)
+- Visual components (grids, cards, pull quotes, step indicators)
 
 ## Extracted Brand Tokens
 
@@ -91,47 +91,46 @@ ${businessContext ? `Industry: ${businessContext.industry} | Audience: ${busines
 
 ## Design Requirements — Agency Quality
 
-Write a COMPLETE CSS stylesheet (300-600 lines, quality over quantity). The result must look like a premium editorial page designed by a professional agency, NOT a generic blog.
+Write a COMPLETE CSS stylesheet (400-700 lines, quality over quantity). The result must look like a premium page designed by a top agency — with bold visual components, not just styled paragraphs.
 
 ### Mandatory Design Patterns
 
-1. **Page structure**: White/light background body, centered content column (max-width: 720px), generous vertical rhythm (section margins: 3-4rem)
+1. **Page layout**: Full-width body. Content sections max-width 780px centered. Hero and CTA sections can break out to full width.
 
-2. **Hero header**: The article \`header\` must be visually prominent — use a subtle background gradient or tinted band using the brand primary color at low opacity (5-12%). Add generous padding (3rem+). The h1 should be large (2.2-2.8rem), bold, with tight line-height.
+2. **Hero section** (\`[data-hero]\`): Bold, eye-catching. Use brand primary as gradient background (45deg from primary to secondary). White/light text. Large h1 (2.5-3.5rem). If \`[data-hero-subtitle]\` present, style as lighter/smaller text. Minimum 200px height with vertical centering via flexbox.
 
-3. **Section cards**: Alternate some sections with a subtle surface background (\`var(--brand-surface)\`) and rounded corners (\`var(--brand-radius)\`) with padding to create visual rhythm. NOT every section — roughly every 2nd or 3rd.
+3. **Feature grids** (\`[data-feature-grid]\`): CSS Grid \`grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))\`. Remove list-style, add gap. Each \`li\` gets card treatment: surface background, brand-radius, padding 1.5rem, subtle shadow on hover, transition.
 
-4. **Table of Contents (nav.toc)**: Styled as a compact sidebar-style card with surface background, clear visual separation, and brand-colored active links.
+4. **Pull quotes** (\`[data-pull-quote]\`): Large italic text (1.3-1.5rem), centered, brand-primary top+bottom borders (3px), generous vertical margin, no left-border (that's for regular blockquotes).
 
-5. **Typography hierarchy**: Clear visual distinction between h1 > h2 > h3 > h4. Use heading font for headings, body font for text. h2 should have a decorative left border or underline using brand primary.
+5. **Step lists** (\`[data-step-list]\`): Counter-based numbered circles in brand-primary. Each \`li\` gets left-padding for the circle, connecting vertical line between items. Numbers in white on brand-primary circles.
 
-6. **Links**: Brand primary color, no underline by default, underline on hover. Subtle transition.
+6. **Highlight boxes** (\`[data-highlight-box]\`): Left border 4px brand-accent, surface background, padding 1.5rem, border-radius. Optional decorative icon-hint via ::before.
 
-7. **Tables**: Clean with horizontal borders only (no grid), alternating row backgrounds, rounded container.
+7. **Comparison tables** (\`[data-comparison-table] table\`): Modern striped design, brand-primary header row with white text, rounded container with overflow hidden, hover effect on rows.
 
-8. **Blockquotes**: Left border in brand primary, subtle surface background, italic.
+8. **Section rhythm**: Alternate sections between white and surface backgrounds. Every \`[data-variant="surface"]\` section should feel distinctly different — not just a shade lighter.
 
-9. **FAQ sections** (\`[data-content-type="faq"]\`): details/summary styled as expandable cards with brand-colored marker and hover effects.
+9. **Typography hierarchy**: h2 gets decorative treatment (left border + brand primary, OR bottom gradient underline). h3 has medium weight, h4 has brand-primary color. Use heading font for headings, body font for text.
 
-10. **CTA section** (\`[data-content-type="cta"]\`): Prominent card with brand primary background, white text, rounded corners, centered content, subtle shadow. Must look like a conversion element.
+10. **CTA section** (\`[data-content-type="cta"]\`): Full-width brand gradient background, large centered text, prominent button with white bg on brand color (or inverted), rounded-full or rounded-lg button, hover scale effect.
 
-11. **Visual separators**: Use subtle \`::after\` pseudo-elements on sections for decorative dividers (thin lines, dots, or gradient fades — match the brand's style from the screenshot).
+11. **FAQ sections** (\`[data-content-type="faq"]\`): Details/summary as clean cards with separator borders, brand-colored expand indicators, smooth transitions.
 
-12. **Images/figures**: Full-width within content, subtle border-radius, optional subtle shadow. Captions in muted text, small font.
+12. **Links**: Brand primary, subtle underline offset. Hover: slightly darker, underline.
 
-13. **Lists**: Custom styled bullets/numbers using brand color. Adequate spacing between items.
+13. **Tables**: Brand-primary header, horizontal borders only, alternating subtle row colors.
 
-14. **Responsive**: At 768px reduce font sizes, stack elements. At 480px further reduce padding.
+14. **Responsive**: At 768px: 2-col grids become 1-col. Reduce hero padding. At 480px: further reduce font sizes and padding.
 
-15. **Print**: Clean black-on-white, show URLs after links, hide decorative elements.
+15. **Print**: Clean black-on-white, show URLs after links, hide gradients/shadows.
 
 ### Critical Rules
 
 - Use the exact brand token values from :root variables above
 - Target semantic elements and \`[data-*]\` attribute selectors — no class names
-- Do NOT apply solid brand color as background to text sections (this makes text unreadable)
-- White or very light backgrounds for text content sections, brand colors only for accents, borders, and CTAs
-- The body/main text must always have high contrast (dark text on light bg or vice versa)
+- Body/main text must always have high contrast (dark text on light bg or vice versa)
+- Never make text unreadable — only use brand colors as backgrounds where text is white/contrasting
 
 ## Output
 
@@ -155,9 +154,16 @@ Return ONLY CSS. No markdown fences. No explanations. Start with \`:root {\`.`;
 - Spacing: ${validationResult.spacingMatch.score} — ${validationResult.spacingMatch.notes}
 - Visual Depth: ${validationResult.visualDepth.score} — ${validationResult.visualDepth.notes}
 - Brand Fit: ${validationResult.brandFit.score} — ${validationResult.brandFit.notes}
+- Layout Sophistication: ${validationResult.layoutSophistication.score} — ${validationResult.layoutSophistication.notes}
 
 ## Required Fixes
 ${fixes}
+
+IMPORTANT: If Layout Sophistication is below 75, you MUST add visual components:
+- Transform plain <ul> lists into grid card layouts using [data-feature-grid]
+- Make the hero section bolder with gradients and larger text
+- Add visual treatments to highlight boxes and step lists
+- Create visual variety between sections — avoid uniform styling
 
 ## Current CSS
 \`\`\`css
@@ -166,7 +172,7 @@ ${currentCss.substring(0, 10000)}
 
 IMAGE 1 = target website, IMAGE 2 = current output.
 
-Apply ALL fixes. Return the COMPLETE revised CSS (not a diff). Maintain professional editorial quality — the page must look like it was designed by an agency, not auto-generated. Keep text readable (dark on light or light on dark, never colored bg on body text).
+Apply ALL fixes. Return the COMPLETE revised CSS (not a diff). Enhance visual sophistication — the page should impress a design agency creative director. Keep text readable (dark on light or light on dark, never colored bg on body text).
 
 Return ONLY CSS. No markdown fences. No explanations.`;
   }

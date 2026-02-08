@@ -63,16 +63,17 @@ ${cssSnippet}
 
 ## Validation Task
 
-Score the output (IMAGE 2) against the target (IMAGE 1) on these 5 dimensions (0-100 each):
+Score the output (IMAGE 2) against the target (IMAGE 1) on these 6 dimensions (0-100 each):
 
 1. **colorMatch** — Do the brand colors match? Are primary, secondary, accent colors used correctly?
 2. **typographyMatch** — Do fonts, sizes, weights, line-heights match the target?
 3. **spacingMatch** — Does padding, margins, section spacing match the target's rhythm?
 4. **visualDepth** — Do shadows, gradients, borders, layering match the target?
 5. **brandFit** — Overall, would a brand manager accept this as "on brand"?
+6. **layoutSophistication** — Does the output use visual components? Are there grid layouts for feature lists, card-style sections, bold hero treatment, visual variety between sections? Or is it just plain text with headings? Score 90+ for designs with 3+ distinct visual components (grids, cards, pull quotes, step indicators). Score below 50 for text-only layouts.
 
 Also provide:
-- **overallScore**: Weighted average (color 25%, typography 20%, spacing 20%, depth 15%, brand 20%)
+- **overallScore**: Weighted average (color 20%, typography 15%, spacing 15%, depth 15%, brand 15%, layout 20%)
 - **cssFixInstructions**: Array of 3-8 SPECIFIC CSS fix instructions. Each must reference an exact CSS selector and property to change. Example: "Change \`article > section:first-child\` background from \`#f9fafb\` to \`#0a2540\` to match the dark hero section"
 - **passesThreshold**: true if overallScore >= ${this.config.targetScore}
 
@@ -86,6 +87,7 @@ Also provide:
   "spacingMatch": { "score": 70, "notes": "Section gaps too tight" },
   "visualDepth": { "score": 75, "notes": "Missing box shadows on cards" },
   "brandFit": { "score": 68, "notes": "Close but header area doesn't match" },
+  "layoutSophistication": { "score": 55, "notes": "No grid layouts or card components — just styled text" },
   "cssFixInstructions": [
     "Change article h1 font-size from 2rem to 2.5rem",
     "Add box-shadow: 0 2px 8px rgba(0,0,0,0.1) to section elements"
@@ -216,6 +218,7 @@ Return ONLY valid JSON. No markdown fences, no extra text.`;
         spacingMatch: this.parseDimension(parsed.spacingMatch),
         visualDepth: this.parseDimension(parsed.visualDepth),
         brandFit: this.parseDimension(parsed.brandFit),
+        layoutSophistication: this.parseDimension(parsed.layoutSophistication),
         cssFixInstructions: Array.isArray(parsed.cssFixInstructions) ? parsed.cssFixInstructions : [],
         passesThreshold: !!parsed.passesThreshold,
       };
@@ -241,6 +244,7 @@ Return ONLY valid JSON. No markdown fences, no extra text.`;
       spacingMatch: { score: 50, notes: 'Unable to validate' },
       visualDepth: { score: 50, notes: 'Unable to validate' },
       brandFit: { score: 50, notes: 'Unable to validate' },
+      layoutSophistication: { score: 50, notes: 'Unable to validate' },
       cssFixInstructions: [],
       passesThreshold: false,
     };

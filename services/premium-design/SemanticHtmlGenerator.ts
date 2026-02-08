@@ -45,9 +45,15 @@ export class SemanticHtmlGenerator {
       : '';
 
     // Wrap in article with header and footer zones
+    const heroSubtitle = businessContext?.industry && businessContext?.audience
+      ? `\n<p data-hero-subtitle>${this.esc(businessContext.industry)} &middot; ${this.esc(businessContext.audience)}</p>`
+      : '';
+
     return `<article>
 <header data-hero>
-<h1>${this.esc(title)}</h1>
+<div data-hero-content>
+<h1>${this.esc(title)}</h1>${heroSubtitle}
+</div>
 </header>
 ${tocHtml ? tocHtml + '\n' : ''}
 <div data-content-body>
@@ -85,7 +91,7 @@ ${sectionsHtml}${ctaHtml}
           heading: headingText,
           headingLevel: 2,
           contentType,
-          html: this.wrapContentType(fullHtml, contentType),
+          html: this.wrapContentType(this.enrichSectionHtml(fullHtml, contentType), contentType),
         });
         sectionIndex++;
       } else if (sectionIndex === 0) {
@@ -133,6 +139,47 @@ ${sectionsHtml}${ctaHtml}
       );
     }
     return html;
+  }
+
+  private enrichSectionHtml(html: string, contentType: ContentType): string {
+    let result = html;
+
+    // 1. Feature grid — <ul> with 3-8 short items (each <li> < 120 chars, no nested lists)
+    result = result.replace(/<ul>([\s\S]*?)<\/ul>/gi, (match, inner: string) => {
+      const items = inner.match(/<li>[\s\S]*?<\/li>/gi) || [];
+      if (items.length < 3 || items.length > 8) return match;
+      if (inner.includes('<ul') || inner.includes('<ol')) return match;
+      const allShort = items.every(li => li.replace(/<[^>]+>/g, '').length < 120);
+      if (!allShort) return match;
+      return `<ul data-feature-grid>${inner}</ul>`;
+    });
+
+    // 2. Pull quote — <blockquote> with short text (< 150 chars)
+    result = result.replace(/<blockquote>([\s\S]*?)<\/blockquote>/gi, (match, inner: string) => {
+      const textLength = inner.replace(/<[^>]+>/g, '').trim().length;
+      if (textLength > 0 && textLength < 150) {
+        return `<blockquote data-pull-quote>${inner}</blockquote>`;
+      }
+      return match;
+    });
+
+    // 3. Step list — For 'steps' content type, add to <ol>
+    if (contentType === 'steps') {
+      result = result.replace(/<ol>/gi, '<ol data-step-list>');
+    }
+
+    // 4. Highlight box — <p> starting with key phrases
+    result = result.replace(
+      /<p><strong>(Key takeaway|Important|Belangrijk|Let op|Opmerking|Tip)[:.]?<\/strong>([\s\S]*?)<\/p>/gi,
+      '<div data-highlight-box><p><strong>$1:</strong>$2</p></div>'
+    );
+
+    // 5. Comparison table — For 'comparison' content type, wrap <table>
+    if (contentType === 'comparison') {
+      result = result.replace(/<table>([\s\S]*?)<\/table>/gi, '<div data-comparison-table><table>$1</table></div>');
+    }
+
+    return result;
   }
 
   private esc(text: string): string {
