@@ -370,7 +370,7 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
                   title="Quick Export Preview"
                   className="w-full border-0"
                   style={{ height: '60vh' }}
-                  sandbox="allow-same-origin"
+                  sandbox="allow-same-origin allow-scripts"
                 />
               </div>
 
