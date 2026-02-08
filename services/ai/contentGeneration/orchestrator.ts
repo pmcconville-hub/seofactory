@@ -958,7 +958,11 @@ export class ContentGenerationOrchestrator {
         .map(s => {
           // Strip any H1 from section content (H1 will be added from title)
           let content = stripH1FromMarkdown((s.current_content || '').trim());
-          const expectedHeading = s.section_level === 2 ? `## ${s.section_heading}` : `### ${s.section_heading}`;
+          let heading = s.section_heading || '';
+          if (heading.startsWith('[GENERATE_HEADING:')) {
+            heading = heading.match(/\[GENERATE_HEADING:[^:]+:(.+?)\]/)?.[1] || 'Introduction';
+          }
+          const expectedHeading = s.section_level === 2 ? `## ${heading}` : `### ${heading}`;
 
           // Check if content already starts with a markdown heading (## or ###)
           // This prevents duplicate headers when passes add headings to content

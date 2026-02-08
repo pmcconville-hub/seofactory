@@ -243,13 +243,14 @@ export async function cacheEntities(
     user_id: userId,
     entity_name: entity.name,
     entity_type: entity.type,
-    wikidata_id: entity.wikidataId,
-    wikipedia_url: entity.wikipediaUrl,
-    resolved_data: entity.properties,
-    same_as_urls: entity.sameAs,
+    wikidata_id: entity.wikidataId || null,
+    wikipedia_url: entity.wikipediaUrl || null,
+    resolved_data: entity.properties || {},
+    same_as_urls: entity.sameAs || [],
     confidence_score: entity.confidenceScore,
-    resolution_source: entity.source,
-    last_verified_at: entity.lastVerifiedAt || new Date().toISOString()
+    resolution_source: entity.source || 'ai_inferred',
+    last_verified_at: entity.lastVerifiedAt || new Date().toISOString(),
+    updated_at: new Date().toISOString()
   }));
 
   // Bulk upsert with timeout protection

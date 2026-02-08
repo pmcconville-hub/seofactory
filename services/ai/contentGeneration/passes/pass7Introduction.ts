@@ -193,12 +193,17 @@ async function processIntroOrConclusion(
       const hasH2 = /^##\s+.+$/m.test(content);
       if (!hasH2) {
         const originalHeading = (section.current_content || '').match(/^##\s+.+$/m)?.[0];
-        if (originalHeading) {
+        if (originalHeading && !originalHeading.includes('[GENERATE_HEADING:')) {
           content = `${originalHeading}\n\n${content}`;
           console.warn(`[Pass7] AI omitted H2 heading - restored from original: "${originalHeading}"`);
-        } else if (section.section_heading) {
+        } else if (section.section_heading && !section.section_heading.startsWith('[GENERATE_HEADING:')) {
           content = `## ${section.section_heading}\n\n${content}`;
           console.warn(`[Pass7] AI omitted H2 heading - restored from section definition: "${section.section_heading}"`);
+        } else {
+          // Both heading sources contain placeholder — derive from central entity
+          const fallbackHeading = holisticContext.centralEntity || 'Introduction';
+          content = `## ${fallbackHeading}\n\n${content}`;
+          console.warn(`[Pass7] AI omitted H2 heading - used central entity fallback: "${fallbackHeading}"`);
         }
       }
     }

@@ -4,6 +4,8 @@
 1. [Topical Map Creation Flow](#1-topical-map-creation-flow)
 2. [Content Brief Creation Flow](#2-content-brief-creation-flow)
 3. [Article Draft Generation Flow (10-Pass System)](#3-article-draft-generation-flow)
+4. [Post-Map Dashboard Capabilities](#4-post-map-dashboard-capabilities)
+5. [Brand Intelligence & Publishing Flow](#5-brand-intelligence--publishing-flow)
 
 ---
 
@@ -277,6 +279,41 @@
 │                                         │                                       │
 │                                         ▼                                       │
 │  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │  7a.5. SERP INTELLIGENCE GATHERING (Non-blocking)                       │  │
+│  │  ─────────────────────────────────────────────────────────────────────── │  │
+│  │  Hook: useMapGeneration.ts                                              │  │
+│  │  Service: services/ai/serpInference.ts → batchInferSerpData()           │  │
+│  │  Type: SerpIntelligenceForMap (config/prompts.ts)                       │  │
+│  │                                                                          │  │
+│  │  1. Build seed queries from available pillar data:                       │  │
+│  │     • centralEntity                                                     │  │
+│  │     • sourceContext (if set)                                             │  │
+│  │     • centralSearchIntent (if set)                                      │  │
+│  │     • Top EAV subjects (up to 6 pillar queries total)                   │  │
+│  │                                                                          │  │
+│  │  2. Call batchInferSerpData(pillarQueries, businessInfo)                 │  │
+│  │     → Returns Map<string, InferredSerpData>                             │  │
+│  │                                                                          │  │
+│  │  3. buildSerpIntelligenceForMap(pillarQueries, serpResults)              │  │
+│  │     → SerpIntelligenceForMap = {                                        │  │
+│  │         pillarInsights: [{                                              │  │
+│  │           pillar, difficulty, serpFeatures,                              │  │
+│  │           paaQuestions, opportunities                                   │  │
+│  │         }],                                                             │  │
+│  │         aggregatedOpportunities: string[]                               │  │
+│  │       }                                                                 │  │
+│  │                                                                          │  │
+│  │  4. Injected into ALL 3 map generation prompts via                      │  │
+│  │     buildSerpIntelligenceBlock(serpIntel):                               │  │
+│  │     • GENERATE_INITIAL_TOPICAL_MAP_PROMPT                               │  │
+│  │     • GENERATE_MONETIZATION_SECTION_PROMPT                              │  │
+│  │     • GENERATE_INFORMATIONAL_SECTION_PROMPT                             │  │
+│  │                                                                          │  │
+│  │  ⚡ Non-blocking: wrapped in try/catch, falls back to no SERP data     │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
+│                                         │                                       │
+│                                         ▼                                       │
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
 │  │  7b. INITIAL TOPIC GENERATION (AI)                                       │  │
 │  │  ─────────────────────────────────────────────────────────────────────── │  │
 │  │                                                                          │  │
@@ -285,8 +322,9 @@
 │  │  │ pillars      │────►┌─────────────────────────────────────────────┐   │  │
 │  │  │ eavs         │     │                                             │   │  │
 │  │  │ competitors  │     │  aiService.generateInitialTopicalMap()      │   │  │
-│  │  └──────────────┘     │                                             │   │  │
-│  │                       │  Provider: Gemini/OpenAI/Anthropic/etc.     │   │  │
+│  │  │ serpIntel    │     │                                             │   │  │
+│  │  └──────────────┘     │  Provider: Gemini/OpenAI/Anthropic/etc.     │   │  │
+│  │                       │  ★ serpIntel passed as optional parameter    │   │  │
 │  │                       │                                             │   │  │
 │  │                       │  Output: {                                  │   │  │
 │  │                       │    coreTopics: EnrichedTopic[],             │   │  │
@@ -297,10 +335,10 @@
 │                                         │                                       │
 │                                         ▼                                       │
 │  ┌──────────────────────────────────────────────────────────────────────────┐  │
-│  │  7c. HUB-SPOKE ROLE ASSIGNMENT                                           │  │
+│  │  7c. HUB-SPOKE ROLE ASSIGNMENT + AUTO-CORRECTION                          │  │
 │  │  ─────────────────────────────────────────────────────────────────────── │  │
 │  │                                                                          │  │
-│  │  assignClusterRoles(coreTopics, outerTopics, websiteType)                │  │
+│  │  7c.1 assignClusterRoles(coreTopics, outerTopics, websiteType)           │  │
 │  │                                                                          │  │
 │  │  ┌─────────────────────────────────────────────────────────────────┐    │  │
 │  │  │  WEBSITE TYPE THRESHOLDS:                                       │    │  │
@@ -313,11 +351,61 @@
 │  │  cluster_role assignment:                                                │  │
 │  │    • "pillar" → Core topics with 3+ spokes (or website-type minimum)     │  │
 │  │    • "cluster_content" → All other topics                                │  │
+│  │                                                                          │  │
+│  │  7c.2 HUB-SPOKE AUTO-CORRECTION                                         │  │
+│  │  Service: mapGeneration.ts → correctHubSpokeRatios()                    │  │
+│  │  Type: HubSpokeCorrection[]                                             │  │
+│  │                                                                          │  │
+│  │  Runs ONLY when !hubSpokeAnalysis.isOptimal:                             │  │
+│  │                                                                          │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐    │  │
+│  │  │  Phase 1: Fix over-spoke hubs (too many spokes)                 │    │  │
+│  │  │    → Promote best spoke to sub-hub (type: 'promote_spoke')     │    │  │
+│  │  │                                                                 │    │  │
+│  │  │  Phase 2: Fix under-spoke hubs (too few spokes)                 │    │  │
+│  │  │    → Steal most-similar spoke from richest donor                │    │  │
+│  │  │      (type: 'reassign_spoke')                                  │    │  │
+│  │  │                                                                 │    │  │
+│  │  │  Safety: max 5 iterations per phase                             │    │  │
+│  │  │  After: re-runs assignClusterRoles() with corrected topics      │    │  │
+│  │  │                                                                 │    │  │
+│  │  │  Returns: HubSpokeCorrection[] = [{                            │    │  │
+│  │  │    type: 'split_hub' | 'reassign_spoke' | 'promote_spoke',     │    │  │
+│  │  │    description: string,                                        │    │  │
+│  │  │    affectedTopicIds: string[]                                  │    │  │
+│  │  │  }]                                                            │    │  │
+│  │  └─────────────────────────────────────────────────────────────────┘    │  │
 │  └──────────────────────────────────────────────────────────────────────────┘  │
 │                                         │                                       │
 │                                         ▼                                       │
 │  ┌──────────────────────────────────────────────────────────────────────────┐  │
-│  │  7d. TOPIC METADATA ENRICHMENT                                           │  │
+│  │  7d. POST-GENERATION VALIDATIONS                                         │  │
+│  │  ─────────────────────────────────────────────────────────────────────── │  │
+│  │  Hook: useMapGeneration.ts (runs before DB insertion)                    │  │
+│  │                                                                          │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐    │  │
+│  │  │  1. validateEAVCoverage()                                       │    │  │
+│  │  │     Service: services/ai/eavCoverageValidator.ts                │    │  │
+│  │  │     • Calculates coverage % of EAVs addressed by topics         │    │  │
+│  │  │     • Warns on uncovered UNIQUE/ROOT category EAVs              │    │  │
+│  │  │                                                                 │    │  │
+│  │  │  2. detectTitleCannibalization()                                │    │  │
+│  │  │     Service: services/ai/clustering.ts                          │    │  │
+│  │  │     • Jaccard word similarity between topic titles              │    │  │
+│  │  │     • Threshold: > 0.7 triggers cannibalization warning         │    │  │
+│  │  │                                                                 │    │  │
+│  │  │  3. validateContentFlow()                                       │    │  │
+│  │  │     Service: services/ai/contentFlowValidator.ts                │    │  │
+│  │  │     • Verifies monetization topics have informational support   │    │  │
+│  │  │     • Ensures proper content type distribution                 │    │  │
+│  │  └─────────────────────────────────────────────────────────────────┘    │  │
+│  │                                                                          │  │
+│  │  All validations are non-blocking (log warnings, don't halt)            │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
+│                                         │                                       │
+│                                         ▼                                       │
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │  7e. TOPIC METADATA ENRICHMENT                                           │  │
 │  │  ─────────────────────────────────────────────────────────────────────── │  │
 │  │                                                                          │  │
 │  │  Each topic gets:                                                        │  │
@@ -328,7 +416,9 @@
 │  │    • canonical_query (primary keyword)                                   │  │
 │  │    • query_network (related queries)                                     │  │
 │  │    • query_type (Definitional, Comparative, etc.)                        │  │
-│  │    • planned_publication_date (3-day spacing algorithm)                  │  │
+│  │    • planned_publication_date                                            │  │
+│  │      (Dependency-aware topological sort + 3-day spacing:                │  │
+│  │       informational → monetization, parents → children, core → outer)   │  │
 │  │    • url_slug_hint (max 3-word URL guidance)                             │  │
 │  │    • freshness (EVERGREEN, STANDARD, FREQUENT)                           │  │
 │  │    • blueprint (structural guidance)                                     │  │
@@ -336,7 +426,7 @@
 │                                         │                                       │
 │                                         ▼                                       │
 │  ┌──────────────────────────────────────────────────────────────────────────┐  │
-│  │  7e. DATABASE INSERTION                                                  │  │
+│  │  7f. DATABASE INSERTION                                                  │  │
 │  │  ─────────────────────────────────────────────────────────────────────── │  │
 │  │                                                                          │  │
 │  │  verifiedBulkInsert() to topics table:                                   │  │
@@ -350,7 +440,7 @@
 │                                         │                                       │
 │                                         ▼                                       │
 │  ┌──────────────────────────────────────────────────────────────────────────┐  │
-│  │  7f. FOUNDATION PAGES (If Blueprint Selected)                            │  │
+│  │  7g. FOUNDATION PAGES (If Blueprint Selected)                            │  │
 │  │  ─────────────────────────────────────────────────────────────────────── │  │
 │  │                                                                          │  │
 │  │  Service: services/ai/foundationPages.ts                                 │  │
@@ -368,7 +458,7 @@
 │                                         │                                       │
 │                                         ▼                                       │
 │  ┌──────────────────────────────────────────────────────────────────────────┐  │
-│  │  7g. STATE UPDATE & REDIRECT                                             │  │
+│  │  7h. STATE UPDATE & REDIRECT                                             │  │
 │  │  ─────────────────────────────────────────────────────────────────────── │  │
 │  │                                                                          │  │
 │  │  dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId, topics } })    │  │
@@ -393,6 +483,10 @@
 │  USER CAN NOW:                                                                  │
 │    • View topics in dashboard                                                   │
 │    • Generate content briefs for each topic                                     │
+│    • Enrich topics with metadata + search volume (useTopicEnrichment)           │
+│    • Generate topic blueprints (structural guidance per topic)                  │
+│    • Run Query Network Audit for competitive gap analysis                       │
+│    • View semantic distance matrix for linking strategy                         │
 │    • Run semantic distance analysis                                             │
 │    • Identify cannibalization risks                                             │
 │    • Find linking opportunities                                                 │
@@ -578,10 +672,11 @@
 │  │                                                                          │  │
 │  │  ┌────────────────────────┐  ┌────────────────────────┐                 │  │
 │  │  │ Semantic Context       │  │ Competitor Insights    │                 │  │
-│  │  │ • EAVs for topic       │  │ • Target word count    │                 │  │
-│  │  │ • Knowledge graph      │  │ • Image recommendations│                 │  │
-│  │  │ • Related topics       │  │ • Heading structure    │                 │  │
-│  │  │ • Linking candidates   │  │ • Required topics      │                 │  │
+│  │  │ • ★ ALL EAVs passed    │  │ • Target word count    │                 │  │
+│  │  │   to all 5 providers   │  │ • Image recommendations│                 │  │
+│  │  │ • Knowledge graph      │  │ • Heading structure    │                 │  │
+│  │  │ • Related topics       │  │ • Required topics      │                 │  │
+│  │  │ • Linking candidates   │  │                        │                 │  │
 │  │  └────────────────────────┘  └────────────────────────┘                 │  │
 │  └──────────────────────────────────────────────────────────────────────────┘  │
 │                                         │                                       │
@@ -669,6 +764,20 @@
 │  │  ─────────────────────────────────────────────────────────────────────── │  │
 │  │  If marketPatterns provided → Attach as brief.competitorSpecs            │  │
 │  └──────────────────────────────────────────────────────────────────────────┘  │
+│         │                                                                       │
+│         ▼                                                                       │
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │  5e. FEATURED SNIPPET VALIDATION                                        │  │
+│  │  ─────────────────────────────────────────────────────────────────────── │  │
+│  │  Service: briefGeneration.ts                                            │  │
+│  │                                                                          │  │
+│  │  If featured_snippet_target exists:                                      │  │
+│  │    • Extract question words (length > 3) from fsTarget.question          │  │
+│  │    • Compare against all structured_outline headings                     │  │
+│  │    • Check if any heading contains ≥1 question word                     │  │
+│  │    • If no match found → LOG WARNING (non-blocking):                    │  │
+│  │      "Featured snippet target may not be answered by any section"       │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────────┘
          │
          ▼
@@ -732,7 +841,8 @@
 │  │    level: 2,  // H2                                                      │  │
 │  │    subordinate_text_hint: "Explain motors, sensors, controllers...",     │  │
 │  │    methodology_note: "Use comparison table for component types",         │  │
-│  │    suggested_internal_links: ["sensors-guide", "motor-types"]            │  │
+│  │    suggested_internal_links: ["sensors-guide", "motor-types"],           │  │
+│  │    mapped_eavs?: number[]   // ★ EAV indices mapped to this section     │  │
 │  │  }                                                                       │  │
 │  └──────────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────────┘
@@ -862,19 +972,23 @@
 │  │  PROCESSING STEPS                                                        │  │
 │  │  ─────────────────────────────────────────────────────────────────────── │  │
 │  │                                                                          │  │
-│  │  1. SMART LENGTH DETECTION                                               │  │
+│  │  1. SMART LENGTH DETECTION (4-factor)                                     │  │
 │  │     ┌────────────────────────────────────────────────────────────────┐  │  │
-│  │     │ Analyzes: section count, image count, SERP word target         │  │  │
-│  │     │ User topicType influences preset                               │  │  │
-│  │     │ Smart cap: prevents 50% deviation from preset                  │  │  │
+│  │     │ Priority order:                                                │  │  │
+│  │     │   1. User override (explicit length selection)                 │  │  │
+│  │     │   2. Topic type (monetization = longer)                        │  │  │
+│  │     │   3. Brief complexity (section count, image count, SERP)       │  │  │
+│  │     │   4. Preset default (from website type config)                 │  │  │
 │  │     │                                                                │  │  │
+│  │     │ Smart cap: prevents >50% deviation from preset (bloat guard)  │  │  │
 │  │     │ Presets: minimal | short | standard | comprehensive            │  │  │
 │  │     └────────────────────────────────────────────────────────────────┘  │  │
 │  │                                                                          │  │
-│  │  2. TEMPLATE SELECTION                                                   │  │
+│  │  2. TEMPLATE SELECTION (AI Router)                                       │  │
 │  │     ┌────────────────────────────────────────────────────────────────┐  │  │
 │  │     │ templateRouter.ts: AI-driven selection                         │  │  │
-│  │     │ Based on: website type, query intent, competitor analysis      │  │  │
+│  │     │ Inputs: website type, query intent, briefHints,               │  │  │
+│  │     │         competitorAnalysis                                     │  │  │
 │  │     │ Returns: template with confidence score and reasoning          │  │  │
 │  │     └────────────────────────────────────────────────────────────────┘  │  │
 │  │                                                                          │  │
@@ -891,6 +1005,7 @@
 │  │     │  a) Build section prompt:                                      │  │  │
 │  │     │     • sectionPromptBuilder.ts                                  │  │  │
 │  │     │     • Includes: heading, content hints, EAVs                   │  │  │
+│  │     │     • Includes: sectionEavs (from briefSection.mapped_eavs)   │  │  │
 │  │     │     • Includes: flow guidance (position in article)            │  │  │
 │  │     │     • Includes: image placeholder instruction (if designated) │  │  │
 │  │     │                                                                │  │  │
@@ -1082,9 +1197,14 @@
 │  │    • Reinserts hero image placeholder from Pass 6                        │  │
 │  │    • Never places image between heading and first paragraph              │  │
 │  │                                                                          │  │
-│  │  NO CONCLUSION:                                                          │  │
-│  │    • User preference: "I really dislike conclusions. Only AI does that." │  │
-│  │    • Articles end with last substantive H2 section                       │  │
+│  │  CONCLUSION HANDLING (website-type configurable):                         │  │
+│  │    • Config: websiteTypeTemplates.ts → enableConclusion                  │  │
+│  │    • ECOMMERCE: true (CTA for conversions)                              │  │
+│  │    • SAAS: true (CTA for signups)                                       │  │
+│  │    • SERVICE_B2B: true (CTA for contact)                                │  │
+│  │    • INFORMATIONAL: false (no conclusion)                               │  │
+│  │    • AFFILIATE: true (CTA for affiliate links)                          │  │
+│  │    • When disabled: articles end with last substantive H2 section        │  │
 │  └──────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
 │  OUTPUT: Topic-specific introduction, hero image preserved, no conclusion       │
@@ -1147,38 +1267,51 @@
 │  │     • Entity frequency distribution                                      │  │
 │  │     • Semantic richness metrics                                          │  │
 │  │                                                                          │  │
-│  │  3. ALGORITHMIC AUDIT (30+ checks)                                       │  │
+│  │  3. ALGORITHMIC AUDIT (113+ rules across 18 categories)                  │  │
+│  │     Registry: rulesEngine/ruleRegistry.ts                               │  │
+│  │     Validators: rulesEngine/validators/index.ts                         │  │
+│  │                                                                          │  │
 │  │     ┌────────────────────────────────────────────────────────────────┐  │  │
-│  │     │ Language & Style:                                              │  │  │
-│  │     │   • Modality certainty                                         │  │  │
-│  │     │   • Stop word density                                          │  │  │
-│  │     │   • Subject positioning                                        │  │  │
-│  │     │   • Passive voice ratio                                        │  │  │
+│  │     │ VALIDATORS (25 implemented)                                    │  │  │
 │  │     │                                                                │  │  │
-│  │     │ Structure:                                                     │  │  │
-│  │     │   • Heading hierarchy (H1→H2→H3)                               │  │  │
-│  │     │   • Heading-entity alignment                                   │  │  │
-│  │     │   • Generic heading detection                                  │  │  │
+│  │     │ Pass 1 (minimal set):                                          │  │  │
+│  │     │   S1 LanguageOutputValidator    - content in correct language   │  │  │
+│  │     │      ProhibitedLanguageValidator - no AI-speak patterns        │  │  │
+│  │     │      WordCountValidator         - basic length requirements    │  │  │
+│  │     │      StructureValidator         - basic S-P-O structure        │  │  │
+│  │     │      EavPresenceValidator       - assigned EAVs appear (warn)  │  │  │
 │  │     │                                                                │  │  │
-│  │     │ Specificity:                                                   │  │  │
-│  │     │   • List count specificity                                     │  │  │
-│  │     │   • First sentence precision                                   │  │  │
+│  │     │ Pass 8+ (all validators):                                      │  │  │
+│  │     │      EAVDensityValidator        - EAV integration frequency    │  │  │
+│  │     │      ModalityValidator          - certainty calibration        │  │  │
+│  │     │      FormatCodeValidator        - FS/PAA/LIST format rules     │  │  │
+│  │     │      CenterpieceValidator       - centerpiece in first 100w   │  │  │
+│  │     │      CentralEntityFocusValidator - entity density (lenient)    │  │  │
+│  │     │      YMYLValidator              - YMYL disclaimers (if applic) │  │  │
+│  │     │      ContextualBridgeValidator  - bridge for SUPPLEMENTARY     │  │  │
+│  │     │      RepetitionValidator        - word/phrase repetition       │  │  │
+│  │     │      ContextualVectorValidator  - heading flow logic           │  │  │
+│  │     │      EavPerSentenceValidator    - one EAV per sentence         │  │  │
+│  │     │   C2 EavPlacementValidator      - UNIQUE first 300w, ROOT 500w│  │  │
+│  │     │   S3 PillarAlignmentValidator   - content aligns w/ pillars   │  │  │
+│  │     │      AttributeOrderingValidator - UNIQUE→ROOT→RARE→COMMON     │  │  │
+│  │     │   K4 ListStructureValidator     - 3-7 items, parallel struct  │  │  │
+│  │     │   L2 TableStructureValidator    - headers, dimensions, types  │  │  │
+│  │     │   H9 CrossSectionRepetitionValidator - no cross-section dups  │  │  │
+│  │     │   S4 ReadabilityValidator       - Flesch-Kincaid vs audience  │  │  │
+│  │     │   D5 DiscourseChainingValidator - sentence cohesion           │  │  │
+│  │     │      FactConsistencyValidator   - hallucination detection     │  │  │
+│  │     │      LinkInsertionValidator     - contextual bridge links     │  │  │
 │  │     │                                                                │  │  │
-│  │     │ Semantics:                                                     │  │  │
-│  │     │   • Pronoun density                                            │  │  │
-│  │     │   • Link positioning                                           │  │  │
-│  │     │   • Image placement                                            │  │  │
+│  │     │ Severity levels:                                               │  │  │
+│  │     │   • error   → blocks generation (triggers retry w/ fix)       │  │  │
+│  │     │   • warning → logged, included in audit score                 │  │  │
+│  │     │   • info    → informational, no score impact                  │  │  │
 │  │     │                                                                │  │  │
-│  │     │ Compliance:                                                    │  │  │
-│  │     │   • Template adherence                                         │  │  │
-│  │     │   • EAV density                                                │  │  │
-│  │     │   • Featured snippet targets                                   │  │  │
-│  │     │                                                                │  │  │
-│  │     │ LLM Detection:                                                 │  │  │
-│  │     │   • AI signature phrases                                       │  │  │
-│  │     │                                                                │  │  │
-│  │     │ YMYL Validation (if applicable):                               │  │  │
-│  │     │   • Medical/financial/legal compliance                         │  │  │
+│  │     │ Rule categories (A-S): Central Entity, Introduction, EAV,     │  │  │
+│  │     │   Sentence Structure, Headings, Paragraphs, Word Count,       │  │  │
+│  │     │   Vocabulary, Modality, YMYL, Lists, Tables, Images,          │  │  │
+│  │     │   Contextual Flow, Format Codes, Schema, Audit, Systemic      │  │  │
 │  │     └────────────────────────────────────────────────────────────────┘  │  │
 │  │                                                                          │  │
 │  │  4. COMPLIANCE SCORING                                                   │  │
@@ -1188,9 +1321,11 @@
 │  │     • Target: ≥85% compliance                                            │  │
 │  │                                                                          │  │
 │  │  5. CROSS-PAGE CONSISTENCY (Knowledge-Based Trust)                       │  │
-│  │     validateCrossPageEavConsistency():                                   │  │
-│  │     • Compare EAVs against other articles in map                         │  │
-│  │     • Detect contradictions: -2 points each, max -10                     │  │
+│  │     validateCrossPageEavConsistency()                                    │  │
+│  │     Validator: crossPageEavValidator.ts                                  │  │
+│  │     • Compares EAVs against other articles in map                        │  │
+│  │     • Detects contradictions: -2 points each, max -10 penalty            │  │
+│  │     • Returns: EavContradiction[], EavConsistencyWarning[]               │  │
 │  │                                                                          │  │
 │  │  6. FINAL SCORE CALCULATION                                              │  │
 │  │     ┌────────────────────────────────────────────────────────────────┐  │  │
@@ -1208,6 +1343,48 @@
 │  └──────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                 │
 │  OUTPUT: final_audit_score, audit_details, draft_content synced to brief        │
+└─────────────────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  QUALITY GATE SYSTEM                                                            │
+│  ─────────────────────────────────────────────────────────────────────────────  │
+│  File: pass8Audit.ts + useContentGeneration.ts + orchestrator.ts               │
+│                                                                                 │
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │  AUDIT OUTCOME ROUTING                                                  │  │
+│  │  ─────────────────────────────────────────────────────────────────────── │  │
+│  │                                                                          │  │
+│  │  Score ≥ 70%  → status: "completed" → Continue to Pass 10               │  │
+│  │  Score 50-69% → status: "completed" with warnings → Continue to Pass 10 │  │
+│  │  Score < 50%  → status: "audit_failed" → Quality gate blocks            │  │
+│  │                                                                          │  │
+│  │  ON audit_failed:                                                        │  │
+│  │    1. identifyRerunTarget(failingRules) maps rules → target pass:       │  │
+│  │       ┌──────────────────────────────────────────────────────────┐      │  │
+│  │       │ CENTERPIECE       → Pass 1                               │      │  │
+│  │       │ HEADING_HIERARCHY → Pass 2                               │      │  │
+│  │       │ LIST_LOGIC        → Pass 3                               │      │  │
+│  │       │ IMAGE_PLACEMENT   → Pass 6                               │      │  │
+│  │       │ EAV_DENSITY       → Pass 5                               │      │  │
+│  │       │ LLM_SIGNATURE     → Pass 5                               │      │  │
+│  │       │ WORD_COUNT        → Pass 1                               │      │  │
+│  │       │ LANGUAGE          → Pass 1                               │      │  │
+│  │       └──────────────────────────────────────────────────────────┘      │  │
+│  │       Returns: { targetPass, reason }                                   │  │
+│  │                                                                          │  │
+│  │    2. UI shows "Re-run from Pass X" button                              │  │
+│  │       Hook: useContentGeneration.ts → rerunFromPass(passNumber)         │  │
+│  │                                                                          │  │
+│  │    3. On re-run:                                                        │  │
+│  │       • orchestrator.rollbackSectionsToPass(jobId, rollbackTo)          │  │
+│  │         → Resets section content to state before target pass            │  │
+│  │       • Resets passes_status for target pass and all subsequent passes   │  │
+│  │       • Re-executes pipeline from target pass onward                    │  │
+│  │                                                                          │  │
+│  │    4. UI also provides "Approve Checkpoint" button                      │  │
+│  │       → Overrides quality gate, continues to Pass 10                    │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────────┘
          │
          ▼
@@ -1409,5 +1586,246 @@
 │  │  • Falls back to secondary on failure                                  │   │
 │  │  • Exponential backoff on retries                                      │   │
 │  └─────────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+# 4. POST-MAP DASHBOARD CAPABILITIES
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                       POST-MAP DASHBOARD CAPABILITIES                          │
+│  After topical map generation, the dashboard provides analysis & enrichment    │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  4a. TOPIC ENRICHMENT                                                          │
+│  ─────────────────────────────────────────────────────────────────────────────  │
+│  Hook: hooks/useTopicEnrichment.ts                                             │
+│  Component: ProjectDashboardContainer.tsx                                      │
+│                                                                                 │
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │  ENRICHMENT PHASES (sequential)                                         │  │
+│  │  ─────────────────────────────────────────────────────────────────────── │  │
+│  │                                                                          │  │
+│  │  Phase 1: METADATA ENRICHMENT                                           │  │
+│  │    Service: aiService.enrichTopicMetadata()                              │  │
+│  │    Adds: canonical_query, query_network, attribute_focus,                │  │
+│  │          query_type, topical_border_note, freshness, blueprint           │  │
+│  │    Processes in batches (chunk size configurable)                        │  │
+│  │                                                                          │  │
+│  │  Phase 2: SEARCH VOLUME INTEGRATION                                     │  │
+│  │    Service: serpApiService.ts → fetchKeywordSearchVolume()               │  │
+│  │    Source: DataForSEO API                                                │  │
+│  │    Adds: search_volume, keyword_difficulty to each topic                │  │
+│  │    Used for: Quality Node detection                                     │  │
+│  │                                                                          │  │
+│  │  Phase 3: EAV-TOPIC MATCHING                                            │  │
+│  │    Function: matchEavsToTopic(topic, eavs)                              │  │
+│  │    Method: Fuzzy word overlap between topic title and EAV subjects       │  │
+│  │    Adds: matched_eavs (SemanticTriple[]) for navigation relevance       │  │
+│  │                                                                          │  │
+│  │  Phase 4: BLUEPRINT GENERATION                                          │  │
+│  │    Hook: useTopicEnrichment → handleGenerateBlueprints()                │  │
+│  │    Generates structural guidance per topic                              │  │
+│  │    Based on: topic type, query intent, competitor patterns              │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  4b. QUERY NETWORK AUDIT (Competitive Gap Analysis)                            │
+│  ─────────────────────────────────────────────────────────────────────────────  │
+│  Service: services/ai/queryNetworkAudit.ts → runQueryNetworkAudit()            │
+│  Component: components/QueryNetworkAudit.tsx                                   │
+│  Hook: hooks/useCompetitorGapNetwork.ts                                        │
+│                                                                                 │
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │  PIPELINE STEPS                                                         │  │
+│  │  ─────────────────────────────────────────────────────────────────────── │  │
+│  │                                                                          │  │
+│  │  1. QUERY NETWORK GENERATION                                            │  │
+│  │     generateQueryNetwork(seedKeyword, businessInfo)                      │  │
+│  │     → 20+ related queries from seed keyword                             │  │
+│  │                                                                          │  │
+│  │  2. SERP FETCHING                                                       │  │
+│  │     fetchCompetitorData(query, businessInfo, maxCompetitors)             │  │
+│  │     → Top 10 results per query                                          │  │
+│  │     → Up to 5 queries analyzed                                          │  │
+│  │                                                                          │  │
+│  │  3. COMPETITOR EAV EXTRACTION                                           │  │
+│  │     extractCompetitorEAVs(url, businessInfo)                            │  │
+│  │     → Via Jina AI Reader API                                            │  │
+│  │     → Extracts Entity-Attribute-Value triples from competitor pages     │  │
+│  │                                                                          │  │
+│  │  4. CONTENT GAP ANALYSIS                                                │  │
+│  │     identifyContentGaps(ownEAVs, competitorEAVs)                        │  │
+│  │     → Compares your EAVs against competitors                            │  │
+│  │     → Identifies missing attributes and topics                          │  │
+│  │                                                                          │  │
+│  │  5. RECOMMENDATION GENERATION                                           │  │
+│  │     generateRecommendations(analysisResult)                             │  │
+│  │     → Actionable recommendations for content gaps                       │  │
+│  │     → Reports: Executive Summary + Technical Report                     │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+│  OUTPUT: QueryNetworkAnalysisResult = {                                        │
+│    contentGaps[], competitorEAVs[], recommendations[],                         │
+│    queryNetwork[], serpResults                                                  │
+│  }                                                                              │
+│  Visualization: CompetitorGapGraph.tsx (network visualization)                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  4c. SEMANTIC DISTANCE ANALYSIS                                                │
+│  ─────────────────────────────────────────────────────────────────────────────  │
+│  Component: components/SemanticDistanceMatrix.tsx                               │
+│  Service: lib/knowledgeGraph.ts + services/ai/clustering.ts                    │
+│                                                                                 │
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │  DISTANCE CALCULATION                                                   │  │
+│  │  ─────────────────────────────────────────────────────────────────────── │  │
+│  │                                                                          │  │
+│  │  Formula: distance = 1 - (CosineSimilarity × ContextWeight × CoOccur)   │  │
+│  │                                                                          │  │
+│  │  THRESHOLD BANDS:                                                       │  │
+│  │  ┌────────────────────────────────────────────────────────────────────┐ │  │
+│  │  │ < 0.2   → Cannibalization risk (topics too similar)               │ │  │
+│  │  │ 0.3-0.7 → Linking sweet spot (ideal for internal links)          │ │  │
+│  │  │ > 0.7   → Different clusters (separate topic areas)              │ │  │
+│  │  └────────────────────────────────────────────────────────────────────┘ │  │
+│  │                                                                          │  │
+│  │  HEATMAP VISUALIZATION:                                                 │  │
+│  │    • Interactive topic × topic distance matrix                          │  │
+│  │    • Color-coded by threshold bands                                     │  │
+│  │    • Tooltips: cosine similarity, context weight, co-occurrence         │  │
+│  │                                                                          │  │
+│  │  RELATED FUNCTIONS:                                                     │  │
+│  │    • findLinkingCandidates(entity) → entities in linking sweet spot     │  │
+│  │    • findCannibalizationRisks() → topic pairs with distance < 0.2      │  │
+│  │    • clusterTopicsSemanticDistance() → hierarchical agglomerative       │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+# 5. BRAND INTELLIGENCE & PUBLISHING FLOW
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                      BRAND INTELLIGENCE & PUBLISHING FLOW                      │
+│  Transforms article content into design-agency quality branded output          │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────┐
+│   USER ACTION    │
+│  "Style &        │
+│   Publish"       │
+└────────┬─────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  STEP 1: BRAND INTELLIGENCE DETECTION                                          │
+│  ─────────────────────────────────────────────────────────────────────────────  │
+│  Component: components/publishing/steps/BrandIntelligenceStep.tsx              │
+│                                                                                 │
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │  INPUT                                                                  │  │
+│  │  ─────────────────────────────────────────────────────────────────────── │  │
+│  │  • URL input → screenshot capture → AI design DNA extraction            │  │
+│  │                                                                          │  │
+│  │  AI EXTRACTS:                                                           │  │
+│  │    • Color palette (primary, secondary, accent, background)             │  │
+│  │    • Typography (font families, weights, sizes)                         │  │
+│  │    • Spacing density (compact, normal, spacious)                        │  │
+│  │                                                                          │  │
+│  │  USER ADJUSTS:                                                          │  │
+│  │    • Personality sliders (1-5 scale):                                   │  │
+│  │      - Formality (casual → formal)                                     │  │
+│  │      - Energy (calm → energetic)                                       │  │
+│  │      - Warmth (cold → warm)                                            │  │
+│  │                                                                          │  │
+│  │  OUTPUT: BrandDesignSystem                                              │  │
+│  │    → compiledCss: Complete CSS from brand analysis                      │  │
+│  │    → personality: { formality, energy, warmth }                         │  │
+│  │    → colors, typography, spacing                                        │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  STEP 2: LAYOUT BLUEPRINT GENERATION                                           │
+│  ─────────────────────────────────────────────────────────────────────────────  │
+│  Service: services/layout-engine/LayoutEngine.ts                               │
+│  Component: components/publishing/steps/LayoutIntelligenceStep.tsx             │
+│                                                                                 │
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │  LAYOUT PIPELINE                                                        │  │
+│  │  ─────────────────────────────────────────────────────────────────────── │  │
+│  │                                                                          │  │
+│  │  1. SECTION ANALYSIS (SectionAnalyzer.ts)                               │  │
+│  │     • Analyzes content sections                                         │  │
+│  │     • Calculates semantic weight (1-5) based on EAV attribute category: │  │
+│  │       UNIQUE=5, RARE=4, ROOT=3, COMMON=2, none=1                       │  │
+│  │     • Determines content type (text, list, table, comparison, etc.)     │  │
+│  │                                                                          │  │
+│  │  2. LAYOUT PLANNING (LayoutPlanner.ts)                                  │  │
+│  │     • Determines: width, columns, spacing based on semantic weight      │  │
+│  │     • Higher weight → wider layout, more visual prominence              │  │
+│  │                                                                          │  │
+│  │  3. COMPONENT SELECTION (ComponentSelector.ts)                          │  │
+│  │     • Two-factor: content type × brand personality                      │  │
+│  │     • FS protection constraints (featured snippet sections preserved)   │  │
+│  │     • Returns primary + alternative component suggestions               │  │
+│  │                                                                          │  │
+│  │  4. VISUAL EMPHASIS (VisualEmphasizer.ts)                               │  │
+│  │     • Maps weight to visual properties:                                 │  │
+│  │       5 → hero (largest headings, max padding, animations)              │  │
+│  │       4 → featured (prominent, highlighted background)                  │  │
+│  │       3 → standard (normal treatment)                                   │  │
+│  │       2 → supporting (reduced emphasis)                                 │  │
+│  │       1 → minimal (compact, low-key)                                    │  │
+│  │                                                                          │  │
+│  │  5. IMAGE HANDLING (ImageHandler.ts)                                    │  │
+│  │     • Semantic image placement                                          │  │
+│  │     • CRITICAL: never between heading and first paragraph               │  │
+│  │                                                                          │  │
+│  │  OUTPUT: LayoutBlueprint (complete article layout specification)        │  │
+│  │    → sections[]: BlueprintSection (layout + emphasis + component)        │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                 │
+│  UI: Section preview cards with emphasis indicators (SectionPreviewCard.tsx)   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  STEP 3: PREVIEW & BRAND ALIGNMENT                                             │
+│  ─────────────────────────────────────────────────────────────────────────────  │
+│  Component: components/publishing/steps/PreviewStep.tsx                        │
+│                                                                                 │
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │  • Real-time preview with brand CSS applied                             │  │
+│  │  • Toggle semantic layout engine on/off                                 │  │
+│  │  • BrandMatchIndicator.tsx: brand alignment score (0-100%)              │  │
+│  │  • User can adjust before final publication                             │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  STEP 4: PUBLICATION                                                           │
+│  ─────────────────────────────────────────────────────────────────────────────  │
+│  Component: StylePublishModal.tsx                                              │
+│  Renderer: services/publishing/renderer/blueprintRenderer.ts                   │
+│                                                                                 │
+│  ┌──────────────────────────────────────────────────────────────────────────┐  │
+│  │  • BrandDesignSystem.compiledCss applied to final output                │  │
+│  │  • Blueprint renderer generates final HTML                              │  │
+│  │  • Accepts brandDesignSystem option (falls back to legacy designTokens) │  │
+│  │  • Output: Publication-ready branded HTML with JSON-LD schema           │  │
+│  └──────────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```

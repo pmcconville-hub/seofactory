@@ -283,9 +283,13 @@ export async function executePass1(
         // Keep the heading in content - assembleDraft will detect and use it
       } else {
         log.warn(`[Pass1] AI didn't generate heading for ${section.key}, using fallback`);
-        // Fallback: use the section heading from the brief
-        // NO special "Key Takeaways" or other AI-typical fallbacks
-        finalHeading = section.heading;
+        // If heading is a placeholder, derive a proper heading from the topic
+        if (section.heading.startsWith('[GENERATE_HEADING:')) {
+          const topic = section.heading.match(/\[GENERATE_HEADING:[^:]+:(.+?)\]/)?.[1] || 'Introduction';
+          finalHeading = topic;
+        } else {
+          finalHeading = section.heading;
+        }
       }
     }
 

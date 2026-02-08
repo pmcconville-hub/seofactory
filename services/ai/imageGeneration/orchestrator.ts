@@ -40,21 +40,29 @@ export async function ensureClientReady(): Promise<boolean> {
   }
 
   try {
-    // Make a lightweight call to verify auth is ready
-    // This forces the SDK to complete any pending auth initialization
-    const { data, error } = await supabaseClientRef.auth.getSession();
+    // Refresh session to ensure token is valid for edge function calls
+    const { data, error } = await supabaseClientRef.auth.refreshSession();
 
     if (error) {
-      console.warn('[ImageOrchestrator] ensureClientReady: Auth check failed:', error.message);
-      return false;
+      console.warn('[ImageOrchestrator] ensureClientReady: Session refresh failed:', error.message);
+      // Fall back to checking existing session
+      const { data: sessionData } = await supabaseClientRef.auth.getSession();
+      if (!sessionData.session) {
+        console.warn('[ImageOrchestrator] ensureClientReady: No active session');
+        return false;
+      }
     }
 
-    if (!data.session) {
-      console.warn('[ImageOrchestrator] ensureClientReady: No active session');
-      return false;
+    if (!data?.session) {
+      // refreshSession failed but getSession might still have a valid cached session
+      const { data: sessionData } = await supabaseClientRef.auth.getSession();
+      if (!sessionData.session) {
+        console.warn('[ImageOrchestrator] ensureClientReady: No active session');
+        return false;
+      }
     }
 
-    console.log('[ImageOrchestrator] ensureClientReady: Client ready, session active');
+    console.log('[ImageOrchestrator] ensureClientReady: Client ready, session refreshed');
     return true;
   } catch (err) {
     console.warn('[ImageOrchestrator] ensureClientReady: Error checking auth:', err);

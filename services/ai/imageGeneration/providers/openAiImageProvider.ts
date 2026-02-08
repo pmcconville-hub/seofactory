@@ -114,6 +114,21 @@ async function generateViaProxy(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    // Force session refresh to ensure Authorization header is valid
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        clearTimeout(timeoutId);
+        return {
+          success: false,
+          error: 'Authentication expired. Please refresh the page and try again.',
+          provider: 'dall-e-3',
+          durationMs: Date.now() - startTime,
+        };
+      }
+    }
+
     const { data, error } = await supabase.functions.invoke('openai-image-proxy', {
       body: {
         prompt,

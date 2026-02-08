@@ -352,7 +352,11 @@
       "Bash(second time\" database error when the same entity appears multiple times\nin a single batch.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git -C \"D:\\\\www\\\\cost-of-retreival-reducer\" add docs/plans/2026-02-06-brief-generation-alignment.md)",
       "Bash(git -C \"D:\\\\www\\\\cost-of-retreival-reducer\" commit -m \"$\\(cat <<''EOF''\ndocs\\(plan\\): Brief → Generation Alignment implementation plan\n\n10-task TDD implementation plan to make Content Brief the single\nsource of truth for content generation:\n\n1. Add BriefChangeLogEntry types\n2. Create database migration\n3. Create BriefChangeTracker service\n4. Standardize section key format \\(section-0 not section_1\\)\n5. Enforce brief image plan in Pass 1\n6. Update Pass 4 for brief-led processing\n7. Wire change tracker in orchestrator\n8. Create GenerationChangesPanel UI\n9. Integrate panel in DraftingModal\n10. Wire tracker in useContentGeneration hook\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(git check-ignore:*)"
+      "Bash(git check-ignore:*)",
+      "Bash(del \"D:\\\\www\\\\cost-of-retreival-reducer\\\\services\\\\ai\\\\contentGeneration\\\\passes\\\\pass4Visuals.ts\")",
+      "Bash(del \"D:\\\\www\\\\cost-of-retreival-reducer\\\\services\\\\ai\\\\contentGeneration\\\\passes\\\\pass6Discourse.ts\")",
+      "Bash(git -C D:wwwcost-of-retreival-reducer status -u)",
+      "Bash(if not exist \"D:\\\\www\\\\cost-of-retreival-reducer\\\\services\\\\ai\\\\shared\" mkdir \"D:\\\\www\\\\cost-of-retreival-reducer\\\\services\\\\ai\\\\shared\")"
     ],
     "deny": [],
     "ask": []
