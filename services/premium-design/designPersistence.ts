@@ -75,7 +75,7 @@ export async function loadLatestDesign(
     .eq('topic_id', topicId)
     .order('version', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (error || !data) return null;
   return data as unknown as SavedPremiumDesign;
