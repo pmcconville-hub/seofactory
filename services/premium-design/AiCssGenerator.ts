@@ -151,66 +151,89 @@ Return ONLY CSS. No markdown fences. No explanations.`;
 
   extractSectionManifest(html: string): string {
     const lines: string[] = [];
-    const sectionRegex = /<section[^>]*data-section-id="([^"]*)"[^>]*>/gi;
-    let match;
 
-    const tocMatch = html.match(/data-toc-count="(\d+)"/);
-    const tocCount = tocMatch ? parseInt(tocMatch[1]) : 0;
-    if (tocCount > 0) {
-      lines.push(`TOC: ${tocCount} sections${html.includes('data-toc-compact') ? ' (compact 2-col)' : ''}`);
-    }
+    // ── PremiumHtmlRenderer class-based sections ──
+    // Matches: <section class="section emphasis-hero section-prose layout-wide ...">
+    const classBasedRegex = /<section\s+class="section\s+([^"]+)">/gi;
+    let classMatch;
+    let sectionIndex = 0;
 
-    // Also check for .ctc-* class-based sections (from PremiumHtmlRenderer)
-    const ctcSectionRegex = /class="ctc-section[^"]*"/gi;
-    const ctcMatches = html.match(ctcSectionRegex);
-    if (ctcMatches && ctcMatches.length > 0) {
-      lines.push(`Component sections: ${ctcMatches.length} (ctc-* class based)`);
-    }
+    while ((classMatch = classBasedRegex.exec(html)) !== null) {
+      const classes = classMatch[1];
+      const emphasisMatch = classes.match(/emphasis-(\w+)/);
+      const typeMatch = classes.match(/section-(\S+)/);
+      const layoutMatch = classes.match(/layout-(\w+)/);
 
-    while ((match = sectionRegex.exec(html)) !== null) {
-      const tag = match[0];
-      const indexMatch = tag.match(/data-section-index="(\d+)"/);
-      const index = indexMatch ? indexMatch[1] : '?';
-
-      const roleMatch = tag.match(/data-section-role="([^"]*)"/);
-      const weightMatch = tag.match(/data-semantic-weight="(\d)"/);
-      const emphasisMatch = tag.match(/data-emphasis="([^"]*)"/);
-      const zoneMatch = tag.match(/data-content-zone="([^"]*)"/);
-
-      const role = roleMatch ? roleMatch[1] : 'prose';
-      const weight = weightMatch ? weightMatch[1] : '3';
       const emphasis = emphasisMatch ? emphasisMatch[1] : 'standard';
-      const zone = zoneMatch ? zoneMatch[1] : 'MAIN';
+      const componentType = typeMatch ? typeMatch[1] : 'prose';
+      const layout = layoutMatch ? layoutMatch[1] : 'medium';
 
-      const sectionStart = match.index;
+      // Find heading in this section
+      const sectionStart = classMatch.index;
       const sectionEnd = html.indexOf('</section>', sectionStart);
       const sectionContent = sectionEnd > sectionStart ? html.substring(sectionStart, sectionEnd) : '';
-      const headingMatch = sectionContent.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
+      const headingMatch = sectionContent.match(/<h2[^>]*class="section-heading[^"]*"[^>]*>([\s\S]*?)<\/h2>/i);
       const headingText = headingMatch ? headingMatch[1].replace(/<[^>]+>/g, '').trim() : '';
 
-      const hooks: string[] = [];
-      if (sectionContent.includes('data-feature-grid')) hooks.push('feature-grid');
-      if (sectionContent.includes('data-pull-quote')) hooks.push('pull-quote');
-      if (sectionContent.includes('data-step-list')) hooks.push('step-list');
-      if (sectionContent.includes('data-highlight-box')) hooks.push('highlight-box');
-      if (sectionContent.includes('data-comparison-table')) hooks.push('comparison-table');
-      if (sectionContent.includes('data-intro-text')) hooks.push('intro-text');
+      // Detect component types used within
+      const components: string[] = [];
+      if (sectionContent.includes('feature-grid')) components.push('feature-grid');
+      if (sectionContent.includes('step-list')) components.push('step-list');
+      if (sectionContent.includes('faq-accordion')) components.push('faq-accordion');
+      if (sectionContent.includes('timeline')) components.push('timeline');
+      if (sectionContent.includes('comparison-table')) components.push('comparison-table');
+      if (sectionContent.includes('key-takeaways')) components.push('key-takeaways');
+      if (sectionContent.includes('checklist')) components.push('checklist');
+      if (sectionContent.includes('stat-grid')) components.push('stat-grid');
+      if (sectionContent.includes('testimonial-card')) components.push('testimonial');
 
-      const hookStr = hooks.length > 0 ? ` {${hooks.join(', ')}}` : '';
-      const zoneStr = zone !== 'MAIN' ? ` zone:${zone}` : '';
+      const compStr = components.length > 0 ? ` {${components.join(', ')}}` : '';
 
-      let line = `#${index} "${headingText}" [${role}] weight:${weight}/5 emphasis:${emphasis}${zoneStr}${hookStr}`;
-
-      const suggestion = this.getDesignSuggestion(role, emphasis);
-      if (suggestion) {
-        line += `\n   -> ${suggestion}`;
-      }
-
+      let line = `#${sectionIndex} "${headingText}" [${componentType}] emphasis:${emphasis} layout:${layout}${compStr}`;
+      const suggestion = this.getDesignSuggestion(componentType, emphasis);
+      if (suggestion) line += `\n   -> ${suggestion}`;
       lines.push(line);
+      sectionIndex++;
     }
 
-    if (html.includes('data-content-type="cta"') || html.includes('ctc-cta-banner')) {
-      lines.push('#cta [cta] weight:3/5 emphasis:featured\n   -> Full-width CTA banner with prominent button');
+    // ── Fallback: SemanticHtmlGenerator data-attribute sections ──
+    if (sectionIndex === 0) {
+      const dataRegex = /<section[^>]*data-section-id="([^"]*)"[^>]*>/gi;
+      let match;
+      while ((match = dataRegex.exec(html)) !== null) {
+        const tag = match[0];
+        const indexMatch = tag.match(/data-section-index="(\d+)"/);
+        const index = indexMatch ? indexMatch[1] : '?';
+        const roleMatch = tag.match(/data-section-role="([^"]*)"/);
+        const weightMatch = tag.match(/data-semantic-weight="([\d.]+)"/);
+        const emphasisMatch = tag.match(/data-emphasis="([^"]*)"/);
+
+        const role = roleMatch ? roleMatch[1] : 'prose';
+        const weight = weightMatch ? weightMatch[1] : '3';
+        const emphasis = emphasisMatch ? emphasisMatch[1] : 'standard';
+
+        const sectionStart = match.index;
+        const sectionEnd = html.indexOf('</section>', sectionStart);
+        const sectionContent = sectionEnd > sectionStart ? html.substring(sectionStart, sectionEnd) : '';
+        const headingMatch = sectionContent.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
+        const headingText = headingMatch ? headingMatch[1].replace(/<[^>]+>/g, '').trim() : '';
+
+        let line = `#${index} "${headingText}" [${role}] weight:${weight}/5 emphasis:${emphasis}`;
+        const suggestion = this.getDesignSuggestion(role, emphasis);
+        if (suggestion) line += `\n   -> ${suggestion}`;
+        lines.push(line);
+      }
+    }
+
+    // TOC detection
+    if (html.includes('article-toc') || html.includes('class="toc"')) {
+      const tocLinks = (html.match(/<a[^>]*href="#[^"]*"[^>]*>/gi) || []).length;
+      lines.unshift(`TOC: ${tocLinks} section links`);
+    }
+
+    // CTA detection
+    if (html.includes('cta-banner') || html.includes('data-content-type="cta"')) {
+      lines.push('#cta [cta] emphasis:featured\n   -> Full-width CTA banner with prominent button');
     }
 
     return lines.length > 0 ? lines.join('\n') : 'No sections detected';

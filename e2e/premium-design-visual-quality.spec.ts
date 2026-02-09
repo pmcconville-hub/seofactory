@@ -566,4 +566,189 @@ ${componentCss}
       fullPage: true,
     });
   });
+
+  // ===================================================================
+  // PART F: CSS refinement does NOT strip ComponentStyles
+  // ===================================================================
+  test('ComponentStyles survive CSS refinement — simulated iteration 2-3', async ({ page }) => {
+    const { PremiumHtmlRenderer } = await import('../services/premium-design/PremiumHtmlRenderer');
+    const { LayoutEngine } = await import('../services/layout-engine/LayoutEngine');
+    const { generateComponentStyles } = await import(
+      '../services/publishing/renderer/ComponentStyles'
+    );
+
+    const blueprint = LayoutEngine.generateBlueprint(SAMPLE_MARKDOWN, undefined, undefined, {
+      topicTitle: 'Penetratietesten',
+      mainIntent: 'Wat is penetratietesten',
+    });
+    const html = PremiumHtmlRenderer.render(
+      blueprint, SAMPLE_MARKDOWN, 'Pentest Gids',
+      undefined,
+      { ctaText: 'Vraag een pentest aan', ctaUrl: 'https://example.com/contact' }
+    );
+
+    const componentCss = generateComponentStyles({
+      primaryColor: '#e65100', primaryDark: '#bf360c', secondaryColor: '#37474f',
+      accentColor: '#ff6d00', textColor: '#212121', textMuted: '#757575',
+      backgroundColor: '#ffffff', surfaceColor: '#fafafa', borderColor: '#e0e0e0',
+      headingFont: '"Inter", sans-serif', bodyFont: '"Inter", sans-serif',
+      radiusSmall: '4px', radiusMedium: '8px', radiusLarge: '12px', personality: 'corporate',
+    });
+
+    // Simulate what happens in production after refineCss() replaces brand CSS:
+    // Iteration 1: brandCss = full brand CSS
+    // Iteration 2+: AI replaces brandCss with something minimal
+    // ComponentStyles must ALWAYS be preserved
+    const simulatedRefinedBrandCss = `
+      /* AI-refined brand CSS — minimal output typical of vision model */
+      :root { --primary: #e65100; --secondary: #37474f; }
+      body { font-family: "Inter", sans-serif; color: #212121; }
+      h1, h2, h3 { color: #37474f; }
+    `;
+
+    // This is what the orchestrator now does: brandCss + componentStyles
+    const assembledCss = simulatedRefinedBrandCss + '\n\n' + componentCss;
+
+    await page.setViewportSize({ width: 1200, height: 900 });
+    await page.setContent(`<!DOCTYPE html>
+<html><head><style>
+body { margin: 0; }
+${assembledCss}
+</style></head>
+<body>${html}</body></html>`);
+    await page.waitForTimeout(300);
+
+    // Even after CSS refinement, components MUST still be styled
+    const metrics = await page.evaluate(() => {
+      let shadows = 0, backgrounds = 0, radiuses = 0;
+      document.querySelectorAll('*').forEach(el => {
+        const s = window.getComputedStyle(el);
+        if (s.boxShadow !== 'none') shadows++;
+        if (s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== 'rgb(255, 255, 255)') backgrounds++;
+        if (parseFloat(s.borderRadius) > 0) radiuses++;
+      });
+      const featureCards = document.querySelectorAll('.feature-card').length;
+      const stepItems = document.querySelectorAll('.step-item').length;
+      const sections = document.querySelectorAll('.section').length;
+      const cta = document.querySelector('.cta-banner');
+      const toc = document.querySelector('.article-toc');
+      const hero = document.querySelector('.article-header');
+      return { shadows, backgrounds, radiuses, featureCards, stepItems, sections, hasCta: !!cta, hasToc: !!toc, hasHero: !!hero };
+    });
+
+    console.log('[Refinement Survival] Metrics after simulated refinement:', metrics);
+
+    // ComponentStyles MUST still produce visual depth even after brand CSS replacement
+    expect(metrics.backgrounds).toBeGreaterThanOrEqual(2);
+    expect(metrics.radiuses).toBeGreaterThanOrEqual(3);
+    expect(metrics.sections).toBeGreaterThanOrEqual(4);
+    expect(metrics.hasHero).toBeTruthy();
+    expect(metrics.hasToc).toBeTruthy();
+    expect(metrics.hasCta).toBeTruthy();
+
+    await page.screenshot({
+      path: 'test-results/premium-design-after-refinement.png',
+      fullPage: true,
+    });
+  });
+
+  // ===================================================================
+  // PART G: buildFinalDocument produces self-contained styled HTML
+  // ===================================================================
+  test('buildFinalDocument output is fully styled in isolation', async ({ page }) => {
+    const { PremiumHtmlRenderer } = await import('../services/premium-design/PremiumHtmlRenderer');
+    const { LayoutEngine } = await import('../services/layout-engine/LayoutEngine');
+    const { generateComponentStyles } = await import(
+      '../services/publishing/renderer/ComponentStyles'
+    );
+
+    const blueprint = LayoutEngine.generateBlueprint(SAMPLE_MARKDOWN);
+    const html = PremiumHtmlRenderer.render(
+      blueprint, SAMPLE_MARKDOWN, 'De Complete Gids voor Penetratietesten',
+      undefined,
+      { ctaText: 'Vraag een pentest aan', ctaUrl: 'https://example.com/contact' }
+    );
+    const componentCss = generateComponentStyles({ personality: 'corporate' });
+
+    // Simulate buildFinalDocument output — a complete HTML document
+    const finalDocument = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>De Complete Gids voor Penetratietesten</title>
+<style>
+/* Brand CSS */
+:root { --primary: #e65100; --secondary: #37474f; }
+body { font-family: "Inter", system-ui, sans-serif; margin: 0; color: #212121; }
+
+/* Component Styles */
+${componentCss}
+</style>
+</head>
+<body>
+${html}
+</body>
+</html>`;
+
+    // Load as a complete document (like the iframe srcDoc would)
+    await page.setViewportSize({ width: 1200, height: 900 });
+    await page.setContent(finalDocument);
+    await page.waitForTimeout(500);
+
+    // This output must look professional — this is what users actually see
+    const quality = await page.evaluate(() => {
+      const hero = document.querySelector('.article-header');
+      const heroH1 = hero?.querySelector('h1');
+      const toc = document.querySelector('.article-toc');
+      const sections = document.querySelectorAll('.section');
+      const cta = document.querySelector('.cta-banner');
+      const ctaLink = cta?.querySelector('a');
+
+      let totalShadows = 0, totalBgs = 0, totalRadius = 0;
+      document.querySelectorAll('*').forEach(el => {
+        const s = window.getComputedStyle(el);
+        if (s.boxShadow !== 'none') totalShadows++;
+        if (s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== 'rgb(255, 255, 255)') totalBgs++;
+        if (parseFloat(s.borderRadius) > 0) totalRadius++;
+      });
+
+      return {
+        hasHero: !!hero,
+        heroH1Size: heroH1 ? parseFloat(window.getComputedStyle(heroH1).fontSize) : 0,
+        hasToc: !!toc,
+        tocLinks: toc ? toc.querySelectorAll('a').length : 0,
+        sectionCount: sections.length,
+        hasCta: !!cta,
+        hasCtaLink: !!ctaLink,
+        totalShadows,
+        totalBgs,
+        totalRadius,
+        bodyOverflow: document.body.scrollWidth > document.body.clientWidth + 10,
+      };
+    });
+
+    console.log('[Final Document Quality]:', quality);
+
+    // Must have all structural components
+    expect(quality.hasHero).toBeTruthy();
+    expect(quality.heroH1Size).toBeGreaterThanOrEqual(28);
+    expect(quality.hasToc).toBeTruthy();
+    expect(quality.tocLinks).toBeGreaterThanOrEqual(3);
+    expect(quality.sectionCount).toBeGreaterThanOrEqual(4);
+    expect(quality.hasCta).toBeTruthy();
+    expect(quality.hasCtaLink).toBeTruthy();
+
+    // Must have visual depth (not plain text)
+    expect(quality.totalBgs).toBeGreaterThanOrEqual(3);
+    expect(quality.totalRadius).toBeGreaterThanOrEqual(3);
+
+    // No overflow
+    expect(quality.bodyOverflow).toBeFalsy();
+
+    await page.screenshot({
+      path: 'test-results/premium-design-final-document.png',
+      fullPage: true,
+    });
+  });
 });

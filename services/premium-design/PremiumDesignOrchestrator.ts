@@ -235,11 +235,15 @@ export class PremiumDesignOrchestrator {
       emit();
 
       // ── Step 4: CSS → Render → Validate → Iterate ──
-      // CRITICAL: Always include ComponentStyles CSS — it provides the visual
-      // styling for all component class names (.section, .prose, .feature-grid,
-      // .step-list, .faq-accordion, .timeline, .card, .cta-banner, etc.)
-      // used by PremiumHtmlRenderer.
+      // CRITICAL: ComponentStyles CSS provides ALL visual styling for component
+      // class names (.section, .prose, .feature-grid, .step-list, .faq-accordion,
+      // .timeline, .card, .cta-banner, etc.) used by PremiumHtmlRenderer.
+      // It must NEVER be lost or sent to AI for refinement.
+      //
+      // Strategy: Track brandCss separately. Only send brandCss to AI for
+      // refinement. Always assemble: currentCss = brandCss + componentStylesCss.
       const componentStylesCss = this.generateComponentStylesCss(session.designDna);
+      let currentBrandCss = '';
       let currentCss = '';
 
       for (let iteration = 1; iteration <= this.config.maxIterations; iteration++) {
@@ -250,36 +254,27 @@ export class PremiumDesignOrchestrator {
         emit();
 
         if (iteration === 1) {
-          // First iteration: use BrandDesignSystem CSS + ComponentStyles
-          let brandCss = '';
+          // First iteration: use BrandDesignSystem CSS
           if (session.brandDesignSystem) {
-            brandCss = this.cssGenerator.getInitialCssFromBrandSystem(
+            currentBrandCss = this.cssGenerator.getInitialCssFromBrandSystem(
               session.brandDesignSystem,
               session.crawledCssTokens.googleFontsUrl
             );
           } else {
             // Legacy fallback
-            brandCss = await this.cssGenerator.generateInitialCssLegacy(
+            currentBrandCss = await this.cssGenerator.generateInitialCssLegacy(
               session.targetScreenshot,
               session.crawledCssTokens,
               session.articleHtml,
               businessContext
             );
           }
-
-          // Assemble complete CSS: Brand CSS first (variables, base),
-          // then ComponentStyles (visual components) which takes precedence
-          currentCss = brandCss + '\n\n/* ============================================\n   Component Styles - Visual Components\n   (.article-header, .section, .prose, .feature-grid,\n    .step-list, .faq-accordion, .timeline, .card, etc.)\n   ============================================ */\n\n' + componentStylesCss;
-          console.log('[PremiumDesignOrchestrator] CSS assembled:', {
-            brandCssLength: brandCss.length,
-            componentStylesLength: componentStylesCss.length,
-            totalCssLength: currentCss.length,
-          });
         } else {
-          // Subsequent iterations: refine CSS with DesignDNA context
+          // Subsequent iterations: refine ONLY the brand CSS (NOT ComponentStyles)
+          // ComponentStyles is immutable production CSS — never send to AI
           const lastIteration = session.iterations[session.iterations.length - 1];
-          currentCss = await this.cssGenerator.refineCss(
-            currentCss,
+          currentBrandCss = await this.cssGenerator.refineCss(
+            currentBrandCss,
             session.targetScreenshot,
             lastIteration.screenshotBase64,
             lastIteration.validationResult,
@@ -288,6 +283,14 @@ export class PremiumDesignOrchestrator {
             session.designDna
           );
         }
+
+        // Always assemble: brand CSS + immutable ComponentStyles
+        currentCss = currentBrandCss + '\n\n/* ============================================\n   Component Styles - Visual Components\n   (.article-header, .section, .prose, .feature-grid,\n    .step-list, .faq-accordion, .timeline, .card, etc.)\n   ============================================ */\n\n' + componentStylesCss;
+        console.log('[PremiumDesignOrchestrator] CSS assembled (iteration ' + iteration + '):', {
+          brandCssLength: currentBrandCss.length,
+          componentStylesLength: componentStylesCss.length,
+          totalCssLength: currentCss.length,
+        });
 
         // Render output
         session.status = 'rendering';
