@@ -60,6 +60,8 @@ export interface PremiumDesignConfig {
   apiKey: string;
   model?: string;
   apifyToken?: string;
+  /** Proxy config for Apify calls — routes through Supabase fetch-proxy to avoid CORS */
+  proxyConfig?: { supabaseUrl: string; supabaseAnonKey: string };
 }
 
 export interface BusinessContext {

@@ -454,12 +454,13 @@ export class PremiumDesignOrchestrator {
 
   /**
    * Capture target website using BrandDiscoveryService.
+   * Routes through Supabase fetch-proxy to avoid CORS when proxyConfig is provided.
    */
   private async captureTarget(url: string) {
     if (!this.config.apifyToken) {
       throw new Error('Apify API token is required for website capture. Add it in Settings.');
     }
-    return BrandDiscoveryService.analyze(url, this.config.apifyToken);
+    return BrandDiscoveryService.analyze(url, this.config.apifyToken, this.config.proxyConfig);
   }
 
   /**

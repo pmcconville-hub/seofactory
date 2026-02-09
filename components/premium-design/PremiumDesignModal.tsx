@@ -392,6 +392,9 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
       aiProvider: provider,
       apiKey,
       apifyToken: bi?.apifyToken || '',
+      proxyConfig: bi?.supabaseUrl && bi?.supabaseAnonKey
+        ? { supabaseUrl: bi.supabaseUrl, supabaseAnonKey: bi.supabaseAnonKey }
+        : undefined,
     };
 
     if (!config.apifyToken) {
