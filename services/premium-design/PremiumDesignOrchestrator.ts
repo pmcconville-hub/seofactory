@@ -38,6 +38,40 @@ import type {
 } from './types';
 import type { BriefSection } from '../../types';
 
+// =============================================================================
+// CSS LAYER HELPER
+// =============================================================================
+
+/**
+ * Wrap CSS in a @layer declaration so it has lower cascade priority than
+ * unlayered styles. Extracts @import rules (which cannot appear inside @layer)
+ * and places them before the layer block.
+ *
+ * Also strips !important declarations from the CSS. In CSS Cascade Layers,
+ * !important rules have INVERTED priority: layered !important beats unlayered
+ * normal styles. Since brand CSS may be AI-generated and contain !important,
+ * we must strip them to ensure ComponentStyles (unlayered) always wins.
+ */
+function wrapInCssLayer(css: string, layerName: string): string {
+  // Strip !important to prevent cascade inversion
+  let cleaned = css.replace(/\s*!important/gi, '');
+
+  const lines = cleaned.split('\n');
+  const imports: string[] = [];
+  const rest: string[] = [];
+
+  for (const line of lines) {
+    if (line.trim().startsWith('@import')) {
+      imports.push(line);
+    } else {
+      rest.push(line);
+    }
+  }
+
+  const importsBlock = imports.length > 0 ? imports.join('\n') + '\n\n' : '';
+  return `${importsBlock}@layer ${layerName} {\n${rest.join('\n')}\n}`;
+}
+
 export type ProgressCallback = (session: PremiumDesignSession) => void;
 
 export interface PersistenceOptions {
@@ -284,8 +318,13 @@ export class PremiumDesignOrchestrator {
           );
         }
 
-        // Always assemble: brand CSS + immutable ComponentStyles
-        currentCss = currentBrandCss + '\n\n/* ============================================\n   Component Styles - Visual Components\n   (.article-header, .section, .prose, .feature-grid,\n    .step-list, .faq-accordion, .timeline, .card, etc.)\n   ============================================ */\n\n' + componentStylesCss;
+        // Always assemble: brand CSS (layered) + ComponentStyles (unlayered = highest priority)
+        // CSS @layer ensures ComponentStyles ALWAYS wins over brand CSS regardless of
+        // selector specificity. BrandDesignSystemGenerator generates CSS targeting the same
+        // selectors (.section, .article-header, .feature-grid, etc.) and may use higher-
+        // specificity selectors that would otherwise override ComponentStyles.
+        const layeredBrandCss = wrapInCssLayer(currentBrandCss, 'brand');
+        currentCss = layeredBrandCss + '\n\n' + componentStylesCss;
         console.log('[PremiumDesignOrchestrator] CSS assembled (iteration ' + iteration + '):', {
           brandCssLength: currentBrandCss.length,
           componentStylesLength: componentStylesCss.length,

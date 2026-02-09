@@ -599,6 +599,9 @@ ${componentCss}
     // Iteration 1: brandCss = full brand CSS
     // Iteration 2+: AI replaces brandCss with something minimal
     // ComponentStyles must ALWAYS be preserved
+    //
+    // IMPORTANT: Orchestrator wraps brand CSS in @layer brand { ... }
+    // so ComponentStyles (unlayered) always wins the cascade.
     const simulatedRefinedBrandCss = `
       /* AI-refined brand CSS — minimal output typical of vision model */
       :root { --primary: #e65100; --secondary: #37474f; }
@@ -606,8 +609,8 @@ ${componentCss}
       h1, h2, h3 { color: #37474f; }
     `;
 
-    // This is what the orchestrator now does: brandCss + componentStyles
-    const assembledCss = simulatedRefinedBrandCss + '\n\n' + componentCss;
+    // This is what the orchestrator now does: @layer brand { brandCss } + componentStyles
+    const assembledCss = `@layer brand {\n${simulatedRefinedBrandCss}\n}\n\n` + componentCss;
 
     await page.setViewportSize({ width: 1200, height: 900 });
     await page.setContent(`<!DOCTYPE html>
@@ -678,11 +681,13 @@ ${assembledCss}
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>De Complete Gids voor Penetratietesten</title>
 <style>
-/* Brand CSS */
-:root { --primary: #e65100; --secondary: #37474f; }
-body { font-family: "Inter", system-ui, sans-serif; margin: 0; color: #212121; }
+/* Brand CSS — wrapped in @layer so ComponentStyles always wins */
+@layer brand {
+  :root { --primary: #e65100; --secondary: #37474f; }
+  body { font-family: "Inter", system-ui, sans-serif; margin: 0; color: #212121; }
+}
 
-/* Component Styles */
+/* Component Styles (unlayered = highest cascade priority) */
 ${componentCss}
 </style>
 </head>
@@ -750,5 +755,274 @@ ${html}
       path: 'test-results/premium-design-final-document.png',
       fullPage: true,
     });
+  });
+
+  // ===================================================================
+  // PART H: @layer protects ComponentStyles from aggressive brand CSS
+  // ===================================================================
+  // This is the CRITICAL test: BrandDesignSystemGenerator produces CSS
+  // with dual selectors (.ctc-* AND non-prefixed) that target the SAME
+  // class names as ComponentStyles. Without @layer, brand CSS with higher
+  // specificity would override ComponentStyles, producing unstyled output.
+  test('CSS @layer prevents brand CSS from overriding ComponentStyles', async ({ page }) => {
+    const { PremiumHtmlRenderer } = await import('../services/premium-design/PremiumHtmlRenderer');
+    const { LayoutEngine } = await import('../services/layout-engine/LayoutEngine');
+    const { generateComponentStyles } = await import(
+      '../services/publishing/renderer/ComponentStyles'
+    );
+
+    const blueprint = LayoutEngine.generateBlueprint(SAMPLE_MARKDOWN, undefined, undefined, {
+      topicTitle: 'Penetratietesten',
+      mainIntent: 'Wat is penetratietesten',
+    });
+    const html = PremiumHtmlRenderer.render(
+      blueprint, SAMPLE_MARKDOWN, 'De Complete Gids voor Penetratietesten',
+      undefined,
+      { ctaText: 'Vraag een pentest aan', ctaUrl: 'https://example.com/contact' } as any
+    );
+
+    const componentCss = generateComponentStyles({
+      primaryColor: '#e65100', primaryDark: '#bf360c', secondaryColor: '#37474f',
+      accentColor: '#ff6d00', textColor: '#212121', textMuted: '#757575',
+      backgroundColor: '#ffffff', surfaceColor: '#fafafa', borderColor: '#e0e0e0',
+      headingFont: '"Inter", sans-serif', bodyFont: '"Inter", sans-serif',
+      radiusSmall: '4px', radiusMedium: '8px', radiusLarge: '12px', personality: 'corporate',
+    });
+
+    // Simulate REALISTIC brand CSS from BrandDesignSystemGenerator.
+    // This is what the AI generates: dual selectors, high specificity,
+    // targeting the SAME classes as ComponentStyles. WITHOUT @layer,
+    // these would override ComponentStyles and break visual styling.
+    const aggressiveBrandCss = `
+      :root {
+        --ctc-primary: #e65100;
+        --ctc-primary-dark: #bf360c;
+        --ctc-secondary: #37474f;
+        --ctc-accent: #ff6d00;
+        --ctc-neutral-darkest: #212121;
+        --ctc-neutral-lightest: #fafafa;
+        --ctc-font-heading: "Inter", sans-serif;
+        --ctc-font-body: "Inter", sans-serif;
+        --ctc-radius-sm: 4px;
+        --ctc-radius-md: 8px;
+        --ctc-radius-lg: 12px;
+      }
+
+      /* Brand CSS targets the SAME selectors as ComponentStyles */
+      /* These would override ComponentStyles if not layered */
+
+      .styled-article .article-header {
+        background: white;
+        padding: 20px;
+        border: none;
+      }
+
+      .styled-article .section-heading {
+        color: var(--ctc-secondary);
+        font-size: 1.1rem;
+        font-weight: 400;
+      }
+
+      .styled-article .section {
+        padding: 5px 0;
+        background: white;
+      }
+
+      .ctc-card, .card, .feature-card {
+        background: white;
+        border: none;
+        box-shadow: none;
+        padding: 5px;
+        border-radius: 0;
+      }
+
+      .ctc-timeline, .timeline {
+        padding: 0;
+        border: none;
+      }
+
+      .ctc-timeline::before, .timeline::before {
+        display: none;
+      }
+
+      .ctc-faq, .faq-accordion {
+        background: white;
+        border: none;
+      }
+
+      .ctc-cta, .cta-banner {
+        background: white;
+        padding: 5px;
+        text-align: left;
+      }
+
+      .styled-article .section-container {
+        max-width: 100%;
+        padding: 0;
+        background: transparent;
+        box-shadow: none;
+        border-radius: 0;
+      }
+
+      .styled-article .article-toc {
+        border: none;
+        background: transparent;
+        padding: 0;
+      }
+
+      .styled-article .prose {
+        font-size: 14px;
+        line-height: 1.4;
+      }
+
+      .step-list .step-item {
+        background: white;
+        border: none;
+        padding: 0;
+        border-radius: 0;
+      }
+
+      .step-number {
+        background: transparent;
+        color: inherit;
+        border: none;
+        box-shadow: none;
+      }
+    `;
+
+    // ---- TEST 1: WITHOUT @layer — brand CSS overrides ComponentStyles ----
+    await page.setViewportSize({ width: 1200, height: 900 });
+    await page.setContent(`<!DOCTYPE html>
+<html><head><style>
+body { margin: 0; }
+/* Brand CSS — NOT layered (BROKEN behavior) */
+${aggressiveBrandCss}
+/* ComponentStyles */
+${componentCss}
+</style></head>
+<body>${html}</body></html>`);
+    await page.waitForTimeout(300);
+
+    const brokenMetrics = await page.evaluate(() => {
+      let styledCards = 0, styledTimelines = 0;
+      const featureCards = document.querySelectorAll('.feature-card');
+      featureCards.forEach(el => {
+        const s = window.getComputedStyle(el);
+        if (parseFloat(s.borderRadius) > 2 || s.boxShadow !== 'none') styledCards++;
+      });
+      const timelineMarkers = document.querySelectorAll('.timeline-number');
+      timelineMarkers.forEach(el => {
+        const s = window.getComputedStyle(el);
+        if (s.background.includes('gradient') || s.backgroundColor !== 'rgba(0, 0, 0, 0)') styledTimelines++;
+      });
+      const hero = document.querySelector('.article-header') as HTMLElement;
+      const heroStyle = hero ? window.getComputedStyle(hero) : null;
+      return {
+        styledCards,
+        styledTimelines,
+        heroBg: heroStyle?.background || '',
+        heroHasGradient: heroStyle?.background?.includes('gradient') || false,
+        heroPadding: heroStyle ? parseFloat(heroStyle.paddingTop) : 0,
+      };
+    });
+
+    await page.screenshot({
+      path: 'test-results/premium-design-WITHOUT-layer-BROKEN.png',
+      fullPage: true,
+    });
+
+    console.log('[WITHOUT @layer] Metrics (should be broken):', brokenMetrics);
+
+    // The hero should be BROKEN without @layer — white background because
+    // .styled-article .article-header (specificity 0,2,0) beats .article-header (0,1,0)
+    // ComponentStyles can't win against higher-specificity brand CSS.
+    // NOTE: feature cards may still be styled because ComponentStyles comes last and
+    // the brand CSS uses equal specificity for .feature-card. The hero is the critical test.
+
+    // ---- TEST 2: WITH @layer — ComponentStyles always wins ----
+    await page.setContent(`<!DOCTYPE html>
+<html><head><style>
+body { margin: 0; }
+/* Brand CSS — wrapped in @layer (FIXED behavior) */
+@layer brand {
+${aggressiveBrandCss}
+}
+/* ComponentStyles (unlayered = highest cascade priority) */
+${componentCss}
+</style></head>
+<body>${html}</body></html>`);
+    await page.waitForTimeout(300);
+
+    const fixedMetrics = await page.evaluate(() => {
+      let styledCards = 0, styledTimelines = 0, styledSections = 0;
+      const featureCards = document.querySelectorAll('.feature-card');
+      featureCards.forEach(el => {
+        const s = window.getComputedStyle(el);
+        if (parseFloat(s.borderRadius) > 2 || s.boxShadow !== 'none') styledCards++;
+      });
+      const timelineMarkers = document.querySelectorAll('.timeline-number');
+      timelineMarkers.forEach(el => {
+        const s = window.getComputedStyle(el);
+        if (s.background.includes('gradient') || s.backgroundColor !== 'rgba(0, 0, 0, 0)') styledTimelines++;
+      });
+      const sections = document.querySelectorAll('.section');
+      sections.forEach(el => {
+        const s = window.getComputedStyle(el);
+        if (parseFloat(s.paddingTop) > 10) styledSections++;
+      });
+      const hero = document.querySelector('.article-header') as HTMLElement;
+      const heroStyle = hero ? window.getComputedStyle(hero) : null;
+      const toc = document.querySelector('.article-toc') as HTMLElement;
+      const tocStyle = toc ? window.getComputedStyle(toc) : null;
+      const cta = document.querySelector('.cta-banner') as HTMLElement;
+      const ctaStyle = cta ? window.getComputedStyle(cta) : null;
+
+      let totalShadows = 0, totalBgs = 0, totalRadius = 0;
+      document.querySelectorAll('*').forEach(el => {
+        const s = window.getComputedStyle(el);
+        if (s.boxShadow !== 'none') totalShadows++;
+        if (s.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.backgroundColor !== 'rgb(255, 255, 255)') totalBgs++;
+        if (parseFloat(s.borderRadius) > 0) totalRadius++;
+      });
+
+      return {
+        styledCards,
+        styledTimelines,
+        styledSections,
+        heroBg: heroStyle?.background || '',
+        heroHasColor: heroStyle ? heroStyle.backgroundColor !== 'rgb(255, 255, 255)' && heroStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' : false,
+        heroPadding: heroStyle ? parseFloat(heroStyle.paddingTop) : 0,
+        tocBorder: tocStyle?.borderStyle || 'none',
+        tocHasBorder: tocStyle ? tocStyle.borderStyle !== 'none' : false,
+        ctaHasBg: ctaStyle ? ctaStyle.backgroundColor !== 'rgb(255, 255, 255)' && ctaStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' : false,
+        totalShadows,
+        totalBgs,
+        totalRadius,
+      };
+    });
+
+    await page.screenshot({
+      path: 'test-results/premium-design-WITH-layer-FIXED.png',
+      fullPage: true,
+    });
+
+    console.log('[WITH @layer] Metrics (should be styled):', fixedMetrics);
+
+    // With @layer, ComponentStyles MUST win on all elements:
+    // - Hero must have a colored/gradient background (NOT white from brand CSS)
+    expect(fixedMetrics.heroHasColor).toBeTruthy();
+    // - Hero must have proper padding (48px from ComponentStyles, NOT 20px from brand CSS)
+    expect(fixedMetrics.heroPadding).toBeGreaterThanOrEqual(40);
+    // - Sections must have proper padding (from ComponentStyles, NOT 5px from brand CSS)
+    expect(fixedMetrics.styledSections).toBeGreaterThanOrEqual(3);
+    // - TOC must have border (from ComponentStyles, NOT none from brand CSS)
+    expect(fixedMetrics.tocHasBorder).toBeTruthy();
+    // - CTA must have colored background (from ComponentStyles, NOT white from brand CSS)
+    expect(fixedMetrics.ctaHasBg).toBeTruthy();
+    // - Overall visual depth — not plain unstyled text
+    expect(fixedMetrics.totalBgs).toBeGreaterThanOrEqual(3);
+    expect(fixedMetrics.totalRadius).toBeGreaterThanOrEqual(5);
+    // - Timeline markers must be styled
+    expect(fixedMetrics.styledTimelines).toBeGreaterThanOrEqual(1);
   });
 });
