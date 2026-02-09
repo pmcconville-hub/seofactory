@@ -69,14 +69,16 @@ ${css}
       const doc = iframe.contentDocument;
       if (!doc) throw new Error('Failed to access iframe document');
 
-      // Wait for fonts to load
+      // Wait for fonts to load (timeout 5s for external fonts like Google Fonts)
       if (doc.fonts && doc.fonts.ready) {
-        await doc.fonts.ready;
+        await Promise.race([
+          doc.fonts.ready,
+          new Promise(resolve => setTimeout(resolve, 5000))
+        ]);
       }
 
-      // Wait for CSS paint and layout (load event implies parsing is complete,
-      // so a shorter delay suffices)
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Additional paint delay
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // Verify the body has dimensions before capturing
       const bodyRect = doc.body.getBoundingClientRect();

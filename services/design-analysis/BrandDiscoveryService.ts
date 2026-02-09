@@ -6,6 +6,53 @@ import type {
   DesignTokens
 } from '../../types/publishing';
 
+// ── Color utility functions ──
+
+/** Parse hex to {r,g,b} */
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const match = hex.replace('#', '').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!match) return null;
+  return { r: parseInt(match[1], 16), g: parseInt(match[2], 16), b: parseInt(match[3], 16) };
+}
+
+/** Mix a color with white at a given ratio (0-1, where 1 = all white) */
+function tintColor(hex: string, ratio: number): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+  const r = Math.min(255, Math.max(0, Math.round(rgb.r + (255 - rgb.r) * ratio)));
+  const g = Math.min(255, Math.max(0, Math.round(rgb.g + (255 - rgb.g) * ratio)));
+  const b = Math.min(255, Math.max(0, Math.round(rgb.b + (255 - rgb.b) * ratio)));
+  return `#${[r, g, b].map(c => c.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** Calculate relative luminance (0-1) */
+function luminance(hex: string): number {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return 0.5;
+  const [rs, gs, bs] = [rgb.r / 255, rgb.g / 255, rgb.b / 255].map(
+    c => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  );
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+/** Validate and normalize a color to 6-digit hex, or return fallback */
+function normalizeHex(color: string, fallback: string): string {
+  if (!color) return fallback;
+  // Already 6-digit hex
+  if (/^#[0-9a-f]{6}$/i.test(color)) return color.toLowerCase();
+  // 3-digit hex
+  if (/^#[0-9a-f]{3}$/i.test(color)) {
+    const expanded = color.slice(1).split('').map(c => c + c).join('');
+    return `#${expanded}`.toLowerCase();
+  }
+  // Try rgb() conversion
+  const rgbMatch = color.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+  if (rgbMatch) {
+    return `#${[rgbMatch[1], rgbMatch[2], rgbMatch[3]].map(n => parseInt(n).toString(16).padStart(2, '0')).join('')}`;
+  }
+  return fallback;
+}
+
 // Use playwright-scraper which guarantees Playwright page object
 const PLAYWRIGHT_SCRAPER_ACTOR_ID = 'apify/playwright-scraper';
 
@@ -533,17 +580,30 @@ export const BrandDiscoveryService = {
       confidenceValues.reduce((a, b) => a + b, 0) / confidenceValues.length
     );
 
-    // Derive design tokens from findings
+    // Validate and normalize all color findings before deriving tokens
+    findings.primaryColor.value = normalizeHex(findings.primaryColor.value, '#ea580c');
+    findings.secondaryColor.value = normalizeHex(findings.secondaryColor.value, '#18181b');
+    findings.accentColor.value = normalizeHex(findings.accentColor.value, findings.primaryColor.value);
+    findings.backgroundColor.value = normalizeHex(findings.backgroundColor.value, '#ffffff');
+
+    // Derive surface/text/border colors from actual brand colors (not hardcoded grays)
+    const bg = findings.backgroundColor.value;
+    const primary = findings.primaryColor.value;
+    const secondary = findings.secondaryColor.value;
+    const bgLum = luminance(bg);
+    const isDark = bgLum < 0.4;
+
     const derivedTokens: DesignTokens = {
       colors: {
-        primary: findings.primaryColor.value,
-        secondary: findings.secondaryColor.value,
+        primary: primary,
+        secondary: secondary,
         accent: findings.accentColor.value,
-        background: findings.backgroundColor.value,
-        surface: '#f9fafb',
-        text: '#111827',
-        textMuted: '#6b7280',
-        border: '#e5e7eb',
+        background: bg,
+        // Derived from actual brand colors — not hardcoded
+        surface: isDark ? tintColor(bg, 0.08) : tintColor(primary, 0.95),
+        text: isDark ? '#f1f5f9' : tintColor(secondary, 0.1),
+        textMuted: isDark ? '#94a3b8' : tintColor(secondary, 0.55),
+        border: isDark ? tintColor(bg, 0.15) : tintColor(primary, 0.85),
         success: '#10b981',
         warning: '#f59e0b',
         error: '#ef4444'

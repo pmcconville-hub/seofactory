@@ -134,7 +134,8 @@ export class PremiumDesignOrchestrator {
             session.targetScreenshot,
             lastIteration.screenshotBase64,
             lastIteration.validationResult,
-            session.articleHtml
+            session.articleHtml,
+            session.crawledCssTokens
           );
         }
 
@@ -189,7 +190,7 @@ export class PremiumDesignOrchestrator {
       }
 
       // Build final HTML document
-      session.finalHtml = this.buildFinalDocument(session.articleHtml, session.finalCss, title);
+      session.finalHtml = this.buildFinalDocument(session.articleHtml, session.finalCss, title, session.crawledCssTokens.googleFontsUrl);
       session.status = 'complete';
       emit();
 
@@ -223,7 +224,8 @@ export class PremiumDesignOrchestrator {
       session.finalHtml = this.buildFinalDocument(
         session.articleHtml || this.htmlGenerator.generate(articleMarkdown, title, businessContext, structuredOutline),
         QUICK_EXPORT_CSS,
-        title
+        title,
+        session.crawledCssTokens.googleFontsUrl
       );
       emit();
 
@@ -240,7 +242,7 @@ export class PremiumDesignOrchestrator {
     const iteration = session.iterations[idx];
     if (!iteration) return session.finalHtml;
 
-    return this.buildFinalDocument(session.articleHtml, iteration.css, '');
+    return this.buildFinalDocument(session.articleHtml, iteration.css, '', session.crawledCssTokens.googleFontsUrl);
   }
 
   /**
@@ -285,20 +287,24 @@ export class PremiumDesignOrchestrator {
       borderRadius: findings.borderRadius ? [findings.borderRadius.value] : [],
       shadows: findings.shadowStyle ? [findings.shadowStyle.value] : [],
       spacingPatterns: [],
+      googleFontsUrl: report.googleFontsUrl || null,
     };
   }
 
   /**
    * Build a self-contained HTML document with embedded CSS.
    */
-  private buildFinalDocument(articleHtml: string, css: string, title: string): string {
+  private buildFinalDocument(articleHtml: string, css: string, title: string, googleFontsUrl?: string | null): string {
+    const fontsLink = googleFontsUrl
+      ? `<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n<link href="${googleFontsUrl}" rel="stylesheet">\n`
+      : '';
     return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 ${title ? `<title>${title}</title>` : ''}
-<style>
+${fontsLink}<style>
 ${css}
 </style>
 </head>

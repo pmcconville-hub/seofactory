@@ -1,6 +1,7 @@
 // =============================================================================
 // AiCssGenerator — AI-powered CSS generation from target website screenshot
 // =============================================================================
+// Phase 4: Deterministic base CSS + AI enhancement (not AI-from-scratch)
 
 import type { CrawledCssTokens, ValidationResult, PremiumDesignConfig, BusinessContext } from './types';
 
@@ -17,11 +18,25 @@ export class AiCssGenerator {
     articleHtml: string,
     businessContext?: BusinessContext
   ): Promise<string> {
-    const htmlPreview = articleHtml.substring(0, 15000);
+    const baseCss = this.generateDeterministicBase(crawledTokens);
+    const htmlPreview = articleHtml.substring(0, 3000);
     const sectionManifest = this.extractSectionManifest(articleHtml);
-    const prompt = this.buildInitialPrompt(crawledTokens, htmlPreview, sectionManifest, businessContext);
-    const css = await this.callVisionAI(targetScreenshot, null, prompt);
-    return this.sanitizeCss(css);
+    const prompt = this.buildInitialPrompt(crawledTokens, htmlPreview, sectionManifest, businessContext, baseCss);
+    const aiEnhancedCss = await this.callVisionAI(targetScreenshot, null, prompt);
+    let css = this.sanitizeCss(aiEnhancedCss);
+
+    // Fallback: if AI returned garbage or near-empty, use the deterministic base
+    if (css.length < 200) {
+      console.warn('[AiCssGenerator] AI returned insufficient CSS, using deterministic base');
+      css = baseCss;
+    }
+
+    // Inject Google Fonts @import
+    if (crawledTokens.googleFontsUrl) {
+      css = `@import url('${crawledTokens.googleFontsUrl}');\n\n${css}`;
+    }
+
+    return css;
   }
 
   async refineCss(
@@ -29,19 +44,201 @@ export class AiCssGenerator {
     targetScreenshot: string,
     outputScreenshot: string,
     validationResult: ValidationResult,
-    articleHtml?: string
+    articleHtml?: string,
+    crawledTokens?: CrawledCssTokens
   ): Promise<string> {
     const sectionManifest = articleHtml ? this.extractSectionManifest(articleHtml) : '';
     const prompt = this.buildRefinementPrompt(currentCss, validationResult, sectionManifest);
-    const css = await this.callVisionAI(targetScreenshot, outputScreenshot, prompt);
-    return this.sanitizeCss(css);
+    const aiCss = await this.callVisionAI(targetScreenshot, outputScreenshot, prompt);
+    let css = this.sanitizeCss(aiCss);
+
+    // Re-inject Google Fonts @import if it was lost during refinement
+    if (crawledTokens?.googleFontsUrl && !css.includes('@import')) {
+      css = `@import url('${crawledTokens.googleFontsUrl}');\n\n${css}`;
+    }
+
+    return css;
+  }
+
+  // ─── Deterministic Base CSS Generator ───────────────────────────────────────
+  // Builds ~200 lines of working CSS purely from token values — no AI needed.
+  // This guarantees brand colors, fonts, radii, and shadows are correct.
+
+  private generateDeterministicBase(tokens: CrawledCssTokens): string {
+    const primary = tokens.colors.find(c => c.usage === 'primary')?.hex || '#1a1a2e';
+    const secondary = tokens.colors.find(c => c.usage === 'secondary')?.hex || '#16213e';
+    const accent = tokens.colors.find(c => c.usage === 'accent')?.hex || primary;
+    const bg = tokens.colors.find(c => c.usage === 'background')?.hex || '#ffffff';
+    const text = tokens.colors.find(c => c.usage === 'text')?.hex || '#1a1a1a';
+    const textMuted = tokens.colors.find(c => c.usage === 'text-muted')?.hex || '#6b7280';
+    const surface = tokens.colors.find(c => c.usage === 'surface')?.hex || '#f9fafb';
+    const border = tokens.colors.find(c => c.usage === 'border')?.hex || '#e5e7eb';
+    const headingFont = tokens.fonts.find(f => f.usage === 'heading')?.family || 'system-ui, sans-serif';
+    const bodyFont = tokens.fonts.find(f => f.usage === 'body')?.family || 'system-ui, sans-serif';
+    const radius = tokens.borderRadius[0] || '8px';
+    const shadow = tokens.shadows[0] || '0 4px 6px rgba(0,0,0,0.07)';
+
+    return `:root {
+  --brand-primary: ${primary};
+  --brand-secondary: ${secondary};
+  --brand-accent: ${accent};
+  --brand-bg: ${bg};
+  --brand-text: ${text};
+  --brand-text-muted: ${textMuted};
+  --brand-surface: ${surface};
+  --brand-border: ${border};
+  --brand-radius: ${radius};
+  --brand-shadow: ${shadow};
+  --font-heading: ${headingFont};
+  --font-body: ${bodyFont};
+}
+
+/* === RESET & BASE === */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-body); color: var(--brand-text); background: var(--brand-bg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
+img { max-width: 100%; height: auto; display: block; }
+a { color: var(--brand-primary); text-decoration: underline; text-underline-offset: 2px; transition: color 0.2s; }
+a:hover { color: var(--brand-secondary); }
+
+/* === HERO === */
+[data-hero] { background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary)); color: #fff; padding: 3.5rem 2rem; text-align: center; }
+[data-hero] h1 { font-family: var(--font-heading); font-size: 2.5rem; font-weight: 800; line-height: 1.2; margin-bottom: 0.75rem; color: #fff; }
+[data-hero-subtitle] { font-size: 1.15rem; opacity: 0.9; max-width: 600px; margin: 0 auto; }
+
+/* === CONTENT LAYOUT === */
+[data-content-body] { display: flex; flex-direction: column; gap: 1.5rem; max-width: 780px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+/* === TOC === */
+nav.toc { background: var(--brand-surface); border-radius: var(--brand-radius); padding: 1.25rem 1.5rem; margin: 1rem auto; max-width: 780px; border: 1px solid var(--brand-border); font-size: 0.85rem; }
+nav.toc .toc-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--brand-text); }
+nav.toc ul { list-style: none; padding: 0; margin: 0; columns: 1; }
+nav.toc li { padding: 0.2rem 0; }
+nav.toc a { color: var(--brand-primary); text-decoration: none; }
+nav.toc a:hover { text-decoration: underline; }
+nav.toc[data-toc-compact] ul { columns: 2; column-gap: 2rem; }
+
+/* === BASE SECTION CARD === */
+section[data-section-id] { background: var(--brand-bg); border-radius: var(--brand-radius); padding: 2.5rem 2rem; margin-bottom: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: box-shadow 0.2s, transform 0.2s; }
+section[data-section-id]:hover { box-shadow: var(--brand-shadow); }
+[data-variant="surface"] { background: var(--brand-surface); border: 1px solid var(--brand-border); }
+
+/* === VISUAL HIERARCHY — emphasis levels === */
+[data-emphasis="hero"] { padding: 3rem 2.5rem; background: linear-gradient(135deg, color-mix(in srgb, var(--brand-primary) 8%, var(--brand-bg)), var(--brand-bg)); border-left: 5px solid var(--brand-primary); box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+[data-emphasis="hero"] h2 { font-size: 1.9rem; color: var(--brand-primary); }
+[data-emphasis="featured"] { padding: 2.5rem 2rem; border-left: 4px solid var(--brand-accent); box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+[data-emphasis="featured"] h2 { font-size: 1.65rem; }
+[data-emphasis="standard"] { padding: 2rem 1.75rem; }
+[data-emphasis="supporting"] { padding: 1.5rem 1.5rem; opacity: 0.95; }
+[data-emphasis="supporting"] h2 { font-size: 1.3rem; }
+[data-emphasis="minimal"] { padding: 1.25rem 1.25rem; box-shadow: none; border: 1px solid var(--brand-border); }
+[data-emphasis="minimal"] h2 { font-size: 1.2rem; }
+
+/* === SECTION ROLES === */
+[data-section-role="definition"] { border-left: 5px solid var(--brand-primary); background: linear-gradient(135deg, color-mix(in srgb, var(--brand-primary) 5%, white), var(--brand-bg)); }
+[data-section-role="introduction"] [data-intro-text] { font-size: 1.2rem; line-height: 1.8; }
+[data-section-role="faq"] { background: var(--brand-surface); }
+[data-section-role="summary"] { background: var(--brand-surface); border: 1px dashed var(--brand-border); }
+
+/* === TYPOGRAPHY === */
+h1, h2, h3, h4 { font-family: var(--font-heading); color: var(--brand-text); line-height: 1.3; }
+h2 { font-size: 1.5rem; font-weight: 700; padding-bottom: 0.75rem; border-bottom: 3px solid transparent; border-image: linear-gradient(90deg, var(--brand-primary), transparent) 1; margin-bottom: 1.5rem; }
+h3 { font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; }
+h4 { font-size: 1.1rem; font-weight: 600; color: var(--brand-primary); margin-bottom: 0.75rem; }
+p { margin-bottom: 1rem; }
+
+/* === INTRO TEXT === */
+[data-intro-text] { font-size: 1.15rem; color: var(--brand-text-muted); line-height: 1.7; margin-bottom: 1.5rem; }
+
+/* === PROSE SECTIONS === */
+[data-prose-section] { border-left: 4px solid transparent; border-image: linear-gradient(180deg, var(--brand-primary), var(--brand-accent)) 1; }
+
+/* === FEATURE GRID === */
+[data-feature-grid] { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+[data-feature-grid] li { background: var(--brand-surface); border-radius: var(--brand-radius); padding: 1.5rem; border: 1px solid var(--brand-border); transition: box-shadow 0.2s, transform 0.2s; }
+[data-feature-grid] li:hover { box-shadow: var(--brand-shadow); transform: translateY(-2px); }
+
+/* === PULL QUOTE === */
+[data-pull-quote] { font-size: 1.35rem; font-style: italic; text-align: center; color: var(--brand-text-muted); border-top: 3px solid var(--brand-primary); border-bottom: 3px solid var(--brand-primary); padding: 1.5rem 2rem; margin: 1.5rem 0; }
+
+/* === STEP LIST === */
+[data-step-list] { list-style: none; padding: 0; counter-reset: step-counter; }
+[data-step-list] li { counter-increment: step-counter; position: relative; padding-left: 3.5rem; margin-bottom: 1.5rem; min-height: 2.5rem; }
+[data-step-list] li::before { content: counter(step-counter); position: absolute; left: 0; top: 0; width: 2.2rem; height: 2.2rem; background: var(--brand-primary); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.9rem; }
+[data-step-list] li::after { content: ''; position: absolute; left: 1.05rem; top: 2.4rem; width: 2px; height: calc(100% - 0.5rem); background: var(--brand-border); }
+[data-step-list] li:last-child::after { display: none; }
+
+/* === HIGHLIGHT BOX === */
+[data-highlight-box] { background: var(--brand-surface); border-left: 4px solid var(--brand-accent); border-radius: var(--brand-radius); padding: 1.5rem; margin: 1rem 0; }
+
+/* === COMPARISON TABLE === */
+[data-comparison-table] { overflow: hidden; border-radius: var(--brand-radius); border: 1px solid var(--brand-border); }
+[data-comparison-table] table { width: 100%; border-collapse: collapse; }
+[data-comparison-table] thead { background: var(--brand-primary); color: #fff; }
+[data-comparison-table] th { padding: 0.75rem 1rem; text-align: left; font-weight: 600; }
+[data-comparison-table] td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--brand-border); }
+[data-comparison-table] tbody tr:nth-child(even) { background: var(--brand-surface); }
+[data-comparison-table] tbody tr:hover { background: color-mix(in srgb, var(--brand-primary) 5%, var(--brand-bg)); }
+
+/* === FAQ === */
+[data-content-type="faq"] details { border-bottom: 1px solid var(--brand-border); }
+[data-content-type="faq"] summary { padding: 1rem 0; cursor: pointer; font-weight: 600; color: var(--brand-text); list-style: none; display: flex; justify-content: space-between; align-items: center; }
+[data-content-type="faq"] summary::after { content: '+'; font-size: 1.3rem; color: var(--brand-primary); font-weight: 700; transition: transform 0.2s; }
+[data-content-type="faq"] details[open] summary::after { content: '−'; }
+[data-content-type="faq"] details > div, [data-content-type="faq"] details > p { padding: 0 0 1rem 0; color: var(--brand-text-muted); }
+
+/* === CTA === */
+[data-content-type="cta"] { background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary)); color: #fff; padding: 3rem 2rem; text-align: center; border-radius: var(--brand-radius); }
+[data-content-type="cta"] h2, [data-content-type="cta"] h3 { color: #fff; border: none; }
+[data-content-type="cta"] p { color: rgba(255,255,255,0.9); }
+[data-cta-button] { display: inline-block; background: #fff; color: var(--brand-primary); padding: 0.85rem 2rem; border-radius: 999px; font-weight: 700; text-decoration: none; transition: transform 0.2s, box-shadow 0.2s; }
+[data-cta-button]:hover { transform: scale(1.05); box-shadow: 0 4px 15px rgba(0,0,0,0.2); color: var(--brand-primary); }
+
+/* === FOOTER === */
+[data-article-footer] { text-align: center; padding: 2rem; margin-top: 2rem; border-top: 1px solid var(--brand-border); }
+[data-footer-text] { color: var(--brand-text-muted); font-size: 0.85rem; }
+
+/* === LISTS & BLOCKQUOTES === */
+ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+li { margin-bottom: 0.35rem; }
+blockquote { border-left: 4px solid var(--brand-primary); padding: 1rem 1.5rem; margin: 1rem 0; color: var(--brand-text-muted); font-style: italic; background: var(--brand-surface); border-radius: 0 var(--brand-radius) var(--brand-radius) 0; }
+
+/* === TABLES (general) === */
+table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+th { background: var(--brand-surface); font-weight: 600; text-align: left; padding: 0.6rem 0.8rem; border-bottom: 2px solid var(--brand-border); }
+td { padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--brand-border); }
+
+/* === RESPONSIVE === */
+@media (max-width: 768px) {
+  [data-hero] { padding: 2.5rem 1.25rem; }
+  [data-hero] h1 { font-size: 2rem; }
+  [data-content-body] { padding: 1rem; }
+  [data-feature-grid] { grid-template-columns: 1fr; }
+  nav.toc[data-toc-compact] ul { columns: 1; }
+  section[data-section-id] { padding: 1.5rem 1.25rem; }
+}
+@media (max-width: 480px) {
+  [data-hero] h1 { font-size: 1.7rem; }
+  h2 { font-size: 1.3rem; }
+  section[data-section-id] { padding: 1.25rem 1rem; }
+}
+
+/* === PRINT === */
+@media print {
+  body { color: #000; background: #fff; }
+  [data-hero] { background: none; color: #000; border-bottom: 2px solid #000; }
+  [data-hero] h1 { color: #000; }
+  section[data-section-id] { box-shadow: none; border: 1px solid #ccc; break-inside: avoid; }
+  a::after { content: " (" attr(href) ")"; font-size: 0.8em; color: #666; }
+  [data-content-type="cta"] { background: none; color: #000; border: 2px solid #000; }
+}`;
   }
 
   private buildInitialPrompt(
     tokens: CrawledCssTokens,
     htmlPreview: string,
     sectionManifest: string,
-    businessContext?: BusinessContext
+    businessContext?: BusinessContext,
+    baseCss?: string
   ): string {
     const primary = tokens.colors.find(c => c.usage === 'primary')?.hex || '#1a1a2e';
     const secondary = tokens.colors.find(c => c.usage === 'secondary')?.hex || '#16213e';
@@ -56,16 +253,9 @@ export class AiCssGenerator {
     const radius = tokens.borderRadius[0] || '8px';
     const shadow = tokens.shadows[0] || '0 4px 6px rgba(0,0,0,0.07)';
 
-    return `You are a senior web designer at a top design agency. Study the target website screenshot. Create a VISUALLY STUNNING article page that captures the brand's energy and feels like a premium page on that website. Go beyond matching — elevate the content with sophisticated visual design.
+    return `You are a senior web designer. Study the target website screenshot and ENHANCE the base CSS below to more closely match the target website's visual style and energy.
 
-SCREENSHOT: The attached image is the target website. Observe its:
-- Header/hero styling, background treatment, color intensity
-- Card/section styling patterns, shadows, borders
-- Button and link styling
-- Whitespace rhythm and spacing patterns
-- Visual components (grids, cards, pull quotes, step indicators)
-
-## Extracted Brand Tokens
+## Brand Tokens
 
 :root {
   --brand-primary: ${primary};
@@ -82,109 +272,39 @@ SCREENSHOT: The attached image is the target website. Observe its:
   --font-body: ${bodyFont};
 }
 
-## HTML to style (truncated)
+## Section Manifest (full article structure)
+
+${sectionManifest}
+
+${businessContext ? `Industry: ${businessContext.industry} | Audience: ${businessContext.audience}\n` : ''}
+## HTML Preview (truncated)
 
 \`\`\`html
 ${htmlPreview}
 \`\`\`
 
-## Section Manifest (full article structure)
-
-${sectionManifest}
-
-Each section has a role, weight (1-5), and emphasis level. The manifest shows design suggestions — follow them.
-${businessContext ? `\nIndustry: ${businessContext.industry} | Audience: ${businessContext.audience}` : ''}
-
-## Design Requirements — Agency Quality
-
-Write a COMPLETE CSS stylesheet (400-700 lines, quality over quantity). The result must look like a premium page designed by a top agency — with bold visual components, not just styled paragraphs. MATCH THE TARGET WEBSITE STYLE from the screenshot.
-
-### Mandatory CSS Seed Patterns — CUSTOMIZE to match the brand screenshot
-
-You MUST include ALL these patterns, adapted to the brand colors/style from the screenshot:
+## Current Base CSS (deterministic — DO NOT remove rules, only enhance)
 
 \`\`\`css
-/* === CONTENT LAYOUT === */
-[data-content-body] { display: flex; flex-direction: column; gap: 1.5rem; max-width: 780px; margin: 0 auto; padding: 2rem; }
-
-/* === BASE SECTION CARD === */
-section[data-section-id] { background: var(--brand-bg); border-radius: var(--brand-radius); padding: 2.5rem 2rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: box-shadow 0.2s, transform 0.2s; }
-section[data-section-id]:hover { box-shadow: var(--brand-shadow); }
-[data-variant="surface"] { background: var(--brand-surface); border: 1px solid var(--brand-border); }
-
-/* === VISUAL HIERARCHY — each emphasis level MUST look different === */
-[data-emphasis="hero"] { padding: 3rem 2.5rem; background: linear-gradient(135deg, color-mix(in srgb, var(--brand-primary) 8%, var(--brand-bg)), var(--brand-bg)); border-left: 5px solid var(--brand-primary); box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-[data-emphasis="hero"] h2 { font-size: 1.9rem; color: var(--brand-primary); }
-[data-emphasis="featured"] { padding: 2.5rem 2rem; border-left: 4px solid var(--brand-accent, var(--brand-primary)); box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
-[data-emphasis="featured"] h2 { font-size: 1.65rem; }
-[data-emphasis="standard"] { padding: 2rem 1.75rem; }
-[data-emphasis="supporting"] { padding: 1.5rem 1.5rem; opacity: 0.95; }
-[data-emphasis="supporting"] h2 { font-size: 1.3rem; }
-[data-emphasis="minimal"] { padding: 1.25rem 1.25rem; box-shadow: none; border: 1px solid var(--brand-border); }
-[data-emphasis="minimal"] h2 { font-size: 1.2rem; }
-
-/* === SECTION ROLE STYLING === */
-[data-section-role="definition"] { border-left: 5px solid var(--brand-primary); background: linear-gradient(135deg, color-mix(in srgb, var(--brand-primary) 5%, white), var(--brand-bg)); }
-[data-section-role="introduction"] [data-intro-text] { font-size: 1.2rem; line-height: 1.8; }
-[data-section-role="faq"] { background: var(--brand-surface); }
-[data-section-role="summary"] { background: var(--brand-surface); border: 1px dashed var(--brand-border); }
-
-/* === h2 decorative treatment === */
-h2 { font-family: var(--font-heading); padding-bottom: 0.75rem; border-bottom: 3px solid transparent; border-image: linear-gradient(90deg, var(--brand-primary), transparent) 1; margin-bottom: 1.5rem; }
-
-/* === Intro text === */
-[data-intro-text] { font-size: 1.15rem; color: var(--brand-text-muted); line-height: 1.7; margin-bottom: 1.5rem; }
-
-/* === Prose sections — decorative left border === */
-[data-prose-section] { border-left: 4px solid transparent; border-image: linear-gradient(180deg, var(--brand-primary), var(--brand-accent, var(--brand-secondary))) 1; }
-
-/* === TOC — compact, must NOT dominate the page === */
-nav.toc { background: var(--brand-surface); border-radius: var(--brand-radius); padding: 1.25rem 1.5rem; margin: 1rem auto; max-width: 780px; border: 1px solid var(--brand-border); font-size: 0.85rem; }
-nav.toc .toc-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--brand-text); }
-nav.toc ul { list-style: none; padding: 0; margin: 0; columns: 1; }
-nav.toc li { padding: 0.2rem 0; }
-nav.toc a { color: var(--brand-primary); text-decoration: none; }
-nav.toc[data-toc-compact] ul { columns: 2; column-gap: 2rem; }
+${baseCss}
 \`\`\`
 
-### Mandatory Design Patterns
+## Enhancement Task
 
-1. **Page layout**: Full-width body. Content sections max-width 780px centered. Hero and CTA sections can break out to full width.
+The base CSS uses correct brand tokens but looks generic. Study the screenshot and add:
+1. **Visual personality** — gradient directions, shadow depths, border styles that match the screenshot
+2. **Decorative touches** — brand-specific heading treatments, card hover effects, section transitions
+3. **Layout refinements** — spacing adjustments, max-widths that match the target's rhythm
+4. **Color intensity** — if the screenshot uses bold/saturated colors, increase intensity; if muted/elegant, reduce
 
-2. **Hero section** (\`[data-hero]\`): Bold, eye-catching. Use brand primary as gradient background (45deg from primary to secondary). White/light text. Large h1 (2.5-3.5rem). If \`[data-hero-subtitle]\` present, style as lighter/smaller text. Minimum 200px height with vertical centering via flexbox.
-
-3. **Feature grids** (\`[data-feature-grid]\`): CSS Grid \`grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))\`. Remove list-style, add gap. Each \`li\` gets card treatment: surface background, brand-radius, padding 1.5rem, subtle shadow on hover, transition.
-
-4. **Pull quotes** (\`[data-pull-quote]\`): Large italic text (1.3-1.5rem), centered, brand-primary top+bottom borders (3px), generous vertical margin, no left-border (that's for regular blockquotes).
-
-5. **Step lists** (\`[data-step-list]\`): Counter-based numbered circles in brand-primary. Each \`li\` gets left-padding for the circle, connecting vertical line between items. Numbers in white on brand-primary circles.
-
-6. **Highlight boxes** (\`[data-highlight-box]\`): Left border 4px brand-accent, surface background, padding 1.5rem, border-radius. Optional decorative icon-hint via ::before.
-
-7. **Comparison tables** (\`[data-comparison-table] table\`): Modern striped design, brand-primary header row with white text, rounded container with overflow hidden, hover effect on rows.
-
-8. **Section rhythm**: Alternate sections between white and surface backgrounds. Every \`[data-variant="surface"]\` section should feel distinctly different — not just a shade lighter.
-
-9. **Typography hierarchy**: h2 gets decorative treatment (left border + brand primary, OR bottom gradient underline). h3 has medium weight, h4 has brand-primary color. Use heading font for headings, body font for text.
-
-10. **CTA section** (\`[data-content-type="cta"]\`): Full-width brand gradient background, large centered text, prominent button with white bg on brand color (or inverted), rounded-full or rounded-lg button, hover scale effect.
-
-11. **FAQ sections** (\`[data-content-type="faq"]\`): Details/summary as clean cards with separator borders, brand-colored expand indicators, smooth transitions.
-
-12. **Links**: Brand primary, subtle underline offset. Hover: slightly darker, underline.
-
-13. **Tables**: Brand-primary header, horizontal borders only, alternating subtle row colors.
-
-14. **Responsive**: At 768px: 2-col grids become 1-col. Reduce hero padding. At 480px: further reduce font sizes and padding.
-
-15. **Print**: Clean black-on-white, show URLs after links, hide gradients/shadows.
-
-### Critical Rules
-
-- Use the exact brand token values from :root variables above
-- Target semantic elements and \`[data-*]\` attribute selectors — no class names
-- Body/main text must always have high contrast (dark text on light bg or vice versa)
-- Never make text unreadable — only use brand colors as backgrounds where text is white/contrasting
+Rules:
+- Keep ALL existing rules — only add/modify properties
+- Use the CSS custom properties (var(--brand-*))
+- Target [data-*] selectors only (plus standard elements like h2, p, a)
+- Return the COMPLETE CSS (base + your enhancements merged)
+- 300-500 lines total
+- Body/main text must always have high contrast — never make text unreadable
+- Never use class selectors — only element and [data-*] attribute selectors
 
 ## Output
 
@@ -452,11 +572,14 @@ Return ONLY CSS. No markdown fences. No explanations.`;
     let css = raw.trim();
     css = css.replace(/^```(?:css)?\s*/i, '').replace(/\s*```\s*$/i, '');
 
+    // Also strip @import lines from AI output — we inject our own
+    const importIndex = css.indexOf('@import');
     const rootIndex = css.indexOf(':root');
     const articleIndex = css.indexOf('article');
     const bodyIndex = css.indexOf('body');
     const starIndex = css.indexOf('*');
     const firstSelector = Math.min(
+      importIndex >= 0 ? importIndex : Infinity,
       rootIndex >= 0 ? rootIndex : Infinity,
       articleIndex >= 0 ? articleIndex : Infinity,
       bodyIndex >= 0 ? bodyIndex : Infinity,

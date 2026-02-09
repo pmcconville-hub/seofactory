@@ -24,6 +24,7 @@ export interface CrawledCssTokens {
   borderRadius: string[];
   shadows: string[];
   spacingPatterns: string[];
+  googleFontsUrl?: string | null;
 }
 
 export interface DesignIteration {
