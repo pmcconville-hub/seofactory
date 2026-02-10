@@ -659,7 +659,7 @@ const BusinessInfoForm: React.FC<BusinessInfoFormProps> = ({ onSave, onBack, isL
                         <FormAccordion
                             title="Brand Kit"
                             defaultOpen={false}
-                            isComplete={!!(localBusinessInfo.brandKit?.colors?.length)}
+                            isComplete={!!(localBusinessInfo.brandKit?.colors?.primary)}
                         >
                             <BrandKitEditor
                               brandKit={localBusinessInfo.brandKit}

@@ -25,6 +25,7 @@ import { Json } from './database.types';
 export { KnowledgeGraph } from './lib/knowledgeGraph';
 // Import types needed for ContentBrief template fields
 import { TemplateName, DepthMode } from './types/contentTemplates';
+import { BriefChangeLogEntry, BriefGenerationSummary } from './types/content';
 
 // Re-export from domain modules for backward compatibility
 export * from './types/core';
@@ -1024,6 +1025,11 @@ export interface ContentBrief {
 
   // Ecommerce category page context (product catalog data for content grounding)
   categoryContext?: import('./types/catalog').CategoryPageContext;
+
+  /** Changes made during content generation */
+  generation_changes?: BriefChangeLogEntry[];
+  /** Summary of generation changes */
+  generation_summary?: BriefGenerationSummary;
 }
 
 export interface SerpResult {
