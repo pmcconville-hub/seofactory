@@ -34,6 +34,7 @@ export interface StyleGuideElement {
   sourcePageUrl?: string;             // Which page this element was found on
   aiValidated?: boolean;              // Whether AI has validated this element
   aiGenerated?: boolean;              // Whether AI created this element (fallback)
+  hoverCss?: Record<string, string>;  // Captured :hover pseudo-class styles
 }
 
 export interface StyleGuideColor {

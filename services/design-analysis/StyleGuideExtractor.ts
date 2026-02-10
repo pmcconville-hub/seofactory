@@ -76,6 +76,7 @@ export interface RawExtractedElement {
   sourcePageUrl?: string;
   childCount?: number;
   outerHtmlLength?: number;
+  hoverCss?: Record<string, string>;
 }
 
 /** Raw extraction result from Apify */
@@ -610,6 +611,30 @@ function buildPageFunction(): string {
             return result;
           }
 
+          // ── Helper: Capture hover styles from CSS rules ──
+          function capturePseudoStyles(el, propNames) {
+            var hoverStyles = {};
+            try {
+              var sheets = document.styleSheets;
+              for (var i = 0; i < sheets.length; i++) {
+                try {
+                  var rules = sheets[i].cssRules || [];
+                  for (var j = 0; j < rules.length; j++) {
+                    var rule = rules[j];
+                    if (rule.selectorText && rule.selectorText.includes(':hover') && el.matches(rule.selectorText.replace(/:hover/g, ''))) {
+                      for (var k = 0; k < rule.style.length; k++) {
+                        var prop = rule.style[k];
+                        var camel = prop.replace(/-([a-z])/g, function(m, c) { return c.toUpperCase(); });
+                        hoverStyles[camel] = rule.style.getPropertyValue(prop);
+                      }
+                    }
+                  }
+                } catch(e) { /* cross-origin stylesheet */ }
+              }
+            } catch(e) { /* ignore */ }
+            return hoverStyles;
+          }
+
           // ── Helper: Determine page region ──
           function getPageRegion(el) {
             const parent = el.closest('header, nav, main, article, aside, footer, [role="banner"], [role="main"], [role="contentinfo"], [role="complementary"]');
@@ -721,11 +746,17 @@ function buildPageFunction(): string {
                   selectors: [
                     'a[class*="btn"]:not(nav a)',
                     'a[class*="cta"]',
+                    'a[class*="button"]:not(nav a):not(header a)',
                     'button[class*="btn"]:not([class*="menu"]):not([class*="toggle"]):not([class*="close"]):not([class*="nav"])',
+                    'button[class*="button"]:not([class*="menu"]):not([class*="toggle"]):not([class*="close"])',
                     '.wp-block-button a',
                     'input[type="submit"]',
-                    'a[class*="button"]:not(nav a):not(header a)',
                     'button[type="submit"]',
+                    '[role="button"]:not(nav [role="button"])',
+                    'a[class*="action"]',
+                    'a[class*="link-button"]',
+                    'a[class*="primary"]',
+                    'a[class*="secondary"]',
                   ],
                 },
               ],
@@ -789,7 +820,15 @@ function buildPageFunction(): string {
             {
               category: 'tables',
               subcategories: [
-                { name: 'table', selectors: ['table'] },
+                {
+                  name: 'table',
+                  selectors: [
+                    'table',
+                    '[class*="pricing"]',
+                    '[class*="comparison"]',
+                    '[role="grid"]',
+                  ],
+                },
               ],
             },
             {
@@ -819,8 +858,9 @@ function buildPageFunction(): string {
               var hashSet = seenHashes[sub.name];
               var count = 0;
 
-              // Determine clone depth: simplified nav gets depth 2
-              var cloneDepth = sub.simplifyNav ? 2 : 3;
+              // Determine clone depth by category
+              var cloneDepth = sub.simplifyNav ? 2 :
+                (cat.category === 'accordions' || cat.category === 'cards' || cat.category === 'tables') ? 5 : 3;
 
               for (var seli = 0; seli < sub.selectors.length; seli++) {
                 var selector = sub.selectors[seli];
@@ -867,7 +907,7 @@ function buildPageFunction(): string {
                     var sgId = elements.length;
                     el.setAttribute('data-sg-id', String(sgId));
 
-                    elements.push({
+                    var elData = {
                       category: cat.category,
                       subcategory: sub.name,
                       selector: selector,
@@ -879,7 +919,17 @@ function buildPageFunction(): string {
                       pageRegion: getPageRegion(el),
                       childCount: el.children.length,
                       outerHtmlLength: originalHtmlLen,
-                    });
+                    };
+
+                    // Capture hover styles for buttons and links
+                    if (cat.category === 'buttons' || sub.name === 'links') {
+                      var hoverCss = capturePseudoStyles(el, cssProps);
+                      if (Object.keys(hoverCss).length > 0) {
+                        elData.hoverCss = hoverCss;
+                      }
+                    }
+
+                    elements.push(elData);
                   }
                 } catch (e) {
                   // Selector failed, continue

@@ -160,6 +160,7 @@ export const StyleGuideGenerator = {
         approvalStatus: 'approved', // Opt-out model: approved by default
         elementScreenshotBase64: raw.elementScreenshotBase64,
         sourcePageUrl: raw.sourcePageUrl,
+        hoverCss: raw.hoverCss,
       });
     }
 
@@ -275,9 +276,9 @@ export const StyleGuideGenerator = {
   async generateFallbackElements(
     guide: StyleGuide,
     aiConfig: AiRefineConfig,
-  ): Promise<StyleGuide> {
+  ): Promise<{ guide: StyleGuide; fallbackCount: number }> {
     const pageScreenshot = guide.screenshotBase64 || guide.pageScreenshots?.[0]?.base64;
-    if (!pageScreenshot) return guide;
+    if (!pageScreenshot) return { guide, fallbackCount: 0 };
 
     // Find categories with 0 approved elements
     const approvedByCategory = new Map<string, number>();
@@ -287,10 +288,13 @@ export const StyleGuideGenerator = {
       }
     }
 
-    const requiredCategories = ['buttons', 'cards', 'navigation', 'backgrounds'];
+    const requiredCategories: StyleGuideCategory[] = [
+      'typography', 'buttons', 'cards', 'navigation',
+      'accordions', 'backgrounds', 'forms', 'tables',
+    ];
     const missingCategories = requiredCategories.filter(cat => !approvedByCategory.get(cat));
 
-    if (missingCategories.length === 0) return guide;
+    if (missingCategories.length === 0) return { guide, fallbackCount: 0 };
 
     const colorContext = guide.colors
       .filter(c => c.approvalStatus === 'approved')
@@ -299,61 +303,71 @@ export const StyleGuideGenerator = {
       .join(', ');
     const fontContext = guide.googleFontFamilies.join(', ') || 'system-ui';
 
-    const prompt = `You are an expert web designer. I'm showing you a screenshot of a website (IMAGE 1).
+    const prompt = `You are an expert web designer analyzing a website screenshot (IMAGE 1).
 
 The following design element categories could NOT be extracted from the DOM:
 ${missingCategories.map(c => `- ${c}`).join('\n')}
 
-Website's colors: ${colorContext || 'not detected'}
-Website's fonts: ${fontContext}
+Website's detected colors: ${colorContext || 'not yet detected'}
+Website's detected fonts: ${fontContext}
 
-For EACH missing category, create a realistic self-contained HTML element that matches this website's visual style. Use inline styles only. The HTML should be a clean, minimal example (not the whole page).
+For EACH missing category, generate a realistic, pixel-accurate HTML element that matches this specific website's visual identity. Use ONLY inline styles. Include the site's exact colors and fonts.
 
-Requirements per category:
-- **buttons**: A primary CTA button + a secondary button. Match the site's color scheme, border-radius, font.
-- **cards**: A content card with image placeholder, title, and excerpt. Match the site's card style.
-- **navigation**: A simplified top nav bar with 4-5 menu items. Match the site's nav style.
-- **backgrounds**: A section with the site's accent/brand background color and white text.
+Category requirements:
+- **typography**: H1 heading + body paragraph in site's font and colors
+- **buttons**: Primary CTA + secondary button matching site's button style (color, radius, shadow)
+- **cards**: Content card with header, text, and styling matching the site
+- **navigation**: Simplified nav with 4 items in site's nav style
+- **accordions**: Expandable section with header + content panel
+- **backgrounds**: Section with the site's accent color background
+- **forms**: Input field + label in site's form style
+- **tables**: Small 3x3 data table in site's table style
 
-Return ONLY valid JSON array:
-[
-  {
-    "category": "buttons",
-    "subcategory": "cta-button",
-    "label": "Primary CTA Button",
-    "selfContainedHtml": "<a style='...' href='#'>Get Started</a>",
-    "computedCss": { "backgroundColor": "#2a4eef", "color": "#ffffff", "borderRadius": "4px" }
-  }
-]`;
+CRITICAL:
+- Match the EXACT colors from the screenshot (not generic blue/gray)
+- Match the EXACT font family visible in the screenshot
+- Match border-radius, shadows, and spacing patterns from the site
+- Each element MUST be self-contained (inline styles only, no external CSS)
 
+Return ONLY a valid JSON array (no markdown, no explanation):
+[{ "category": "...", "subcategory": "...", "label": "...", "selfContainedHtml": "...", "computedCss": {...} }]`;
+
+    let fallbackCount = 0;
     try {
       const result = await callRefineAI(aiConfig, prompt, pageScreenshot);
       const fallbacks = parseFallbackElements(result);
 
       for (const fb of fallbacks) {
+        const html = fb.selfContainedHtml || '';
+        const usesApprovedColor = guide.colors
+          .filter(c => c.approvalStatus === 'approved')
+          .some(c => html.toLowerCase().includes(c.hex.toLowerCase()));
+        const qualityScore = usesApprovedColor ? 70 : 55;
+
         guide.elements.push({
           id: uuidv4(),
           category: fb.category as StyleGuideCategory,
           subcategory: fb.subcategory || 'ai-fallback',
           label: (fb.label || fb.category) + ' (AI-generated)',
           pageRegion: 'main',
-          outerHtml: fb.selfContainedHtml || '',
+          outerHtml: html,
           computedCss: fb.computedCss || {},
-          selfContainedHtml: fb.selfContainedHtml || '',
+          selfContainedHtml: html,
           selector: 'ai-generated',
           elementTag: 'div',
           classNames: [],
-          approvalStatus: 'approved',
+          approvalStatus: 'pending',
           aiGenerated: true,
-          qualityScore: 75,
+          qualityScore,
         });
+        fallbackCount++;
       }
     } catch (err) {
       console.warn('[StyleGuideGenerator] Fallback generation failed:', err);
     }
 
     guide.elementCount = guide.elements.length;
-    return guide;
+    return { guide, fallbackCount };
   },
 
   /**

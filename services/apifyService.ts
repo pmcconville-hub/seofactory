@@ -3,6 +3,7 @@
 // FIX: Changed import to be a relative path.
 // FIX: Corrected import path for 'types' to be relative, fixing module resolution error.
 import { FullSerpData, ScrapedContent, ApifyPageData } from '../types';
+import { logApifyUsage } from './telemetryService';
 
 const API_BASE_URL = 'https://api.apify.com/v2';
 const WEB_SCRAPER_ACTOR_ID = 'apify/web-scraper';
@@ -110,6 +111,7 @@ const apifyFetch = async (
 };
 
 export const runApifyActor = async (actorId: string, apiToken: string, runInput: any, proxyConfig?: ApifyProxyConfig): Promise<any[]> => {
+  const startTime = Date.now();
   const startRunUrl = `${API_BASE_URL}/acts/${actorId.replace('/', '~')}/runs?token=${apiToken}`;
 
   console.log('[Apify] Starting actor:', actorId, 'with', runInput.startUrls?.length || 0, 'URLs');
@@ -123,6 +125,7 @@ export const runApifyActor = async (actorId: string, apiToken: string, runInput:
   if (!startResponse.ok) {
     const errorText = await startResponse.text();
     console.error('[Apify] Start run failed:', startResponse.status, errorText);
+    logApifyUsage({ actorId, operation: 'apify-actor-run', durationMs: Date.now() - startTime, success: false, errorMessage: `Start failed: ${startResponse.status}` }).catch(() => {});
     throw new Error(`Apify start run failed (${startResponse.status}): ${errorText}`);
   }
 
@@ -138,16 +141,23 @@ export const runApifyActor = async (actorId: string, apiToken: string, runInput:
     const statusResponse = await apifyFetch(statusUrl, undefined, proxyConfig);
     if (!statusResponse.ok) {
       console.error('[Apify] Status check failed:', statusResponse.status);
+      logApifyUsage({ actorId, operation: 'apify-actor-run', durationMs: Date.now() - startTime, success: false, errorMessage: `Status check failed: ${statusResponse.status}` }).catch(() => {});
       throw new Error(`Apify status check failed (${statusResponse.status}): ${statusResponse.statusText}`);
     }
     const { data: currentRun }: { data: ApifyRun } = await statusResponse.json();
     run = currentRun;
     console.log('[Apify] Run status:', run.status, `(attempt ${i + 1}/${maxRetries})`);
     if (run.status === 'SUCCEEDED') break;
-    if (['FAILED', 'TIMED-OUT', 'ABORTED'].includes(run.status)) throw new Error(`Apify actor run failed with status: ${run.status}`);
+    if (['FAILED', 'TIMED-OUT', 'ABORTED'].includes(run.status)) {
+      logApifyUsage({ actorId, operation: 'apify-actor-run', durationMs: Date.now() - startTime, success: false, errorMessage: `Run ${run.status}` }).catch(() => {});
+      throw new Error(`Apify actor run failed with status: ${run.status}`);
+    }
   }
 
-  if (run.status !== 'SUCCEEDED') throw new Error('Apify actor run timed out.');
+  if (run.status !== 'SUCCEEDED') {
+    logApifyUsage({ actorId, operation: 'apify-actor-run', durationMs: Date.now() - startTime, success: false, errorMessage: 'Run timed out' }).catch(() => {});
+    throw new Error('Apify actor run timed out.');
+  }
 
   console.log('[Apify] Fetching results from dataset:', run.defaultDatasetId);
   const resultsUrl = `${API_BASE_URL}/datasets/${run.defaultDatasetId}/items?token=${apiToken}&format=json`;
@@ -156,6 +166,15 @@ export const runApifyActor = async (actorId: string, apiToken: string, runInput:
 
   const results = await resultsResponse.json();
   console.log('[Apify] Fetched', results.length, 'items from dataset');
+
+  logApifyUsage({
+    actorId,
+    operation: 'apify-actor-run',
+    operationDetail: `${results.length} items`,
+    durationMs: Date.now() - startTime,
+    success: true,
+    datasetItemCount: results.length,
+  }).catch(() => {}); // Fire-and-forget
 
   return results;
 };

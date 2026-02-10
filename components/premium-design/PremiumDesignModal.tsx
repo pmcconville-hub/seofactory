@@ -336,6 +336,7 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
   const [selectedPageUrls, setSelectedPageUrls] = useState<string[]>([]);
   const [customUrl, setCustomUrl] = useState('');
   const [isDiscovering, setIsDiscovering] = useState(false);
+  const [fallbackCount, setFallbackCount] = useState(0);
 
   // Get Supabase client helper
   const getSupabase = useCallback(() => {
@@ -660,7 +661,11 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
       if (aiConfig) {
         setExtractionPhase('enriching');
         setExtractionProgress('');
-        guide = await StyleGuideGenerator.generateFallbackElements(guide, aiConfig);
+        const fallbackResult = await StyleGuideGenerator.generateFallbackElements(guide, aiConfig);
+        guide = fallbackResult.guide;
+        setFallbackCount(fallbackResult.fallbackCount);
+      } else {
+        setFallbackCount(0);
       }
 
       setStyleGuide(guide);
@@ -1198,6 +1203,14 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
           {/* ── Style Guide Review View ── */}
           {view === 'style-guide' && styleGuide && (
             <div style={{ minHeight: '50vh' }}>
+              {fallbackCount > 0 && (
+                <div className="mx-1 mb-2 px-3 py-2 rounded-lg bg-purple-600/10 border border-purple-500/20">
+                  <p className="text-[11px] text-purple-400">
+                    {fallbackCount} element{fallbackCount > 1 ? 's' : ''} could not be extracted and {fallbackCount > 1 ? 'were' : 'was'} AI-generated.
+                    These are marked with a purple "AI Generated" badge — please review them.
+                  </p>
+                </div>
+              )}
               <StyleGuideView
                 styleGuide={styleGuide}
                 onApprove={handleStyleGuideApproved}

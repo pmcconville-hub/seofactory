@@ -33,10 +33,30 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
   const isApproved = element.approvalStatus === 'approved';
   const isRejected = element.approvalStatus === 'rejected';
 
-  // Build iframe content with white background
+  // Detect if element has light text (needs dark background to avoid white-on-white)
+  const textColor = element.computedCss.color || '';
+  const isLightText = (() => {
+    const match = textColor.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+    if (match) {
+      const [, r, g, b] = match;
+      return (parseInt(r) + parseInt(g) + parseInt(b)) / 3 > 180;
+    }
+    if (textColor.startsWith('#')) {
+      const hex = textColor.replace('#', '');
+      if (hex.length >= 6) {
+        const r = parseInt(hex.substring(0, 2), 16);
+        const g = parseInt(hex.substring(2, 4), 16);
+        const b = parseInt(hex.substring(4, 6), 16);
+        return (r + g + b) / 3 > 180;
+      }
+    }
+    return false;
+  })();
+  const bgColor = isLightText ? '#1a1a2e' : '#ffffff';
+
   const iframeContent = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><style>
-  body { margin: 16px; background: #fff; font-family: system-ui, sans-serif; }
+  body { margin: 16px; background: ${bgColor}; font-family: system-ui, sans-serif; }
   * { max-width: 100%; box-sizing: border-box; }
   img { max-height: 120px; }
 </style></head><body>${element.selfContainedHtml}</body></html>`;
@@ -109,24 +129,59 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
         <span className="text-[10px] text-zinc-600 shrink-0">{element.pageRegion}</span>
       </div>
 
-      {/* Preview: element screenshot (if available) or iframe */}
-      <div className="bg-white overflow-hidden" style={{ maxHeight: 200 }}>
-        {element.elementScreenshotBase64 ? (
-          <img
-            src={`data:image/jpeg;base64,${element.elementScreenshotBase64}`}
-            alt={element.label}
-            className="w-full max-h-[200px] object-contain bg-white"
-          />
-        ) : (
-          <iframe
-            ref={iframeRef}
-            srcDoc={iframeContent}
-            title={element.label}
-            className="w-full border-0"
-            style={{ height: 80 }}
-            sandbox="allow-same-origin"
-          />
-        )}
+      {/* Preview: side-by-side layout */}
+      <div className="flex border-t border-zinc-700/50" style={{ minHeight: 100 }}>
+        {/* Left: Visual (screenshot or iframe) */}
+        <div className="w-1/2 bg-white overflow-hidden border-r border-zinc-700/50 flex items-center justify-center" style={{ maxHeight: 220 }}>
+          {element.elementScreenshotBase64 ? (
+            <img
+              src={`data:image/jpeg;base64,${element.elementScreenshotBase64}`}
+              alt={element.label}
+              className="max-w-full max-h-[220px] object-contain"
+            />
+          ) : (
+            <iframe
+              ref={iframeRef}
+              srcDoc={iframeContent}
+              title={element.label}
+              className="w-full border-0"
+              style={{ height: 100 }}
+              sandbox="allow-same-origin"
+            />
+          )}
+        </div>
+
+        {/* Right: HTML + CSS code */}
+        <div className="w-1/2 overflow-hidden flex flex-col">
+          {/* HTML preview */}
+          <div className="flex-1 overflow-auto p-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-zinc-500 uppercase tracking-wider">HTML</span>
+            </div>
+            <pre className="text-[10px] text-zinc-400 bg-zinc-900/50 rounded p-2 overflow-auto max-h-[100px] whitespace-pre-wrap break-all">
+              <code>{element.selfContainedHtml.substring(0, 500)}</code>
+            </pre>
+          </div>
+          {/* CSS properties */}
+          <div className="border-t border-zinc-700/30 p-2">
+            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">CSS</span>
+            <pre className="text-[10px] text-zinc-400 bg-zinc-900/50 rounded p-2 mt-1 overflow-auto max-h-[80px]">
+              <code>{Object.entries(element.computedCss).map(([k, v]) =>
+                `${k.replace(/([A-Z])/g, '-$1').toLowerCase()}: ${v};`
+              ).join('\n')}</code>
+            </pre>
+            {element.hoverCss && Object.keys(element.hoverCss).length > 0 && (
+              <div className="mt-1">
+                <span className="text-[10px] text-purple-400">:hover</span>
+                <pre className="text-[10px] text-zinc-400 bg-zinc-900/50 rounded p-1 mt-0.5 overflow-auto max-h-[40px]">
+                  <code>{Object.entries(element.hoverCss).map(([k, v]) =>
+                    `${k.replace(/([A-Z])/g, '-$1').toLowerCase()}: ${v};`
+                  ).join('\n')}</code>
+                </pre>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Actions */}

@@ -23,6 +23,11 @@ const COST_TABLE: Record<string, { in: number; out: number }> = {
     // Perplexity
     'llama-3.1-sonar-small-128k-online': { in: 0.0002, out: 0.0002 },
     'llama-3.1-sonar-large-128k-online': { in: 0.001, out: 0.001 },
+    // Apify actors (cost per run, stored as out rate; tokensOut=1 means 1 run)
+    'apify/playwright-scraper': { in: 0, out: 0.40 },
+    'apify/google-search-scraper': { in: 0, out: 0.05 },
+    'apify/web-scraper': { in: 0, out: 0.10 },
+    'apify/website-content-crawler': { in: 0, out: 0.20 },
     // Default fallback
     'default': { in: 0.001, out: 0.002 }
 };
@@ -215,6 +220,34 @@ export async function logAiUsage(
         // No supabase client, add to pending queue
         addToPendingQueue(logEntry);
     }
+}
+
+/**
+ * Log Apify actor run usage for cost tracking.
+ * Fire-and-forget — wraps logAiUsage with Apify-specific defaults.
+ */
+export async function logApifyUsage(params: {
+  actorId: string;
+  operation: string;
+  operationDetail?: string;
+  durationMs: number;
+  success: boolean;
+  datasetItemCount?: number;
+  errorMessage?: string;
+  context?: AIUsageContext;
+}, supabase?: SupabaseClient): Promise<void> {
+  await logAiUsage({
+    provider: 'apify',
+    model: params.actorId,
+    operation: params.operation,
+    operationDetail: params.operationDetail,
+    tokensIn: 0,
+    tokensOut: params.success ? 1 : 0, // 1 run = 1 unit for cost calculation
+    durationMs: params.durationMs,
+    success: params.success,
+    errorMessage: params.errorMessage,
+    context: params.context,
+  }, supabase);
 }
 
 // Legacy function for backward compatibility
