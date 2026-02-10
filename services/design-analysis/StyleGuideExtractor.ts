@@ -244,7 +244,7 @@ export const StyleGuideExtractor = {
         launchOptions: { headless: true },
       },
       navigationTimeoutSecs: 60,
-      requestHandlerTimeoutSecs: 120,
+      requestHandlerTimeoutSecs: 180,
     };
 
     console.log('[StyleGuideExtractor] Starting extraction for', normalizedUrls.length, 'URL(s):', normalizedUrls[0]);
@@ -678,7 +678,7 @@ function buildPageFunction(): string {
               if (depth > maxDepth) return null;
               var clone = node.cloneNode(false);
 
-              // Apply computed styles to ALL element nodes (not just root)
+              // Apply computed styles to element nodes (root + first 2 levels of children)
               if (clone.nodeType === 1 && clone.setAttribute) {
                 if (depth === 0) {
                   // Root: use the pre-computed CSS from category-specific props
@@ -686,8 +686,8 @@ function buildPageFunction(): string {
                     .map(function(pair) { return pair[0].replace(/([A-Z])/g, '-$1').toLowerCase() + ': ' + pair[1]; })
                     .join('; ');
                   clone.setAttribute('style', styleStr);
-                } else {
-                  // Children: compute their styles fresh from a compact property list
+                } else if (depth <= 2) {
+                  // Children (depth 1-2): compute their styles from compact property list
                   var childStyle = window.getComputedStyle(node);
                   var entries = [];
                   for (var ci = 0; ci < childProps.length; ci++) {

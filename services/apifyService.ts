@@ -134,7 +134,7 @@ export const runApifyActor = async (actorId: string, apiToken: string, runInput:
   let run = runDetails;
   console.log('[Apify] Run started with ID:', run.id, 'status:', run.status);
 
-  const maxRetries = 40; // ~200 seconds max wait
+  const maxRetries = 60; // ~300 seconds max wait
   for (let i = 0; i < maxRetries; i++) {
     await sleep(5000);
     const statusUrl = `${API_BASE_URL}/actor-runs/${run.id}?token=${apiToken}`;
@@ -156,7 +156,7 @@ export const runApifyActor = async (actorId: string, apiToken: string, runInput:
 
   if (run.status !== 'SUCCEEDED') {
     logApifyUsage({ actorId, operation: 'apify-actor-run', durationMs: Date.now() - startTime, success: false, errorMessage: 'Run timed out' }).catch(() => {});
-    throw new Error('Apify actor run timed out.');
+    throw new Error('Apify actor run timed out. Try selecting fewer pages or using homepage only.');
   }
 
   console.log('[Apify] Fetching results from dataset:', run.defaultDatasetId);
