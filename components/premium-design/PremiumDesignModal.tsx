@@ -19,7 +19,7 @@ import {
   loadDesignHistory,
   savePremiumDesign,
 } from '../../services/premium-design';
-import { StyleGuideExtractor } from '../../services/design-analysis/StyleGuideExtractor';
+import { StyleGuideExtractor, type DiscoveredPage } from '../../services/design-analysis/StyleGuideExtractor';
 import { StyleGuideGenerator, type AiRefineConfig } from '../../services/design-analysis/StyleGuideGenerator';
 import { loadStyleGuide, saveStyleGuide, getHostnameFromUrl } from '../../services/design-analysis/styleGuidePersistence';
 import { StyleGuideView } from './StyleGuideView';
@@ -40,7 +40,7 @@ interface PremiumDesignModalProps {
   initialView?: 'fork' | 'premium-url';
 }
 
-type ModalView = 'fork' | 'quick-export' | 'premium-url' | 'extracting' | 'style-guide' | 'premium-design';
+type ModalView = 'fork' | 'quick-export' | 'premium-url' | 'page-selection' | 'extracting' | 'style-guide' | 'premium-design';
 type PipelineStep = 'capturing' | 'generating-css' | 'rendering' | 'validating' | 'iterating' | 'complete' | 'error';
 
 interface DesignHistoryEntry {
@@ -60,6 +60,12 @@ const PIPELINE_STEPS: { key: PipelineStep; label: string }[] = [
   { key: 'validating', label: 'Validating Match' },
   { key: 'complete', label: 'Complete' },
 ];
+
+// =============================================================================
+// Module-level cache — survives modal close/reopen within same session
+// =============================================================================
+
+const styleGuideMemoryCache = new Map<string, StyleGuide>();
 
 // =============================================================================
 // Helpers
@@ -322,6 +328,15 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
   const [extractionPhase, setExtractionPhase] = useState<string>('');
   const [extractionProgress, setExtractionProgress] = useState<string>('');
 
+  // Style guide approval state
+  const [isGuideApproved, setIsGuideApproved] = useState(false);
+
+  // Page discovery state
+  const [discoveredPages, setDiscoveredPages] = useState<DiscoveredPage[]>([]);
+  const [selectedPageUrls, setSelectedPageUrls] = useState<string[]>([]);
+  const [customUrl, setCustomUrl] = useState('');
+  const [isDiscovering, setIsDiscovering] = useState(false);
+
   // Get Supabase client helper
   const getSupabase = useCallback(() => {
     const bi = state.businessInfo;
@@ -382,6 +397,10 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
       setStyleGuide(null);
       setExtractionError(null);
       setStyleGuideMode(initialView === 'premium-url');
+      setDiscoveredPages([]);
+      setSelectedPageUrls([]);
+      setCustomUrl('');
+      setIsGuideApproved(false);
     }
   }, [isOpen, initialView]);
 
@@ -392,6 +411,19 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
       setStyleGuideMode(initialView === 'premium-url');
     }
   }, [initialView]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Check memory cache when opening in styleGuideMode — restore previously generated guide
+  useEffect(() => {
+    if (!isOpen || !styleGuideMode || !targetUrl || styleGuide) return;
+    const hostname = getHostnameFromUrl(targetUrl);
+    const cached = styleGuideMemoryCache.get(hostname);
+    if (cached) {
+      console.log('[PremiumDesignModal] Restored style guide from memory cache for:', hostname);
+      setStyleGuide(cached);
+      setIsGuideApproved(cached.isApproved || false);
+      setView('style-guide');
+    }
+  }, [isOpen, styleGuideMode, targetUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Generate Quick Export HTML
   const generateQuickExport = useCallback(() => {
@@ -517,9 +549,83 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
     }
   }, [dispatch]);
 
-  // Start style guide extraction
-  const startStyleGuideExtraction = useCallback(async () => {
+  // Start page discovery (first step — leads to page selection)
+  const startPageDiscovery = useCallback(async () => {
     if (!targetUrl.trim()) return;
+    const bi = state.businessInfo;
+    const apifyToken = bi?.apifyToken || '';
+    if (!apifyToken) {
+      dispatch({ type: 'SET_ERROR', payload: 'Apify API token required for style guide extraction. Add it in Settings.' });
+      return;
+    }
+
+    // Check memory cache first
+    const hostname = getHostnameFromUrl(targetUrl);
+    const memoryCached = styleGuideMemoryCache.get(hostname);
+    if (memoryCached) {
+      console.log('[PremiumDesignModal] Restored style guide from memory cache');
+      setStyleGuide(memoryCached);
+      setIsGuideApproved(memoryCached.isApproved || false);
+      setView('style-guide');
+      return;
+    }
+
+    // Check DB cache (best-effort, table may not exist)
+    const supabase = getSupabase();
+    const userId = state.user?.id;
+    if (supabase && userId) {
+      try {
+        const cached = await loadStyleGuide(supabase, userId, hostname);
+        if (cached) {
+          console.log('[PremiumDesignModal] Loaded cached style guide from DB for:', hostname);
+          setStyleGuide(cached.style_guide);
+          styleGuideMemoryCache.set(hostname, cached.style_guide);
+          setView('style-guide');
+          return;
+        }
+      } catch {
+        // Table may not exist — ignore silently
+      }
+    }
+
+    setIsDiscovering(true);
+    setExtractionError(null);
+
+    try {
+      const proxyConfig = bi?.supabaseUrl && bi?.supabaseAnonKey
+        ? { supabaseUrl: bi.supabaseUrl, supabaseAnonKey: bi.supabaseAnonKey }
+        : undefined;
+
+      const pages = await StyleGuideExtractor.discoverPages(targetUrl, apifyToken, proxyConfig);
+      setDiscoveredPages(pages);
+
+      // Auto-select homepage URL + first 2 navigation pages
+      let normalizedHome = targetUrl;
+      if (!normalizedHome.startsWith('http://') && !normalizedHome.startsWith('https://')) {
+        normalizedHome = 'https://' + normalizedHome;
+      }
+      try {
+        const homeUrl = new URL(normalizedHome);
+        normalizedHome = homeUrl.origin + homeUrl.pathname.replace(/\/+$/, '');
+      } catch { /* keep as-is */ }
+
+      const autoSelected = [normalizedHome];
+      const navPages = pages.filter(p => p.section === 'navigation');
+      for (let i = 0; i < Math.min(2, navPages.length); i++) {
+        autoSelected.push(navPages[i].url);
+      }
+      setSelectedPageUrls(autoSelected);
+      setView('page-selection');
+    } catch (err) {
+      console.error('[PremiumDesignModal] Page discovery failed:', err);
+      setExtractionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsDiscovering(false);
+    }
+  }, [targetUrl, state.businessInfo, state.user?.id, dispatch, getSupabase]);
+
+  // Run style guide extraction with selected URLs
+  const runStyleGuideExtraction = useCallback(async (urlsToExtract: string | string[]) => {
     const bi = state.businessInfo;
     const apifyToken = bi?.apifyToken || '';
     if (!apifyToken) {
@@ -531,26 +637,6 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
     setExtractionError(null);
     setView('extracting');
 
-    // Check cache first
-    const supabase = getSupabase();
-    const userId = state.user?.id;
-    const hostname = getHostnameFromUrl(targetUrl);
-
-    if (supabase && userId) {
-      try {
-        const cached = await loadStyleGuide(supabase, userId, hostname);
-        if (cached) {
-          console.log('[PremiumDesignModal] Loaded cached style guide for:', hostname);
-          setStyleGuide(cached.style_guide);
-          setView('style-guide');
-          setIsExtractingGuide(false);
-          return;
-        }
-      } catch (err) {
-        console.warn('[PremiumDesignModal] Failed to load cached style guide:', err);
-      }
-    }
-
     try {
       const proxyConfig = bi?.supabaseUrl && bi?.supabaseAnonKey
         ? { supabaseUrl: bi.supabaseUrl, supabaseAnonKey: bi.supabaseAnonKey }
@@ -558,8 +644,8 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
 
       setExtractionPhase('');
       setExtractionProgress('');
-      const rawExtraction = await StyleGuideExtractor.extractStyleGuide(targetUrl, apifyToken, proxyConfig);
-      let guide = StyleGuideGenerator.generate(rawExtraction, rawExtraction.screenshotBase64, targetUrl);
+      const rawExtraction = await StyleGuideExtractor.extractStyleGuide(urlsToExtract, apifyToken, proxyConfig);
+      let guide = StyleGuideGenerator.generate(rawExtraction, rawExtraction.screenshotBase64, Array.isArray(urlsToExtract) ? urlsToExtract[0] : urlsToExtract);
 
       // AI Validation: score elements using vision
       const aiConfig = getAiConfig();
@@ -580,13 +666,14 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
       setStyleGuide(guide);
       setView('style-guide');
 
-      // Save to cache
+      // Save to memory cache
+      styleGuideMemoryCache.set(guide.hostname, guide);
+
+      // Save to DB cache (best-effort, table may not exist yet)
+      const supabase = getSupabase();
+      const userId = state.user?.id;
       if (supabase && userId) {
-        try {
-          await saveStyleGuide(supabase, userId, guide);
-        } catch (err) {
-          console.warn('[PremiumDesignModal] Failed to save style guide:', err);
-        }
+        saveStyleGuide(supabase, userId, guide).catch(() => { /* table may not exist */ });
       }
     } catch (err) {
       console.error('[PremiumDesignModal] Style guide extraction failed:', err);
@@ -597,25 +684,36 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
       setExtractionPhase('');
       setExtractionProgress('');
     }
-  }, [targetUrl, state.businessInfo, state.user?.id, dispatch, getSupabase, getAiConfig]);
+  }, [state.businessInfo, state.user?.id, dispatch, getSupabase, getAiConfig]);
 
-  // Handle style guide approval → continue to premium design pipeline
-  const handleStyleGuideApproved = useCallback(async (approvedGuide: StyleGuide) => {
+  // Handle style guide approval — save, export, stay on review (do NOT start pipeline)
+  const handleStyleGuideApproved = useCallback((approvedGuide: StyleGuide) => {
     setStyleGuide(approvedGuide);
+    setIsGuideApproved(true);
 
-    // Save approved guide
+    // Save to memory cache
+    styleGuideMemoryCache.set(approvedGuide.hostname, approvedGuide);
+
+    // Save to DB (best-effort, table may not exist)
     const supabase = getSupabase();
     const userId = state.user?.id;
     if (supabase && userId) {
-      try {
-        await saveStyleGuide(supabase, userId, approvedGuide);
-      } catch (err) {
-        console.warn('[PremiumDesignModal] Failed to save approved style guide:', err);
-      }
+      saveStyleGuide(supabase, userId, approvedGuide).catch(() => { /* table may not exist */ });
     }
 
-    // Start the premium design pipeline with the approved style guide
-    if (!brief) return;
+    // Auto-download the style guide HTML
+    const html = generateStyleGuideHtml(approvedGuide);
+    const filename = `${approvedGuide.hostname}-style-guide.html`;
+    downloadFile(new Blob([html], { type: 'text/html' }), filename);
+    dispatch({ type: 'SET_NOTIFICATION', payload: `Style guide approved and downloaded: ${filename}` });
+
+    // Stay on style-guide view — user can re-export or continue to premium design
+  }, [dispatch, getSupabase, state.user?.id]);
+
+  // Continue to Premium Design pipeline (optional — user must click explicitly)
+  const handleContinueToPremiumDesign = useCallback(async () => {
+    if (!brief || !styleGuide) return;
+
     const bi = state.businessInfo;
     const apiKey = bi?.geminiApiKey || bi?.anthropicApiKey || bi?.openAiApiKey || '';
     const provider: PremiumDesignConfig['aiProvider'] =
@@ -645,6 +743,8 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
     const orchestrator = new PremiumDesignOrchestrator(config);
     orchestratorRef.current = orchestrator;
 
+    const supabase = getSupabase();
+    const userId = state.user?.id;
     const persistenceOpts = supabase && userId ? {
       supabase,
       userId,
@@ -666,7 +766,7 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
         },
         persistenceOpts,
         brief?.structured_outline,
-        approvedGuide
+        styleGuide
       );
       setSession(result);
 
@@ -683,7 +783,7 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
     } finally {
       setIsRunning(false);
     }
-  }, [brief, targetUrl, articleDraft, topicalMap, state.businessInfo, state.user?.id, topic, dispatch, getSupabase]);
+  }, [brief, styleGuide, targetUrl, articleDraft, topicalMap, state.businessInfo, state.user?.id, topic, dispatch, getSupabase]);
 
   // Handle AI element refinement
   const handleRefineElement = useCallback(async (elementId: string) => {
@@ -747,6 +847,7 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
             {view === 'fork' ? 'Export & Design'
               : view === 'quick-export' ? 'Quick Export'
               : view === 'style-guide' ? 'Style Guide Review'
+              : view === 'page-selection' ? 'Select Pages to Analyze'
               : view === 'extracting' ? 'Extracting Style Guide...'
               : view === 'premium-url' && styleGuideMode ? 'Style Guide Extraction'
               : view === 'premium-url' ? 'Premium Design Studio'
@@ -756,12 +857,13 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
             {view !== 'fork' && (
               <button
                 onClick={() => {
-                  if (view === 'style-guide') { setView('premium-url'); }
-                  else if (view === 'premium-design' && !isRunning) { setView('style-guide'); }
-                  else { setView('fork'); setSession(null); setForceRegenerate(false); setStyleGuide(null); }
+                  if (view === 'page-selection') { setView('premium-url'); }
+                  else if (view === 'style-guide') { setView('premium-url'); }
+                  else if (view === 'premium-design' && !isRunning) { setView('style-guide'); setSession(null); }
+                  else { setView('fork'); setSession(null); setForceRegenerate(false); setStyleGuide(null); setIsGuideApproved(false); }
                 }}
                 className="text-xs text-zinc-400 hover:text-zinc-200 px-2 py-1"
-                disabled={isRunning || isExtractingGuide}
+                disabled={isRunning || isExtractingGuide || isDiscovering}
               >
                 Back
               </button>
@@ -923,11 +1025,11 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
                     We'll extract actual design elements from this website. You can review and approve each element before generating your article design.
                   </p>
                   <button
-                    onClick={startStyleGuideExtraction}
-                    disabled={!targetUrl.trim() || isExtractingGuide}
+                    onClick={startPageDiscovery}
+                    disabled={!targetUrl.trim() || isDiscovering || isExtractingGuide}
                     className="w-full px-4 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded-lg transition-colors"
                   >
-                    {isExtractingGuide ? 'Extracting...' : 'Extract Style Guide'}
+                    {isDiscovering ? 'Discovering pages...' : 'Extract Style Guide'}
                   </button>
                   <button
                     onClick={startPremiumDesign}
@@ -941,6 +1043,129 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
             </div>
           )}
 
+          {/* ── Page Selection View ── */}
+          {view === 'page-selection' && (
+            <div className="space-y-4 max-w-lg mx-auto">
+              <div>
+                <h3 className="text-sm font-medium text-zinc-200 mb-1">Select Pages to Extract (max 5)</h3>
+                <p className="text-xs text-zinc-500">Choose which pages to analyze for design elements. More pages = richer style guide.</p>
+              </div>
+
+              {/* Homepage (always selected) */}
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 p-2 rounded-lg bg-zinc-800/50 border border-zinc-700/50">
+                  <input type="checkbox" checked disabled className="accent-purple-500" />
+                  <span className="text-xs text-zinc-300 flex-1 truncate">{targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`}</span>
+                  <span className="text-[10px] text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">homepage</span>
+                </label>
+              </div>
+
+              {/* Discovered pages grouped by section */}
+              {(['navigation', 'footer', 'content'] as const).map(section => {
+                const sectionPages = discoveredPages.filter(p => p.section === section);
+                if (sectionPages.length === 0) return null;
+                return (
+                  <div key={section} className="space-y-1">
+                    <p className="text-[10px] text-zinc-500 uppercase tracking-wide px-1">{section}</p>
+                    {sectionPages.map(page => {
+                      const isSelected = selectedPageUrls.includes(page.url);
+                      const isDisabled = !isSelected && selectedPageUrls.length >= 5;
+                      return (
+                        <label
+                          key={page.url}
+                          className={`flex items-center gap-2 p-2 rounded-lg border transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-purple-900/20 border-purple-500/30'
+                              : isDisabled
+                                ? 'bg-zinc-800/30 border-zinc-800 opacity-50 cursor-not-allowed'
+                                : 'bg-zinc-800/50 border-zinc-700/50 hover:border-zinc-600'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            disabled={isDisabled}
+                            onChange={() => {
+                              if (isSelected) {
+                                setSelectedPageUrls(prev => prev.filter(u => u !== page.url));
+                              } else if (selectedPageUrls.length < 5) {
+                                setSelectedPageUrls(prev => [...prev, page.url]);
+                              }
+                            }}
+                            className="accent-purple-500"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-xs text-zinc-300 block truncate">{page.label}</span>
+                            <span className="text-[10px] text-zinc-500 block truncate">{page.url}</span>
+                          </div>
+                          <span className="text-[10px] text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded shrink-0">{section}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+
+              {discoveredPages.length === 0 && (
+                <p className="text-xs text-zinc-500 text-center py-4">No additional pages discovered. You can add custom URLs below.</p>
+              )}
+
+              {/* Add custom URL */}
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={customUrl}
+                  onChange={e => setCustomUrl(e.target.value)}
+                  placeholder="https://example.com/page"
+                  className="flex-1 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                />
+                <button
+                  onClick={() => {
+                    if (!customUrl.trim()) return;
+                    let normalized = customUrl.trim();
+                    if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+                      normalized = 'https://' + normalized;
+                    }
+                    if (selectedPageUrls.length >= 5) return;
+                    if (selectedPageUrls.includes(normalized)) return;
+                    setSelectedPageUrls(prev => [...prev, normalized]);
+                    // Also add to discovered pages for display
+                    if (!discoveredPages.some(p => p.url === normalized)) {
+                      setDiscoveredPages(prev => [...prev, { url: normalized, label: normalized, section: 'content' }]);
+                    }
+                    setCustomUrl('');
+                  }}
+                  disabled={!customUrl.trim() || selectedPageUrls.length >= 5}
+                  className="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 disabled:text-zinc-600 text-zinc-200 rounded-lg transition-colors"
+                >
+                  + Add
+                </button>
+              </div>
+
+              {/* Selection count */}
+              <p className="text-xs text-zinc-400 text-center">
+                {selectedPageUrls.length} of 5 pages selected
+              </p>
+
+              {/* Action buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => runStyleGuideExtraction(selectedPageUrls)}
+                  disabled={selectedPageUrls.length === 0}
+                  className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  Extract Selected Pages ({selectedPageUrls.length})
+                </button>
+                <button
+                  onClick={() => runStyleGuideExtraction(targetUrl)}
+                  className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-400 text-xs rounded-lg transition-colors whitespace-nowrap"
+                >
+                  Skip, use homepage only
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ── Extracting View ── */}
           {view === 'extracting' && (
             <div className="flex flex-col items-center justify-center py-16 space-y-4">
@@ -950,10 +1175,16 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
                   ? extractionProgress || 'Validating elements with AI...'
                   : extractionPhase === 'enriching'
                     ? 'Generating missing design elements...'
-                    : `Extracting design elements from ${targetUrl}...`}
+                    : selectedPageUrls.length > 1
+                      ? `Extracting design elements from ${selectedPageUrls.length} pages...`
+                      : `Extracting design elements from ${targetUrl}...`}
               </p>
               {extractionPhase === '' && (
-                <p className="text-xs text-zinc-500">This may take 30-60 seconds</p>
+                <p className="text-xs text-zinc-500">
+                  {selectedPageUrls.length > 1
+                    ? 'This may take 30-90 seconds'
+                    : 'This may take 30-60 seconds'}
+                </p>
               )}
               {extractionPhase === 'validating' && (
                 <p className="text-xs text-zinc-500">AI is scoring each element for quality</p>
@@ -972,13 +1203,44 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
                 onApprove={handleStyleGuideApproved}
                 onReextract={() => {
                   setStyleGuide(null);
-                  startStyleGuideExtraction();
+                  setIsGuideApproved(false);
+                  startPageDiscovery();
                 }}
                 onExport={handleStyleGuideExport}
                 onRefineElement={handleRefineElement}
                 isRefining={isRefiningElement}
                 onChange={setStyleGuide}
               />
+
+              {/* Post-approval actions */}
+              {isGuideApproved && (
+                <div className="mt-3 pt-3 border-t border-zinc-800">
+                  <div className="flex items-center gap-3 p-3 bg-green-900/20 border border-green-500/30 rounded-lg mb-3">
+                    <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <p className="text-xs text-green-400 flex-1">
+                      Style guide approved and downloaded. You can re-export or continue to generate a branded article design.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 justify-between">
+                    <button
+                      onClick={handleStyleGuideExport}
+                      className="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded-lg transition-colors"
+                    >
+                      Download Style Guide Again
+                    </button>
+                    {brief && (
+                      <button
+                        onClick={handleContinueToPremiumDesign}
+                        className="px-4 py-2 text-xs bg-purple-600 hover:bg-purple-500 text-white font-medium rounded-lg transition-colors"
+                      >
+                        Continue to Premium Design &rarr;
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

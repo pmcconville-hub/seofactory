@@ -54,6 +54,13 @@ const CSS_PROPS_MAP: Record<string, string[]> = {
   ],
 };
 
+/** Discovered page from navigation link discovery */
+export interface DiscoveredPage {
+  url: string;
+  label: string;
+  section: 'navigation' | 'footer' | 'content';
+}
+
 /** Raw element data returned from Apify page function */
 export interface RawExtractedElement {
   category: string;
@@ -87,27 +94,24 @@ export interface RawStyleGuideExtraction {
 
 export const StyleGuideExtractor = {
   /**
-   * Extract style guide elements from a target URL using Apify playwright-scraper.
-   * v2: Smart filtering, complexity limits, element screenshots. Single-page only
-   * (homepage has all design elements; AI fallback covers any gaps).
+   * Discover navigable pages from a website's navigation, header, and footer links.
+   * Lightweight Apify run (~15-20s) — no element extraction, just link discovery.
    */
-  async extractStyleGuide(
+  async discoverPages(
     url: string,
     apiToken: string,
     proxyConfig?: ApifyProxyConfig
-  ): Promise<RawStyleGuideExtraction> {
+  ): Promise<DiscoveredPage[]> {
     if (!apiToken) {
       throw new Error('Apify API token is required');
     }
-
-    const startTime = Date.now();
 
     // Ensure URL has protocol
     if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://' + url;
     }
 
-    const pageFunction = buildPageFunction();
+    const pageFunction = buildDiscoverPagesFunction();
 
     const runInput = {
       startUrls: [{ url }],
@@ -119,37 +123,372 @@ export const StyleGuideExtractor = {
       launchContext: {
         launchOptions: { headless: true },
       },
+      navigationTimeoutSecs: 30,
+      requestHandlerTimeoutSecs: 30,
+    };
+
+    console.log('[StyleGuideExtractor] Discovering pages for:', url);
+    const results = await runApifyActor(PLAYWRIGHT_SCRAPER_ACTOR_ID, apiToken, runInput, proxyConfig);
+
+    if (!results || results.length === 0) {
+      console.warn('[StyleGuideExtractor] No results from page discovery');
+      return [];
+    }
+
+    const result = results[0];
+    if (result.error) {
+      console.warn('[StyleGuideExtractor] Page discovery failed:', result.error);
+      return [];
+    }
+
+    const rawLinks: Array<{ url: string; label: string; section: string }> = result.links || [];
+
+    // Post-processing: filter, deduplicate, sort
+    let baseUrl: URL;
+    try {
+      baseUrl = new URL(url);
+    } catch {
+      return [];
+    }
+
+    const noisePatterns = /\/(login|logout|sign-in|sign-out|cart|checkout|account|register|wp-admin|wp-login|feed|xmlrpc|\.pdf|\.zip|\.jpg|\.png|\.gif)/i;
+    const seen = new Set<string>();
+    const pages: DiscoveredPage[] = [];
+
+    for (const link of rawLinks) {
+      // Skip non-http links
+      if (!link.url || !link.url.startsWith('http')) continue;
+
+      // Check same domain
+      let linkUrl: URL;
+      try {
+        linkUrl = new URL(link.url);
+      } catch { continue; }
+      if (linkUrl.hostname !== baseUrl.hostname) continue;
+
+      // Skip hash-only, javascript:, mailto:, tel:
+      if (link.url.includes('javascript:') || link.url.includes('mailto:') || link.url.includes('tel:')) continue;
+
+      // Normalize: remove trailing slash, hash, query for dedup
+      const normalized = linkUrl.origin + linkUrl.pathname.replace(/\/+$/, '');
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+
+      // Skip noise URLs
+      if (noisePatterns.test(linkUrl.pathname)) continue;
+
+      // Skip homepage itself (will be auto-added by UI)
+      if (linkUrl.pathname === '/' || linkUrl.pathname === '') continue;
+
+      const section = (link.section === 'navigation' || link.section === 'footer' || link.section === 'content')
+        ? link.section as DiscoveredPage['section']
+        : 'content';
+
+      pages.push({
+        url: linkUrl.origin + linkUrl.pathname,
+        label: link.label?.trim() || linkUrl.pathname,
+        section,
+      });
+    }
+
+    // Sort: navigation first, then footer, then content
+    const sectionOrder: Record<string, number> = { navigation: 0, footer: 1, content: 2 };
+    pages.sort((a, b) => (sectionOrder[a.section] ?? 2) - (sectionOrder[b.section] ?? 2));
+
+    // Cap at 20 results
+    const capped = pages.slice(0, 20);
+    console.log('[StyleGuideExtractor] Discovered', capped.length, 'pages');
+    return capped;
+  },
+
+  /**
+   * Extract style guide elements from a target URL (or multiple URLs) using Apify playwright-scraper.
+   * v2: Smart filtering, complexity limits, element screenshots.
+   * When given an array of URLs, crawls each explicitly (no link following) and merges results.
+   */
+  async extractStyleGuide(
+    urls: string | string[],
+    apiToken: string,
+    proxyConfig?: ApifyProxyConfig
+  ): Promise<RawStyleGuideExtraction> {
+    if (!apiToken) {
+      throw new Error('Apify API token is required');
+    }
+
+    const startTime = Date.now();
+
+    // Normalize input to array
+    const urlList = Array.isArray(urls) ? urls : [urls];
+    const isMultiPage = urlList.length > 1;
+
+    // Ensure all URLs have protocol
+    const normalizedUrls = urlList.map(u => {
+      if (u && !u.startsWith('http://') && !u.startsWith('https://')) {
+        return 'https://' + u;
+      }
+      return u;
+    });
+
+    const pageFunction = buildPageFunction();
+
+    const runInput = {
+      startUrls: normalizedUrls.map(u => ({ url: u })),
+      pageFunction,
+      proxyConfiguration: { useApifyProxy: true },
+      maxConcurrency: isMultiPage ? 2 : 1,
+      maxRequestsPerCrawl: normalizedUrls.length,
+      linkSelector: '',
+      launchContext: {
+        launchOptions: { headless: true },
+      },
       navigationTimeoutSecs: 60,
       requestHandlerTimeoutSecs: 120,
     };
 
-    console.log('[StyleGuideExtractor] Starting extraction for:', url);
+    console.log('[StyleGuideExtractor] Starting extraction for', normalizedUrls.length, 'URL(s):', normalizedUrls[0]);
     const results = await runApifyActor(PLAYWRIGHT_SCRAPER_ACTOR_ID, apiToken, runInput, proxyConfig);
 
     if (!results || results.length === 0) {
       throw new Error('No results from style guide extraction — Apify returned empty dataset');
     }
 
-    const result = results[0];
-    if (result.error) {
-      throw new Error(`Style guide extraction failed: ${result.error}`);
+    // Single page: return directly (existing behavior)
+    if (!isMultiPage) {
+      const result = results[0];
+      if (result.error) {
+        throw new Error(`Style guide extraction failed: ${result.error}`);
+      }
+
+      console.log('[StyleGuideExtractor] Extracted', result.elements?.length || 0, 'elements');
+
+      return {
+        elements: result.elements || [],
+        screenshotBase64: result.screenshotBase64 || '',
+        pageScreenshots: result.screenshotBase64 ? [{ url: result.url, base64: result.screenshotBase64 }] : [],
+        googleFontsUrls: result.googleFontsUrls || [],
+        googleFontFamilies: result.googleFontFamilies || [],
+        colorMap: result.colorMap || {},
+        url: normalizedUrls[0],
+        extractionDurationMs: Date.now() - startTime,
+        pagesScanned: 1,
+      };
     }
 
-    console.log('[StyleGuideExtractor] Extracted', result.elements?.length || 0, 'elements');
+    // Multi-page: merge results from all pages
+    const allElements: RawExtractedElement[] = [];
+    const allGoogleFontsUrls: string[] = [];
+    const allGoogleFontFamilies: string[] = [];
+    const mergedColorMap: Record<string, { count: number; sources: string[] }> = {};
+    const pageScreenshots: { url: string; base64: string }[] = [];
+    let primaryScreenshot = '';
+
+    for (const result of results) {
+      if (result.error) {
+        console.warn('[StyleGuideExtractor] Page failed:', result.url, result.error);
+        continue;
+      }
+
+      // Tag elements with source page
+      const elements = (result.elements || []).map((el: RawExtractedElement) => ({
+        ...el,
+        sourcePageUrl: result.url,
+      }));
+      allElements.push(...elements);
+
+      // Collect screenshots
+      if (result.screenshotBase64) {
+        pageScreenshots.push({ url: result.url, base64: result.screenshotBase64 });
+        if (!primaryScreenshot) primaryScreenshot = result.screenshotBase64;
+      }
+
+      // Merge Google Fonts (deduplicate)
+      for (const fontUrl of (result.googleFontsUrls || [])) {
+        if (!allGoogleFontsUrls.includes(fontUrl)) allGoogleFontsUrls.push(fontUrl);
+      }
+      for (const family of (result.googleFontFamilies || [])) {
+        if (!allGoogleFontFamilies.includes(family)) allGoogleFontFamilies.push(family);
+      }
+
+      // Merge color maps
+      for (const [color, data] of Object.entries(result.colorMap || {})) {
+        const existing = mergedColorMap[color];
+        if (existing) {
+          existing.count += (data as { count: number; sources: string[] }).count;
+          for (const src of (data as { count: number; sources: string[] }).sources) {
+            if (existing.sources.length < 5 && !existing.sources.includes(src)) {
+              existing.sources.push(src);
+            }
+          }
+        } else {
+          mergedColorMap[color] = { ...(data as { count: number; sources: string[] }) };
+        }
+      }
+    }
+
+    // Deduplicate elements by CSS hash (same logic as in page function)
+    const deduped = deduplicateElements(allElements);
+
+    console.log('[StyleGuideExtractor] Merged', deduped.length, 'elements from', results.length, 'pages');
 
     return {
-      elements: result.elements || [],
-      screenshotBase64: result.screenshotBase64 || '',
-      pageScreenshots: result.screenshotBase64 ? [{ url: result.url, base64: result.screenshotBase64 }] : [],
-      googleFontsUrls: result.googleFontsUrls || [],
-      googleFontFamilies: result.googleFontFamilies || [],
-      colorMap: result.colorMap || {},
-      url,
+      elements: deduped,
+      screenshotBase64: primaryScreenshot,
+      pageScreenshots,
+      googleFontsUrls: allGoogleFontsUrls,
+      googleFontFamilies: allGoogleFontFamilies,
+      colorMap: mergedColorMap,
+      url: normalizedUrls[0],
       extractionDurationMs: Date.now() - startTime,
-      pagesScanned: 1,
+      pagesScanned: results.filter(r => !r.error).length,
     };
   },
 };
+
+/**
+ * Deduplicate extracted elements by CSS hash across pages.
+ * Keeps max 3 per subcategory (same as in-page limit).
+ */
+function deduplicateElements(elements: RawExtractedElement[]): RawExtractedElement[] {
+  const hashKeys = ['fontFamily', 'fontSize', 'fontWeight', 'color', 'backgroundColor',
+    'borderRadius', 'padding', 'border', 'boxShadow'];
+
+  function hashCss(css: Record<string, string>): string {
+    return hashKeys.map(k => css[k] || '').join('|');
+  }
+
+  const MAX_PER_SUBCATEGORY = 3;
+  const subcategoryCounts: Record<string, number> = {};
+  const seenHashes: Record<string, Set<string>> = {};
+  const result: RawExtractedElement[] = [];
+
+  for (const el of elements) {
+    const sub = el.subcategory;
+    if (!subcategoryCounts[sub]) subcategoryCounts[sub] = 0;
+    if (!seenHashes[sub]) seenHashes[sub] = new Set();
+
+    if (subcategoryCounts[sub] >= MAX_PER_SUBCATEGORY) continue;
+
+    const hash = hashCss(el.computedCss);
+    if (seenHashes[sub].has(hash)) continue;
+
+    seenHashes[sub].add(hash);
+    subcategoryCounts[sub]++;
+    result.push(el);
+  }
+
+  return result;
+}
+
+/**
+ * Build a lightweight Apify page function for navigation link discovery.
+ * Only extracts links from nav, header, footer, and main — no element extraction.
+ */
+function buildDiscoverPagesFunction(): string {
+  return `
+    async function pageFunction(context) {
+      var request = context.request;
+      var page = context.page;
+      var log = context.log;
+
+      try {
+        log.info('Discovering navigation links for:', request.url);
+
+        await page.waitForLoadState('domcontentloaded', { timeout: 20000 });
+        await page.waitForTimeout(1500);
+
+        // Dismiss cookie consent (reuse common selectors)
+        try {
+          var cookieSelectors = [
+            '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
+            '#CybotCookiebotDialogBodyButtonAccept',
+            '#onetrust-accept-btn-handler',
+            '.cky-btn-accept',
+            'button:has-text("Accept all")',
+            'button:has-text("Accept All")',
+            'button:has-text("Allow all")',
+            'button:has-text("Accept cookies")',
+            'button:has-text("I agree")',
+            'button:has-text("OK")',
+            'button:has-text("Accepteren")',
+            'button:has-text("Alles accepteren")',
+            'button:has-text("Akkoord")',
+            'button:has-text("Alle akzeptieren")',
+            'button:has-text("Tout accepter")',
+          ];
+
+          for (var ci = 0; ci < cookieSelectors.length; ci++) {
+            try {
+              var btn = await page.$(cookieSelectors[ci]);
+              if (btn) {
+                var isVisible = await btn.isVisible().catch(function() { return false; });
+                if (isVisible) {
+                  await btn.click({ timeout: 2000 });
+                  await page.waitForTimeout(500);
+                  break;
+                }
+              }
+            } catch (e) { /* next */ }
+          }
+        } catch (e) { /* done */ }
+
+        // Extract links from navigation areas
+        var links = await page.evaluate(function() {
+          var results = [];
+          var seen = {};
+
+          function addLinks(selector, section) {
+            var anchors = document.querySelectorAll(selector);
+            for (var i = 0; i < anchors.length; i++) {
+              var a = anchors[i];
+              var href = a.getAttribute('href');
+              if (!href) continue;
+
+              // Resolve to absolute
+              try {
+                var resolved = new URL(href, window.location.origin).href;
+                if (seen[resolved]) continue;
+                seen[resolved] = true;
+
+                var text = (a.textContent || '').trim().replace(/\\s+/g, ' ');
+                if (text.length > 60) text = text.substring(0, 60);
+
+                results.push({
+                  url: resolved,
+                  label: text || href,
+                  section: section,
+                });
+              } catch (e) { /* invalid URL */ }
+            }
+          }
+
+          // Priority order: nav links first, then header, footer, main content
+          addLinks('nav a[href]', 'navigation');
+          addLinks('header a[href]', 'navigation');
+          addLinks('[role="navigation"] a[href]', 'navigation');
+          addLinks('footer a[href]', 'footer');
+          addLinks('main a[href]', 'content');
+          addLinks('[role="main"] a[href]', 'content');
+
+          return results;
+        });
+
+        log.info('Found', links.length, 'links');
+
+        return {
+          links: links,
+          url: request.url,
+        };
+      } catch (error) {
+        log.error('Page discovery failed:', error.message);
+        return {
+          error: error.message,
+          url: request.url,
+          links: [],
+        };
+      }
+    }
+  `;
+}
 
 /**
  * Build the Apify page function string for style guide extraction.

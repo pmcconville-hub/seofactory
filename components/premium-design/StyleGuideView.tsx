@@ -257,7 +257,7 @@ export const StyleGuideView: React.FC<StyleGuideViewProps> = ({
           disabled={isRefining}
           className="px-4 py-2 text-xs bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-medium rounded-lg transition-colors"
         >
-          {isRefining ? 'Refining...' : 'Approve Style Guide & Continue \u2192'}
+          {isRefining ? 'Refining...' : 'Approve & Export Style Guide'}
         </button>
       </div>
     </div>
