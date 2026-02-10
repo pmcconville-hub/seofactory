@@ -88,7 +88,8 @@ export interface RawStyleGuideExtraction {
 export const StyleGuideExtractor = {
   /**
    * Extract style guide elements from a target URL using Apify playwright-scraper.
-   * v2: Crawls up to 4 pages on the same domain, merges results.
+   * v2: Smart filtering, complexity limits, element screenshots. Single-page only
+   * (homepage has all design elements; AI fallback covers any gaps).
    */
   async extractStyleGuide(
     url: string,
@@ -106,14 +107,6 @@ export const StyleGuideExtractor = {
       url = 'https://' + url;
     }
 
-    // Extract hostname for same-domain restriction
-    let hostname = '';
-    try {
-      hostname = new URL(url).hostname;
-    } catch {
-      hostname = url.replace(/^https?:\/\//, '').split('/')[0];
-    }
-
     const pageFunction = buildPageFunction();
 
     const runInput = {
@@ -121,12 +114,8 @@ export const StyleGuideExtractor = {
       pageFunction,
       proxyConfiguration: { useApifyProxy: true },
       maxConcurrency: 1,
-      maxRequestsPerCrawl: 2,
-      linkSelector: 'a[href]',
-      pseudoUrls: [
-        { purl: `https://${hostname}[.*]` },
-        { purl: `http://${hostname}[.*]` },
-      ],
+      maxRequestsPerCrawl: 1,
+      linkSelector: '',
       launchContext: {
         launchOptions: { headless: true },
       },
@@ -134,72 +123,30 @@ export const StyleGuideExtractor = {
       requestHandlerTimeoutSecs: 120,
     };
 
-    console.log('[StyleGuideExtractor] Starting multi-page extraction for:', url, '(up to 2 pages on', hostname, ')');
+    console.log('[StyleGuideExtractor] Starting extraction for:', url);
     const results = await runApifyActor(PLAYWRIGHT_SCRAPER_ACTOR_ID, apiToken, runInput, proxyConfig);
 
     if (!results || results.length === 0) {
       throw new Error('No results from style guide extraction — Apify returned empty dataset');
     }
 
-    // Merge results from all crawled pages
-    const allElements: RawExtractedElement[] = [];
-    const pageScreenshots: { url: string; base64: string }[] = [];
-    let googleFontsUrls: string[] = [];
-    let googleFontFamilies: string[] = [];
-    const colorMaps: Record<string, { count: number; sources: string[] }>[] = [];
-    let firstScreenshot = '';
-    let pagesScanned = 0;
-
-    for (const result of results) {
-      if (result.error) {
-        console.warn('[StyleGuideExtractor] Page error:', result.url, result.error);
-        continue;
-      }
-      pagesScanned++;
-
-      if (result.elements) {
-        for (const el of result.elements) {
-          el.sourcePageUrl = result.url;
-          allElements.push(el);
-        }
-      }
-
-      if (result.screenshotBase64) {
-        pageScreenshots.push({ url: result.url, base64: result.screenshotBase64 });
-        if (!firstScreenshot) firstScreenshot = result.screenshotBase64;
-      }
-
-      if (result.googleFontsUrls) googleFontsUrls.push(...result.googleFontsUrls);
-      if (result.googleFontFamilies) googleFontFamilies.push(...result.googleFontFamilies);
-      if (result.colorMap) colorMaps.push(result.colorMap);
+    const result = results[0];
+    if (result.error) {
+      throw new Error(`Style guide extraction failed: ${result.error}`);
     }
 
-    // Deduplicate fonts
-    googleFontsUrls = [...new Set(googleFontsUrls)];
-    googleFontFamilies = [...new Set(googleFontFamilies)];
-
-    // Merge colorMaps
-    const mergedColorMap: Record<string, { count: number; sources: string[] }> = {};
-    for (const cm of colorMaps) {
-      for (const [color, data] of Object.entries(cm)) {
-        if (!mergedColorMap[color]) mergedColorMap[color] = { count: 0, sources: [] };
-        mergedColorMap[color].count += data.count;
-        mergedColorMap[color].sources.push(...(data.sources || []));
-      }
-    }
-
-    console.log('[StyleGuideExtractor] Merged', allElements.length, 'elements from', pagesScanned, 'pages');
+    console.log('[StyleGuideExtractor] Extracted', result.elements?.length || 0, 'elements');
 
     return {
-      elements: allElements,
-      screenshotBase64: firstScreenshot,
-      pageScreenshots,
-      googleFontsUrls,
-      googleFontFamilies,
-      colorMap: mergedColorMap,
+      elements: result.elements || [],
+      screenshotBase64: result.screenshotBase64 || '',
+      pageScreenshots: result.screenshotBase64 ? [{ url: result.url, base64: result.screenshotBase64 }] : [],
+      googleFontsUrls: result.googleFontsUrls || [],
+      googleFontFamilies: result.googleFontFamilies || [],
+      colorMap: result.colorMap || {},
       url,
       extractionDurationMs: Date.now() - startTime,
-      pagesScanned,
+      pagesScanned: 1,
     };
   },
 };
