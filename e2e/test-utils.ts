@@ -61,7 +61,7 @@ export async function login(page: Page, email?: string, password?: string) {
     await loginButton.click();
 
     // Wait for navigation to project selection - look for "Create New Project" heading
-    await page.waitForSelector('h2:has-text("Create New Project"), h2:has-text("Site Analysis")', {
+    await page.waitForSelector('h2:has-text("Projects"), h2:has-text("Site Analysis")', {
       timeout: TEST_CONFIG.DEFAULT_TIMEOUT,
     }).catch(() => {
       // May already be logged in or auth failed

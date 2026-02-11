@@ -23,14 +23,20 @@ test.describe('Authentication', () => {
   });
 
   test('should show signup tab', async ({ page }) => {
-    // Look for Sign Up tab or button
+    // Signup is currently disabled in the app (signupDisabled = true in AuthScreen)
     const signUpTab = page.locator('button:has-text("Sign Up"), a:has-text("Sign Up")');
-    await expect(signUpTab.first()).toBeVisible({ timeout: 10000 });
+    const isVisible = await signUpTab.first().isVisible({ timeout: 3000 }).catch(() => false);
 
-    // Click the sign up tab
+    if (!isVisible) {
+      // Signup tab is intentionally hidden - verify the login form is still functional
+      await expect(page.locator('input[type="email"]')).toBeVisible();
+      await expect(page.locator('button[type="submit"]:has-text("Sign In")')).toBeVisible();
+      test.skip(true, 'Signup is currently disabled in the application');
+      return;
+    }
+
+    // If signup is re-enabled, click it and verify
     await signUpTab.first().click();
-
-    // Should show sign up form
     await expect(page.locator('button[type="submit"]:has-text("Sign Up"), button[type="submit"]:has-text("Create Account")')).toBeVisible({ timeout: 5000 });
 
     await takeScreenshot(page, 'auth-signup-form');
@@ -71,7 +77,7 @@ test.describe('Authentication', () => {
     await page.locator('button[type="submit"]:has-text("Sign In")').click();
 
     // Wait for navigation to project selection or dashboard
-    await page.waitForSelector('h2:has-text("Create New Project"), h2:has-text("Site Analysis"), button:has-text("Open Site Analysis")', {
+    await page.waitForSelector('h2:has-text("Projects"), h2:has-text("Site Analysis"), button:has-text("Open Site Analysis")', {
       timeout: TEST_CONFIG.DEFAULT_TIMEOUT,
     });
 
@@ -97,7 +103,7 @@ test.describe('Authentication', () => {
     await page.locator('button[type="submit"]:has-text("Sign In")').click();
 
     // Wait for successful login
-    await page.waitForSelector('h2:has-text("Create New Project"), h2:has-text("Site Analysis"), button:has-text("Open Site Analysis")', {
+    await page.waitForSelector('h2:has-text("Projects"), h2:has-text("Site Analysis"), button:has-text("Open Site Analysis")', {
       timeout: TEST_CONFIG.DEFAULT_TIMEOUT,
     });
 
@@ -112,7 +118,7 @@ test.describe('Authentication', () => {
     expect(isAuthFormHidden).toBe(true);
 
     // Should show project selection or dashboard
-    const projectUI = page.locator('h2:has-text("Create New Project"), h2:has-text("Site Analysis"), button:has-text("Open Site Analysis")');
+    const projectUI = page.locator('h2:has-text("Projects"), h2:has-text("Site Analysis"), button:has-text("Open Site Analysis")');
     await expect(projectUI.first()).toBeVisible({ timeout: 10000 });
 
     await takeScreenshot(page, 'auth-session-persisted');

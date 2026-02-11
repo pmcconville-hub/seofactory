@@ -57,12 +57,16 @@ export async function getCatalog(
   supabase: SupabaseClient,
   mapId: string
 ): Promise<ProductCatalog | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('product_catalogs')
     .select('*')
     .eq('map_id', mapId)
     .single();
 
+  // Gracefully handle 406 (PostgREST schema cache stale) and PGRST116 (no rows)
+  if (error && (error.code === 'PGRST116' || error.message?.includes('406'))) {
+    return null;
+  }
   return data as ProductCatalog | null;
 }
 

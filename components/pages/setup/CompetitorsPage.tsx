@@ -11,10 +11,17 @@ const CompetitorsPage: React.FC = () => {
     const navigate = useNavigate();
     const { projectId, mapId } = useParams<{ projectId: string; mapId: string }>();
 
+    // Check if this is an ecommerce project to route through catalog step
+    const activeMap = state.topicalMaps.find(m => m.id === mapId);
+    const mapBizInfo = activeMap?.business_info as Record<string, unknown> | undefined;
+    const isEcommerce = (mapBizInfo?.websiteType || state.businessInfo.websiteType) === 'ECOMMERCE';
+
     const handleFinalize = async (competitors: string[]) => {
         if (!mapId) return;
         dispatch({ type: 'SET_COMPETITORS', payload: { mapId, competitors } });
-        navigate(`/p/${projectId}/m/${mapId}/setup/blueprint`);
+        // Route to catalog step for ecommerce, otherwise skip to blueprint
+        const nextStep = isEcommerce ? 'catalog' : 'blueprint';
+        navigate(`/p/${projectId}/m/${mapId}/setup/${nextStep}`);
     };
 
     const handleBack = () => {

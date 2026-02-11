@@ -28,14 +28,24 @@ const BlueprintPage: React.FC = () => {
         navigate(`/p/${projectId}/m/${mapId}/setup/competitors`);
     };
 
+    const handleComplete = async (config: Parameters<typeof handleFinalizeBlueprint>[0]) => {
+        await handleFinalizeBlueprint(config);
+        navigate(`/p/${projectId}/m/${mapId}`);
+    };
+
+    const handleSkip = async () => {
+        await handleSkipBlueprint();
+        navigate(`/p/${projectId}/m/${mapId}`);
+    };
+
     return (
         <WebsiteBlueprintWizard
             businessInfo={effectiveBusinessInfo}
             pillars={currentMap?.pillars}
             existingNAPData={state.websiteStructure?.napData}
             isLoading={!!state.isLoading.map}
-            onComplete={handleFinalizeBlueprint}
-            onSkip={handleSkipBlueprint}
+            onComplete={handleComplete}
+            onSkip={handleSkip}
             onBack={handleBack}
         />
     );

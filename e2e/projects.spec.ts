@@ -23,12 +23,13 @@ test.describe('Project Management', () => {
     const isStillOnAuthScreen = await emailInput.isVisible({ timeout: 3000 }).catch(() => false);
     test.skip(isStillOnAuthScreen, 'Authentication required - skipping test');
 
-    // Check for create project UI
-    const createProjectHeader = page.locator('h2').filter({ hasText: 'Create New Project' }).or(page.getByText('Create New Project'));
-    await expect(createProjectHeader.first()).toBeVisible({ timeout: 10000 });
+    // Check for projects page UI - heading is "Projects" with a "+ New Project" button
+    const projectsHeader = page.locator('h2:has-text("Projects")');
+    await expect(projectsHeader.first()).toBeVisible({ timeout: 10000 });
 
-    // Should show project name input
-    await expect(page.locator('input[placeholder*="Project"], input[placeholder*="project"]')).toBeVisible();
+    // Should show the New Project button
+    const newProjectButton = page.locator('button:has-text("New Project")');
+    await expect(newProjectButton.first()).toBeVisible({ timeout: 5000 });
 
     await takeScreenshot(page, 'projects-create-form');
   });
@@ -46,9 +47,9 @@ test.describe('Project Management', () => {
       await createButton.first().click();
 
       // Should either disable the button or stay on same screen
-      // Check that we didn't navigate away (still showing create form)
-      const createHeader = page.locator('h2').filter({ hasText: 'Create New Project' }).or(page.getByText('Create New Project'));
-      await expect(createHeader.first()).toBeVisible({ timeout: 5000 });
+      // Check that we didn't navigate away (still showing projects page)
+      const projectsHeader = page.locator('h2:has-text("Projects")');
+      await expect(projectsHeader.first()).toBeVisible({ timeout: 5000 });
     }
 
     await takeScreenshot(page, 'projects-validation');
@@ -83,8 +84,11 @@ test.describe('Project Management', () => {
     const isStillOnAuthScreen = await emailInput.isVisible({ timeout: 3000 }).catch(() => false);
     test.skip(isStillOnAuthScreen, 'Authentication required - skipping test');
 
-    // Look for project list or "Your Projects" heading
-    const projectListIndicator = page.locator('text=Your Projects, text=Recent Projects, text=No projects yet, button:has-text("Open Site Analysis")');
+    // Look for projects table or heading - the UI shows "Projects" heading with count badge and table
+    const projectListIndicator = page.locator('h2:has-text("Projects")')
+      .or(page.getByText('Project Name'))
+      .or(page.locator('button:has-text("Open")'))
+      .or(page.getByText('Create Your First Project'));
 
     await expect(projectListIndicator.first()).toBeVisible({ timeout: 10000 });
 

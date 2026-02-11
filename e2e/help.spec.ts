@@ -1,5 +1,6 @@
 // e2e/help.spec.ts
-// End-to-end tests for help modal functionality
+// End-to-end tests for help functionality
+// Note: Help opens in a separate window (window.open), not a modal dialog
 
 import { test, expect } from '@playwright/test';
 import { waitForAppLoad, login, TEST_CONFIG, takeScreenshot } from './test-utils';
@@ -17,115 +18,104 @@ test.describe('Help Modal', () => {
     }
   });
 
-  test('should open help modal', async ({ page }) => {
+  test('should open help modal', async ({ page, context }) => {
     const emailInput = page.locator('input[type="email"]');
     const isStillOnAuthScreen = await emailInput.isVisible({ timeout: 3000 }).catch(() => false);
     test.skip(isStillOnAuthScreen, 'Authentication required - skipping test');
 
-    // Look for help button (question mark icon, "Help" text, etc.)
+    // Look for help button in the toolbar/sidebar
     const helpButton = page.locator('button:has-text("Help"), button[title="Help"], button[aria-label*="Help"], button:has([data-icon="question"]), button:has([data-icon="help"])');
 
     // Help button should be visible after login
     await expect(helpButton.first()).toBeVisible({ timeout: 10000 });
 
-    // Click help button
-    await helpButton.first().click();
+    // Click help button - it opens a new window via window.open
+    const [newPage] = await Promise.all([
+      context.waitForEvent('page'),
+      helpButton.first().click(),
+    ]);
 
-    // Wait for help modal to open
-    await page.waitForTimeout(1000);
-
-    // Should show help modal with title or heading
-    const helpModal = page.getByText('Help').or(page.getByText('Documentation')).or(page.locator('[role="dialog"]').filter({ hasText: 'Help' }));
-    await expect(helpModal.first()).toBeVisible({ timeout: 5000 });
+    // New help window should load
+    await newPage.waitForLoadState('domcontentloaded');
 
     await takeScreenshot(page, 'help-modal-open');
+    await newPage.close();
   });
 
-  test('should display help content', async ({ page }) => {
+  test('should display help content', async ({ page, context }) => {
     const emailInput = page.locator('input[type="email"]');
     const isStillOnAuthScreen = await emailInput.isVisible({ timeout: 3000 }).catch(() => false);
     test.skip(isStillOnAuthScreen, 'Authentication required - skipping test');
 
-    // Open help modal
+    // Open help window
     const helpButton = page.locator('button:has-text("Help"), button[title="Help"], button[aria-label*="Help"], button:has([data-icon="question"]), button:has([data-icon="help"])');
     if (await helpButton.first().isVisible({ timeout: 5000 }).catch(() => false)) {
-      await helpButton.first().click();
-      await page.waitForTimeout(1000);
-    }
+      const [newPage] = await Promise.all([
+        context.waitForEvent('page'),
+        helpButton.first().click(),
+      ]);
 
-    // Check for help content - should have some instructional text
-    const helpContent = page.locator('[role="dialog"], .modal').filter({ hasText: 'Help' });
-    await expect(helpContent).toBeVisible({ timeout: 5000 });
+      await newPage.waitForLoadState('domcontentloaded');
 
-    // Should have some content text (paragraphs, lists, etc.)
-    const contentElements = page.locator('[role="dialog"] p, [role="dialog"] li, [role="dialog"] div, .modal p, .modal li');
-    const count = await contentElements.count();
-    expect(count).toBeGreaterThan(0);
+      // Help page should have some content
+      const bodyContent = await newPage.locator('body').innerHTML();
+      expect(bodyContent.length).toBeGreaterThan(100);
 
-    await takeScreenshot(page, 'help-modal-content');
-  });
-
-  test('should close help modal', async ({ page }) => {
-    const emailInput = page.locator('input[type="email"]');
-    const isStillOnAuthScreen = await emailInput.isVisible({ timeout: 3000 }).catch(() => false);
-    test.skip(isStillOnAuthScreen, 'Authentication required - skipping test');
-
-    // Open help modal
-    const helpButton = page.locator('button:has-text("Help"), button[title="Help"], button[aria-label*="Help"], button:has([data-icon="question"]), button:has([data-icon="help"])');
-    if (await helpButton.first().isVisible({ timeout: 5000 }).catch(() => false)) {
-      await helpButton.first().click();
-      await page.waitForTimeout(1000);
-
-      // Look for close button (X, Close, etc.)
-      const closeButton = page.locator('button:has-text("Close"), button[aria-label*="Close"], button:has([data-icon="times"]), button:has([data-icon="x"])');
-
-      if (await closeButton.first().isVisible({ timeout: 5000 }).catch(() => false)) {
-        await closeButton.first().click();
-        await page.waitForTimeout(500);
-
-        // Help modal should be closed
-        const helpModalCheck = page.locator('[role="dialog"]').filter({ hasText: 'Help' }).or(page.locator('.modal').filter({ hasText: 'Help' }));
-        const isModalHidden = await helpModalCheck.isHidden({ timeout: 3000 }).catch(() => true);
-
-        expect(isModalHidden).toBe(true);
-
-        await takeScreenshot(page, 'help-modal-closed');
-      }
+      await takeScreenshot(newPage, 'help-modal-content');
+      await newPage.close();
     }
   });
 
-  test('should be accessible via keyboard', async ({ page }) => {
+  test('should close help modal', async ({ page, context }) => {
     const emailInput = page.locator('input[type="email"]');
     const isStillOnAuthScreen = await emailInput.isVisible({ timeout: 3000 }).catch(() => false);
     test.skip(isStillOnAuthScreen, 'Authentication required - skipping test');
 
-    // Tab to help button and press Enter
+    // Open help window
+    const helpButton = page.locator('button:has-text("Help"), button[title="Help"], button[aria-label*="Help"], button:has([data-icon="question"]), button:has([data-icon="help"])');
+    if (await helpButton.first().isVisible({ timeout: 5000 }).catch(() => false)) {
+      const [newPage] = await Promise.all([
+        context.waitForEvent('page'),
+        helpButton.first().click(),
+      ]);
+
+      await newPage.waitForLoadState('domcontentloaded');
+
+      // Close the help window
+      await newPage.close();
+
+      // Original page should still be functional
+      await expect(page.locator('h2:has-text("Projects")')).toBeVisible({ timeout: 5000 });
+
+      await takeScreenshot(page, 'help-modal-closed');
+    }
+  });
+
+  test('should be accessible via keyboard', async ({ page, context }) => {
+    const emailInput = page.locator('input[type="email"]');
+    const isStillOnAuthScreen = await emailInput.isVisible({ timeout: 3000 }).catch(() => false);
+    test.skip(isStillOnAuthScreen, 'Authentication required - skipping test');
+
+    // Focus the help button and press Enter
     const helpButton = page.locator('button:has-text("Help"), button[title="Help"], button[aria-label*="Help"]');
 
     if (await helpButton.first().isVisible({ timeout: 5000 }).catch(() => false)) {
       // Focus the help button
       await helpButton.first().focus();
 
-      // Press Enter to open
-      await page.keyboard.press('Enter');
+      // Press Enter to open - should open in new window
+      const [newPage] = await Promise.all([
+        context.waitForEvent('page'),
+        page.keyboard.press('Enter'),
+      ]);
 
-      // Wait for modal to open
-      await page.waitForTimeout(1000);
+      await newPage.waitForLoadState('domcontentloaded');
 
-      // Should show help modal
-      const helpModalKbd = page.locator('[role="dialog"]').filter({ hasText: 'Help' }).or(page.locator('.modal').filter({ hasText: 'Help' }));
-      await expect(helpModalKbd.first()).toBeVisible({ timeout: 5000 });
+      // Help window should have loaded
+      const bodyContent = await newPage.locator('body').innerHTML();
+      expect(bodyContent.length).toBeGreaterThan(0);
 
-      // Press Escape to close
-      await page.keyboard.press('Escape');
-
-      // Wait for modal to close
-      await page.waitForTimeout(500);
-
-      // Modal should be closed
-      const isModalHidden = await helpModalKbd.isHidden({ timeout: 3000 }).catch(() => true);
-      expect(isModalHidden).toBe(true);
-
+      await newPage.close();
       await takeScreenshot(page, 'help-keyboard-accessibility');
     }
   });

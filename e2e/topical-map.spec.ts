@@ -30,13 +30,11 @@ test.describe('Topical Map Management', () => {
   });
 
   test('should display map selection or creation UI', async ({ page }) => {
-    // After login, should see project selection or map selection
-    const projectUI = page.locator(
-      'h2:has-text("Create New Project"), ' +
-      'h2:has-text("Your Projects"), ' +
-      'button:has-text("Create Map"), ' +
-      'button:has-text("New Map")'
-    );
+    // After login, should see projects page or map selection
+    const projectUI = page.locator('h2:has-text("Projects")')
+      .or(page.locator('button:has-text("New Project")'))
+      .or(page.locator('button:has-text("Create Map")'))
+      .or(page.locator('button:has-text("New Map")'));
 
     await expect(projectUI.first()).toBeVisible({ timeout: 10000 });
     await takeScreenshot(page, 'topical-map-selection');
