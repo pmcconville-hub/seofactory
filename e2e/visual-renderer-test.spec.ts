@@ -22,11 +22,12 @@
 import { test, expect, Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { TEST_CONFIG } from './test-utils';
 
 const DIR = 'screenshots/renderer-comparison';
-const BASE_URL = 'http://localhost:3000';
-const TEST_EMAIL = 'richard@kjenmarks.nl';
-const TEST_PASSWORD = 'pannekoek';
+const BASE_URL = TEST_CONFIG.BASE_URL;
+const TEST_EMAIL = TEST_CONFIG.TEST_EMAIL;
+const TEST_PASSWORD = TEST_CONFIG.TEST_PASSWORD;
 
 function ensureDir(d: string) {
   const r = path.resolve(d);

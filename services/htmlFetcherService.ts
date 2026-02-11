@@ -10,6 +10,7 @@
 import { jinaLogger, firecrawlLogger, directFetchLogger } from './apiCallLogger';
 import { extractPageTechnicalData } from './apifyService';
 import { API_ENDPOINTS } from '../config/apiEndpoints';
+import { REMOVE_SELECTORS_STRING, WAIT_FOR_SELECTORS_STRING } from '../config/scrapingConfig';
 
 export interface HtmlFetchResult {
   html: string;
@@ -27,18 +28,6 @@ export interface FetcherConfig {
 
 const JINA_READER_URL = API_ENDPOINTS.JINA_READER;
 const FIRECRAWL_API_URL = API_ENDPOINTS.FIRECRAWL_SCRAPE;
-
-// Common selectors to remove (cookie banners, popups)
-const REMOVE_SELECTORS = [
-  '#CybotCookiebotDialog',
-  '#onetrust-consent-sdk',
-  '.cc-window',
-  '.cc-banner',
-  '#cookie-notice',
-  '#cookie-banner',
-  '.cookie-consent-banner',
-  '.consent-banner',
-].join(', ');
 
 /**
  * Fetch HTML from URL with automatic fallback between providers
@@ -156,8 +145,8 @@ async function fetchWithJina(url: string, config: FetcherConfig): Promise<string
           'Authorization': `Bearer ${config.jinaApiKey}`,
           'Accept': 'application/json',
           'X-Return-Format': 'html',
-          'X-Remove-Selector': REMOVE_SELECTORS,
-          'X-Wait-For-Selector': 'main, article, .content, #content, body',
+          'X-Remove-Selector': REMOVE_SELECTORS_STRING,
+          'X-Wait-For-Selector': WAIT_FOR_SELECTORS_STRING,
           'X-Set-Cookie': 'cookieconsent_status=dismiss',
           'X-Timeout': '30', // 30 second timeout
         },
@@ -186,8 +175,8 @@ async function fetchWithJina(url: string, config: FetcherConfig): Promise<string
         'Authorization': `Bearer ${config.jinaApiKey}`,
         'Accept': 'application/json',
         'X-Return-Format': 'html',
-        'X-Remove-Selector': REMOVE_SELECTORS,
-        'X-Wait-For-Selector': 'main, article, .content, #content, body',
+        'X-Remove-Selector': REMOVE_SELECTORS_STRING,
+        'X-Wait-For-Selector': WAIT_FOR_SELECTORS_STRING,
         'X-Timeout': '30',
       },
     });

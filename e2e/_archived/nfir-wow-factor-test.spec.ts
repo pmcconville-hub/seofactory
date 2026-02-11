@@ -13,7 +13,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const SCREENSHOT_DIR = 'screenshots/nfir-wow-factor';
-const BASE_URL = 'http://localhost:3000';
+import { TEST_CONFIG } from '../test-utils';
+const BASE_URL = TEST_CONFIG.BASE_URL;
 
 // Test credentials
 const TEST_EMAIL = 'richard@kjenmarks.nl';

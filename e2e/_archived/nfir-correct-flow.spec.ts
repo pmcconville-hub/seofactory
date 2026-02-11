@@ -10,7 +10,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const SCREENSHOT_DIR = 'screenshots/nfir-correct-flow';
-const BASE_URL = 'http://localhost:3000';
+import { TEST_CONFIG } from '../test-utils';
+const BASE_URL = TEST_CONFIG.BASE_URL;
 const TEST_EMAIL = 'richard@kjenmarks.nl';
 const TEST_PASSWORD = 'pannekoek';
 

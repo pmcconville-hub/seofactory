@@ -4,9 +4,10 @@
 import { test, Page } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
+import { TEST_CONFIG } from './test-utils';
 
 const DIR = 'screenshots/renderer-proof';
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = TEST_CONFIG.BASE_URL;
 
 function ensureDir(d: string) {
   const r = path.resolve(d);

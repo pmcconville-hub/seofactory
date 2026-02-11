@@ -7,6 +7,9 @@ import { Page, expect } from '@playwright/test';
  * Test configuration - set these in .env.test or as environment variables
  */
 export const TEST_CONFIG = {
+  // Base URL for the local dev server (matches playwright.config.ts)
+  BASE_URL: process.env.BASE_URL || 'http://localhost:3000',
+
   // Test user credentials (create a test user in Supabase)
   TEST_EMAIL: process.env.TEST_EMAIL || 'richard@kjenmarks.nl',
   TEST_PASSWORD: process.env.TEST_PASSWORD || 'pannekoek',

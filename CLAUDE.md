@@ -53,7 +53,7 @@ Multi-provider abstraction supporting Gemini, OpenAI, Anthropic, Perplexity, and
 - `calculateTopicalAuthority()` - AI-based holistic authority scoring (0-100)
 - Returns breakdown: contentDepth, contentBreadth, interlinking, semanticRichness
 - UI: "Authority" button in `AnalysisToolsPanel`
-- Prompt: `config/prompts.ts` → `CALCULATE_TOPICAL_AUTHORITY_PROMPT`
+- Prompt: `config/prompts/` domain modules (decomposed from monolithic `prompts.ts`)
 
 **Semantic Distance & Clustering** (`lib/knowledgeGraph.ts` + `services/ai/clustering.ts`):
 - `calculateSemanticDistance(entityA, entityB)` - Formula: `1 - (CosineSimilarity × ContextWeight × CoOccurrence)`
@@ -139,15 +139,32 @@ The `services/layout-engine/` module transforms content into design-agency quali
 - `components/` - React components (wizards, modals, dashboard panels)
 - `components/ui/` - Reusable UI primitives
 - `state/` - Global state management
-- `config/` - Defaults, prompts, and schemas
+- `config/` - Centralized configuration:
+  - `apiEndpoints.ts` - All external API base URLs
+  - `scrapingConfig.ts` - HTML scraping selectors and settings
+  - `prompts/` - Domain-specific AI prompt modules (9 modules)
 - `hooks/` - Custom React hooks (useKnowledgeGraph, useMapData, useTopicEnrichment)
 - `utils/` - Export utilities, helpers, parsers
+- `services/ai/shared/` - Shared AI provider utilities (retry, context, rate limiting)
 
 ### Key Files
 - `types.ts` - All TypeScript interfaces and enums
 - `App.tsx` - Main application entry
 - `state/appState.ts` - State shape and reducer
 - `services/aiResponseSanitizer.ts` - Critical: sanitizes AI responses to prevent crashes
+
+## Testing
+
+```bash
+npx tsc --noEmit      # TypeScript type-check (zero errors expected)
+npx vitest run         # Run all unit/integration tests
+npx playwright test    # Run E2E tests (requires dev server running)
+```
+
+- **Unit tests**: Vitest + React Testing Library in `__tests__/` directories
+- **E2E tests**: Playwright specs in `e2e/` (archived debug specs in `e2e/_archived/`)
+- **Test config**: `e2e/test-utils.ts` exports `TEST_CONFIG` with `BASE_URL`, credentials, timeouts
+- Pre-existing test failures (~38) in blueprintRenderer, ComponentStyles, contentTemplates are known
 
 ## Database Schema (Supabase)
 

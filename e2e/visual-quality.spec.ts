@@ -18,6 +18,7 @@
 import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { TEST_CONFIG } from './test-utils';
 
 const SCREENSHOTS_DIR = 'e2e/screenshots';
 
@@ -1242,9 +1243,9 @@ test.describe('Visual Screenshot Capture', () => {
   test.setTimeout(600000); // 10 min - includes AI generation time
 
   test('capture Style & Publish preview for visual review', async ({ page }) => {
-    const BASE_URL = 'http://localhost:3000';
-    const TEST_EMAIL = 'richard@kjenmarks.nl';
-    const TEST_PASSWORD = 'pannekoek';
+    const BASE_URL = TEST_CONFIG.BASE_URL;
+    const TEST_EMAIL = TEST_CONFIG.TEST_EMAIL;
+    const TEST_PASSWORD = TEST_CONFIG.TEST_PASSWORD;
 
     // Check if dev server is running
     try {
