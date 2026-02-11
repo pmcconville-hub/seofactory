@@ -79,7 +79,7 @@ export async function createTemplateVersion(
       .eq('template_name', input.templateName)
       .order('version_number', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     const nextVersion = (latestVersion?.version_number || 0) + 1;
 

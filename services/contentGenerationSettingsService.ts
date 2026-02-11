@@ -37,7 +37,7 @@ export class ContentGenerationSettingsService {
       .eq('user_id', userId)
       .eq('is_default', true)
       .is('map_id', null)
-      .single();
+      .maybeSingle();
 
     if (existing && !error) {
       return settingsRowToInterface(existing as ContentGenerationSettingsRow);
@@ -79,7 +79,7 @@ export class ContentGenerationSettingsService {
       .select('*')
       .eq('user_id', userId)
       .eq('map_id', mapId)
-      .single();
+      .maybeSingle();
 
     if (mapSettings) {
       return settingsRowToInterface(mapSettings as ContentGenerationSettingsRow);
@@ -125,7 +125,7 @@ export class ContentGenerationSettingsService {
       .select('id')
       .eq('user_id', userId)
       .eq('map_id', mapId)
-      .single();
+      .maybeSingle();
 
     const dbData = settingsToDbInsert({ ...settings, userId, mapId });
 
