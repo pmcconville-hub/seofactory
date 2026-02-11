@@ -10,15 +10,28 @@ export type ClaimVerifier = (claimText: string) => Promise<{
   suggestion?: string;
 }>;
 
+/**
+ * Optional cache adapter for storing/retrieving fact verification results.
+ * Implementations may use Supabase, localStorage, or any other storage backend.
+ */
+export interface FactValidationCacheAdapter {
+  get(claimHash: string): Promise<FactClaim | null>;
+  set(claimHash: string, claim: FactClaim): Promise<void>;
+}
+
 export class FactValidator {
   private readonly verifier: ClaimVerifier;
+  private readonly cache?: FactValidationCacheAdapter;
 
   /**
    * @param verifier Optional custom verifier. Defaults to a stub that marks claims as unable_to_verify.
    *                 In production, pass a Perplexity-based verifier.
+   * @param cache    Optional cache adapter. When provided, verified claims are cached and
+   *                 subsequent lookups skip the verifier if a cached result exists.
    */
-  constructor(verifier?: ClaimVerifier) {
+  constructor(verifier?: ClaimVerifier, cache?: FactValidationCacheAdapter) {
     this.verifier = verifier || this.defaultVerifier;
+    this.cache = cache;
   }
 
   /**
@@ -56,6 +69,7 @@ export class FactValidator {
 
   /**
    * Verify a single claim using the verifier function.
+   * When a cache adapter is configured, results are checked/stored in cache.
    */
   async verifyClaim(claim: FactClaim): Promise<FactClaim> {
     // Check for outdated statistics first
@@ -67,14 +81,29 @@ export class FactValidator {
       };
     }
 
+    // Check cache if available
+    const hash = this.hashClaim(claim.text);
+    if (this.cache) {
+      const cached = await this.cache.get(hash);
+      if (cached) return { ...claim, ...cached };
+    }
+
+    // Call verifier
     try {
       const result = await this.verifier(claim.text);
-      return {
+      const verified: FactClaim = {
         ...claim,
         verificationStatus: result.status,
         verificationSources: result.sources,
         suggestion: result.suggestion,
       };
+
+      // Store in cache (non-fatal if it fails)
+      if (this.cache) {
+        await this.cache.set(hash, verified).catch(() => {});
+      }
+
+      return verified;
     } catch {
       return {
         ...claim,
@@ -116,6 +145,20 @@ export class FactValidator {
       verificationStatus: 'unverified',
       verificationSources: [],
     };
+  }
+
+  /**
+   * Create a simple hash string for cache key lookup.
+   * Consistent for the same claim text.
+   */
+  private hashClaim(text: string): string {
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      const char = text.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash |= 0; // Convert to 32bit integer
+    }
+    return `fv-${Math.abs(hash).toString(36)}`;
   }
 
   /**

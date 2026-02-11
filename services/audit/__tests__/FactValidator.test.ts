@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FactValidator } from '../FactValidator';
 import type { FactClaim, VerificationSource } from '../types';
-import type { ClaimVerifier } from '../FactValidator';
+import type { ClaimVerifier, FactValidationCacheAdapter } from '../FactValidator';
 
 describe('FactValidator', () => {
   describe('extractClaims', () => {
@@ -151,6 +151,104 @@ describe('FactValidator', () => {
     it('isUnattributed detects statistics without attribution', () => {
       expect(validator.isUnattributed('83% of users prefer organic search')).toBe(true);
       expect(validator.isUnattributed('According to Google, 83% of users prefer organic search')).toBe(false);
+    });
+  });
+
+  describe('caching', () => {
+    it('returns cached result without calling verifier', async () => {
+      const mockVerifier: ClaimVerifier = vi.fn();
+      const mockCache: FactValidationCacheAdapter = {
+        get: vi.fn().mockResolvedValue({
+          verificationStatus: 'verified',
+          verificationSources: [{ url: 'https://cached.com', title: 'Cached', snippet: 'From cache', agreesWithClaim: true, retrievedAt: '2026-01-01' }],
+        }),
+        set: vi.fn(),
+      };
+
+      const validator = new FactValidator(mockVerifier, mockCache);
+      const claim: FactClaim = {
+        id: 'cache-test',
+        text: 'The sky is blue',
+        claimType: 'general',
+        confidence: 0.9,
+        verificationStatus: 'unverified',
+        verificationSources: [],
+      };
+
+      const result = await validator.verifyClaim(claim);
+      expect(result.verificationStatus).toBe('verified');
+      expect(mockVerifier).not.toHaveBeenCalled();
+      expect(mockCache.get).toHaveBeenCalled();
+    });
+
+    it('stores verified result in cache', async () => {
+      const mockVerifier: ClaimVerifier = vi.fn().mockResolvedValue({
+        status: 'verified',
+        sources: [],
+      });
+      const mockCache: FactValidationCacheAdapter = {
+        get: vi.fn().mockResolvedValue(null),
+        set: vi.fn(),
+      };
+
+      const validator = new FactValidator(mockVerifier, mockCache);
+      const claim: FactClaim = {
+        id: 'store-test',
+        text: 'Water is wet',
+        claimType: 'general',
+        confidence: 0.9,
+        verificationStatus: 'unverified',
+        verificationSources: [],
+      };
+
+      await validator.verifyClaim(claim);
+      expect(mockCache.set).toHaveBeenCalled();
+    });
+
+    it('works without cache adapter (backward compatible)', async () => {
+      const mockVerifier: ClaimVerifier = vi.fn().mockResolvedValue({
+        status: 'verified',
+        sources: [],
+      });
+
+      const validator = new FactValidator(mockVerifier);
+      const claim: FactClaim = {
+        id: 'no-cache-test',
+        text: 'Gravity exists on Earth',
+        claimType: 'general',
+        confidence: 0.9,
+        verificationStatus: 'unverified',
+        verificationSources: [],
+      };
+
+      const result = await validator.verifyClaim(claim);
+      expect(result.verificationStatus).toBe('verified');
+      expect(mockVerifier).toHaveBeenCalled();
+    });
+
+    it('handles cache set failure gracefully', async () => {
+      const mockVerifier: ClaimVerifier = vi.fn().mockResolvedValue({
+        status: 'verified',
+        sources: [],
+      });
+      const mockCache: FactValidationCacheAdapter = {
+        get: vi.fn().mockResolvedValue(null),
+        set: vi.fn().mockRejectedValue(new Error('Cache write failed')),
+      };
+
+      const validator = new FactValidator(mockVerifier, mockCache);
+      const claim: FactClaim = {
+        id: 'cache-fail-test',
+        text: 'The moon orbits Earth',
+        claimType: 'general',
+        confidence: 0.9,
+        verificationStatus: 'unverified',
+        verificationSources: [],
+      };
+
+      // Should not throw despite cache failure
+      const result = await validator.verifyClaim(claim);
+      expect(result.verificationStatus).toBe('verified');
     });
   });
 });
