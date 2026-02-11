@@ -28,8 +28,9 @@ export const setUsageContext = ctx.setUsageContext;
 // Use shared utilities (previously duplicated across all providers)
 import { extractMarkdownFromResponse } from './ai/shared/extractJson';
 import { retryWithBackoff } from './ai/shared/retryWithBackoff';
+import { API_ENDPOINTS } from '../config/apiEndpoints';
 
-const API_URL = 'https://api.perplexity.ai/chat/completions';
+const API_URL = API_ENDPOINTS.PERPLEXITY;
 
 const callApi = async <T>(
     prompt: string,

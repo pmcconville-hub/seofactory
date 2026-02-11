@@ -26,8 +26,9 @@ export const setUsageContext = ctx.setUsageContext;
 
 // Use shared extraction utility (previously duplicated across all providers)
 import { extractMarkdownFromResponse } from './ai/shared/extractJson';
+import { API_ENDPOINTS } from '../config/apiEndpoints';
 
-const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const API_URL = API_ENDPOINTS.OPENROUTER;
 
 const callApi = async <T>(
     prompt: string,

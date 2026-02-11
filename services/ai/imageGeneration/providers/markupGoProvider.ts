@@ -2,8 +2,9 @@
 import { ImagePlaceholder, BusinessInfo, BrandKit } from '../../../../types';
 import { ImageProvider, ImageGenerationOptions, GenerationResult, ProviderConfig } from './types';
 import { DEFAULT_MARKUPGO_TEMPLATE_ID } from '../../../../config/imageTemplates';
+import { API_ENDPOINTS } from '../../../../config/apiEndpoints';
 
-const MARKUPGO_API_URL = 'https://api.markupgo.com/api/v1/image';
+const MARKUPGO_API_URL = API_ENDPOINTS.MARKUPGO;
 const DEFAULT_TIMEOUT_MS = 30000;
 
 interface MarkupGoResponse {

@@ -6,6 +6,7 @@
 
 import type { DesignDNA } from '../../types/designDna';
 import type { CrawledCssTokens, ValidationResult, PremiumDesignConfig } from './types';
+import { API_ENDPOINTS } from '../../config/apiEndpoints';
 
 /**
  * Validates design output against target website screenshot.
@@ -177,7 +178,7 @@ Return ONLY valid JSON. No markdown fences, no extra text.`;
 
   private async callClaude(img1: string, img2: string, prompt: string): Promise<string> {
     const model = this.config.model || 'claude-sonnet-4-20250514';
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(API_ENDPOINTS.ANTHROPIC, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -204,7 +205,7 @@ Return ONLY valid JSON. No markdown fences, no extra text.`;
 
   private async callOpenAI(img1: string, img2: string, prompt: string): Promise<string> {
     const model = this.config.model || 'gpt-4o';
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch(API_ENDPOINTS.OPENAI, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

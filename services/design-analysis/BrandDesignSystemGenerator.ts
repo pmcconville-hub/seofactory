@@ -6,6 +6,7 @@ import type {
 } from '../../types/designDna';
 import { buildDesignSystemGenerationPrompt } from './prompts/designSystemPrompt';
 import { CSSPostProcessor, type PostProcessResult } from './CSSPostProcessor';
+import { API_ENDPOINTS } from '../../config/apiEndpoints';
 
 interface BrandDesignSystemGeneratorConfig {
   provider: 'gemini' | 'anthropic';
@@ -1012,7 +1013,7 @@ CRITICAL: Return ONLY valid JSON. Make the CSS sophisticated and brand-specific,
       content.push({ type: 'text', text: prompt });
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(API_ENDPOINTS.ANTHROPIC, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

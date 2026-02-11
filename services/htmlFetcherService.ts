@@ -9,6 +9,7 @@
 
 import { jinaLogger, firecrawlLogger, directFetchLogger } from './apiCallLogger';
 import { extractPageTechnicalData } from './apifyService';
+import { API_ENDPOINTS } from '../config/apiEndpoints';
 
 export interface HtmlFetchResult {
   html: string;
@@ -24,8 +25,8 @@ export interface FetcherConfig {
   supabaseAnonKey?: string;
 }
 
-const JINA_READER_URL = 'https://r.jina.ai/';
-const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v1/scrape';
+const JINA_READER_URL = API_ENDPOINTS.JINA_READER;
+const FIRECRAWL_API_URL = API_ENDPOINTS.FIRECRAWL_SCRAPE;
 
 // Common selectors to remove (cookie banners, popups)
 const REMOVE_SELECTORS = [

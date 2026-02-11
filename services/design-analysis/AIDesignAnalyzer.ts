@@ -1,5 +1,6 @@
 import type { DesignDNA, DesignDNAExtractionResult } from '../../types/designDna';
 import { DESIGN_DNA_EXTRACTION_PROMPT } from './prompts/designDnaPrompt';
+import { API_ENDPOINTS } from '../../config/apiEndpoints';
 
 // ============================================================================
 // DEFAULT VALUES FOR SANITIZATION
@@ -590,7 +591,7 @@ IMPORTANT: Only suggest corrections if the extracted value is CLEARLY wrong. Ret
   ): Promise<DesignDNA> {
     const model = this.config.model || this.defaultModels.anthropic;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(API_ENDPOINTS.ANTHROPIC, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

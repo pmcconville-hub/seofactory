@@ -22,6 +22,7 @@ import { fetchSerpResults } from '../serpApiService';
 import { extractPageContent } from '../jinaService';
 import { validateEntityAuthority } from '../googleKnowledgeGraphService';
 import { sanitizeTextInput, validateUrl } from '../../utils/inputValidation';
+import { API_ENDPOINTS } from '../../config/apiEndpoints';
 
 // Progress callback type
 type ProgressCallback = (progress: QueryNetworkAuditProgress) => void;
@@ -86,7 +87,7 @@ async function executePrompt(prompt: string, businessInfo: BusinessInfo): Promis
         throw new Error('OpenAI API key not configured');
       }
       const model = businessInfo.aiModel || 'gpt-4o';
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch(API_ENDPOINTS.OPENAI, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -112,7 +113,7 @@ async function executePrompt(prompt: string, businessInfo: BusinessInfo): Promis
         throw new Error('OpenRouter API key not configured');
       }
       const model = businessInfo.aiModel || 'anthropic/claude-3.5-sonnet';
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      const response = await fetch(API_ENDPOINTS.OPENROUTER, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -138,7 +139,7 @@ async function executePrompt(prompt: string, businessInfo: BusinessInfo): Promis
         throw new Error('Perplexity API key not configured');
       }
       const model = businessInfo.aiModel || 'llama-3.1-sonar-large-128k-online';
-      const response = await fetch('https://api.perplexity.ai/chat/completions', {
+      const response = await fetch(API_ENDPOINTS.PERPLEXITY, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

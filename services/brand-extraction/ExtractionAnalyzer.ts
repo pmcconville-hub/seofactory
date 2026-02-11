@@ -4,6 +4,7 @@ import type {
   ExtractedTokens,
   ContentSlot
 } from '../../types/brandExtraction';
+import { API_ENDPOINTS } from '../../config/apiEndpoints';
 
 interface AnalyzerConfig {
   provider: 'gemini' | 'anthropic';
@@ -224,7 +225,7 @@ For each component, provide:
     prompt: string
   ): Promise<AIExtractionResponse> {
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch(API_ENDPOINTS.ANTHROPIC, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

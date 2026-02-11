@@ -13,6 +13,7 @@ import type {
   PageRegion,
 } from '../../types/styleGuide';
 import type { RawStyleGuideExtraction, RawExtractedElement } from './StyleGuideExtractor';
+import { API_ENDPOINTS } from '../../config/apiEndpoints';
 
 export interface AiRefineConfig {
   provider: 'gemini' | 'anthropic' | 'openai';
@@ -562,7 +563,7 @@ async function callClaudeRefine(config: AiRefineConfig, prompt: string, img1?: s
   if (img1) content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img1 } });
   if (img2) content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img2 } });
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await fetch(API_ENDPOINTS.ANTHROPIC, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -581,7 +582,7 @@ async function callOpenAIRefine(config: AiRefineConfig, prompt: string, img1?: s
   if (img1) content.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${img1}` } });
   if (img2) content.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${img2}` } });
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch(API_ENDPOINTS.OPENAI, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

@@ -8,6 +8,7 @@
 
 import type { DesignDNA, BrandDesignSystem } from '../../types/designDna';
 import type { CrawledCssTokens, ValidationResult, PremiumDesignConfig, BusinessContext } from './types';
+import { API_ENDPOINTS } from '../../config/apiEndpoints';
 
 export class AiCssGenerator {
   private config: PremiumDesignConfig;
@@ -319,7 +320,7 @@ Return ONLY CSS. No markdown fences. No explanations.`;
       content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img2 } });
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(API_ENDPOINTS.ANTHROPIC, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -342,7 +343,7 @@ Return ONLY CSS. No markdown fences. No explanations.`;
       content.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${img2}` } });
     }
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch(API_ENDPOINTS.OPENAI, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

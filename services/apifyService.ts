@@ -4,8 +4,9 @@
 // FIX: Corrected import path for 'types' to be relative, fixing module resolution error.
 import { FullSerpData, ScrapedContent, ApifyPageData } from '../types';
 import { logApifyUsage } from './telemetryService';
+import { API_ENDPOINTS } from '../config/apiEndpoints';
 
-const API_BASE_URL = 'https://api.apify.com/v2';
+const API_BASE_URL = API_ENDPOINTS.APIFY;
 const WEB_SCRAPER_ACTOR_ID = 'apify/web-scraper';
 const GOOGLE_SEARCH_ACTOR_ID = 'apify/google-search-scraper';
 const WEBSITE_CONTENT_CRAWLER_ID = 'apify/website-content-crawler';

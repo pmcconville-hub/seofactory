@@ -6,6 +6,7 @@ import { SerpResult, BusinessInfo } from '../types';
 import { cacheService } from './cacheService';
 import { sanitizeTextInput, validateUrl } from '../utils/inputValidation';
 import React from 'react';
+import { API_ENDPOINTS } from '../config/apiEndpoints';
 
 export interface ProxyConfig {
     supabaseUrl: string;
@@ -226,7 +227,7 @@ export const fetchSerpResults = async (query: string, login: string, password: s
         depth: 30, // Fetch more results since we filter out publications and own domain
     }];
 
-    const url = 'https://api.dataforseo.com/v3/serp/google/organic/live/advanced';
+    const url = API_ENDPOINTS.DATAFORSEO_SERP;
     const credentials = btoa(`${login}:${password}`);
 
     console.log('[DataForSEO] Starting SERP request for:', { query, locationName, languageCode });
@@ -381,7 +382,7 @@ export const fetchFullSerpData = async (
       depth: 30,
     }];
 
-    const url = 'https://api.dataforseo.com/v3/serp/google/organic/live/advanced';
+    const url = API_ENDPOINTS.DATAFORSEO_SERP;
     const credentials = btoa(`${login}:${password}`);
 
     const response = await fetchWithProxy(url, {
@@ -787,7 +788,7 @@ export const fetchKeywordSearchVolume = async (
       language_code: languageCode,
     }];
 
-    const url = 'https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live';
+    const url = API_ENDPOINTS.DATAFORSEO_SEARCH_VOLUME;
     const credentials = btoa(`${login}:${password}`);
 
     try {

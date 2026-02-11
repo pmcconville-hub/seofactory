@@ -3,8 +3,9 @@
 
 import { JinaExtraction } from '../types';
 import { jinaLogger } from './apiCallLogger';
+import { API_ENDPOINTS } from '../config/apiEndpoints';
 
-const JINA_READER_URL = 'https://r.jina.ai/';
+const JINA_READER_URL = API_ENDPOINTS.JINA_READER;
 
 interface JinaResponse {
   code: number;

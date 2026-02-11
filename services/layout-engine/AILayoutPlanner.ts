@@ -27,6 +27,7 @@ import type {
 import { SectionAnalyzer } from './SectionAnalyzer';
 import { LayoutPlanner } from './LayoutPlanner';
 import { VisualEmphasizer } from './VisualEmphasizer';
+import { API_ENDPOINTS } from '../../config/apiEndpoints';
 
 // AI Provider type
 export type AIProvider = 'gemini' | 'anthropic';
@@ -297,7 +298,7 @@ async function callGemini(apiKey: string, prompt: string): Promise<string> {
  */
 async function callAnthropic(apiKey: string, prompt: string): Promise<string> {
   const model = 'claude-sonnet-4-20250514';
-  const apiUrl = 'https://api.anthropic.com/v1/messages';
+  const apiUrl = API_ENDPOINTS.ANTHROPIC;
 
   const response = await fetch(apiUrl, {
     method: 'POST',

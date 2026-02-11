@@ -26,6 +26,7 @@ import {
 } from '../types/competitiveIntelligence';
 import { extractPageContentWithHtml, JinaExtractionWithHtml } from './jinaService';
 import { cacheService } from './cacheService';
+import { API_ENDPOINTS } from '../config/apiEndpoints';
 
 // =============================================================================
 // CONFIGURATION
@@ -881,7 +882,7 @@ async function fetchWithFirecrawl(
   apiKey: string
 ): Promise<{ html: string; markdown: string }> {
   // Firecrawl API integration
-  const response = await fetch('https://api.firecrawl.dev/v0/scrape', {
+  const response = await fetch(API_ENDPOINTS.FIRECRAWL_SCRAPE_V0, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

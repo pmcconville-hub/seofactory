@@ -1,7 +1,8 @@
 // services/cloudinaryService.ts
 import { BusinessInfo } from '../types';
+import { API_ENDPOINTS } from '../config/apiEndpoints';
 
-const CLOUDINARY_UPLOAD_URL = 'https://api.cloudinary.com/v1_1';
+const CLOUDINARY_UPLOAD_URL = API_ENDPOINTS.CLOUDINARY;
 
 export interface CloudinaryUploadResult {
   secure_url: string;

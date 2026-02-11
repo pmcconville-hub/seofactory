@@ -3,8 +3,9 @@
 // FIX: Changed import to be a relative path.
 // FIX: Corrected import path for 'types' to be relative, fixing module resolution error.
 import { SerpResult } from '../types';
+import { API_ENDPOINTS } from '../config/apiEndpoints';
 
-const API_BASE_URL = 'https://api.spaceserp.com';
+const API_BASE_URL = API_ENDPOINTS.SPACESERP;
 
 /**
  * Fetches live SERP results from the SpaceSERP API.

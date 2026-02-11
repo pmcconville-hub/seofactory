@@ -1,6 +1,7 @@
 
 // services/modelDiscoveryService.ts
 import { BusinessInfo } from '../types';
+import { API_ENDPOINTS } from '../config/apiEndpoints';
 
 // Updated static lists with latest models (November 2025)
 const GEMINI_MODELS = [
@@ -43,7 +44,7 @@ const PERPLEXITY_MODELS = [
 
 export const fetchOpenRouterModels = async (apiKey: string): Promise<string[]> => {
     try {
-        const response = await fetch('https://openrouter.ai/api/v1/models', {
+        const response = await fetch(API_ENDPOINTS.OPENROUTER_MODELS, {
             headers: {
                 'Authorization': `Bearer ${apiKey}`
             }

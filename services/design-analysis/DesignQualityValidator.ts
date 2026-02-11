@@ -1,4 +1,5 @@
 import type { DesignQualityValidation, DesignTokens, BrandDiscoveryReport } from '../../types/publishing';
+import { API_ENDPOINTS } from '../../config/apiEndpoints';
 
 interface ValidatorConfig {
   provider: 'gemini' | 'anthropic';
@@ -209,7 +210,7 @@ Return JSON:
     img2: string,
     prompt: string
   ): Promise<VisionAIResult> {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(API_ENDPOINTS.ANTHROPIC, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -386,7 +387,7 @@ If the extracted primary is wrong (e.g., shows #181818 but you see orange button
     imageBase64: string,
     prompt: string
   ): Promise<any> {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(API_ENDPOINTS.ANTHROPIC, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

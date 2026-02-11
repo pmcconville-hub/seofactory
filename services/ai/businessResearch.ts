@@ -6,8 +6,9 @@ import { extractPageContent } from '../jinaService';
 import { AppAction } from '../../state/appState';
 import { AIResponseSanitizer } from '../aiResponseSanitizer';
 import { RESEARCH_BUSINESS_PROMPT } from '../../config/prompts';
+import { API_ENDPOINTS } from '../../config/apiEndpoints';
 
-const PERPLEXITY_API_URL = 'https://api.perplexity.ai/chat/completions';
+const PERPLEXITY_API_URL = API_ENDPOINTS.PERPLEXITY;
 
 export interface BusinessResearchInput {
   input: string; // URL, business name, or description

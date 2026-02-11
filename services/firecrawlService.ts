@@ -3,8 +3,9 @@
 // API Documentation: https://docs.firecrawl.dev/
 
 import { ApifyPageData } from '../types';
+import { API_ENDPOINTS } from '../config/apiEndpoints';
 
-const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v1/scrape';
+const FIRECRAWL_API_URL = API_ENDPOINTS.FIRECRAWL_SCRAPE;
 
 export interface FirecrawlProxyConfig {
   supabaseUrl: string;
