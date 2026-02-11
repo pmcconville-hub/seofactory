@@ -419,14 +419,39 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
   // but do NOT auto-navigate to the style guide view (let the user choose).
   const [cachedGuideAvailable, setCachedGuideAvailable] = useState(false);
   useEffect(() => {
-    if (!isOpen || !styleGuideMode || !targetUrl) {
+    if (!isOpen || !targetUrl) {
       setCachedGuideAvailable(false);
       return;
     }
     const hostname = getHostnameFromUrl(targetUrl);
-    const cached = styleGuideMemoryCache.get(hostname);
-    setCachedGuideAvailable(!!cached);
-  }, [isOpen, styleGuideMode, targetUrl]);
+
+    // Check memory cache first (synchronous)
+    const memoryCached = styleGuideMemoryCache.get(hostname);
+    if (memoryCached) {
+      setCachedGuideAvailable(true);
+      return;
+    }
+
+    // Check DB cache (async, best-effort)
+    let cancelled = false;
+    const checkDb = async () => {
+      const supabase = getSupabase();
+      const userId = state.user?.id;
+      if (!supabase || !userId) return;
+      try {
+        const cached = await loadStyleGuide(supabase, userId, hostname);
+        if (!cancelled && cached) {
+          // Pre-populate memory cache so loadCachedStyleGuide is fast
+          styleGuideMemoryCache.set(hostname, cached.style_guide);
+          setCachedGuideAvailable(true);
+        }
+      } catch {
+        // Table may not exist — ignore
+      }
+    };
+    checkDb();
+    return () => { cancelled = true; };
+  }, [isOpen, targetUrl, getSupabase, state.user?.id]);
 
   // Generate Quick Export HTML
   const generateQuickExport = useCallback(() => {
