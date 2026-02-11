@@ -142,7 +142,7 @@ const AIProviderSettings: React.FC<{ settings: Partial<BusinessInfo>, setSetting
     );
 };
 
-const ServiceSettings: React.FC<{ settings: Partial<BusinessInfo>, handleChange: (e: React.ChangeEvent<HTMLInputElement>) => void }> = ({ settings, handleChange }) => (
+const ServiceSettings: React.FC<{ settings: Partial<BusinessInfo>, handleChange: (e: React.ChangeEvent<HTMLInputElement>) => void, setSettings: React.Dispatch<React.SetStateAction<Partial<BusinessInfo>>> }> = ({ settings, handleChange, setSettings }) => (
     <div className="space-y-6">
         <h3 className="text-lg font-semibold text-cyan-400">Research & Smart Auto-Fill</h3>
         <p className="text-sm text-gray-400 -mt-3">Used by Smart Auto-Fill to research businesses via web search.</p>
@@ -189,6 +189,30 @@ const ServiceSettings: React.FC<{ settings: Partial<BusinessInfo>, handleChange:
             </div>
         </div>
         
+        <h3 className="text-lg font-semibold text-teal-400 pt-4 border-t border-gray-700">Content Fetching (Audit)</h3>
+        <p className="text-sm text-gray-400 -mt-3">Configure how the audit system fetches external page content for analysis.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <Label htmlFor="auditScrapingProvider">Preferred Scraping Provider</Label>
+                <Select id="auditScrapingProvider" name="auditScrapingProvider" value={settings.auditScrapingProvider || 'jina'} onChange={(e) => setSettings(prev => ({ ...prev, auditScrapingProvider: e.target.value as any }))}>
+                    <option value="jina">Jina AI (Default)</option>
+                    <option value="firecrawl">Firecrawl</option>
+                    <option value="direct">Direct Fetch (No API key needed)</option>
+                </Select>
+            </div>
+            <div className="flex items-center gap-3 pt-6">
+                <input
+                    type="checkbox"
+                    id="auditScrapingFallback"
+                    name="auditScrapingFallback"
+                    checked={settings.auditScrapingFallback !== false}
+                    onChange={(e) => setSettings(prev => ({ ...prev, auditScrapingFallback: e.target.checked }))}
+                    className="h-4 w-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500"
+                />
+                <Label htmlFor="auditScrapingFallback" className="!mb-0">Enable automatic fallback</Label>
+            </div>
+        </div>
+
         <h3 className="text-lg font-semibold text-gray-400 pt-4 border-t border-gray-700">Neo4j Database (Optional)</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="md:col-span-2">
@@ -344,7 +368,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
                     className="w-2/3 md:w-3/4 p-6 overflow-y-auto"
                 >
                      {activeTab === 'ai' && <AIProviderSettings settings={settings} setSettings={setSettings} />}
-                     {activeTab === 'services' && <ServiceSettings settings={settings} handleChange={handleGeneralChange} />}
+                     {activeTab === 'services' && <ServiceSettings settings={settings} handleChange={handleGeneralChange} setSettings={setSettings} />}
                      {activeTab === 'wordpress' && (
                        <div className="space-y-4">
                          <h3 className="text-lg font-semibold text-blue-400">WordPress Connections</h3>
