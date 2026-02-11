@@ -153,7 +153,7 @@ const extractSchemaMarkup = (html: string): { schemaMarkup: any[]; schemaTypes: 
         schemaTypes.push(...types.filter((t: string) => !schemaTypes.includes(t)));
       }
     } catch (e) {
-      // Ignore invalid JSON
+      console.warn('[Firecrawl] Invalid schema JSON:', (e as Error)?.message);
     }
   }
 
@@ -217,15 +217,11 @@ const extractLinks = (html: string, baseUrl: string): { internalLinks: ApifyPage
         } else if (linkUrl.protocol.startsWith('http')) {
           externalLinks.push({ href: linkUrl.href, text, rel });
         }
-      } catch {
-        // Skip invalid URLs
-      }
+      } catch { /* intentional: skip malformed URLs from HTML parsing */ }
 
       position += match[0].length;
     }
-  } catch {
-    // Invalid base URL
-  }
+  } catch { /* intentional: skip malformed URLs from HTML parsing */ }
 
   return { internalLinks, externalLinks };
 };
@@ -253,9 +249,7 @@ const extractImages = (html: string, baseUrl: string): ApifyPageData['images'] =
           width: widthMatch ? parseInt(widthMatch[1]) : undefined,
           height: heightMatch ? parseInt(heightMatch[1]) : undefined,
         });
-      } catch {
-        // Skip invalid image URLs
-      }
+      } catch { /* intentional: skip malformed image URLs from HTML parsing */ }
     }
   }
 
@@ -458,7 +452,7 @@ export const validateFirecrawlApiKey = async (apiKey: string, proxyConfig?: Fire
 
     // 401/403 means invalid key, anything else might be valid
     return response.status !== 401 && response.status !== 403;
-  } catch {
+  } catch { /* API key validation failed — key is invalid */
     return false;
   }
 };
