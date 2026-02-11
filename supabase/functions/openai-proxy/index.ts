@@ -3,6 +3,9 @@
 // Supports both regular and streaming requests
 // deno-lint-ignore-file no-explicit-any
 
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
+
 const Deno = (globalThis as any).Deno;
 
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
@@ -58,6 +61,43 @@ Deno.serve(async (req: Request) => {
     const apiKey = req.headers.get('x-openai-api-key');
     if (!apiKey) {
       return json({ error: 'Missing OpenAI API key' }, 400, origin);
+    }
+
+    // --- User auth & rate limiting ---
+    // Authenticate the calling user via Supabase JWT (if present) and enforce
+    // per-user rate limits.  If auth headers are missing or invalid, the
+    // request still proceeds (the API-key check above is the primary gate)
+    // but rate limiting is skipped.
+    const authHeader = req.headers.get('authorization');
+    if (authHeader) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') || Deno.env.get('PROJECT_URL');
+        const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('ANON_KEY');
+        const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SERVICE_ROLE_KEY');
+
+        if (supabaseUrl && supabaseAnonKey && serviceRoleKey) {
+          const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+            global: { headers: { Authorization: authHeader } },
+          });
+          const { data: { user } } = await supabaseAuth.auth.getUser();
+
+          if (user) {
+            const supabaseService = createClient(supabaseUrl, serviceRoleKey);
+            const rateCheck = await checkRateLimit(supabaseService, user.id, 'openai-proxy', 60, 1);
+            if (!rateCheck.allowed) {
+              return json({
+                ok: false,
+                error: 'Rate limit exceeded. Please wait before making more requests.',
+                remaining: rateCheck.remaining,
+                reset_at: rateCheck.resetAt,
+              }, 429, origin);
+            }
+          }
+        }
+      } catch (rateLimitError: any) {
+        // Fail open — if rate-limit plumbing errors, allow the request
+        console.warn('[openai-proxy] Rate limit check failed, allowing request:', rateLimitError?.message);
+      }
     }
 
     // Get the request body
