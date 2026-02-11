@@ -729,12 +729,40 @@ function buildPageFunction(): string {
                     clone.removeAttribute(attr.name);
                   }
                 }
-                // Strip external image src (http/https URLs won't resolve in preview)
-                if (clone.tagName && clone.tagName.toLowerCase() === 'img') {
-                  var imgSrc = clone.getAttribute('src');
-                  if (imgSrc && (imgSrc.startsWith('http://') || imgSrc.startsWith('https://'))) {
+                // Strip external src on img/source/video/audio (won't resolve in preview)
+                var tagLower = clone.tagName ? clone.tagName.toLowerCase() : '';
+                if (tagLower === 'img' || tagLower === 'source' || tagLower === 'video' || tagLower === 'audio') {
+                  var elSrc = clone.getAttribute('src');
+                  if (elSrc && (elSrc.startsWith('http://') || elSrc.startsWith('https://'))) {
                     clone.removeAttribute('src');
                   }
+                  // Strip external srcset
+                  var srcset = clone.getAttribute('srcset');
+                  if (srcset && srcset.match(/https?:\/\//)) {
+                    clone.removeAttribute('srcset');
+                  }
+                  // Strip poster (video)
+                  var poster = clone.getAttribute('poster');
+                  if (poster && (poster.startsWith('http://') || poster.startsWith('https://'))) {
+                    clone.removeAttribute('poster');
+                  }
+                }
+                // Strip SVG external references (use/image href, xlink:href)
+                if (tagLower === 'use' || tagLower === 'image') {
+                  var svgHref = clone.getAttribute('href') || clone.getAttribute('xlink:href');
+                  if (svgHref && (svgHref.startsWith('http://') || svgHref.startsWith('https://'))) {
+                    clone.removeAttribute('href');
+                    clone.removeAttribute('xlink:href');
+                  }
+                }
+                // Strip data-src (lazy-load attributes)
+                if (clone.getAttribute('data-src') && clone.getAttribute('data-src').match(/^https?:\/\//)) {
+                  clone.removeAttribute('data-src');
+                }
+                // Neutralize url() in inline style with external URLs
+                var inlineStyle = clone.getAttribute('style');
+                if (inlineStyle && inlineStyle.match(/url\s*\(\s*['"]?https?:\/\//)) {
+                  clone.setAttribute('style', inlineStyle.replace(/url\(\s*['"]?https?:\/\/[^'")]+['"]?\s*\)/gi, 'url(about:blank)'));
                 }
               }
 

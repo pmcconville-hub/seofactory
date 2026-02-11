@@ -33,7 +33,18 @@ export function sanitizeHtmlForPreview(html: string): string {
     // Strip external src on <img> tags (http/https URLs cause ERR_NAME_NOT_RESOLVED; keep data: URIs)
     .replace(/<img\b([^>]*)\ssrc\s*=\s*["'](https?:\/\/[^"']*)["']/gi, '<img$1 data-original-src="$2"')
     // Strip external src on <source> tags
-    .replace(/<source\b([^>]*)\ssrc\s*=\s*["'](https?:\/\/[^"']*)["']/gi, '<source$1 data-original-src="$2"');
+    .replace(/<source\b([^>]*)\ssrc\s*=\s*["'](https?:\/\/[^"']*)["']/gi, '<source$1 data-original-src="$2"')
+    // Strip external srcset attributes (responsive images loading external URLs)
+    .replace(/\s+srcset\s*=\s*["'][^"']*https?:\/\/[^"']*["']/gi, '')
+    // Strip SVG external references: xlink:href and href with external URLs
+    .replace(/\s+xlink:href\s*=\s*["'](https?:\/\/[^"']*)["']/gi, ' data-original-xlink="$1"')
+    .replace(/<(use|image)\b([^>]*)\s+href\s*=\s*["'](https?:\/\/[^"']*)["']/gi, '<$1$2 data-original-href="$3"')
+    // Strip CSS url() references to external URLs (in inline styles)
+    .replace(/url\(\s*["']?(https?:\/\/[^"')]+)["']?\s*\)/gi, 'url(about:blank)')
+    // Strip data-src and lazy-loading attributes that may trigger external loads
+    .replace(/\s+data-src\s*=\s*["'](https?:\/\/[^"']*)["']/gi, '')
+    // Strip poster attributes with external URLs (video elements)
+    .replace(/\s+poster\s*=\s*["'](https?:\/\/[^"']*)["']/gi, '');
 }
 
 interface StyleGuideElementCardProps {

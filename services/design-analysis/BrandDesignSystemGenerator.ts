@@ -7,6 +7,9 @@ import type {
 import { buildDesignSystemGenerationPrompt } from './prompts/designSystemPrompt';
 import { CSSPostProcessor, type PostProcessResult } from './CSSPostProcessor';
 import { API_ENDPOINTS } from '../../config/apiEndpoints';
+import { getFastModel } from '../../config/serviceRegistry';
+import { retryWithBackoff } from '../ai/shared/retryWithBackoff';
+import { logAiUsage, estimateTokens } from '../telemetryService';
 
 interface BrandDesignSystemGeneratorConfig {
   provider: 'gemini' | 'anthropic';
@@ -27,14 +30,14 @@ interface ProviderInfo {
  * visual identity, with fallback to deterministic token generation.
  *
  * Supported providers:
- * - Gemini 2.0 Flash (default for gemini)
- * - Claude Sonnet 4 (default for anthropic)
+ * - Gemini (uses fast model from service registry)
+ * - Anthropic (uses fast model from service registry)
  */
 export class BrandDesignSystemGenerator {
   private config: BrandDesignSystemGeneratorConfig;
   private defaultModels = {
-    gemini: 'gemini-2.0-flash',
-    anthropic: 'claude-sonnet-4-20250514'
+    gemini: getFastModel('gemini'),
+    anthropic: getFastModel('anthropic'),
   };
 
   constructor(config: BrandDesignSystemGeneratorConfig) {
@@ -85,20 +88,29 @@ export class BrandDesignSystemGenerator {
       componentStyles = await this.generateComponentStylesStepByStep(designDna, screenshotBase64);
       console.log('[BrandDesignSystemGenerator] Component styles generated successfully');
 
+      // Throttle between major generation steps to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       // Step 2: Generate decorative elements
       console.log('[BrandDesignSystemGenerator] Step 2: Generating decorative elements...');
       decorative = await this.generateDecorativeElements(designDna, screenshotBase64);
       console.log('[BrandDesignSystemGenerator] Decorative elements generated');
+
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // Step 3: Generate interactions
       console.log('[BrandDesignSystemGenerator] Step 3: Generating interactions...');
       interactions = await this.generateInteractions(designDna, screenshotBase64);
       console.log('[BrandDesignSystemGenerator] Interactions generated');
 
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       // Step 4: Generate typography treatments
       console.log('[BrandDesignSystemGenerator] Step 4: Generating typography treatments...');
       typographyTreatments = await this.generateTypographyTreatments(designDna, screenshotBase64);
       console.log('[BrandDesignSystemGenerator] Typography treatments generated');
+
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // Step 5: Generate image treatments
       console.log('[BrandDesignSystemGenerator] Step 5: Generating image treatments...');
@@ -481,23 +493,37 @@ export class BrandDesignSystemGenerator {
 
     console.log('[BrandDesignSystemGenerator] Generating CSS for personality:', personality, 'shapes:', shapeStyle);
 
-    // Generate each component with focused prompts
-    const [button, card, hero, timeline, testimonial, faq, cta, keyTakeaways, prose, list, table, blockquote] = await Promise.all([
-      this.generateComponentCSS('button', designDna, screenshotBase64),
-      this.generateComponentCSS('card', designDna, screenshotBase64),
-      this.generateComponentCSS('hero', designDna, screenshotBase64),
-      this.generateComponentCSS('timeline', designDna, screenshotBase64),
-      this.generateComponentCSS('testimonial', designDna, screenshotBase64),
-      this.generateComponentCSS('faq', designDna, screenshotBase64),
-      this.generateComponentCSS('cta', designDna, screenshotBase64),
-      this.generateComponentCSS('keyTakeaways', designDna, screenshotBase64),
-      this.generateComponentCSS('prose', designDna, screenshotBase64),
-      this.generateComponentCSS('list', designDna, screenshotBase64),
-      this.generateComponentCSS('table', designDna, screenshotBase64),
-      this.generateComponentCSS('blockquote', designDna, screenshotBase64),
-    ]);
+    // Generate each component SEQUENTIALLY with throttle delays to prevent 429 rate limits.
+    // Previously used Promise.all with 12 parallel calls which caused mass 429 errors.
+    const componentTypes = [
+      'button', 'card', 'hero', 'timeline', 'testimonial', 'faq',
+      'cta', 'keyTakeaways', 'prose', 'list', 'table', 'blockquote',
+    ] as const;
 
-    return { button, card, hero, timeline, testimonial, faq, cta, keyTakeaways, prose, list, table, blockquote };
+    const results: Record<string, ComponentStyleDefinition> = {};
+    for (let i = 0; i < componentTypes.length; i++) {
+      const type = componentTypes[i];
+      results[type] = await this.generateComponentCSS(type, designDna, screenshotBase64);
+      // Throttle: 500ms between calls to avoid rate limits
+      if (i < componentTypes.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    return {
+      button: results.button,
+      card: results.card,
+      hero: results.hero,
+      timeline: results.timeline,
+      testimonial: results.testimonial,
+      faq: results.faq,
+      cta: results.cta,
+      keyTakeaways: results.keyTakeaways,
+      prose: results.prose,
+      list: results.list,
+      table: results.table,
+      blockquote: results.blockquote,
+    };
   }
 
   /**
@@ -925,13 +951,11 @@ CRITICAL: Return ONLY valid JSON. Make the CSS sophisticated and brand-specific,
   }
 
   /**
-   * Call Gemini for a single component with retry logic for rate limits
+   * Call Gemini for a single component with retry/backoff and telemetry
    */
-  private async callGeminiForComponent(prompt: string, maxRetries = 3, screenshotBase64?: string): Promise<{ baseCSS: string; variants: Record<string, string>; states: Record<string, string> }> {
+  private async callGeminiForComponent(prompt: string, _maxRetries = 3, screenshotBase64?: string): Promise<{ baseCSS: string; variants: Record<string, string>; states: Record<string, string> }> {
     const model = this.config.model || this.defaultModels.gemini;
-    const apiUrl = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${this.config.apiKey}`;
-
-    let lastError: Error | null = null;
+    const apiUrl = `${API_ENDPOINTS.GEMINI}${model}:generateContent?key=${this.config.apiKey}`;
 
     // Build parts: text prompt + optional screenshot
     const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
@@ -947,49 +971,43 @@ CRITICAL: Return ONLY valid JSON. Make the CSS sophisticated and brand-specific,
       parts.push({ text: prompt });
     }
 
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts }],
-            generationConfig: { temperature: 0.4, maxOutputTokens: 4096 }
-          })
-        });
+    const startTime = Date.now();
 
-        // Handle rate limiting with exponential backoff
-        if (response.status === 429) {
-          const waitTime = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
-          console.log(`[BrandDesignSystemGenerator] Rate limited (429), waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          continue;
-        }
+    return retryWithBackoff(async () => {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts }],
+          generationConfig: { temperature: 0.4, maxOutputTokens: 4096 }
+        })
+      });
 
-        if (!response.ok) {
-          const error = await response.text();
-          throw new Error(`Gemini API error: ${response.status} - ${error}`);
-        }
-
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-
-        return this.parseAIResponse(text) as { baseCSS: string; variants: Record<string, string>; states: Record<string, string> };
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        if (attempt < maxRetries - 1) {
-          const waitTime = Math.pow(2, attempt) * 1000;
-          console.log(`[BrandDesignSystemGenerator] API call failed, waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-        }
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Gemini API error ${response.status}: ${errorText.substring(0, 200)}`);
       }
-    }
 
-    throw lastError || new Error('Failed after max retries');
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+
+      // Telemetry
+      logAiUsage({
+        provider: 'gemini',
+        model,
+        operation: 'brand-design-system-component',
+        tokensIn: estimateTokens(prompt.length),
+        tokensOut: estimateTokens(text.length),
+        durationMs: Date.now() - startTime,
+        success: true,
+      });
+
+      return this.parseAIResponse(text) as { baseCSS: string; variants: Record<string, string>; states: Record<string, string> };
+    }, { maxRetries: 3, baseDelay: 3000, maxDelay: 20000 });
   }
 
   /**
-   * Call Claude for a single component
+   * Call Claude for a single component with retry/backoff and telemetry
    */
   private async callClaudeForComponent(prompt: string, screenshotBase64?: string): Promise<{ baseCSS: string; variants: Record<string, string>; states: Record<string, string> }> {
     const model = this.config.model || this.defaultModels.anthropic;
@@ -1013,29 +1031,44 @@ CRITICAL: Return ONLY valid JSON. Make the CSS sophisticated and brand-specific,
       content.push({ type: 'text', text: prompt });
     }
 
-    const response = await fetch(API_ENDPOINTS.ANTHROPIC, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.config.apiKey,
-        'anthropic-version': '2024-01-01'
-      },
-      body: JSON.stringify({
+    const startTime = Date.now();
+
+    return retryWithBackoff(async () => {
+      const response = await fetch(API_ENDPOINTS.ANTHROPIC, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.config.apiKey,
+          'anthropic-version': '2024-01-01'
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 4096,
+          messages: [{ role: 'user', content }]
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Anthropic API error ${response.status}: ${errorText.substring(0, 200)}`);
+      }
+
+      const data = await response.json();
+      const text = data.content?.[0]?.text || '{}';
+
+      // Telemetry
+      logAiUsage({
+        provider: 'anthropic',
         model,
-        max_tokens: 4096,
-        messages: [{ role: 'user', content }]
-      })
-    });
+        operation: 'brand-design-system-component',
+        tokensIn: estimateTokens(prompt.length),
+        tokensOut: estimateTokens(text.length),
+        durationMs: Date.now() - startTime,
+        success: true,
+      });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Anthropic API error: ${response.status} - ${error}`);
-    }
-
-    const data = await response.json();
-    const text = data.content?.[0]?.text || '{}';
-
-    return this.parseAIResponse(text) as { baseCSS: string; variants: Record<string, string>; states: Record<string, string> };
+      return this.parseAIResponse(text) as { baseCSS: string; variants: Record<string, string>; states: Record<string, string> };
+    }, { maxRetries: 3, baseDelay: 3000, maxDelay: 20000 });
   }
 
   /**
