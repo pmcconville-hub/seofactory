@@ -11,9 +11,14 @@ import type {
   StyleGuideColor,
   StyleGuideCategory,
   PageRegion,
+  BrandOverview,
+  PageSectionInfo,
 } from '../../types/styleGuide';
 import type { RawStyleGuideExtraction, RawExtractedElement } from './StyleGuideExtractor';
 import { API_ENDPOINTS } from '../../config/apiEndpoints';
+import { FAST_MODELS } from '../ai/providerConfig';
+import { retryWithBackoff } from '../ai/shared/retryWithBackoff';
+import { logAiUsage, estimateTokens } from '../telemetryService';
 
 export interface AiRefineConfig {
   provider: 'gemini' | 'anthropic' | 'openai';
@@ -267,6 +272,8 @@ export const StyleGuideGenerator = {
 
       validated += batch.length;
       onProgress?.(validated, elementsWithScreenshots.length);
+      // Throttle between validation batches to avoid 429s
+      if (validated < elementsWithScreenshots.length) await throttle(500);
     }
 
     return guide;
@@ -387,6 +394,7 @@ Return ONLY a valid JSON array (no markdown, no explanation):
       colors?: { hex: string; usage: string }[];
       fonts?: string[];
       visualIssues?: string[];
+      brandOverview?: BrandOverview;
     }
   ): Promise<{ selfContainedHtml: string; computedCss: Record<string, string> }> {
     if (!aiConfig?.apiKey) {
@@ -398,15 +406,24 @@ Return ONLY a valid JSON array (no markdown, no explanation):
 - Category: ${element.category} / ${element.subcategory}
 - Brand Colors: ${brandContext.colors?.map(c => `${c.hex} (${c.usage})`).join(', ') || 'not specified'}
 - Brand Fonts: ${brandContext.fonts?.join(', ') || 'system-ui'}
-${brandContext.visualIssues?.length ? `- Known Visual Issues: ${brandContext.visualIssues.join('; ')}` : ''}`
+${brandContext.visualIssues?.length ? `- Known Visual Issues: ${brandContext.visualIssues.join('; ')}` : ''}
+${brandContext.brandOverview ? `- Brand Personality: ${brandContext.brandOverview.brandPersonality}\n- Overall Feel: ${brandContext.brandOverview.overallFeel}` : ''}`
       : '';
+
+    // Category-specific structural requirements
+    const categoryInstructions = getCategorySpecificInstructions(element.category);
+
+    // D1: Use element screenshot as IMAGE 2 if no user reference image provided
+    const image2 = referenceImage || element.elementScreenshotBase64;
 
     const imageNote = siteScreenshot
       ? '\nIMAGE 1 shows the original website for visual reference. Match its styling as closely as possible.'
       : '';
     const refNote = referenceImage
       ? `\nIMAGE ${siteScreenshot ? '2' : '1'} is a reference image the user wants the element to match.`
-      : '';
+      : (element.elementScreenshotBase64 && siteScreenshot)
+        ? '\nIMAGE 2 shows how the original element looks on the website. Reproduce this visual appearance.'
+        : '';
 
     const prompt = `You are a CSS/HTML expert. Refine the following HTML element based on the user's feedback.
 
@@ -418,6 +435,7 @@ ${element.selfContainedHtml}
 CURRENT COMPUTED CSS:
 ${JSON.stringify(element.computedCss, null, 2)}
 ${brandSection}
+${categoryInstructions ? `\nCATEGORY REQUIREMENTS:\n${categoryInstructions}` : ''}
 
 USER FEEDBACK: "${userComment}"
 ${imageNote}${refNote}
@@ -429,10 +447,11 @@ INSTRUCTIONS:
 4. Use the brand colors and fonts listed above where relevant
 5. Fix any listed visual issues alongside the user's requested changes
 6. The result should look like it belongs on the original website
+${categoryInstructions ? '7. MUST meet the category requirements listed above' : ''}
 
 Return ONLY the updated HTML element (no explanation, no markdown fences).`;
 
-    const refined = await callRefineAI(aiConfig, prompt, siteScreenshot, referenceImage);
+    const refined = await callRefineAI(aiConfig, prompt, siteScreenshot, image2, 'style-guide-refine');
 
     // Extract the HTML from the response (strip any markdown fencing)
     let html = refined.trim();
@@ -526,6 +545,8 @@ Return ONLY the updated HTML element (no explanation, no markdown fences).`;
 
       validated++;
       onProgress?.('validating', validated, elementsWithScreenshots.length);
+      // Throttle between validation calls to avoid 429s
+      if (validated < elementsWithScreenshots.length) await throttle(300);
     }
 
     // ── Phase 1.5: Structural Validation Sweep ──
@@ -562,6 +583,79 @@ Return ONLY the updated HTML element (no explanation, no markdown fences).`;
 
       repaired++;
       onProgress?.('repairing', repaired, toRepair.length);
+      // Throttle between repair calls to avoid 429s
+      if (repaired < toRepair.length) await throttle(500);
+    }
+
+    return guide;
+  },
+
+  /**
+   * Generate a brand overview by analyzing the full-page screenshot with AI vision.
+   * Produces: brand personality, color mood, overall feel, page sections, hero description.
+   */
+  async generateBrandOverview(
+    guide: StyleGuide,
+    aiConfig: AiRefineConfig,
+  ): Promise<StyleGuide> {
+    const pageScreenshot = guide.screenshotBase64 || guide.pageScreenshots?.[0]?.base64;
+    if (!pageScreenshot) return guide;
+
+    const colorContext = guide.colors
+      .filter(c => c.approvalStatus === 'approved')
+      .slice(0, 8)
+      .map(c => `${c.hex} (${c.usage})`)
+      .join(', ');
+    const fontContext = guide.googleFontFamilies.join(', ') || 'system-ui';
+
+    const prompt = `You are a brand identity expert. Analyze this website screenshot (IMAGE 1) and provide a comprehensive brand overview.
+
+Website: ${guide.hostname}
+Detected colors: ${colorContext || 'not yet detected'}
+Detected fonts: ${fontContext}
+
+Analyze:
+1. BRAND PERSONALITY: What traits define this brand? (e.g. "Professional, modern, trustworthy")
+2. COLOR MOOD: Is the palette warm, cool, neutral, or mixed?
+3. OVERALL FEEL: Write 2-3 sentences describing the brand's visual identity and design approach.
+4. PAGE SECTIONS: List the visible sections of the page (Hero, Features, Testimonials, etc.) with layout description.
+5. HERO: If there's a hero/banner section, describe its visual composition.
+
+Return ONLY valid JSON (no markdown):
+{
+  "brandPersonality": "trait1, trait2, trait3",
+  "colorMood": "warm" | "cool" | "neutral" | "mixed",
+  "overallFeel": "2-3 sentence description",
+  "pageSections": [
+    { "name": "Section Name", "description": "What it contains", "layoutPattern": "layout description" }
+  ],
+  "heroDescription": "Hero visual composition description or null"
+}`;
+
+    try {
+      const result = await callRefineAI(aiConfig, prompt, pageScreenshot, undefined, 'brand-overview');
+
+      let text = result.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        const brandOverview: BrandOverview = {
+          brandPersonality: parsed.brandPersonality || 'Not analyzed',
+          colorMood: (['warm', 'cool', 'neutral', 'mixed'].includes(parsed.colorMood) ? parsed.colorMood : 'neutral') as BrandOverview['colorMood'],
+          overallFeel: parsed.overallFeel || '',
+          pageSections: Array.isArray(parsed.pageSections)
+            ? parsed.pageSections.map((s: any) => ({
+                name: s.name || 'Section',
+                description: s.description || '',
+                layoutPattern: s.layoutPattern || '',
+              }))
+            : [],
+          heroDescription: parsed.heroDescription || undefined,
+        };
+        guide.brandOverview = brandOverview;
+      }
+    } catch (err) {
+      console.warn('[StyleGuideGenerator] Brand overview generation failed:', err);
     }
 
     return guide;
@@ -572,22 +666,76 @@ Return ONLY the updated HTML element (no explanation, no markdown fences).`;
 // AI Call Helpers for Element Refinement
 // =============================================================================
 
+/** Category-specific structural instructions for refinement prompts */
+function getCategorySpecificInstructions(category: string): string {
+  const instructions: Record<string, string> = {
+    accordions: 'This element MUST have a clickable header section + a content/body panel + a toggle indicator (arrow/chevron/plus icon). The structure must clearly show an expandable/collapsible pattern.',
+    navigation: 'This element MUST display navigation items HORIZONTALLY using display:flex or display:inline-flex. Items should be laid out in a row, not stacked vertically.',
+    buttons: 'This element MUST look clickable with adequate padding, border-radius, a distinct background color, and readable text. It should have clear visual affordance as an interactive element.',
+    cards: 'This element MUST have a contained layout with padding, a visible border or box-shadow, and structured content (heading + body text). It should look like a distinct content container.',
+    tables: 'This element MUST use a proper <table> with <thead> and <tbody>, containing at least 3 columns of data. Include visible borders or alternating row colors for readability.',
+    forms: 'This element MUST include visible input fields with labels, clear borders, and proper spacing. Fields should look interactive and ready for user input.',
+  };
+  return instructions[category] || '';
+}
+
+/** Throttle delay between sequential AI calls */
+function throttle(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function callRefineAI(
   config: AiRefineConfig,
   prompt: string,
   image1?: string,
-  image2?: string
+  image2?: string,
+  operation: string = 'style-guide-refine',
 ): Promise<string> {
-  switch (config.provider) {
-    case 'gemini': return callGeminiRefine(config, prompt, image1, image2);
-    case 'anthropic': return callClaudeRefine(config, prompt, image1, image2);
-    case 'openai': return callOpenAIRefine(config, prompt, image1, image2);
-    default: return callGeminiRefine(config, prompt, image1, image2);
+  const startTime = Date.now();
+  const provider = config.provider || 'gemini';
+
+  const callFn = async (): Promise<string> => {
+    switch (provider) {
+      case 'gemini': return callGeminiRefine(config, prompt, image1, image2);
+      case 'anthropic': return callClaudeRefine(config, prompt, image1, image2);
+      case 'openai': return callOpenAIRefine(config, prompt, image1, image2);
+      default: return callGeminiRefine(config, prompt, image1, image2);
+    }
+  };
+
+  const result = await retryWithBackoff(callFn, {
+    maxRetries: 3,
+    baseDelay: 2000,
+    maxDelay: 15000,
+  });
+
+  // Telemetry (fire-and-forget)
+  const model = config.model || getDefaultModel(provider);
+  logAiUsage({
+    provider,
+    model,
+    operation,
+    tokensIn: estimateTokens(prompt.length + (image1 ? 1000 : 0) + (image2 ? 1000 : 0)),
+    tokensOut: estimateTokens(result.length),
+    durationMs: Date.now() - startTime,
+    success: true,
+  }).catch(() => {});
+
+  return result;
+}
+
+/** Get the default FAST model for a provider */
+function getDefaultModel(provider: string): string {
+  switch (provider) {
+    case 'gemini': return FAST_MODELS.gemini;
+    case 'anthropic': return FAST_MODELS.anthropic;
+    case 'openai': return FAST_MODELS.openai;
+    default: return FAST_MODELS.gemini;
   }
 }
 
 async function callGeminiRefine(config: AiRefineConfig, prompt: string, img1?: string, img2?: string): Promise<string> {
-  const model = config.model || 'gemini-2.0-flash';
+  const model = config.model || FAST_MODELS.gemini;
   const parts: any[] = [{ text: prompt }];
   if (img1) parts.push({ inlineData: { mimeType: 'image/jpeg', data: img1 } });
   if (img2) parts.push({ inlineData: { mimeType: 'image/jpeg', data: img2 } });
@@ -603,12 +751,16 @@ async function callGeminiRefine(config: AiRefineConfig, prompt: string, img1?: s
       }),
     }
   );
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`Gemini API error ${response.status}: ${errorText.slice(0, 200)}`);
+  }
   const data = await response.json();
   return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 async function callClaudeRefine(config: AiRefineConfig, prompt: string, img1?: string, img2?: string): Promise<string> {
-  const model = config.model || 'claude-sonnet-4-20250514';
+  const model = config.model || FAST_MODELS.anthropic;
   const content: any[] = [{ type: 'text', text: prompt }];
   if (img1) content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img1 } });
   if (img2) content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img2 } });
@@ -622,12 +774,16 @@ async function callClaudeRefine(config: AiRefineConfig, prompt: string, img1?: s
     },
     body: JSON.stringify({ model, max_tokens: 4096, messages: [{ role: 'user', content }] }),
   });
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`Anthropic API error ${response.status}: ${errorText.slice(0, 200)}`);
+  }
   const data = await response.json();
   return data.content?.[0]?.text || '';
 }
 
 async function callOpenAIRefine(config: AiRefineConfig, prompt: string, img1?: string, img2?: string): Promise<string> {
-  const model = config.model || 'gpt-4o';
+  const model = config.model || FAST_MODELS.openai;
   const content: any[] = [{ type: 'text', text: prompt }];
   if (img1) content.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${img1}` } });
   if (img2) content.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${img2}` } });
@@ -640,6 +796,10 @@ async function callOpenAIRefine(config: AiRefineConfig, prompt: string, img1?: s
     },
     body: JSON.stringify({ model, max_tokens: 4096, messages: [{ role: 'user', content }] }),
   });
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`OpenAI API error ${response.status}: ${errorText.slice(0, 200)}`);
+  }
   const data = await response.json();
   return data.choices?.[0]?.message?.content || '';
 }

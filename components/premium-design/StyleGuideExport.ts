@@ -4,7 +4,8 @@
 // Reference-inspired export with sticky nav, branded header, interactive hover
 // demos, color tiers, variant grouping, and quick reference table.
 
-import type { StyleGuide, StyleGuideElement, StyleGuideCategory, StyleGuideColor } from '../../types/styleGuide';
+import type { StyleGuide, StyleGuideElement, StyleGuideCategory, StyleGuideColor, BrandOverview } from '../../types/styleGuide';
+import { sanitizeHtmlForPreview } from './StyleGuideElementCard';
 
 const CATEGORY_LABELS: Record<StyleGuideCategory, string> = {
   typography: 'Typography',
@@ -86,8 +87,10 @@ function getColorTier(c: StyleGuideColor): 'brand' | 'text' | 'neutral' | 'other
 function buildNavigation(
   groups: Map<StyleGuideCategory, StyleGuideElement[]>,
   hasColors: boolean,
+  hasBrandOverview: boolean,
 ): string {
   const links: string[] = [];
+  if (hasBrandOverview) links.push('<a href="#sg-brand-overview">Brand</a>');
   if (hasColors) links.push('<a href="#sg-colors">Colors</a>');
   for (const cat of CATEGORY_ORDER) {
     if (groups.has(cat)) {
@@ -177,16 +180,17 @@ function buildElementCard(el: StyleGuideElement): string {
 
   // For accordion elements, wrap with functional toggle behavior
   const isAccordion = el.category === 'accordions';
+  const sanitizedHtml = sanitizeHtmlForPreview(el.selfContainedHtml);
   let previewContent: string;
   if (isEmptyPreview && el.elementScreenshotBase64) {
     // Empty-state fallback: show screenshot instead of empty box
     previewContent = `<img src="data:image/jpeg;base64,${el.elementScreenshotBase64}" alt="${escapeHtml(el.label)}" style="max-width:100%;max-height:200px;">`;
   } else if (isAccordion) {
-    previewContent = `<div data-accordion="true">${el.selfContainedHtml}</div>`;
+    previewContent = `<div data-accordion="true">${sanitizedHtml}</div>`;
   } else if (hasHover) {
-    previewContent = wrapWithHoverDemo(el.selfContainedHtml, el.hoverCss!, el.computedCss);
+    previewContent = wrapWithHoverDemo(sanitizedHtml, el.hoverCss!, el.computedCss);
   } else {
-    previewContent = el.selfContainedHtml;
+    previewContent = sanitizedHtml;
   }
 
   return `<div class="sg-element">
@@ -283,6 +287,49 @@ function buildElementSections(groups: Map<StyleGuideCategory, StyleGuideElement[
   return html;
 }
 
+function buildBrandOverviewSection(overview: BrandOverview | undefined): string {
+  if (!overview) return '';
+
+  const moodColors: Record<string, string> = {
+    warm: '#f97316',
+    cool: '#3b82f6',
+    neutral: '#71717a',
+    mixed: '#a855f7',
+  };
+  const moodColor = moodColors[overview.colorMood] || moodColors.neutral;
+
+  const traits = overview.brandPersonality.split(/,\s*/).map(t =>
+    `<span class="sg-brand-trait">${escapeHtml(t.trim())}</span>`
+  ).join(' ');
+
+  const sectionsHtml = overview.pageSections.length > 0
+    ? `<div class="sg-page-sections">
+      <h3 class="sg-tier-label">Page Sections</h3>
+      <div class="sg-sections-grid">
+        ${overview.pageSections.map(s => `<div class="sg-section-card">
+          <strong>${escapeHtml(s.name)}</strong>
+          <span>${escapeHtml(s.description)}</span>
+          ${s.layoutPattern ? `<em>${escapeHtml(s.layoutPattern)}</em>` : ''}
+        </div>`).join('\n        ')}
+      </div>
+    </div>`
+    : '';
+
+  return `<section id="sg-brand-overview" class="sg-section">
+  <h2>Brand Overview</h2>
+  <div class="sg-brand-overview-card">
+    <div class="sg-brand-mood">
+      <span class="sg-mood-dot" style="background:${moodColor};"></span>
+      <span>${overview.colorMood.charAt(0).toUpperCase() + overview.colorMood.slice(1)} palette</span>
+    </div>
+    <div class="sg-brand-traits">${traits}</div>
+    ${overview.overallFeel ? `<p class="sg-brand-feel">${escapeHtml(overview.overallFeel)}</p>` : ''}
+    ${overview.heroDescription ? `<p class="sg-brand-hero"><strong>Hero:</strong> ${escapeHtml(overview.heroDescription)}</p>` : ''}
+    ${sectionsHtml}
+  </div>
+</section>`;
+}
+
 function buildQuickReferenceTable(approved: StyleGuideElement[]): string {
   if (approved.length === 0) return '';
 
@@ -352,7 +399,8 @@ export function generateStyleGuideHtml(styleGuide: StyleGuide): string {
     : '';
 
   const headerHtml = buildHeader(styleGuide, approved.length, approvedColors.length, brandColor);
-  const navHtml = buildNavigation(groups, approvedColors.length > 0);
+  const navHtml = buildNavigation(groups, approvedColors.length > 0, !!styleGuide.brandOverview);
+  const brandOverviewHtml = buildBrandOverviewSection(styleGuide.brandOverview);
   const colorSectionHtml = buildColorSection(approvedColors);
   const elementSectionsHtml = buildElementSections(groups);
   const quickRefHtml = buildQuickReferenceTable(approved);
@@ -631,6 +679,81 @@ export function generateStyleGuideHtml(styleGuide: StyleGuide): string {
       text-align: center;
     }
 
+    /* Brand Overview */
+    .sg-brand-overview-card {
+      background: var(--sg-surface);
+      border: 1px solid var(--sg-border);
+      border-radius: 16px;
+      padding: 24px;
+    }
+    .sg-brand-mood {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--sg-muted);
+      margin-bottom: 12px;
+    }
+    .sg-mood-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .sg-brand-traits {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .sg-brand-trait {
+      display: inline-block;
+      padding: 4px 12px;
+      background: var(--sg-border-light);
+      border-radius: 20px;
+      font-size: 13px;
+      color: var(--sg-dark);
+      font-weight: 600;
+    }
+    .sg-brand-feel {
+      font-size: 14px;
+      color: #52525b;
+      line-height: 1.7;
+      margin-bottom: 12px;
+    }
+    .sg-brand-hero {
+      font-size: 13px;
+      color: var(--sg-muted);
+      margin-bottom: 12px;
+    }
+    .sg-sections-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .sg-section-card {
+      padding: 10px 14px;
+      background: var(--sg-border-light);
+      border-radius: 10px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .sg-section-card strong {
+      display: block;
+      color: var(--sg-dark);
+      margin-bottom: 2px;
+    }
+    .sg-section-card span {
+      color: #52525b;
+    }
+    .sg-section-card em {
+      display: block;
+      color: var(--sg-muted);
+      font-size: 11px;
+      margin-top: 4px;
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
       .sg-header { padding: 32px 20px; }
@@ -649,6 +772,7 @@ export function generateStyleGuideHtml(styleGuide: StyleGuide): string {
   ${navHtml}
 
   <div class="sg-container">
+    ${brandOverviewHtml}
     ${colorSectionHtml}
     ${elementSectionsHtml}
     ${quickRefHtml}

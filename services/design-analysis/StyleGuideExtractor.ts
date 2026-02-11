@@ -712,7 +712,7 @@ function buildPageFunction(): string {
                 }
               }
 
-              // Remove noise attributes
+              // Remove noise and dangerous attributes
               if (clone.removeAttribute) {
                 var attrs = Array.from(clone.attributes || []);
                 for (var j = 0; j < attrs.length; j++) {
@@ -720,15 +720,27 @@ function buildPageFunction(): string {
                   if (attr.name.startsWith('data-') && attr.name !== 'data-sg-id') {
                     clone.removeAttribute(attr.name);
                   }
-                  if (attr.name === 'onclick' || attr.name === 'onload') {
+                  // Strip ALL on* event handler attributes
+                  if (attr.name.match(/^on/i)) {
                     clone.removeAttribute(attr.name);
+                  }
+                  // Neutralize javascript: URIs
+                  if ((attr.name === 'href' || attr.name === 'src' || attr.name === 'action') && attr.value && attr.value.trim().toLowerCase().startsWith('javascript:')) {
+                    clone.removeAttribute(attr.name);
+                  }
+                }
+                // Strip external image src (http/https URLs won't resolve in preview)
+                if (clone.tagName && clone.tagName.toLowerCase() === 'img') {
+                  var imgSrc = clone.getAttribute('src');
+                  if (imgSrc && (imgSrc.startsWith('http://') || imgSrc.startsWith('https://'))) {
+                    clone.removeAttribute('src');
                   }
                 }
               }
 
-              // Remove script elements
+              // Remove dangerous elements from clone
               if (clone.querySelectorAll) {
-                clone.querySelectorAll('script').forEach(function(s) { s.remove(); });
+                clone.querySelectorAll('script,link,iframe,embed,object,meta,base,noscript').forEach(function(s) { s.remove(); });
               }
 
               return clone;
@@ -975,16 +987,16 @@ function buildPageFunction(): string {
             }
           }
 
-          // ── Extract background sections ──
+          // ── Extract background sections (enhanced: 6 max, hero selectors, content included) ──
           if (elements.length < MAX_TOTAL) {
             try {
-              var sections = document.querySelectorAll('section, [class*="section"], .hero, [class*="hero"], [class*="banner"]');
+              var sections = document.querySelectorAll('section, [class*="section"], .hero, [class*="hero"], [class*="banner"], [class*="jumbotron"], [class*="cta-section"], [class*="feature"], main > div:first-child');
               var bgCount = 0;
               var bgProps = cssPropsMap['backgrounds'];
 
               for (var bi = 0; bi < sections.length; bi++) {
                 var section = sections[bi];
-                if (bgCount >= 3 || elements.length >= MAX_TOTAL) break;
+                if (bgCount >= 6 || elements.length >= MAX_TOTAL) break;
 
                 // v2: Skip noise ancestors
                 if (isInsideNoise(section)) continue;
@@ -998,9 +1010,20 @@ function buildPageFunction(): string {
                     (!bgImage || bgImage === 'none')) continue;
 
                 var computed = getComputedProps(section, bgProps);
+
+                // Extract heading and first paragraph text for context
+                var heading = section.querySelector('h1, h2, h3, h4');
+                var headingText = heading ? (heading.textContent || '').trim().substring(0, 60) : '';
+                var firstPara = section.querySelector('p');
+                var paraText = firstPara ? (firstPara.textContent || '').trim().substring(0, 100) : '';
+
+                var contentHtml = '';
+                if (headingText) contentHtml += '<h3 style="margin:0 0 8px;font-size:16px;color:inherit;">' + headingText + '</h3>';
+                if (paraText) contentHtml += '<p style="margin:0;font-size:13px;color:inherit;opacity:0.8;">' + paraText + '</p>';
+
                 var selfContained = '<div style="' +
                   Object.entries(computed).map(function(pair) { return pair[0].replace(/([A-Z])/g, '-$1').toLowerCase() + ':' + pair[1]; }).join(';') +
-                  ';min-height:80px;width:100%"></div>';
+                  ';min-height:80px;width:100%;padding:20px;box-sizing:border-box;">' + contentHtml + '</div>';
 
                 var bgSgId = elements.length;
                 section.setAttribute('data-sg-id', String(bgSgId));

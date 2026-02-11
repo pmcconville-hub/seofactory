@@ -51,6 +51,20 @@ export interface StyleGuideColor {
   approvalStatus: ApprovalStatus;
 }
 
+export interface PageSectionInfo {
+  name: string;                   // "Hero", "Features Grid", "Testimonials"
+  description: string;
+  layoutPattern: string;          // "full-width with centered CTA"
+}
+
+export interface BrandOverview {
+  brandPersonality: string;       // "Professional, modern, trustworthy"
+  colorMood: 'warm' | 'cool' | 'neutral' | 'mixed';
+  overallFeel: string;            // AI-generated 2-3 sentence description
+  pageSections: PageSectionInfo[];
+  heroDescription?: string;
+}
+
 export interface StyleGuide {
   id: string;
   hostname: string;
@@ -68,6 +82,7 @@ export interface StyleGuide {
   version: number;
   pageScreenshots?: { url: string; base64: string }[];  // Screenshots per crawled page
   pagesScanned?: number;              // Number of pages crawled
+  brandOverview?: BrandOverview;
 }
 
 export interface SavedStyleGuide {

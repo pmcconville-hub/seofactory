@@ -3,7 +3,7 @@
 // =============================================================================
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import type { StyleGuide, StyleGuideCategory, StyleGuideElement, StyleGuideColor } from '../../types/styleGuide';
+import type { StyleGuide, StyleGuideCategory, StyleGuideElement, StyleGuideColor, BrandOverview } from '../../types/styleGuide';
 import { StyleGuideElementCard } from './StyleGuideElementCard';
 import { ColorPaletteView } from './ColorPaletteView';
 
@@ -35,6 +35,80 @@ const CATEGORY_TABS: { key: StyleGuideCategory | 'all'; label: string }[] = [
   { key: 'forms', label: 'Forms' },
   { key: 'colors', label: 'Colors' },
 ];
+
+// =============================================================================
+// Brand Overview Sub-component
+// =============================================================================
+
+const COLOR_MOOD_LABELS: Record<string, { label: string; color: string }> = {
+  warm: { label: 'Warm', color: 'bg-orange-500/20 text-orange-400' },
+  cool: { label: 'Cool', color: 'bg-blue-500/20 text-blue-400' },
+  neutral: { label: 'Neutral', color: 'bg-zinc-500/20 text-zinc-400' },
+  mixed: { label: 'Mixed', color: 'bg-purple-500/20 text-purple-400' },
+};
+
+const BrandOverviewSection: React.FC<{ overview: BrandOverview }> = ({ overview }) => {
+  const [showSections, setShowSections] = useState(false);
+  const moodInfo = COLOR_MOOD_LABELS[overview.colorMood] || COLOR_MOOD_LABELS.neutral;
+
+  return (
+    <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-3 space-y-2.5">
+      <div className="flex items-center gap-2">
+        <h4 className="text-xs font-semibold text-zinc-200 uppercase tracking-wider">Brand Overview</h4>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded ${moodInfo.color}`}>
+          {moodInfo.label} palette
+        </span>
+      </div>
+
+      {/* Personality traits */}
+      <div className="flex flex-wrap gap-1.5">
+        {overview.brandPersonality.split(/,\s*/).map((trait, i) => (
+          <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-700/60 text-zinc-300">
+            {trait.trim()}
+          </span>
+        ))}
+      </div>
+
+      {/* Overall feel */}
+      {overview.overallFeel && (
+        <p className="text-xs text-zinc-400 leading-relaxed">{overview.overallFeel}</p>
+      )}
+
+      {/* Hero description */}
+      {overview.heroDescription && (
+        <div className="text-xs text-zinc-500">
+          <span className="text-zinc-400 font-medium">Hero: </span>
+          {overview.heroDescription}
+        </div>
+      )}
+
+      {/* Page sections (expandable) */}
+      {overview.pageSections.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowSections(!showSections)}
+            className="text-[11px] text-purple-400 hover:text-purple-300 transition-colors"
+          >
+            {showSections ? 'Hide' : 'Show'} {overview.pageSections.length} page section{overview.pageSections.length !== 1 ? 's' : ''}
+          </button>
+          {showSections && (
+            <div className="mt-1.5 space-y-1">
+              {overview.pageSections.map((section, i) => (
+                <div key={i} className="flex items-start gap-2 text-[11px] px-2 py-1 rounded bg-zinc-900/50">
+                  <span className="text-zinc-300 font-medium shrink-0">{section.name}</span>
+                  <span className="text-zinc-500">{section.description}</span>
+                  {section.layoutPattern && (
+                    <span className="text-zinc-600 shrink-0 ml-auto">{section.layoutPattern}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // =============================================================================
 // Component
@@ -355,6 +429,10 @@ export const StyleGuideView: React.FC<StyleGuideViewProps> = ({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto py-3 space-y-3">
+        {/* Brand Overview — shown at top of "All" tab */}
+        {activeTab === 'all' && guide.brandOverview && (
+          <BrandOverviewSection overview={guide.brandOverview} />
+        )}
         {activeTab === 'colors' ? (
           <ColorPaletteView
             colors={guide.colors}

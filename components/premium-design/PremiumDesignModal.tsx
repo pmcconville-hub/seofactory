@@ -757,6 +757,13 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
         setFallbackCount(0);
       }
 
+      // Brand overview: AI vision analysis of full-page screenshot
+      if (aiConfig) {
+        setExtractionPhase('brand-analysis');
+        setExtractionProgress('Analyzing brand identity...');
+        guide = await StyleGuideGenerator.generateBrandOverview(guide, aiConfig);
+      }
+
       setStyleGuide(guide);
       setView('style-guide');
 
@@ -919,6 +926,7 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
           .map(c => ({ hex: c.hex, usage: c.usage })),
         fonts: styleGuide.googleFontFamilies,
         visualIssues: element.visualIssues,
+        brandOverview: styleGuide.brandOverview,
       };
 
       const result = await StyleGuideGenerator.refineElement(
@@ -1402,6 +1410,8 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
                     ? extractionProgress || 'Repairing broken elements...'
                   : extractionPhase === 'enriching'
                     ? 'Generating missing design elements...'
+                  : extractionPhase === 'brand-analysis'
+                    ? extractionProgress || 'Analyzing brand identity...'
                     : selectedPageUrls.length > 1
                       ? `Extracting design elements from ${selectedPageUrls.length} pages...`
                       : `Extracting design elements from ${targetUrl}...`}
@@ -1421,6 +1431,9 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
               )}
               {extractionPhase === 'enriching' && (
                 <p className="text-xs text-zinc-500">Creating fallback elements for empty categories</p>
+              )}
+              {extractionPhase === 'brand-analysis' && (
+                <p className="text-xs text-zinc-500">AI analyzes the full-page screenshot for brand personality and page structure</p>
               )}
             </div>
           )}

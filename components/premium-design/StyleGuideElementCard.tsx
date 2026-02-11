@@ -5,6 +5,37 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { StyleGuideElement } from '../../types/styleGuide';
 
+/**
+ * Sanitize HTML for safe iframe preview rendering.
+ * Strips scripts, external resources, event handlers, and dangerous URIs
+ * to prevent "Blocked script execution" and ERR_NAME_NOT_RESOLVED console errors.
+ */
+export function sanitizeHtmlForPreview(html: string): string {
+  return html
+    // Strip <script> tags (including self-closing and multi-line)
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<script\b[^>]*\/>/gi, '')
+    // Strip <link> tags (prevents Tailwind CDN loading in iframes)
+    .replace(/<link\b[^>]*>/gi, '')
+    // Strip other dangerous/resource-loading tags
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<iframe\b[^>]*\/>/gi, '')
+    .replace(/<embed\b[^>]*>/gi, '')
+    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, '')
+    .replace(/<object\b[^>]*\/>/gi, '')
+    .replace(/<meta\b[^>]*>/gi, '')
+    .replace(/<base\b[^>]*>/gi, '')
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, '')
+    // Strip ALL on* event attributes (handles quoted, unquoted, and single-quoted values)
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    // Neutralize javascript: URIs in href/src/action
+    .replace(/(href|src|action)\s*=\s*["']?\s*javascript:[^"'>]*/gi, '$1="about:blank"')
+    // Strip external src on <img> tags (http/https URLs cause ERR_NAME_NOT_RESOLVED; keep data: URIs)
+    .replace(/<img\b([^>]*)\ssrc\s*=\s*["'](https?:\/\/[^"']*)["']/gi, '<img$1 data-original-src="$2"')
+    // Strip external src on <source> tags
+    .replace(/<source\b([^>]*)\ssrc\s*=\s*["'](https?:\/\/[^"']*)["']/gi, '<source$1 data-original-src="$2"');
+}
+
 interface StyleGuideElementCardProps {
   element: StyleGuideElement;
   onApprove: (id: string) => void;
@@ -96,11 +127,8 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
 
   const bgStyle = bgGradient ? `background-image: ${bgGradient};` : `background: ${bgColor};`;
 
-  // Strip <script> tags and inline event handlers to prevent "Blocked script execution" errors
-  const sanitizedHtml = element.selfContainedHtml
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<script\b[^>]*\/>/gi, '')
-    .replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
+  // Comprehensive sanitization to prevent "Blocked script execution" and ERR_NAME_NOT_RESOLVED errors
+  const sanitizedHtml = sanitizeHtmlForPreview(element.selfContainedHtml);
 
   // Build Google Fonts link tags for iframe
   const fontsLinkTags = (googleFontsUrls || [])
