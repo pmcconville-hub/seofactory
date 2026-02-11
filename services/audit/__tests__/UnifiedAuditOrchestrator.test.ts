@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { UnifiedAuditOrchestrator } from '../UnifiedAuditOrchestrator';
 import { AuditPhase } from '../phases/AuditPhase';
 import { DEFAULT_AUDIT_WEIGHTS } from '../types';
-import type { AuditRequest, AuditPhaseResult, AuditFinding, AuditPhaseName } from '../types';
+import type { AuditRequest, AuditPhaseResult, AuditFinding, AuditPhaseName, FetchedContent } from '../types';
+import type { ContentFetcher } from '../ContentFetcher';
+import type { RelatedUrlDiscoverer } from '../RelatedUrlDiscoverer';
 
 // Mock phase that returns configurable results
 class MockPhase extends AuditPhase {
@@ -150,5 +152,93 @@ describe('UnifiedAuditOrchestrator', () => {
     expect(report.missingKnowledgeGraphTopics).toEqual([]);
     expect(report.cannibalizationRisks).toEqual([]);
     expect(report.prerequisitesMet).toBeDefined();
+  });
+
+  it('fetches content when URL is provided and passes to phases', async () => {
+    const mockContent: FetchedContent = {
+      url: 'https://example.com',
+      semanticText: 'Test content',
+      rawHtml: '<html><body>Test</body></html>',
+      title: 'Test',
+      metaDescription: 'Test desc',
+      headings: [],
+      images: [],
+      internalLinks: [],
+      externalLinks: [],
+      schemaMarkup: [],
+      language: 'en',
+      provider: 'jina',
+      fetchDurationMs: 100,
+    };
+
+    const mockFetcher = {
+      fetch: vi.fn().mockResolvedValue(mockContent),
+    } as unknown as ContentFetcher;
+
+    const executeSpy = vi.fn().mockImplementation(function(this: MockPhase, req: AuditRequest, content?: unknown) {
+      return this.buildResult([], 5);
+    });
+
+    const phase = new MockPhase('strategicFoundation');
+    phase.execute = executeSpy;
+
+    const orchestrator = new UnifiedAuditOrchestrator([phase], mockFetcher);
+    await orchestrator.runAudit(makeRequest({ url: 'https://example.com' }));
+
+    expect(mockFetcher.fetch).toHaveBeenCalledWith('https://example.com', expect.objectContaining({
+      preferredProvider: 'jina',
+      fallbackEnabled: true,
+    }));
+    expect(executeSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'https://example.com' }),
+      mockContent,
+    );
+  });
+
+  it('runs phases without content when no URL provided', async () => {
+    const phase = new MockPhase('strategicFoundation');
+    const orchestrator = new UnifiedAuditOrchestrator([phase]);
+    const report = await orchestrator.runAudit(makeRequest());
+
+    expect(report.phaseResults).toHaveLength(1);
+    expect(report.phaseResults[0].score).toBe(100);
+  });
+
+  it('runs phases without content when fetch fails', async () => {
+    const mockFetcher = {
+      fetch: vi.fn().mockRejectedValue(new Error('Fetch failed')),
+    } as unknown as ContentFetcher;
+
+    const phase = new MockPhase('strategicFoundation');
+    const orchestrator = new UnifiedAuditOrchestrator([phase], mockFetcher);
+    const report = await orchestrator.runAudit(makeRequest({ url: 'https://example.com' }));
+
+    expect(report.phaseResults).toHaveLength(1);
+    // Phase should still run, just without content
+  });
+
+  it('discovers related URLs when discoverer is provided', async () => {
+    const mockContent: FetchedContent = {
+      url: 'https://example.com', semanticText: 'text', rawHtml: '<html></html>',
+      title: '', metaDescription: '', headings: [], images: [],
+      internalLinks: [], externalLinks: [], schemaMarkup: [],
+      language: 'en', provider: 'jina', fetchDurationMs: 50,
+    };
+
+    const mockFetcher = {
+      fetch: vi.fn().mockResolvedValue(mockContent),
+    } as unknown as ContentFetcher;
+
+    const mockDiscoverer = {
+      discover: vi.fn().mockResolvedValue([
+        { url: 'https://example.com/related', source: 'sitemap', relevanceScore: 0.8 },
+      ]),
+    } as unknown as RelatedUrlDiscoverer;
+
+    const phase = new MockPhase('strategicFoundation');
+    const orchestrator = new UnifiedAuditOrchestrator([phase], mockFetcher, mockDiscoverer);
+    const report = await orchestrator.runAudit(makeRequest({ url: 'https://example.com' }));
+
+    expect(mockDiscoverer.discover).toHaveBeenCalled();
   });
 });

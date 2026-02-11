@@ -1,14 +1,17 @@
 import type { AuditPhase } from './phases/AuditPhase';
+import type { ContentFetcher } from './ContentFetcher';
+import type { RelatedUrlDiscoverer } from './RelatedUrlDiscoverer';
 import type {
   AuditRequest,
   AuditPhaseResult,
   AuditPhaseName,
+  FetchedContent,
   UnifiedAuditReport,
 } from './types';
 import { DEFAULT_AUDIT_WEIGHTS } from './types';
 
 export interface AuditProgressEvent {
-  type: 'start' | 'phase_start' | 'phase_complete' | 'complete';
+  type: 'start' | 'fetching_content' | 'discovering_urls' | 'phase_start' | 'phase_complete' | 'complete';
   phase?: AuditPhaseName;
   progress?: number;
 }
@@ -17,9 +20,17 @@ export type AuditProgressCallback = (event: AuditProgressEvent) => void;
 
 export class UnifiedAuditOrchestrator {
   private readonly phases: AuditPhase[];
+  private readonly contentFetcher?: ContentFetcher;
+  private readonly urlDiscoverer?: RelatedUrlDiscoverer;
 
-  constructor(phases: AuditPhase[]) {
+  constructor(
+    phases: AuditPhase[],
+    contentFetcher?: ContentFetcher,
+    urlDiscoverer?: RelatedUrlDiscoverer,
+  ) {
     this.phases = phases;
+    this.contentFetcher = contentFetcher;
+    this.urlDiscoverer = urlDiscoverer;
   }
 
   async runAudit(
@@ -29,6 +40,36 @@ export class UnifiedAuditOrchestrator {
     const startTime = Date.now();
 
     onProgress?.({ type: 'start', progress: 0 });
+
+    // Fetch content when URL is provided and fetcher is available
+    let fetchedContent: FetchedContent | undefined;
+
+    if (request.url && this.contentFetcher) {
+      onProgress?.({ type: 'fetching_content', progress: 0 });
+      try {
+        fetchedContent = await this.contentFetcher.fetch(request.url, {
+          preferredProvider: request.scrapingProvider,
+          fallbackEnabled: true,
+        });
+      } catch {
+        // Content fetch failure is non-fatal — phases run without content
+      }
+    }
+
+    // Discover related URLs if URL discoverer is available and no relatedUrls already set
+    if (request.url && this.urlDiscoverer && !request.relatedUrls?.length) {
+      onProgress?.({ type: 'discovering_urls', progress: 0 });
+      try {
+        const discovered = await this.urlDiscoverer.discover(
+          request.url,
+          fetchedContent?.rawHtml,
+          10
+        );
+        request = { ...request, relatedUrls: discovered.map(d => d.url) };
+      } catch {
+        // URL discovery failure is non-fatal
+      }
+    }
 
     const phaseResults: AuditPhaseResult[] = [];
     const totalPhases = this.phases.length;
@@ -46,7 +87,7 @@ export class UnifiedAuditOrchestrator {
       let result: AuditPhaseResult;
 
       try {
-        result = await phase.execute(request);
+        result = await phase.execute(request, fetchedContent);
       } catch {
         // Phase failed: produce a zero-score result with an error finding
         result = {
