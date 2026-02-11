@@ -14,6 +14,7 @@ interface StyleGuideElementCardProps {
   onReferenceImage?: (id: string, base64: string) => void;
   onReferenceUrl?: (id: string, url: string) => void;
   onAiRedo?: (id: string) => void;
+  isRefining?: boolean;
   googleFontsUrls?: string[];
 }
 
@@ -26,6 +27,7 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
   onReferenceImage,
   onReferenceUrl,
   onAiRedo,
+  isRefining,
   googleFontsUrls,
 }) => {
   const [showComment, setShowComment] = useState(false);
@@ -33,7 +35,20 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
   const [commentText, setCommentText] = useState(element.userComment || '');
   const [refUrl, setRefUrl] = useState(element.referenceUrl || '');
   const [previewHeight, setPreviewHeight] = useState(180);
+  const [showUpdated, setShowUpdated] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const prevHtmlRef = useRef(element.selfContainedHtml);
+
+  // Flash "Updated" indicator when selfContainedHtml changes (after AI refinement)
+  useEffect(() => {
+    if (prevHtmlRef.current !== element.selfContainedHtml && prevHtmlRef.current !== '') {
+      setShowUpdated(true);
+      const timer = setTimeout(() => setShowUpdated(false), 3000);
+      prevHtmlRef.current = element.selfContainedHtml;
+      return () => clearTimeout(timer);
+    }
+    prevHtmlRef.current = element.selfContainedHtml;
+  }, [element.selfContainedHtml]);
 
   const isApproved = element.approvalStatus === 'approved';
   const isRejected = element.approvalStatus === 'rejected';
@@ -176,6 +191,11 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
               AI Repaired
             </span>
           )}
+          {showUpdated && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 shrink-0 animate-pulse">
+              Updated
+            </span>
+          )}
         </div>
         <span className="text-[10px] text-zinc-600 shrink-0">{element.pageRegion}</span>
       </div>
@@ -220,15 +240,20 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
               {/* Right: Rendered iframe */}
               <div className="w-1/2 overflow-hidden flex flex-col">
                 <span className="text-[9px] text-zinc-500 uppercase tracking-wider px-2 pt-1">Rendered</span>
-                <div className="flex-1 flex items-center justify-center" style={{ height: previewHeight }}>
+                <div className="relative flex-1 flex items-center justify-center" style={{ height: previewHeight }}>
                   <iframe
                     ref={iframeRef}
                     srcDoc={iframeContent}
                     title={element.label}
                     className="w-full border-0"
                     style={{ height: previewHeight }}
-                    sandbox="allow-same-origin allow-scripts"
+                    sandbox="allow-same-origin"
                   />
+                  {isRefining && (
+                    <div className="absolute inset-0 bg-purple-900/20 flex items-center justify-center animate-pulse">
+                      <span className="text-xs text-purple-300 bg-zinc-900/80 px-3 py-1.5 rounded-full">Refining...</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </>
@@ -241,7 +266,7 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
                 title={element.label}
                 className="w-full border-0"
                 style={{ height: 100 }}
-                sandbox="allow-same-origin allow-scripts"
+                sandbox="allow-same-origin"
               />
             </div>
           )}
@@ -279,7 +304,8 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
       <div className="flex items-center gap-1.5 px-3 py-2 border-t border-zinc-700/50">
         <button
           onClick={() => onApprove(element.id)}
-          className={`px-2 py-1 text-[11px] rounded transition-colors ${
+          disabled={isRefining}
+          className={`px-2 py-1 text-[11px] rounded transition-colors disabled:opacity-50 ${
             isApproved
               ? 'bg-green-600/20 text-green-400 border border-green-500/30'
               : 'bg-zinc-700/50 text-zinc-400 hover:bg-green-900/30 hover:text-green-400'
@@ -289,7 +315,8 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
         </button>
         <button
           onClick={() => onReject(element.id)}
-          className={`px-2 py-1 text-[11px] rounded transition-colors ${
+          disabled={isRefining}
+          className={`px-2 py-1 text-[11px] rounded transition-colors disabled:opacity-50 ${
             isRejected
               ? 'bg-red-600/20 text-red-400 border border-red-500/30'
               : 'bg-zinc-700/50 text-zinc-400 hover:bg-red-900/30 hover:text-red-400'
@@ -316,7 +343,8 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
         {onAiRedo && needsRedo && (
           <button
             onClick={() => onAiRedo(element.id)}
-            className="px-2 py-1 text-[11px] rounded bg-amber-600/20 text-amber-400 border border-amber-500/30 hover:bg-amber-600/30 transition-colors"
+            disabled={isRefining}
+            className="px-2 py-1 text-[11px] rounded bg-amber-600/20 text-amber-400 border border-amber-500/30 hover:bg-amber-600/30 transition-colors disabled:opacity-50"
           >
             AI Redo
           </button>
@@ -324,17 +352,34 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
         {onRefine && (element.userComment || element.referenceImageBase64 || element.referenceUrl) && (
           <button
             onClick={() => onRefine(element.id, element.userComment || undefined)}
-            className="px-2 py-1 text-[11px] rounded bg-purple-600/20 text-purple-400 border border-purple-500/30 hover:bg-purple-600/30 transition-colors ml-auto"
+            disabled={isRefining}
+            className="px-2 py-1 text-[11px] rounded bg-purple-600/20 text-purple-400 border border-purple-500/30 hover:bg-purple-600/30 transition-colors disabled:opacity-50 ml-auto"
           >
-            Refine with AI
+            {isRefining ? 'Refining...' : 'Refine with AI'}
           </button>
         )}
       </div>
 
+      {/* Inline saved comment display (when comment panel is closed) */}
+      {!showComment && element.userComment && (
+        <div className="px-3 py-1.5 border-t border-zinc-700/30 flex items-center gap-2">
+          <span className="text-[10px] text-zinc-500 shrink-0">Instructions:</span>
+          <span className="text-[10px] text-zinc-400 truncate flex-1">{element.userComment}</span>
+          <button
+            onClick={() => setShowComment(true)}
+            className="text-[10px] text-blue-400 hover:text-blue-300 shrink-0"
+          >
+            Edit
+          </button>
+        </div>
+      )}
+
       {/* Comment textarea — instructions for AI refinement */}
       {showComment && (
         <div className="px-3 py-2 border-t border-zinc-700/50 space-y-2">
-          <p className="text-[10px] text-zinc-500">Describe what AI should change about this element:</p>
+          <p className="text-[10px] text-zinc-500">
+            Describe what AI should change about this element. The AI will modify the HTML/CSS to match your instructions while preserving the element&apos;s core structure.
+          </p>
           <textarea
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
@@ -356,9 +401,10 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
                   setShowComment(false);
                   onRefine(element.id, commentText);
                 }}
-                className="px-2 py-1 text-[11px] bg-purple-600 hover:bg-purple-500 text-white rounded transition-colors"
+                disabled={isRefining}
+                className="px-2 py-1 text-[11px] bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded transition-colors"
               >
-                Save & Refine with AI
+                {isRefining ? 'Refining...' : 'Save & Refine with AI'}
               </button>
             )}
           </div>

@@ -324,7 +324,7 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
   const [styleGuide, setStyleGuide] = useState<StyleGuide | null>(null);
   const [isExtractingGuide, setIsExtractingGuide] = useState(false);
   const [extractionError, setExtractionError] = useState<string | null>(null);
-  const [isRefiningElement, setIsRefiningElement] = useState(false);
+  const [refiningElementId, setRefiningElementId] = useState<string | null>(null);
   const [extractionPhase, setExtractionPhase] = useState<string>('');
   const [extractionProgress, setExtractionProgress] = useState<string>('');
 
@@ -910,14 +910,24 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
 
     if (!apiKey) return;
 
-    setIsRefiningElement(true);
+    setRefiningElementId(elementId);
     try {
+      const brandContext = {
+        colors: styleGuide.colors
+          .filter(c => c.approvalStatus === 'approved')
+          .slice(0, 8)
+          .map(c => ({ hex: c.hex, usage: c.usage })),
+        fonts: styleGuide.googleFontFamilies,
+        visualIssues: element.visualIssues,
+      };
+
       const result = await StyleGuideGenerator.refineElement(
         element,
         comment,
         element.referenceImageBase64,
         styleGuide.screenshotBase64,
-        { provider: provider as 'gemini' | 'anthropic' | 'openai', apiKey }
+        { provider: provider as 'gemini' | 'anthropic' | 'openai', apiKey },
+        brandContext
       );
       setStyleGuide({
         ...styleGuide,
@@ -930,7 +940,7 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
     } catch (err) {
       console.error('[PremiumDesignModal] Element refinement failed:', err);
     } finally {
-      setIsRefiningElement(false);
+      setRefiningElementId(null);
     }
   }, [styleGuide, state.businessInfo]);
 
@@ -1452,7 +1462,7 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
                 }}
                 onExport={handleStyleGuideExport}
                 onRefineElement={handleRefineElement}
-                isRefining={isRefiningElement}
+                refiningElementId={refiningElementId}
                 onChange={setStyleGuide}
               />
 

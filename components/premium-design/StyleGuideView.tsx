@@ -2,7 +2,7 @@
 // StyleGuideView — Main review UI for extracted style guide elements
 // =============================================================================
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import type { StyleGuide, StyleGuideCategory, StyleGuideElement, StyleGuideColor } from '../../types/styleGuide';
 import { StyleGuideElementCard } from './StyleGuideElementCard';
 import { ColorPaletteView } from './ColorPaletteView';
@@ -17,7 +17,7 @@ interface StyleGuideViewProps {
   onReextract: () => void;
   onExport: () => void;
   onRefineElement?: (elementId: string, commentOverride?: string) => void;
-  isRefining?: boolean;
+  refiningElementId?: string | null;
   onChange?: (guide: StyleGuide) => void;
 }
 
@@ -46,11 +46,18 @@ export const StyleGuideView: React.FC<StyleGuideViewProps> = ({
   onReextract,
   onExport,
   onRefineElement,
-  isRefining,
+  refiningElementId,
   onChange,
 }) => {
   const [activeTab, setActiveTab] = useState<StyleGuideCategory | 'all'>('all');
   const [guide, setGuide] = useState<StyleGuide>(styleGuide);
+
+  // Sync local state when parent styleGuide prop changes (e.g. after AI refinement)
+  useEffect(() => {
+    setGuide(styleGuide);
+  }, [styleGuide]);
+
+  const isRefining = !!refiningElementId;
 
   // Update local state and notify parent
   const updateGuide = useCallback((updated: StyleGuide) => {
@@ -318,6 +325,11 @@ export const StyleGuideView: React.FC<StyleGuideViewProps> = ({
               {qualityStats.aiGeneratedCount} AI-generated
             </span>
           )}
+          {refiningElementId && (
+            <span className="text-purple-300 animate-pulse">
+              Refining element...
+            </span>
+          )}
 
           {/* Bulk actions for specific category tabs */}
           {activeTab !== 'all' && activeTab !== 'colors' && (
@@ -362,6 +374,7 @@ export const StyleGuideView: React.FC<StyleGuideViewProps> = ({
                 onReferenceImage={handleReferenceImage}
                 onReferenceUrl={handleReferenceUrl}
                 onAiRedo={handleAiRedo}
+                isRefining={refiningElementId === element.id}
                 googleFontsUrls={guide.googleFontsUrls}
               />
             ))

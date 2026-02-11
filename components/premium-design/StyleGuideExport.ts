@@ -170,6 +170,25 @@ function buildElementCard(el: StyleGuideElement): string {
 
   const hasHover = el.hoverCss && Object.keys(el.hoverCss).length > 0;
 
+  // Check if preview is effectively empty (no visible content)
+  const textContent = el.selfContainedHtml.replace(/<[^>]*>/g, '').trim();
+  const hasImages = el.selfContainedHtml.includes('<img') || el.selfContainedHtml.includes('<svg');
+  const isEmptyPreview = textContent.length < 3 && !hasImages;
+
+  // For accordion elements, wrap with functional toggle behavior
+  const isAccordion = el.category === 'accordions';
+  let previewContent: string;
+  if (isEmptyPreview && el.elementScreenshotBase64) {
+    // Empty-state fallback: show screenshot instead of empty box
+    previewContent = `<img src="data:image/jpeg;base64,${el.elementScreenshotBase64}" alt="${escapeHtml(el.label)}" style="max-width:100%;max-height:200px;">`;
+  } else if (isAccordion) {
+    previewContent = `<div data-accordion="true">${el.selfContainedHtml}</div>`;
+  } else if (hasHover) {
+    previewContent = wrapWithHoverDemo(el.selfContainedHtml, el.hoverCss!, el.computedCss);
+  } else {
+    previewContent = el.selfContainedHtml;
+  }
+
   return `<div class="sg-element">
     <div class="sg-element-header">
       <div>
@@ -178,7 +197,7 @@ function buildElementCard(el: StyleGuideElement): string {
       </div>
     </div>
     <div class="sg-preview" style="${bgStyle}">
-      ${hasHover ? wrapWithHoverDemo(el.selfContainedHtml, el.hoverCss!, el.computedCss) : el.selfContainedHtml}
+      ${previewContent}
     </div>
     ${hasHover ? '<p class="sg-hover-hint">Hover over the element to see interactive state</p>' : ''}
     <details class="sg-code">
@@ -319,8 +338,17 @@ export function generateStyleGuideHtml(styleGuide: StyleGuide): string {
 
   const brandColor = detectBrandColor(approvedColors);
 
+  // Fix font loading: escape & in URLs, add crossorigin attribute
   const fontsLink = styleGuide.googleFontsUrls.length > 0
-    ? styleGuide.googleFontsUrls.map(url => `<link href="${url}" rel="stylesheet">`).join('\n    ')
+    ? styleGuide.googleFontsUrls.map(url => {
+        const safeUrl = url.replace(/&(?!amp;)/g, '&amp;');
+        return `<link href="${safeUrl}" rel="stylesheet" crossorigin="anonymous">`;
+      }).join('\n    ')
+    : '';
+
+  // Determine primary font for body inheritance
+  const primaryFont = styleGuide.googleFontFamilies.length > 0
+    ? `'${styleGuide.googleFontFamilies[0]}', `
     : '';
 
   const headerHtml = buildHeader(styleGuide, approved.length, approvedColors.length, brandColor);
@@ -349,7 +377,7 @@ export function generateStyleGuideHtml(styleGuide: StyleGuide): string {
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-family: ${primaryFont}'Inter', system-ui, -apple-system, sans-serif;
       background: var(--sg-bg);
       color: var(--sg-text);
       line-height: 1.6;
@@ -509,7 +537,11 @@ export function generateStyleGuideHtml(styleGuide: StyleGuide): string {
       cursor: pointer;
       padding: 8px 0;
       font-weight: 600;
+      list-style: none;
     }
+    .sg-code summary::-webkit-details-marker { display: none; }
+    .sg-code summary::before { content: '\\25B8'; margin-right: 6px; }
+    .sg-code[open] summary::before { content: '\\25BE'; }
     .sg-code pre {
       background: #f4f4f5;
       padding: 14px;
@@ -626,6 +658,50 @@ export function generateStyleGuideHtml(styleGuide: StyleGuide): string {
       &middot; ${new Date(styleGuide.extractedAt).toLocaleDateString()}
     </footer>
   </div>
+
+  <script>
+  (function() {
+    // Ensure all <details> elements toggle correctly
+    document.querySelectorAll('details').forEach(function(d) {
+      d.querySelector('summary')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        d.open = !d.open;
+      });
+    });
+
+    // Accordion toggle: elements with [data-accordion]
+    document.querySelectorAll('[data-accordion]').forEach(function(acc) {
+      var children = acc.children;
+      for (var i = 0; i < children.length; i++) {
+        var child = children[i];
+        // Treat first child or elements with header-like tags as toggle triggers
+        var tag = child.tagName.toLowerCase();
+        if (i === 0 || tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4' || tag === 'button') {
+          child.style.cursor = 'pointer';
+          child.addEventListener('click', (function(trigger) {
+            return function() {
+              var sibling = trigger.nextElementSibling;
+              while (sibling) {
+                sibling.style.display = sibling.style.display === 'none' ? '' : 'none';
+                sibling = sibling.nextElementSibling;
+              }
+            };
+          })(child));
+          break;
+        }
+      }
+    });
+
+    // Smooth scroll for nav links
+    document.querySelectorAll('.sg-nav a[href^="#"]').forEach(function(a) {
+      a.addEventListener('click', function(e) {
+        e.preventDefault();
+        var target = document.querySelector(a.getAttribute('href'));
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+  })();
+  </script>
 </body>
 </html>`;
 }

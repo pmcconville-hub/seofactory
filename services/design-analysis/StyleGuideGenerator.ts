@@ -382,11 +382,31 @@ Return ONLY a valid JSON array (no markdown, no explanation):
     userComment: string,
     referenceImage?: string,
     siteScreenshot?: string,
-    aiConfig?: AiRefineConfig
+    aiConfig?: AiRefineConfig,
+    brandContext?: {
+      colors?: { hex: string; usage: string }[];
+      fonts?: string[];
+      visualIssues?: string[];
+    }
   ): Promise<{ selfContainedHtml: string; computedCss: Record<string, string> }> {
     if (!aiConfig?.apiKey) {
       throw new Error('AI API key is required for element refinement');
     }
+
+    const brandSection = brandContext
+      ? `\nBRAND CONTEXT:
+- Category: ${element.category} / ${element.subcategory}
+- Brand Colors: ${brandContext.colors?.map(c => `${c.hex} (${c.usage})`).join(', ') || 'not specified'}
+- Brand Fonts: ${brandContext.fonts?.join(', ') || 'system-ui'}
+${brandContext.visualIssues?.length ? `- Known Visual Issues: ${brandContext.visualIssues.join('; ')}` : ''}`
+      : '';
+
+    const imageNote = siteScreenshot
+      ? '\nIMAGE 1 shows the original website for visual reference. Match its styling as closely as possible.'
+      : '';
+    const refNote = referenceImage
+      ? `\nIMAGE ${siteScreenshot ? '2' : '1'} is a reference image the user wants the element to match.`
+      : '';
 
     const prompt = `You are a CSS/HTML expert. Refine the following HTML element based on the user's feedback.
 
@@ -397,14 +417,18 @@ ${element.selfContainedHtml}
 
 CURRENT COMPUTED CSS:
 ${JSON.stringify(element.computedCss, null, 2)}
+${brandSection}
 
 USER FEEDBACK: "${userComment}"
+${imageNote}${refNote}
 
 INSTRUCTIONS:
 1. Modify the HTML element to match the user's feedback
 2. Keep it as a single self-contained HTML element with inline styles
-3. Preserve the general structure and content
-4. Only change what the user asked for
+3. Preserve the element's core structure and content
+4. Use the brand colors and fonts listed above where relevant
+5. Fix any listed visual issues alongside the user's requested changes
+6. The result should look like it belongs on the original website
 
 Return ONLY the updated HTML element (no explanation, no markdown fences).`;
 
