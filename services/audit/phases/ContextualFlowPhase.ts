@@ -9,6 +9,7 @@
 
 import { AuditPhase } from './AuditPhase';
 import type { AuditPhaseName, AuditRequest, AuditPhaseResult, AuditFinding } from '../types';
+import { ContentObstructionChecker } from '../rules/ContentObstructionChecker';
 
 export class ContextualFlowPhase extends AuditPhase {
   readonly phaseName: AuditPhaseName = 'contextualFlow';
@@ -25,7 +26,36 @@ export class ContextualFlowPhase extends AuditPhase {
       findings.push(...centerpieceIssues);
     }
 
+    // Rule 118: No ads/share buttons before main content
+    const htmlContent = this.extractHtml(content);
+    if (htmlContent) {
+      totalChecks++;
+      const obstructionChecker = new ContentObstructionChecker();
+      const obstructionIssues = obstructionChecker.check(htmlContent);
+      for (const issue of obstructionIssues) {
+        findings.push(this.createFinding({
+          ruleId: issue.ruleId,
+          severity: issue.severity,
+          title: issue.title,
+          description: issue.description,
+          affectedElement: issue.affectedElement,
+          exampleFix: issue.exampleFix,
+          whyItMatters: 'Obstructive elements before main content increase Cost of Retrieval and harm user experience.',
+          category: 'Contextual Flow',
+        }));
+      }
+    }
+
     return this.buildResult(findings, totalChecks);
+  }
+
+  private extractHtml(content: unknown): string | null {
+    if (!content) return null;
+    if (typeof content === 'string') return content;
+    if (typeof content === 'object' && 'html' in (content as Record<string, unknown>)) {
+      return (content as Record<string, unknown>).html as string;
+    }
+    return null;
   }
 
   private extractContent(content: unknown): { text: string; centralEntity?: string; keyAttributes?: string[] } | null {

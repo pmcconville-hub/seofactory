@@ -9,6 +9,7 @@
 
 import { AuditPhase } from './AuditPhase';
 import type { AuditPhaseName, AuditRequest, AuditPhaseResult, AuditFinding } from '../types';
+import { HtmlNestingValidator } from '../rules/HtmlNestingValidator';
 
 export class HtmlTechnicalPhase extends AuditPhase {
   readonly phaseName: AuditPhaseName = 'htmlTechnical';
@@ -23,6 +24,23 @@ export class HtmlTechnicalPhase extends AuditPhase {
       totalChecks++;
       const altIssues = this.checkAltText(html);
       findings.push(...altIssues);
+
+      // Rules 242, 243, 251, 252: HTML nesting checks
+      totalChecks += 4;
+      const nestingValidator = new HtmlNestingValidator();
+      const nestingIssues = nestingValidator.validate(html);
+      for (const issue of nestingIssues) {
+        findings.push(this.createFinding({
+          ruleId: issue.ruleId,
+          severity: issue.severity,
+          title: issue.title,
+          description: issue.description,
+          affectedElement: issue.affectedElement,
+          exampleFix: issue.exampleFix,
+          whyItMatters: 'Proper HTML nesting ensures correct rendering and prevents parsing errors by search engines.',
+          category: 'HTML Technical',
+        }));
+      }
     }
 
     return this.buildResult(findings, totalChecks);

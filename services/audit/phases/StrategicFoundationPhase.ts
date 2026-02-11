@@ -16,6 +16,8 @@ import {
   parseMarkdownContent,
 } from '../../ai/centralEntityAnalyzer';
 import type { ConsistencyIssue } from '../../ai/centralEntityAnalyzer';
+import { SourceContextAligner } from '../rules/SourceContextAligner';
+import type { SourceContext, ContentSpecification } from '../rules/SourceContextAligner';
 
 /**
  * Map centralEntityAnalyzer severity to AuditFinding severity.
@@ -32,26 +34,53 @@ function mapCeSeverity(severity: ConsistencyIssue['severity']): AuditFinding['se
 export class StrategicFoundationPhase extends AuditPhase {
   readonly phaseName: AuditPhaseName = 'strategicFoundation';
 
-  async execute(request: AuditRequest): Promise<AuditPhaseResult> {
+  async execute(request: AuditRequest, content?: unknown): Promise<AuditPhaseResult> {
     const findings: AuditFinding[] = [];
     let totalChecks = 0;
 
-    // The orchestrator will eventually pass fetched content and project context.
-    // For now, this adapter demonstrates the transform pattern but returns
-    // empty results when no content is available.
-    //
-    // When content is provided (via the second parameter or request extensions),
-    // we will:
-    //   1. Parse the content (HTML or Markdown)
-    //   2. Run analyzeCentralEntityConsistency()
-    //   3. Map each ConsistencyIssue to an AuditFinding
-
-    // Future wiring (Sprint 5 P0 rules, Sprint 6 P1 rules):
-    // - SC/CSI alignment checks
-    // - E-E-A-T signal detection
-    // - AI pattern detection
+    // Rule 6: Source Context / Content Specification alignment
+    const contentData = this.extractContent(content);
+    if (contentData?.sourceContext && contentData?.contentSpec) {
+      totalChecks++;
+      const aligner = new SourceContextAligner();
+      const alignmentIssues = aligner.validate(
+        contentData.text,
+        contentData.sourceContext,
+        contentData.contentSpec
+      );
+      for (const issue of alignmentIssues) {
+        findings.push(this.createFinding({
+          ruleId: issue.ruleId,
+          severity: issue.severity,
+          title: issue.title,
+          description: issue.description,
+          affectedElement: issue.affectedElement,
+          exampleFix: issue.exampleFix,
+          whyItMatters: 'Content must serve the business goals defined in the Source Context and Content Specification Index.',
+          category: 'Strategic Foundation',
+        }));
+      }
+    }
 
     return this.buildResult(findings, totalChecks);
+  }
+
+  private extractContent(content: unknown): {
+    text: string;
+    sourceContext?: SourceContext;
+    contentSpec?: ContentSpecification;
+  } | null {
+    if (!content) return null;
+    if (typeof content === 'string') return { text: content };
+    if (typeof content === 'object' && 'text' in (content as Record<string, unknown>)) {
+      const c = content as Record<string, unknown>;
+      return {
+        text: c.text as string,
+        sourceContext: c.sourceContext as SourceContext | undefined,
+        contentSpec: c.contentSpec as ContentSpecification | undefined,
+      };
+    }
+    return null;
   }
 
   /**
