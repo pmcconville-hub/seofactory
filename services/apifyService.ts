@@ -151,13 +151,18 @@ export const runApifyActor = async (actorId: string, apiToken: string, runInput:
     if (run.status === 'SUCCEEDED') break;
     if (['FAILED', 'TIMED-OUT', 'ABORTED'].includes(run.status)) {
       logApifyUsage({ actorId, operation: 'apify-actor-run', durationMs: Date.now() - startTime, success: false, errorMessage: `Run ${run.status}` }).catch((err) => console.warn('[ApifyService] Usage logging failed:', err?.message));
-      throw new Error(`Apify actor run failed with status: ${run.status}`);
+      const userHint = run.status === 'TIMED-OUT'
+        ? 'The website took too long to respond. Try selecting fewer pages or using homepage only.'
+        : run.status === 'FAILED'
+        ? 'Could not reach the website. The site may be blocking automated access, or is temporarily unavailable.'
+        : 'The extraction was cancelled.';
+      throw new Error(`Extraction ${run.status.toLowerCase()}: ${userHint}`);
     }
   }
 
   if (run.status !== 'SUCCEEDED') {
     logApifyUsage({ actorId, operation: 'apify-actor-run', durationMs: Date.now() - startTime, success: false, errorMessage: 'Run timed out' }).catch((err) => console.warn('[ApifyService] Usage logging failed:', err?.message));
-    throw new Error('Apify actor run timed out. Try selecting fewer pages or using homepage only.');
+    throw new Error('Extraction timed out after 5 minutes. The website may be very slow or blocking access. Try using homepage only.');
   }
 
   console.log('[Apify] Fetching results from dataset:', run.defaultDatasetId);

@@ -4,7 +4,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { EnrichedTopic, ContentBrief, TopicalMap } from '../../types';
-import type { StyleGuide } from '../../types/styleGuide';
+import type { StyleGuide, StyleGuideColor } from '../../types/styleGuide';
 import { useAppState } from '../../state/appState';
 import { getSupabaseClient } from '../../services/supabaseClient';
 import { buildFullHtmlDocument, extractCenterpiece, cleanForExport, generateSlug } from '../../services/contentAssemblyService';
@@ -40,7 +40,7 @@ interface PremiumDesignModalProps {
   initialView?: 'fork' | 'premium-url';
 }
 
-type ModalView = 'fork' | 'quick-export' | 'premium-url' | 'page-selection' | 'extracting' | 'style-guide' | 'premium-design';
+type ModalView = 'fork' | 'quick-export' | 'premium-url' | 'discovering' | 'page-selection' | 'extracting' | 'style-guide' | 'premium-design';
 type PipelineStep = 'capturing' | 'generating-css' | 'rendering' | 'validating' | 'iterating' | 'complete' | 'error';
 
 interface DesignHistoryEntry {
@@ -337,6 +337,7 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
   const [customUrl, setCustomUrl] = useState('');
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [fallbackCount, setFallbackCount] = useState(0);
+  const [showBrandFallbackOffer, setShowBrandFallbackOffer] = useState(false);
 
   // Get Supabase client helper
   const getSupabase = useCallback(() => {
@@ -636,6 +637,7 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
 
     setIsDiscovering(true);
     setExtractionError(null);
+    setView('discovering');
 
     try {
       const proxyConfig = bi?.supabaseUrl && bi?.supabaseAnonKey
@@ -665,6 +667,7 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
     } catch (err) {
       console.error('[PremiumDesignModal] Page discovery failed:', err);
       setExtractionError(err instanceof Error ? err.message : String(err));
+      setView('premium-url');
     } finally {
       setIsDiscovering(false);
     }
@@ -695,6 +698,16 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
 
       // AI Visual Validation & Repair: compare element screenshots against page
       const aiConfig = getAiConfig();
+
+      // If no elements were extracted and AI is unavailable, inform the user
+      if (guide.elementCount === 0 && !aiConfig) {
+        throw new Error(
+          'No design elements could be extracted from this website. ' +
+          'This can happen if the site blocks automated access. ' +
+          'Configure an AI API key in Settings to generate elements from brand information instead.'
+        );
+      }
+
       if (aiConfig && guide.elements.some(e => e.elementScreenshotBase64)) {
         setExtractionPhase('validating');
         guide = await StyleGuideGenerator.visualValidateAndRepair(guide, aiConfig, (phase, done, total) => {
@@ -732,8 +745,21 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
         saveStyleGuide(supabase, userId, guide).catch(() => { /* table may not exist */ });
       }
     } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
       console.error('[PremiumDesignModal] Style guide extraction failed:', err);
-      setExtractionError(err instanceof Error ? err.message : String(err));
+      setExtractionError(errorMsg);
+
+      // Check if we have brand info to offer as AI fallback
+      const bi = state.businessInfo;
+      const brandKit = bi?.brandKit;
+      const hasBrandColors = !!(brandKit?.colors?.primary && brandKit?.colors?.secondary);
+      const hasBrandFonts = !!(brandKit?.fonts?.heading || brandKit?.fonts?.body);
+      const hasBrandInfo = hasBrandColors || hasBrandFonts;
+      const aiConfig = getAiConfig();
+
+      if (hasBrandInfo && aiConfig) {
+        setShowBrandFallbackOffer(true);
+      }
       setView('premium-url');
     } finally {
       setIsExtractingGuide(false);
@@ -889,6 +915,72 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
     dispatch({ type: 'SET_NOTIFICATION', payload: `Downloaded: ${filename}` });
   }, [styleGuide, dispatch]);
 
+  // Generate style guide from BrandKit when extraction fails but brand info is available
+  const generateStyleGuideFromBrandInfo = useCallback(async () => {
+    const bi = state.businessInfo;
+    const brandKit = bi?.brandKit;
+    const aiConfig = getAiConfig();
+    if (!brandKit || !aiConfig) return;
+
+    setIsExtractingGuide(true);
+    setExtractionError(null);
+    setView('extracting');
+    setExtractionPhase('enriching');
+    setExtractionProgress('Generating style guide from your brand settings...');
+
+    try {
+      const hostname = getHostnameFromUrl(targetUrl);
+      const buildColor = (hex: string, usage: string, source: string, freq: number): StyleGuideColor => ({
+        hex, rgb: '', usage, source, frequency: freq, approvalStatus: 'approved',
+      });
+      const colors: StyleGuideColor[] = [];
+      const brandColors = brandKit.colors as Record<string, string | undefined>;
+      if (brandColors.primary) colors.push(buildColor(brandColors.primary, 'brand', 'Brand Kit', 10));
+      if (brandColors.secondary) colors.push(buildColor(brandColors.secondary, 'brand', 'Brand Kit', 8));
+      if (brandColors.background) colors.push(buildColor(brandColors.background, 'background', 'Brand Kit', 6));
+      if (brandColors.text) colors.push(buildColor(brandColors.text, 'text', 'Brand Kit', 5));
+
+      const skeletonGuide: StyleGuide = {
+        id: crypto.randomUUID(),
+        hostname,
+        sourceUrl: targetUrl,
+        extractedAt: new Date().toISOString(),
+        elements: [],
+        colors,
+        googleFontsUrls: [],
+        googleFontFamilies: [brandKit.fonts.heading, brandKit.fonts.body].filter(Boolean),
+        elementCount: 0,
+        extractionDurationMs: 0,
+        version: 1,
+        isApproved: false,
+      };
+
+      const fallbackResult = await StyleGuideGenerator.generateFallbackElements(skeletonGuide, aiConfig);
+      const guide = fallbackResult.guide;
+
+      setStyleGuide(guide);
+      setFallbackCount(fallbackResult.fallbackCount);
+      setShowBrandFallbackOffer(false);
+      setView('style-guide');
+
+      // Cache
+      styleGuideMemoryCache.set(guide.hostname, guide);
+      const supabase = getSupabase();
+      const userId = state.user?.id;
+      if (supabase && userId) {
+        saveStyleGuide(supabase, userId, guide).catch(() => {});
+      }
+    } catch (err) {
+      console.error('[PremiumDesignModal] Brand-based style guide generation failed:', err);
+      setExtractionError(err instanceof Error ? err.message : String(err));
+      setView('premium-url');
+    } finally {
+      setIsExtractingGuide(false);
+      setExtractionPhase('');
+      setExtractionProgress('');
+    }
+  }, [state.businessInfo, targetUrl, getAiConfig, getSupabase, state.user?.id]);
+
   if (!isOpen) return null;
 
   const latestIteration = session?.iterations[session.iterations.length - 1];
@@ -904,6 +996,7 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
               : view === 'quick-export' ? 'Quick Export'
               : view === 'style-guide' ? 'Style Guide Review'
               : view === 'page-selection' ? 'Select Pages to Analyze'
+              : view === 'discovering' ? 'Discovering Pages...'
               : view === 'extracting' ? 'Extracting Style Guide...'
               : view === 'premium-url' && styleGuideMode ? 'Style Guide Extraction'
               : view === 'premium-url' ? 'Premium Design Studio'
@@ -1069,6 +1162,35 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
                       <p className="text-xs text-red-400">Extraction failed: {extractionError}</p>
                     </div>
                   )}
+                  {showBrandFallbackOffer && (() => {
+                    const brandKit = state.businessInfo?.brandKit;
+                    return (
+                      <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+                        <p className="text-xs text-blue-400 font-medium mb-2">
+                          Website extraction failed, but you have brand information configured:
+                        </p>
+                        <ul className="text-xs text-zinc-400 space-y-1 mb-3">
+                          {brandKit?.colors?.primary && (
+                            <li className="flex items-center gap-2">
+                              <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: brandKit.colors.primary }} />
+                              Primary: {brandKit.colors.primary}
+                              {brandKit.colors.secondary && <>, Secondary: {brandKit.colors.secondary}</>}
+                            </li>
+                          )}
+                          {brandKit?.fonts?.heading && <li>Heading font: {brandKit.fonts.heading}</li>}
+                          {brandKit?.fonts?.body && <li>Body font: {brandKit.fonts.body}</li>}
+                          {brandKit?.logo?.url && <li>Logo configured</li>}
+                        </ul>
+                        <button
+                          onClick={generateStyleGuideFromBrandInfo}
+                          disabled={isExtractingGuide}
+                          className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 text-white text-xs font-medium rounded-lg transition-colors"
+                        >
+                          Generate Style Guide from Brand Settings
+                        </button>
+                      </div>
+                    );
+                  })()}
                   <label className="block text-xs text-zinc-400">Target Website URL</label>
                   <input
                     type="url"
@@ -1265,10 +1387,26 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
             </div>
           )}
 
+          {/* ── Discovering View ── */}
+          {view === 'discovering' && (
+            <div className="flex flex-col items-center justify-center py-16 space-y-4">
+              <div className="w-10 h-10 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm text-zinc-300">Discovering pages on {targetUrl}...</p>
+              <p className="text-xs text-zinc-500">Scanning navigation, footer, and content links (15-30 seconds)</p>
+            </div>
+          )}
+
           {/* ── Style Guide Review View ── */}
           {view === 'style-guide' && styleGuide && (
             <div style={{ minHeight: '50vh' }}>
-              {fallbackCount > 0 && (
+              {styleGuide.elementCount === 0 && (
+                <div className="mx-1 mb-2 px-3 py-2 rounded-lg bg-yellow-600/10 border border-yellow-500/20">
+                  <p className="text-[11px] text-yellow-400">
+                    No design elements could be extracted from this website. The style guide is based on your configured brand colors and fonts.
+                  </p>
+                </div>
+              )}
+              {fallbackCount > 0 && styleGuide.elementCount > 0 && (
                 <div className="mx-1 mb-2 px-3 py-2 rounded-lg bg-purple-600/10 border border-purple-500/20">
                   <p className="text-[11px] text-purple-400">
                     {fallbackCount} element{fallbackCount > 1 ? 's' : ''} could not be extracted and {fallbackCount > 1 ? 'were' : 'was'} AI-generated.
@@ -1280,7 +1418,6 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
                 styleGuide={styleGuide}
                 onApprove={handleStyleGuideApproved}
                 onReextract={() => {
-                  setStyleGuide(null);
                   setIsGuideApproved(false);
                   setCachedGuideAvailable(false);
                   startPageDiscovery(true);
