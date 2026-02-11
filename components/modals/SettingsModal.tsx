@@ -12,6 +12,8 @@ import * as modelDiscovery from '../../services/modelDiscoveryService';
 import { WordPressConnectionManager } from '../wordpress';
 import { OrganizationSettingsTab, MemberManagementModal, CostDashboardModal, OrganizationApiKeysModal, SubscriptionBillingModal } from '../organization';
 import { ProjectSettingsModal } from '../project';
+import { SearchConsoleConnection } from '../settings/SearchConsoleConnection';
+import { GscApiAdapter } from '../../services/audit/adapters/GscApiAdapter';
 
 // --- Sub-components for better organization ---
 
@@ -171,6 +173,24 @@ const ServiceSettings: React.FC<{ settings: Partial<BusinessInfo>, handleChange:
                 <Label htmlFor="firecrawlApiKey">Firecrawl API Key</Label>
                 <Input id="firecrawlApiKey" name="firecrawlApiKey" value={settings.firecrawlApiKey || ''} onChange={handleChange} type="password" placeholder="Firecrawl API Key" />
             </div>
+        </div>
+
+        <div className="pt-4 border-t border-gray-700">
+            <SearchConsoleConnection
+                supabaseUrl={settings.supabaseUrl || ''}
+                onConnect={() => {
+                    const adapter = new GscApiAdapter();
+                    const authUrl = adapter.getAuthorizationUrl(
+                        'settings',
+                        `${window.location.origin}/settings/oauth/callback`
+                    );
+                    window.open(authUrl, '_blank', 'width=600,height=700');
+                }}
+                onDisconnect={() => {
+                    // TODO: Implement disconnect
+                    console.log('Disconnect GSC');
+                }}
+            />
         </div>
 
         <h3 className="text-lg font-semibold text-green-400 pt-4 border-t border-gray-700">Knowledge Graph & Tools</h3>
