@@ -229,7 +229,7 @@ export class ContentFetcher {
     const all: FetchOptions['preferredProvider'][] = [
       'jina',
       'firecrawl',
-      'direct',
+      // 'direct' removed — raw fetch() is always CORS-blocked from browser
     ];
     return [preferred, ...all.filter((p) => p !== preferred)];
   }

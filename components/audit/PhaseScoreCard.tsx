@@ -85,16 +85,16 @@ export const PhaseScoreCard: React.FC<PhaseScoreCardProps> = ({
         {/* Top row: phase name + score */}
         <div className="flex items-center justify-between mb-2">
           <span className="font-medium text-gray-200">{displayName}</span>
-          <span className={`font-semibold tabular-nums ${textColor}`} data-testid="score-value">
-            {result.score}
+          <span className={`font-semibold tabular-nums ${result.totalChecks === 0 ? 'text-gray-600' : textColor}`} data-testid="score-value">
+            {result.totalChecks === 0 ? '\u2014' : result.score}
           </span>
         </div>
 
         {/* Score progress bar */}
         <div className="w-full h-2 rounded-full bg-gray-700" data-testid="progress-bar-track">
           <div
-            className={`h-2 rounded-full transition-all ${barColor}`}
-            style={{ width: `${Math.min(Math.max(result.score, 0), 100)}%` }}
+            className={`h-2 rounded-full transition-all ${result.totalChecks === 0 ? 'bg-gray-600' : barColor}`}
+            style={{ width: result.totalChecks === 0 ? '0%' : `${Math.min(Math.max(result.score, 0), 100)}%` }}
             data-testid="progress-bar-fill"
           />
         </div>
@@ -102,7 +102,9 @@ export const PhaseScoreCard: React.FC<PhaseScoreCardProps> = ({
         {/* Below bar: checks passed + weight */}
         <div className="flex items-center justify-between mt-2">
           <span className="text-xs text-gray-500" data-testid="checks-passed">
-            {result.passedChecks}/{result.totalChecks} checks passed
+            {result.totalChecks === 0
+              ? 'No checks performed'
+              : `${result.passedChecks}/${result.totalChecks} checks passed`}
           </span>
           {result.weight > 0 && (
             <span

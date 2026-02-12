@@ -76,6 +76,7 @@ export class UnifiedAuditOrchestrator {
 
     // Fetch content when URL is provided and fetcher is available
     let fetchedContent: FetchedContent | undefined;
+    let contentFetchFailed = false;
 
     if (request.url && this.contentFetcher) {
       onProgress?.({ type: 'fetching_content', progress: 0 });
@@ -86,6 +87,7 @@ export class UnifiedAuditOrchestrator {
         });
       } catch {
         // Content fetch failure is non-fatal — phases run without content
+        contentFetchFailed = true;
       }
     }
 
@@ -179,6 +181,7 @@ export class UnifiedAuditOrchestrator {
       contentMergeSuggestions,
       missingKnowledgeGraphTopics,
       cannibalizationRisks,
+      contentFetchFailed,
       language: request.language,
       version: 1,
       createdAt: new Date().toISOString(),

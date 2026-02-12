@@ -260,7 +260,8 @@ npx playwright test    # Run E2E tests (requires dev server running)
 - **Unit tests**: Vitest + React Testing Library in `__tests__/` directories
 - **E2E tests**: Playwright specs in `e2e/` (archived debug specs in `e2e/_archived/`)
 - **Test config**: `e2e/test-utils.ts` exports `TEST_CONFIG` with `BASE_URL`, credentials, timeouts
-- All 2,408 tests should pass with zero failures
+- All tests should pass with zero failures
+- **Zero-Tolerance Test Policy**: Every test failure — including pre-existing ones — MUST be fixed before completing a task. Never leave broken tests behind. If you encounter failing tests unrelated to your changes, fix them as part of your work. Run `npx vitest run` after every change and ensure 0 failures.
 
 ## Database Schema (Supabase)
 

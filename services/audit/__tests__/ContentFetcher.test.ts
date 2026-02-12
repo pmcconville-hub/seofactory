@@ -193,7 +193,7 @@ describe('ContentFetcher', () => {
       const chain = fetcher.buildFallbackChain('firecrawl');
       expect(chain[0]).toBe('firecrawl');
       expect(chain).toContain('jina');
-      expect(chain).toContain('direct');
+      expect(chain).not.toContain('direct');
     });
 
     it('does not duplicate preferred provider', () => {
@@ -202,10 +202,10 @@ describe('ContentFetcher', () => {
       expect(jinaCount).toBe(1);
     });
 
-    it('includes all three providers', () => {
-      const chain = fetcher.buildFallbackChain('direct');
-      expect(chain).toHaveLength(3);
-      expect(chain[0]).toBe('direct');
+    it('excludes direct provider (CORS-blocked in browser)', () => {
+      const chain = fetcher.buildFallbackChain('jina');
+      expect(chain).toHaveLength(2);
+      expect(chain).not.toContain('direct');
     });
   });
 });

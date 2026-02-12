@@ -156,6 +156,10 @@ const AuditPage: React.FC = () => {
       const fetcher = new ContentFetcher({
         jinaApiKey: businessInfo.jinaApiKey,
         firecrawlApiKey: businessInfo.firecrawlApiKey,
+        proxyConfig: (businessInfo.supabaseUrl && businessInfo.supabaseAnonKey) ? {
+          supabaseUrl: businessInfo.supabaseUrl,
+          supabaseAnonKey: businessInfo.supabaseAnonKey,
+        } : undefined,
       });
 
       const phases = createAllPhases();

@@ -73,6 +73,17 @@ export const UnifiedAuditDashboard: React.FC<UnifiedAuditDashboardProps> = ({
 
   return (
     <div className="bg-gray-900 p-6 space-y-6" data-testid="unified-audit-dashboard">
+      {/* === Content Fetch Warning === */}
+      {report.contentFetchFailed && (
+        <div className="bg-yellow-900/30 border border-yellow-700 rounded-lg p-4" data-testid="content-fetch-warning">
+          <p className="text-yellow-400 text-sm font-medium">Content fetch failed</p>
+          <p className="text-yellow-500/80 text-xs mt-1">
+            Could not retrieve page content. Phase scores may be incomplete.
+            Check your API keys and proxy configuration.
+          </p>
+        </div>
+      )}
+
       {/* === Top Section === */}
       <div className="flex flex-col md:flex-row gap-6 items-start">
         {/* Left: Overall Score Ring + Export */}

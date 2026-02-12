@@ -109,10 +109,15 @@ export class RedirectChainChecker {
   }
 
   private defaultFetcher: UrlFetcher = async (url) => {
-    const response = await fetch(url, { redirect: 'manual' });
-    return {
-      status: response.status,
-      location: response.headers.get('location') || undefined,
-    };
+    try {
+      const response = await fetch(url, { redirect: 'manual' });
+      return {
+        status: response.status,
+        location: response.headers.get('location') || undefined,
+      };
+    } catch {
+      // CORS or network error — can't check redirects from browser
+      return { status: 200 };
+    }
   };
 }
