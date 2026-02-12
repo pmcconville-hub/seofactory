@@ -51,6 +51,7 @@ export class GscApiAdapter {
     }
     const scopes = [
       'https://www.googleapis.com/auth/webmasters.readonly',
+      'https://www.googleapis.com/auth/userinfo.email',
       ...(additionalScopes || []),
     ];
     const params = new URLSearchParams({

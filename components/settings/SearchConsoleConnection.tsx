@@ -138,7 +138,9 @@ export const SearchConsoleConnection: React.FC<SearchConsoleConnectionProps> = (
       });
 
       if (fnError || !data?.ok) {
-        const msg = data?.error || fnError?.message || 'Failed to load properties';
+        const msg = data?.detail
+          ? `${data?.error || 'Error'}: ${data.detail}`
+          : data?.error || fnError?.message || 'Failed to load properties';
         setError(msg);
         setPropertiesMap(prev => ({ ...prev, [accountId]: [] }));
       } else {

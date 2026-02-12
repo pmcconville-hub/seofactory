@@ -41,12 +41,6 @@ function json(body: any, status = 200, origin?: string | null) {
   });
 }
 
-function getEnvVar(name: string): string {
-  const value = Deno.env.get(name);
-  if (!value) throw new Error(`FATAL: Environment variable ${name} is not set.`);
-  return value;
-}
-
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get('origin');
 
@@ -56,63 +50,93 @@ Deno.serve(async (req: Request) => {
 
   try {
     // 1. Parse request
-    const { accountId } = await req.json();
+    let accountId: string;
+    try {
+      const body = await req.json();
+      accountId = body.accountId;
+    } catch (parseErr: any) {
+      return json({ ok: false, error: 'Invalid request body', detail: parseErr.message }, 400, origin);
+    }
+
     if (!accountId) {
       return json({ ok: false, error: 'Missing accountId' }, 400, origin);
     }
 
-    // 2. Authenticate the calling user
+    // 2. Read env vars
+    const projectUrl = Deno.env.get('PROJECT_URL') || Deno.env.get('SUPABASE_URL');
+    const anonKey = Deno.env.get('ANON_KEY') || Deno.env.get('SUPABASE_ANON_KEY');
+    const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!projectUrl || !anonKey || !serviceRoleKey) {
+      return json({
+        ok: false,
+        error: 'Server configuration error',
+        detail: `Missing: ${!projectUrl ? 'PROJECT_URL ' : ''}${!anonKey ? 'ANON_KEY ' : ''}${!serviceRoleKey ? 'SERVICE_ROLE_KEY' : ''}`.trim(),
+      }, 500, origin);
+    }
+
+    // 3. Authenticate the calling user
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return json({ ok: false, error: 'Missing authorization header' }, 401, origin);
     }
 
-    const supabaseAuth = createClient(
-      getEnvVar('PROJECT_URL'),
-      getEnvVar('ANON_KEY'),
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    const supabaseAuth = createClient(projectUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
 
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
     if (authError || !user) {
-      return json({ ok: false, error: 'Authentication failed' }, 401, origin);
+      return json({ ok: false, error: 'Authentication failed', detail: authError?.message }, 401, origin);
     }
 
-    // 3. Fetch the account record (service role to read encrypted tokens)
-    const serviceClient = createClient(
-      getEnvVar('PROJECT_URL'),
-      getEnvVar('SERVICE_ROLE_KEY')
-    );
+    // 4. Fetch the account record (service role to read encrypted tokens)
+    const serviceClient = createClient(projectUrl, serviceRoleKey);
 
     const { data: account, error: fetchError } = await serviceClient
       .from('analytics_accounts')
       .select('*')
       .eq('id', accountId)
-      .eq('user_id', user.id) // Ensure the account belongs to this user
+      .eq('user_id', user.id)
       .single();
 
     if (fetchError || !account) {
-      return json({ ok: false, error: 'Account not found or access denied' }, 404, origin);
+      return json({
+        ok: false,
+        error: 'Account not found or access denied',
+        detail: fetchError?.message || `accountId=${accountId}, userId=${user.id}`,
+      }, 404, origin);
     }
 
-    // 4. Decrypt the access token
-    let accessToken = await decrypt(account.access_token_encrypted);
+    // 5. Decrypt the access token
+    let accessToken: string | null;
+    try {
+      accessToken = await decrypt(account.access_token_encrypted);
+    } catch (decryptErr: any) {
+      return json({ ok: false, error: 'Token decryption failed', detail: decryptErr.message }, 500, origin);
+    }
+
     if (!accessToken) {
-      return json({ ok: false, error: 'Failed to decrypt access token' }, 500, origin);
+      return json({ ok: false, error: 'Failed to decrypt access token (null result)' }, 500, origin);
     }
 
-    // 5. Check if token is expired, refresh if needed
+    // 6. Check if token is expired, refresh if needed
     const tokenExpiry = account.token_expires_at ? new Date(account.token_expires_at) : null;
-    const isExpired = tokenExpiry && tokenExpiry.getTime() < Date.now() + 60000; // 1 min buffer
+    const isExpired = tokenExpiry && tokenExpiry.getTime() < Date.now() + 60000;
 
     if (isExpired && account.refresh_token_encrypted) {
-      const refreshToken = await decrypt(account.refresh_token_encrypted);
+      let refreshToken: string | null;
+      try {
+        refreshToken = await decrypt(account.refresh_token_encrypted);
+      } catch (decryptErr: any) {
+        return json({ ok: false, error: 'Refresh token decryption failed', detail: decryptErr.message }, 500, origin);
+      }
+
       if (refreshToken) {
         try {
           const newTokens = await refreshGoogleToken(refreshToken);
           accessToken = newTokens.access_token;
 
-          // Update stored tokens
           const newAccessEncrypted = await encrypt(accessToken);
           await serviceClient
             .from('analytics_accounts')
@@ -125,9 +149,8 @@ Deno.serve(async (req: Request) => {
             })
             .eq('id', accountId);
         } catch (refreshErr: any) {
-          console.error('[gsc-list-properties] Token refresh failed:', refreshErr.message);
           return json(
-            { ok: false, error: 'Token expired and refresh failed. Please reconnect.' },
+            { ok: false, error: 'Token refresh failed', detail: refreshErr.message },
             401,
             origin
           );
@@ -135,7 +158,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 6. Call GSC API to list sites
+    // 7. Call GSC API to list sites
     const gscResponse = await fetch(`${GSC_API}/sites`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -144,7 +167,7 @@ Deno.serve(async (req: Request) => {
       const errBody = await gscResponse.text();
       console.error('[gsc-list-properties] GSC API error:', gscResponse.status, errBody);
       return json(
-        { ok: false, error: `GSC API error (${gscResponse.status})` },
+        { ok: false, error: `GSC API error (${gscResponse.status})`, detail: errBody.substring(0, 500) },
         gscResponse.status === 401 ? 401 : 502,
         origin
       );
@@ -158,7 +181,7 @@ Deno.serve(async (req: Request) => {
 
     return json({ ok: true, properties }, 200, origin);
   } catch (error: any) {
-    console.error('[gsc-list-properties] Error:', error);
-    return json({ ok: false, error: error.message || 'Internal server error' }, 500, origin);
+    console.error('[gsc-list-properties] Unhandled error:', error);
+    return json({ ok: false, error: 'Internal server error', detail: error.message }, 500, origin);
   }
 });
