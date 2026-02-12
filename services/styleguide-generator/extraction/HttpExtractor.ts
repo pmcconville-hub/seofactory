@@ -272,8 +272,49 @@ async function fetchViaProxy(
   return typeof proxyResult.body === 'string' ? proxyResult.body : JSON.stringify(proxyResult.body);
 }
 
+/** Extract external stylesheet URLs from HTML */
+function extractStylesheetUrls(html: string, baseUrl: string): string[] {
+  const urls: string[] = [];
+  // Match <link rel="stylesheet" href="...">
+  const regex = /<link[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
+  let match;
+  while ((match = regex.exec(html)) !== null) {
+    urls.push(match[1]);
+  }
+  // Also match reverse attribute order: href before rel
+  const regex2 = /<link[^>]*href=["']([^"']+)["'][^>]*rel=["']stylesheet["'][^>]*>/gi;
+  while ((match = regex2.exec(html)) !== null) {
+    if (!urls.includes(match[1])) urls.push(match[1]);
+  }
+
+  // Resolve relative URLs
+  return urls.map(u => {
+    if (u.startsWith('http')) return u;
+    if (u.startsWith('//')) return 'https:' + u;
+    if (u.startsWith('/')) return baseUrl.replace(/\/$/, '') + u;
+    return baseUrl.replace(/\/$/, '') + '/' + u;
+  });
+}
+
+/** Extract CSS variable declarations that look like brand colors */
+function extractCssVariableColors(content: string): ExtractedCssColor[] {
+  const results: ExtractedCssColor[] = [];
+  // Match CSS custom properties with hex values: --some-color: #abc123
+  const varRegex = /--([\w-]*(?:color|primary|secondary|accent|brand|main|bg|background|text|heading|link|btn|button)[\w-]*)\s*:\s*(#[0-9a-fA-F]{3,8})\b/gi;
+  let match;
+  while ((match = varRegex.exec(content)) !== null) {
+    const hex = normalizeHex(match[2]);
+    if (hex && !isBlackWhiteGray(hex)) {
+      // CSS variable colors get a boost — they're intentional brand choices
+      results.push({ hex, property: `var(--${match[1]})`, count: 10 });
+    }
+  }
+  return results;
+}
+
 /**
  * Extract brand data from a website using HTTP fetch.
+ * Fetches the HTML page AND external stylesheets for accurate brand extraction.
  * Routes through fetch-proxy edge function to avoid CORS issues.
  */
 export async function extractViaHttp(
@@ -302,8 +343,30 @@ export async function extractViaHttp(
     console.warn('[HttpExtractor] Proxy fetch failed:', e);
   }
 
-  // Parse CSS values from HTML content
-  const combinedContent = html;
+  // Fetch external stylesheets (up to 5) for accurate color/font extraction.
+  // Most brand colors live in external CSS, not inline HTML.
+  let externalCss = '';
+  if (html) {
+    const baseUrl = url.replace(/^(https?:\/\/[^/]+).*$/, '$1');
+    const stylesheetUrls = extractStylesheetUrls(html, baseUrl);
+    // Skip Google Fonts CSS (handled separately), skip very long query strings (tracking)
+    const cssUrls = stylesheetUrls
+      .filter(u => !u.includes('fonts.googleapis.com') && u.length < 500)
+      .slice(0, 5);
+
+    const cssResults = await Promise.allSettled(
+      cssUrls.map(cssUrl => fetchViaProxy(cssUrl, businessInfo))
+    );
+
+    for (const result of cssResults) {
+      if (result.status === 'fulfilled' && result.value) {
+        externalCss += '\n' + result.value;
+      }
+    }
+  }
+
+  // Combine HTML + external CSS for comprehensive parsing
+  const combinedContent = html + '\n' + externalCss;
   const colors = extractColors(combinedContent);
   const fonts = extractFonts(combinedContent);
   const sizes = extractSizes(combinedContent);
@@ -311,6 +374,19 @@ export async function extractViaHttp(
   const radii = extractRadii(combinedContent);
   const shadows = extractShadows(combinedContent);
   const googleFontsUrls = extractGoogleFontsUrls(html);
+
+  // Extract CSS variable colors (intentional brand choices, weighted higher)
+  const cssVarColors = extractCssVariableColors(combinedContent);
+  for (const vc of cssVarColors) {
+    const existing = colors.find(c => c.hex === vc.hex);
+    if (existing) {
+      existing.count += vc.count; // Boost existing color
+    } else {
+      colors.push(vc);
+    }
+  }
+  // Re-sort after boosting
+  colors.sort((a, b) => b.count - a.count);
 
   return {
     html,
