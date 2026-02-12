@@ -7,6 +7,7 @@ import type {
 import { AuditScoreRing } from './AuditScoreRing';
 import { PhaseScoreCard } from './PhaseScoreCard';
 import { AuditFindingCard } from './AuditFindingCard';
+import { AuditExportDropdown } from './AuditExportDropdown';
 
 export interface UnifiedAuditDashboardProps {
   report: UnifiedAuditReport;
@@ -70,9 +71,10 @@ export const UnifiedAuditDashboard: React.FC<UnifiedAuditDashboardProps> = ({
     <div className="bg-gray-900 p-6 space-y-6" data-testid="unified-audit-dashboard">
       {/* === Top Section === */}
       <div className="flex flex-col md:flex-row gap-6 items-start">
-        {/* Left: Overall Score Ring */}
-        <div className="flex-shrink-0">
+        {/* Left: Overall Score Ring + Export */}
+        <div className="flex-shrink-0 flex flex-col items-center gap-3">
           <AuditScoreRing score={report.overallScore} size={140} label="Overall Score" />
+          <AuditExportDropdown report={report} />
         </div>
 
         {/* Right: Quick Stats */}
