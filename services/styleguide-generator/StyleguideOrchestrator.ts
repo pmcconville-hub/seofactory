@@ -78,14 +78,27 @@ export async function generateStyleguide(options: OrchestratorOptions): Promise<
       sectionsTotal: 48,
     });
 
-    const extraction = await extractSite(domain, businessInfo, (msg) => {
+    let extraction;
+    try {
+      extraction = await extractSite(domain, businessInfo, (msg) => {
+        onProgress?.({
+          phase: 'extracting',
+          phaseLabel: msg,
+          sectionsCompleted: 0,
+          sectionsTotal: 48,
+        });
+      });
+    } catch (extractionError) {
+      // Extraction failed — report clearly instead of producing garbage output
+      const errMsg = extractionError instanceof Error ? extractionError.message : String(extractionError);
       onProgress?.({
         phase: 'extracting',
-        phaseLabel: msg,
+        phaseLabel: `Extraction failed: ${errMsg}`,
         sectionsCompleted: 0,
         sectionsTotal: 48,
       });
-    });
+      throw new Error(`Brand extraction failed for "${domain}": ${errMsg}`);
+    }
 
     analysis = extraction.analysis;
   }
