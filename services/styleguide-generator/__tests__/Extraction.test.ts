@@ -325,30 +325,231 @@ describe('stripNonCssContent', () => {
     expect(cleaned).toContain('#52ae32');
   });
 
-  it('end-to-end: realistic HTML with noise produces correct primary color', () => {
-    // Simulates real benmdaktotaal.nl: script noise hex values outnumber CSS colors
+  it('removes GDPR/cookie consent style blocks', () => {
     const html = `
-      <style>
-        h1, h2 { color: #009fe3; }
-        a { color: #009fe3; }
-        .button-offerte { background-color: #52ae32; color: #fff; }
-        input[type=submit] { background-color: #52ae32; }
+      <style id="assemble-edge-modules-inline-css">
+        .button-offerte { background-color: #52ae32; }
       </style>
-      <script>
-        var gtag_config = "#3858e9";
-        var theme_color = "#3858e9";
-        var widget = { bg: "#3858e9", fg: "#3858e9", hover: "#3858e9" };
-        var analytics = { id: "#3858e9" };
-      </script>
-      <svg viewBox="0 0 100 100"><rect fill="#aaa111"/><rect fill="#aaa111"/><rect fill="#aaa111"/></svg>
+      <style id="moove_gdpr_frontend-inline-css">
+        #moove_gdpr_save_popup_settings_button { background-color: #0c4da2; }
+        .gdpr-btn { background-color: #0c4da2; border-color: #0c4da2; }
+        .gdpr-close { background-color: #0c4da2; }
+      </style>
     `;
-    // Without stripping, #3858e9 would dominate (6 occurrences in script)
-    // With stripping, only CSS colors remain
     const cleaned = _testUtils.stripNonCssContent(html);
+    expect(cleaned).not.toContain('#0c4da2');
+    expect(cleaned).toContain('#52ae32');
+  });
+
+  it('removes WordPress core preset style blocks', () => {
+    const html = `
+      <style id="assemble-edge-modules-inline-css">
+        h1 { color: #009fe3; }
+      </style>
+      <style id="global-styles-inline-css">
+        :root { --wp--preset--color--vivid-cyan-blue: #0693e3; --wp--preset--color--vivid-purple: #9b51e0; }
+      </style>
+    `;
+    const cleaned = _testUtils.stripNonCssContent(html);
+    expect(cleaned).not.toContain('#0693e3');
+    expect(cleaned).not.toContain('#9b51e0');
+    expect(cleaned).toContain('#009fe3');
+  });
+});
+
+// ============================================================================
+// REAL-WORLD INTEGRATION TEST — benmdaktotaal.nl
+// Uses actual CSS structure and color distribution from the live site.
+// ============================================================================
+
+describe('benmdaktotaal.nl — end-to-end extraction', () => {
+  // This HTML mirrors the ACTUAL inline CSS on benmdaktotaal.nl as of 2026-02.
+  // Source: assemble-edge-modules-inline-css (main brand CSS)
+  // + moove_gdpr_frontend-inline-css (GDPR plugin — should be stripped)
+  // + rs-plugin-settings-inline-css (@font-face with weight-suffixed names)
+  const REALISTIC_HTML = `
+    <html>
+    <head>
+      <title>Plat Dak Dakwerken Brabant &amp; Midden-Nederland | B&amp;M Dak-totaal | 10 Jaar Garantie</title>
+      <meta name="description" content="Specialist in platte daken en dakbedekkingen in Brabant en Midden-Nederland">
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open%20Sans%3A300%2C400%2C500%2C600%2C700%7CRoboto%3A400%7CRaleway%3A500%2C700&subset=latin-ext&display=swap">
+
+      <style id="cf-frontend-style-inline-css">
+        @font-face { font-family: 'Outfit'; font-weight: 700; font-display: auto; src: url('/wp-content/uploads/Outfit-Bold.ttf') format('truetype'); }
+        @font-face { font-family: 'Outfit'; font-weight: 400; font-display: auto; src: url('/wp-content/uploads/Outfit-Regular.ttf') format('truetype'); }
+      </style>
+
+      <style id="rs-plugin-settings-inline-css">
+        @font-face { font-family: 'outfit-bold'; src: url('/wp-content/uploads/Outfit-Bold.ttf') format('ttf'); }
+        @font-face { font-family: 'outfit-regular'; src: url('/wp-content/uploads/Outfit-Regular.ttf') format('ttf'); }
+      </style>
+
+      <style id="assemble-edge-modules-inline-css">
+        h1, h2 { color: #009fe3; font-family: 'Outfit', sans-serif; }
+        h3 { color: #fff; }
+        h4 { color: #000; }
+        a:hover { color: #009fe3; }
+        .site-textblock-dark a { color: #009fe3; }
+        .collapseomatic { color: #009fe3; }
+        .home-row-usp h3 { color: #009fe3; }
+        .site-block-dark h1 { color: #009fe3; }
+        .overons-block-dark h1 { color: #009fe3; }
+        ::selection, ::-moz-selection { background-color: #009fe3; color: #fff; }
+        #edgtf-back-to-top > span { background-color: #009fe3; border: 1px solid #009fe3; }
+
+        .button-offerte { background-color: #52ae32; color: #fff; }
+        .button-offerte:hover { background-color: #67bf47; color: #fff; }
+        .wpcf7 input[type="submit"] { background-color: #52ae32; }
+        .wpcf7 input[type="submit"]:hover { background-color: #67bf47; }
+        .home-usp-block a { color: #52ae32; }
+        .productpage-intro-text a { color: #52ae32; }
+        .pannendak-block-intro a { color: #52ae32; }
+
+        .site-textblock a, .offerte-block-text a, .contact-block-img a { color: #50af31; }
+        .site-textblock-dark a:hover { color: #50af31; }
+        tbody tr:first-child td { background-color: #50af31; }
+        .home-usp-block a:hover { color: #74c157; }
+
+        .site-block-dark { background: #222d56; color: #fff; }
+        .overons-block-dark { background: #222d56; color: #fff; }
+        .site-block-dark-noskew { color: #fff; }
+        .home-block-contact { color: #fff; }
+        .home-block-contact a:hover { color: #c8ffb3; }
+
+        .edgtf-footer-top-holder, .edgtf-footer-bottom-holder { background-color: #ededed; }
+        .home-usp-block { box-shadow: 1px 5px 20px #c9c9c9; }
+        .wpcf7-response-output { color: #e20613; }
+        .site-contact-form { background: #fff; }
+        .wpcf7-form textarea { background: #fff; }
+
+        body { font-family: 'Open Sans', sans-serif; color: #313131; }
+        .site-revslider h1 { color: #fff; font-family: 'Outfit', sans-serif; }
+      </style>
+
+      <style id="moove_gdpr_frontend-inline-css">
+        #moove_gdpr_save_popup_settings_button { background-color: #373737; color: #fff; }
+        #moove_gdpr_save_popup_settings_button:hover { background-color: #000; }
+        .moove-gdpr-modal-content .main-modal-content .moove-gdpr-tab-main .moove-gdpr-button-holder button { background-color: #0c4da2; border-color: #0c4da2; }
+        .moove-gdpr-modal-content .main-modal-content .moove-gdpr-tab-main .moove-gdpr-button-holder button:hover { background-color: #fff; color: #0c4da2; border-color: #0c4da2; }
+        .moove-gdpr-modal-content .moove-gdpr-modal-close i { background-color: #0c4da2; border: 1px solid #0c4da2; }
+        .moove-gdpr-modal-content .moove-gdpr-modal-close i:hover { background-color: #fff; color: #0c4da2; }
+        #moove_gdpr_cookie_info_bar .moove-gdpr-info-bar-container .moove-gdpr-info-bar-content a.mgbutton { background-color: #0c4da2; border-color: #0c4da2; }
+        #moove_gdpr_cookie_info_bar .moove-gdpr-info-bar-container .moove-gdpr-info-bar-content a.mgbutton:hover { background-color: #fff; color: #0c4da2; }
+        .gdpr_lightbox .gdpr_lightbox-wrap { border-color: #0c4da2; }
+        a.moove-gdpr-branding:hover { color: #0c4da2; }
+        .moove-gdpr-modal-content .main-modal-content .moove-gdpr-tab-main .moove-gdpr-status-bar label input + .moove-gdpr-slider:before { background-color: #0c4da2; }
+        .moove-gdpr-modal-content a:hover { color: #0c4da2; }
+        .moove-gdpr-modal-content .moove-gdpr-tab-cta-buttons a:focus { box-shadow: 0 0 0 2px #0c4da2; }
+      </style>
+
+      <style id="global-styles-inline-css">
+        :root { --wp--preset--color--black: #000000; --wp--preset--color--white: #ffffff;
+                --wp--preset--color--vivid-red: #cf2e2e; --wp--preset--color--vivid-cyan-blue: #0693e3;
+                --wp--preset--color--vivid-purple: #9b51e0; }
+      </style>
+    </head>
+    <body>
+      <div class="site-revslider"><h1>B&amp;M Dak-Totaal</h1></div>
+    </body>
+    </html>
+  `;
+
+  it('extracts green (#52ae32) as primary color, not blue or GDPR color', () => {
+    const cleaned = _testUtils.stripNonCssContent(REALISTIC_HTML);
     const colors = _testUtils.extractColors(cleaned);
-    // #52ae32 should be primary (button bg boost) not #3858e9 (stripped)
+
+    // GDPR colors (#0c4da2) should be stripped entirely
+    expect(colors.some(c => c.hex === '#0c4da2')).toBe(false);
+    // WordPress preset colors should be stripped
+    expect(colors.some(c => c.hex === '#0693e3')).toBe(false);
+    expect(colors.some(c => c.hex === '#9b51e0')).toBe(false);
+
+    // Green should be primary (button bg + CTA context boost)
+    // Blue #009fe3 should be secondary (headings/links, no button boost)
     expect(colors[0].hex).toBe('#52ae32');
-    expect(colors.some(c => c.hex === '#3858e9')).toBe(false);
+  });
+
+  it('extracts Outfit as heading font (normalized from outfit-bold)', () => {
+    const cleaned = _testUtils.stripNonCssContent(REALISTIC_HTML);
+    const fonts = _testUtils.extractFonts(cleaned);
+
+    // Normalize font names: 'outfit-bold' → 'Outfit', 'outfit-regular' → 'Outfit'
+    const normalizedFontMap = new Map<string, Set<number>>();
+    for (const font of fonts) {
+      const normalName = _testUtils.normalizeFontFaceName(font.family);
+      if (!normalizedFontMap.has(normalName)) {
+        normalizedFontMap.set(normalName, new Set(font.weights));
+      } else {
+        for (const w of font.weights) normalizedFontMap.get(normalName)!.add(w);
+      }
+    }
+    const normalizedFonts = Array.from(normalizedFontMap.entries()).map(([family, weights]) => ({
+      family,
+      weights: Array.from(weights).sort((a, b) => a - b),
+    }));
+
+    const outfit = normalizedFonts.find(f => f.family === 'Outfit');
+    expect(outfit).toBeDefined();
+    expect(outfit!.weights).toContain(400);
+    expect(outfit!.weights).toContain(700);
+
+    const openSans = normalizedFonts.find(f => f.family === 'Open Sans');
+    expect(openSans).toBeDefined();
+  });
+
+  it('full pipeline: analyzeHttpExtraction produces correct BrandAnalysis', () => {
+    const cleaned = _testUtils.stripNonCssContent(REALISTIC_HTML);
+    const colors = _testUtils.extractColors(cleaned);
+    let fonts = _testUtils.extractFonts(cleaned);
+
+    // Normalize fonts (same logic as HttpExtractor.extractViaHttp)
+    const normalizedFontMap = new Map<string, Set<number>>();
+    for (const font of fonts) {
+      const normalName = _testUtils.normalizeFontFaceName(font.family);
+      if (!normalizedFontMap.has(normalName)) {
+        normalizedFontMap.set(normalName, new Set(font.weights));
+      } else {
+        for (const w of font.weights) normalizedFontMap.get(normalName)!.add(w);
+      }
+    }
+    fonts = Array.from(normalizedFontMap.entries()).map(([family, weights]) => ({
+      family,
+      weights: Array.from(weights).sort((a, b) => a - b),
+      source: 'css',
+    }));
+
+    // Build raw extraction (same as what extractViaHttp returns)
+    const raw: RawHttpExtraction = {
+      html: REALISTIC_HTML,
+      title: 'Plat Dak Dakwerken Brabant & Midden-Nederland | B&M Dak-totaal | 10 Jaar Garantie',
+      description: 'Specialist in platte daken en dakbedekkingen',
+      headings: [],
+      links: [],
+      images: [],
+      colors,
+      fonts,
+      sizes: [],
+      spacings: [],
+      radii: [],
+      shadows: [],
+      googleFontsUrls: ['https://fonts.googleapis.com/css?family=Open+Sans:300,400,500,600,700|Roboto:400|Raleway:500,700'],
+      pagesAnalyzed: ['https://benmdaktotaal.nl/'],
+    };
+
+    const analysis = analyzeHttpExtraction(raw, 'benmdaktotaal.nl');
+
+    // Primary color should be green (buttons/CTAs)
+    expect(analysis.colors.primary).toBe('#52ae32');
+    // Blue should appear in the extracted colors (as secondary or accent)
+    expect(analysis.colors.allExtracted.some(c => c.hex === '#009fe3')).toBe(true);
+    // GDPR colors should NOT appear
+    expect(analysis.colors.allExtracted.some(c => c.hex === '#0c4da2')).toBe(false);
+    // Heading font should be Outfit (not outfit-bold)
+    expect(analysis.typography.headingFont.family).toBe('Outfit');
+    // Body font should be Open Sans
+    expect(analysis.typography.bodyFont.family).toBe('Open Sans');
+    // Brand name from title: "Plat Dak Dakwerken Brabant & Midden-Nederland" (before |)
+    expect(analysis.brandName).toContain('Plat Dak');
   });
 });
 

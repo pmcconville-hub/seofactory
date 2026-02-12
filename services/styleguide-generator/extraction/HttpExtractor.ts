@@ -276,14 +276,17 @@ function extractGoogleFontsUrls(html: string): string[] {
 
 /**
  * Strip non-CSS content from HTML before color/font extraction.
- * Removes <script>, <svg>, <noscript>, <canvas>, HTML comments,
- * JSON-LD blocks, and data-* attributes which contain noise hex values
- * that corrupt brand color detection.
+ * Removes <script>, <svg>, <noscript>, HTML comments, JSON-LD blocks,
+ * data-* attributes, and third-party plugin CSS blocks (GDPR, cookie
+ * consent, social widgets, WordPress core presets) which contain hex
+ * values that corrupt brand color detection.
  *
- * Keeps: <style> blocks, inline style="" attributes, <link> tags.
+ * Keeps: theme CSS blocks, inline style="" attributes, <link> tags.
  */
 function stripNonCssContent(html: string): string {
   return html
+    // Remove JSON-LD structured data first (before general script removal)
+    .replace(/<script\s+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi, '')
     // Remove script blocks (analytics, tracking, JS — full of hex noise)
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
     // Remove SVG content (icons, illustrations — full of color codes)
@@ -292,10 +295,11 @@ function stripNonCssContent(html: string): string {
     .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, '')
     // Remove HTML comments (build hashes, version strings)
     .replace(/<!--[\s\S]*?-->/g, '')
-    // Remove JSON-LD structured data (contains escaped content)
-    .replace(/<script\s+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi, '')
     // Remove data-* attributes (often contain encoded colors, IDs)
-    .replace(/\s+data-[\w-]+="[^"]*"/gi, '');
+    .replace(/\s+data-[\w-]+="[^"]*"/gi, '')
+    // Remove third-party plugin style blocks (GDPR/cookie consent, WP core, social)
+    // These have their own color schemes that corrupt brand detection.
+    .replace(/<style\b[^>]*id=["'][^"']*(?:gdpr|cookie|consent|moove|wp-emoji|wp-block-library|global-styles|joinchat|social)[^"']*["'][^>]*>[\s\S]*?<\/style>/gi, '');
 }
 
 /**
