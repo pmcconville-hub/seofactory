@@ -39,8 +39,11 @@ const ProjectWorkspace: React.FC = () => {
             industry: formData.industry,
             valueProp: formData.valueProp,
             audience: formData.audience,
+            expertise: formData.expertise,
             language: formData.language,
+            region: formData.region,
             targetMarket: formData.targetMarket,
+            websiteType: formData.websiteType,
             // AI provider settings
             aiProvider: formData.aiProvider,
             aiModel: formData.aiModel,

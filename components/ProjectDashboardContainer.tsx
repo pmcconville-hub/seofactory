@@ -107,6 +107,9 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             ...mapBusinessContext
         } = mapBusinessInfo;
 
+        // Derive region from targetMarket if not explicitly set (backward compat)
+        const effectiveRegion = mapBusinessContext.region || businessInfo.region || mapBusinessContext.targetMarket || businessInfo.targetMarket;
+
         return {
             ...businessInfo,
             // Use project domain if map doesn't have one set
@@ -114,6 +117,8 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
             projectName: mapBusinessContext.projectName || activeProject?.project_name || businessInfo.projectName,
             // Spread map-specific business context (NOT AI settings)
             ...mapBusinessContext,
+            // Ensure region is populated (fallback to targetMarket for backward compat)
+            region: effectiveRegion,
             // But ensure domain is always from project if map didn't override it
             ...(mapBusinessContext.domain ? {} : { domain: activeProject?.domain || businessInfo.domain }),
             // AI settings ALWAYS from global (user_settings), not from map's business_info

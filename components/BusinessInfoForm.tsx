@@ -634,7 +634,7 @@ const BusinessInfoForm: React.FC<BusinessInfoFormProps> = ({ onSave, onBack, isL
                             defaultOpen={!localBusinessInfo.language || !localBusinessInfo.targetMarket}
                             isComplete={!!(localBusinessInfo.language && localBusinessInfo.targetMarket)}
                         >
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div>
                                     <Label htmlFor="language">Language Code</Label>
                                     <Input id="language" name="language" value={localBusinessInfo.language || ''} onChange={handleChange} placeholder="e.g., en, nl, es" required />
@@ -642,6 +642,10 @@ const BusinessInfoForm: React.FC<BusinessInfoFormProps> = ({ onSave, onBack, isL
                                 <div>
                                     <Label htmlFor="targetMarket">Target Market (Country)</Label>
                                     <Input id="targetMarket" name="targetMarket" value={localBusinessInfo.targetMarket || ''} onChange={handleChange} placeholder="e.g., United States" required />
+                                </div>
+                                <div>
+                                    <Label htmlFor="region">Region / Province</Label>
+                                    <Input id="region" name="region" value={localBusinessInfo.region || ''} onChange={handleChange} placeholder="e.g., Noord Brabant, California" />
                                 </div>
                             </div>
                         </FormAccordion>
