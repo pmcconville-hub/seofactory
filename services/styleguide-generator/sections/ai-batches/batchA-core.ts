@@ -1,0 +1,153 @@
+// services/styleguide-generator/sections/ai-batches/batchA-core.ts
+// Batch A: Core UI components — Buttons, Cards, Lists, Icon Boxes, Forms, Tables
+// Sections: 4, 5, 7, 9, 10, 11
+
+import type { DesignTokenSet, BrandAnalysis, SectionCategory } from '../../types';
+import type { BusinessInfo } from '../../../../types';
+import type { AiSectionSpec } from './aiSectionUtils';
+import {
+  buildTokenSummary,
+  buildBrandSummary,
+  callAiForBatch,
+  parseAiBatchResponse,
+  registerAiSections,
+} from './aiSectionUtils';
+
+const BATCH_A_SPECS: AiSectionSpec[] = [
+  {
+    id: 4,
+    title: 'Buttons',
+    category: 'foundation' as SectionCategory,
+    description: 'Primary, secondary, outline, ghost, icon, and disabled button variants with hover/focus states.',
+    tip: 'All buttons use the prefix-btn-* class pattern. Combine with size modifiers (-sm, -lg).',
+    warning: 'Ensure all buttons have accessible :focus-visible outlines.',
+  },
+  {
+    id: 5,
+    title: 'Cards',
+    category: 'foundation' as SectionCategory,
+    description: 'Card layouts for content, media, horizontal, pricing, and overlay variants.',
+    tip: 'Cards use prefix-card-* classes. Pair with hover effects from Section 23.',
+  },
+  {
+    id: 7,
+    title: 'Lists',
+    category: 'foundation' as SectionCategory,
+    description: 'Styled unordered, ordered, inline, icon, and description lists.',
+    tip: 'Use prefix-list-* classes. Custom bullet/icon colors inherit from the brand palette.',
+  },
+  {
+    id: 9,
+    title: 'Icon Boxes',
+    category: 'foundation' as SectionCategory,
+    description: 'Feature boxes with icon, title, and description in multiple layout variants.',
+    tip: 'Use prefix-icon-box-* classes. Supports Font Awesome or SVG icons.',
+  },
+  {
+    id: 10,
+    title: 'Forms',
+    category: 'foundation' as SectionCategory,
+    description: 'Input fields, textareas, selects, checkboxes, radios, and form groups with labels.',
+    tip: 'Use prefix-form-* classes. See Section 37 for state-specific styling.',
+    warning: 'All form elements must have associated labels for accessibility.',
+  },
+  {
+    id: 11,
+    title: 'Tables',
+    category: 'foundation' as SectionCategory,
+    description: 'Responsive data tables with striped rows, hover highlights, and sortable headers.',
+    tip: 'Wrap in prefix-table-responsive for horizontal scrolling on mobile.',
+  },
+];
+
+function buildBatchAPrompt(tokens: DesignTokenSet, analysis: BrandAnalysis): string {
+  const tokenSummary = buildTokenSummary(tokens);
+  const brandSummary = buildBrandSummary(analysis);
+  const p = tokens.prefix;
+
+  return `You are a senior CSS architect creating a brand design system.
+
+${tokenSummary}
+
+${brandSummary}
+
+Generate CSS and demo HTML for 6 UI component sections. ALL class names MUST start with .${p}-
+
+For each section, output:
+=== SECTION {id} ===
+\`\`\`html
+(demo HTML showing all variants)
+\`\`\`
+\`\`\`css
+(complete CSS for all variants)
+\`\`\`
+
+REQUIREMENTS:
+- Use the exact brand colors, radii, shadows, and fonts from the token summary
+- CSS must be self-contained (no @import, no external dependencies)
+- Demo HTML must be self-contained with inline styles only where class isn't enough
+- Include :hover, :focus-visible, and :disabled states
+- Mobile-first responsive: use min-width breakpoints at 640px, 768px, 1024px
+- Use CSS custom properties where repeated values appear
+
+=== SECTION 4 === (Buttons)
+Classes needed:
+- .${p}-btn (base) with variants: -primary, -secondary, -outline, -ghost, -danger
+- Size modifiers: .${p}-btn-sm, .${p}-btn-lg
+- Icon button: .${p}-btn-icon
+- Button group: .${p}-btn-group
+Demo: Show each variant with hover states visible.
+
+=== SECTION 5 === (Cards)
+Classes needed:
+- .${p}-card (base) with variants: -media (image top), -horizontal, -overlay, -minimal
+- .${p}-card-header, .${p}-card-body, .${p}-card-footer, .${p}-card-img
+Demo: Show at least 3 card variants in a grid.
+
+=== SECTION 7 === (Lists)
+Classes needed:
+- .${p}-list (base) with variants: -unstyled, -inline, -icon, -check, -numbered
+- .${p}-list-item, .${p}-list-icon
+Demo: Show each list variant.
+
+=== SECTION 9 === (Icon Boxes)
+Classes needed:
+- .${p}-icon-box (base) with variants: -centered, -horizontal, -bordered, -filled
+- .${p}-icon-box-icon, .${p}-icon-box-title, .${p}-icon-box-text
+Demo: Show 3 icon boxes in a row with Font Awesome placeholder icons (use <i class="fas fa-star">).
+
+=== SECTION 10 === (Forms)
+Classes needed:
+- .${p}-form-group, .${p}-form-label, .${p}-form-input, .${p}-form-select, .${p}-form-textarea
+- .${p}-form-checkbox, .${p}-form-radio, .${p}-form-hint
+Demo: Show a sample form with text input, select, textarea, checkbox, and radio.
+
+=== SECTION 11 === (Tables)
+Classes needed:
+- .${p}-table (base) with variants: -striped, -hover, -bordered, -compact
+- .${p}-table-responsive (wrapper for horizontal scroll)
+- .${p}-table-header, .${p}-table-cell
+Demo: Show a 4-column, 4-row striped table with hover.`;
+}
+
+/**
+ * Generate AI-enhanced sections for Batch A (core UI components).
+ * Returns section IDs that were successfully generated.
+ */
+export async function generateBatchA(
+  tokens: DesignTokenSet,
+  analysis: BrandAnalysis,
+  businessInfo: BusinessInfo,
+  dispatch: React.Dispatch<unknown>,
+): Promise<number[]> {
+  const prompt = buildBatchAPrompt(tokens, analysis);
+  const response = await callAiForBatch(prompt, businessInfo, dispatch);
+  const sectionIds = BATCH_A_SPECS.map(s => s.id);
+  const outputs = parseAiBatchResponse(response, sectionIds);
+
+  registerAiSections(BATCH_A_SPECS, outputs);
+
+  return [...outputs.keys()];
+}
+
+export { BATCH_A_SPECS };
