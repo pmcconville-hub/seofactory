@@ -73,7 +73,16 @@ export const DraftingPreviewPanel: React.FC<DraftingPreviewPanelProps> = ({
               );
             })()}
             {/* Main Content Preview with Contextual Editor */}
-            <div ref={contentContainerRef} className="prose prose-invert prose-headings:text-gray-100 prose-p:text-gray-300 prose-strong:text-white prose-a:text-blue-400 prose-li:text-gray-300 prose-code:text-green-300 prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700 max-w-none relative">
+            <div
+              ref={contentContainerRef}
+              className="prose prose-invert prose-headings:text-gray-100 prose-p:text-gray-300 prose-strong:text-white prose-a:text-blue-400 prose-li:text-gray-300 prose-code:text-green-300 prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700 max-w-none relative"
+              onContextMenu={(e) => {
+                if (contextualEditor.selection) {
+                  e.preventDefault();
+                  contextualEditor.openMenu();
+                }
+              }}
+            >
               <SimpleMarkdown content={replaceImagePlaceholdersWithUrls(draftContent.replace(/^#\s+.*\n?/, ''), imagePlaceholders)} />
               {/* Contextual Editor: Context Menu (shown on text selection) */}
               {contextualEditor.state.mode === 'menu' && contextualEditor.selection && (

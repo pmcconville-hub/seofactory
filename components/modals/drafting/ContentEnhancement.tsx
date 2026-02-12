@@ -72,6 +72,8 @@ export function useContentEnhancement(): ContentEnhancementHook {
       ? { ...businessInfo, aiProvider: overrideSettings.provider as any, aiModel: overrideSettings.model }
       : businessInfo;
 
+    console.log('[ContentEnhancement] Polish with language:', configToUse.language, 'region:', configToUse.region);
+
     // Strip base64 images to reduce token count
     let strippedImageCount = 0;
     const contentForPolish = draftContent
@@ -235,7 +237,7 @@ export function useContentEnhancement(): ContentEnhancementHook {
     if (!brief || !draftContent) return;
     setIsRunningAudit(true);
     try {
-      const results = await runAlgorithmicAudit(draftContent, brief, businessInfo);
+      const results = await runAlgorithmicAudit(draftContent, brief, businessInfo, businessInfo.language, brief.eavs);
       const issues = convertToAuditIssues(results);
       setAuditIssues(issues);
       setShowAuditPanel(true);
