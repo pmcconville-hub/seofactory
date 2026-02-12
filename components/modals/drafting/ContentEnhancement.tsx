@@ -7,6 +7,7 @@ import { getSupabaseClient } from '../../../services/supabaseClient';
 import * as aiService from '../../../services/aiService';
 import { runAlgorithmicAudit, convertToAuditIssues } from '../../../services/ai/contentGeneration/passes/auditChecks';
 import { ContentBrief, StreamingProgress, AuditIssue } from '../../../types';
+import { getLanguageName } from '../../../utils/languageUtils';
 
 export interface ContentEnhancementHook {
   // Polish
@@ -72,7 +73,9 @@ export function useContentEnhancement(): ContentEnhancementHook {
       ? { ...businessInfo, aiProvider: overrideSettings.provider as any, aiModel: overrideSettings.model }
       : businessInfo;
 
-    console.log('[ContentEnhancement] Polish with language:', configToUse.language, 'region:', configToUse.region);
+    const detectedLang = getLanguageName(configToUse.language);
+    console.log('[ContentEnhancement] Polish with language:', configToUse.language, `(${detectedLang})`, 'region:', configToUse.region);
+    dispatch({ type: 'SET_NOTIFICATION', payload: `Polishing draft in ${detectedLang}${configToUse.region ? ` (${configToUse.region})` : ''}...` });
 
     // Strip base64 images to reduce token count
     let strippedImageCount = 0;

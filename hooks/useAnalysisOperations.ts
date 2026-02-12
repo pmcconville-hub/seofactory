@@ -916,6 +916,7 @@ export function useAnalysisOperations({
              return;
         }
         dispatch({ type: 'SET_LOADING', payload: { key: 'flowAudit', value: true } });
+        dispatch({ type: 'SET_NOTIFICATION', payload: 'Analyzing contextual flow... This may take a moment.' });
 
         // Strip base64 images to reduce token count - they can exceed context limits
         const draftForFlow = draft
