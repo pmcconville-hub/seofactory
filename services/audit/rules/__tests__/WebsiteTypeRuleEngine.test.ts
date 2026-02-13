@@ -256,13 +256,85 @@ describe('WebsiteTypeRuleEngine', () => {
     expect(issues.length).toBe(0);
   });
 
-  it('"local-business" type returns no issues (stub)', () => {
-    const input: WebsiteTypeInput = {
-      websiteType: 'local-business',
-      html: '<html><body><p>Local shop</p></body></html>',
-    };
-    const issues = engine.validate(input);
-    expect(issues.length).toBe(0);
+  describe('local-business', () => {
+    it('flags missing LocalBusiness schema (rule 433)', () => {
+      const input: WebsiteTypeInput = {
+        websiteType: 'local-business',
+        html: '<html><body><h1>Joe\'s Plumbing</h1><address>123 Main St</address><a href="tel:555-1234">555-1234</a></body></html>',
+      };
+      const issues = engine.validate(input);
+      expect(issues).toContainEqual(
+        expect.objectContaining({ ruleId: 'rule-433' }),
+      );
+    });
+
+    it('flags incomplete NAP information (rule 434)', () => {
+      const input: WebsiteTypeInput = {
+        websiteType: 'local-business',
+        html: `<html><body>
+          <script type="application/ld+json">{"@type":"LocalBusiness","name":"Joe's"}</script>
+          <h1>Joe's Plumbing</h1><p>Great service</p>
+        </body></html>`,
+      };
+      const issues = engine.validate(input);
+      expect(issues).toContainEqual(
+        expect.objectContaining({ ruleId: 'rule-434' }),
+      );
+    });
+
+    it('flags no location signals (rule 435)', () => {
+      const input: WebsiteTypeInput = {
+        websiteType: 'local-business',
+        html: `<html><body>
+          <script type="application/ld+json">{"@type":"Restaurant","name":"Joe's","telephone":"555-1234","address":{"streetAddress":"123 Main"}}</script>
+          <h1>Joe's Restaurant</h1><p>Call (555) 123-4567</p><p>123 Main St, 12345</p>
+        </body></html>`,
+      };
+      const issues = engine.validate(input);
+      expect(issues).toContainEqual(
+        expect.objectContaining({ ruleId: 'rule-435' }),
+      );
+    });
+
+    it('flags no opening hours (rule 437)', () => {
+      const input: WebsiteTypeInput = {
+        websiteType: 'local-business',
+        html: `<html><body>
+          <script type="application/ld+json">{"@type":"LocalBusiness","name":"Joe's","telephone":"555-1234","address":{"streetAddress":"123 Main"}}</script>
+          <h1>Joe's</h1><a href="tel:555-1234">Call us</a><address>123 Main St, 12345</address>
+          <p>Serving the Greater Portland area</p>
+          <iframe src="https://maps.google.com/embed"></iframe>
+        </body></html>`,
+      };
+      const issues = engine.validate(input);
+      expect(issues).toContainEqual(
+        expect.objectContaining({ ruleId: 'rule-437' }),
+      );
+    });
+
+    it('well-formed local business page passes clean', () => {
+      const input: WebsiteTypeInput = {
+        websiteType: 'local-business',
+        html: `<html><body>
+          <script type="application/ld+json">{
+            "@type":"LocalBusiness",
+            "name":"Joe's Plumbing",
+            "telephone":"(555) 123-4567",
+            "address":{"@type":"PostalAddress","streetAddress":"123 Main St","postalCode":"97201"},
+            "openingHours":"Mo-Fr 08:00-18:00",
+            "areaServed":"Portland"
+          }</script>
+          <h1>Joe's Plumbing</h1>
+          <address>123 Main St, Portland, OR 97201</address>
+          <a href="tel:5551234567">(555) 123-4567</a>
+          <p>Serving the Greater Portland area since 2005.</p>
+          <p>Hours of operation: Mon-Fri 8:00-18:00</p>
+          <iframe src="https://maps.google.com/embed?q=123+Main+St"></iframe>
+        </body></html>`,
+      };
+      const issues = engine.validate(input);
+      expect(issues.length).toBe(0);
+    });
   });
 
   // -----------------------------------------------------------------------

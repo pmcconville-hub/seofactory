@@ -187,9 +187,9 @@ export class UnifiedAuditOrchestrator {
       createdAt: new Date().toISOString(),
       auditDurationMs: Date.now() - startTime,
       prerequisitesMet: {
-        businessInfo: true,
-        pillars: true,
-        eavs: true,
+        businessInfo: !!this.options.topicalMapContext?.sourceContext?.businessName,
+        pillars: !!this.options.topicalMapContext?.centralEntity,
+        eavs: (this.options.topicalMapContext?.eavs?.length ?? 0) > 0,
       },
     };
 

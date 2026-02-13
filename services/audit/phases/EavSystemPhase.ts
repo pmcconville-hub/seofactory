@@ -12,8 +12,9 @@
 
 import { AuditPhase } from './AuditPhase';
 import type { AuditPhaseName, AuditRequest, AuditPhaseResult, AuditFinding } from '../types';
-import { auditEavs, auditBriefEavConsistency } from '../../ai/eavAudit';
+import { auditEavs } from '../../ai/eavAudit';
 import type { EavInconsistency, InconsistencySeverity } from '../../ai/eavAudit';
+import type { SemanticTriple, AttributeCategory } from '../../../types';
 import { EavTextValidator } from '../rules/EavTextValidator';
 
 /**
@@ -38,7 +39,7 @@ export class EavSystemPhase extends AuditPhase {
     // Rules 33, 37, 40, 45: EAV text validation
     const contentData = this.extractContent(content);
     if (contentData?.text) {
-      totalChecks++;
+      totalChecks += 4; // coverage, pronoun, quantitative, root attribute checks
       const eavValidator = new EavTextValidator();
       const eavIssues = eavValidator.validate({
         text: contentData.text,
@@ -59,12 +60,26 @@ export class EavSystemPhase extends AuditPhase {
       }
     }
 
+    // EAV consistency audit — requires 2+ EAV items from the topical map
+    if (contentData?.eavs && contentData.eavs.length >= 2) {
+      const semanticTriples: SemanticTriple[] = contentData.eavs.map((e) => ({
+        subject: { label: e.entity, type: 'entity' },
+        predicate: { relation: e.attribute, type: 'attribute', category: e.category as AttributeCategory | undefined },
+        object: { value: e.value, type: 'value' },
+      }));
+
+      const report = auditEavs(semanticTriples);
+      totalChecks += report.uniqueSubjects;
+      const eavFindings = this.transformEavInconsistencies(report.inconsistencies);
+      findings.push(...eavFindings);
+    }
+
     return this.buildResult(findings, totalChecks);
   }
 
   private extractContent(content: unknown): {
     text: string;
-    eavs?: { entity: string; attribute: string; value: string }[];
+    eavs?: { entity: string; attribute: string; value: string; category?: string }[];
     rootAttributes?: string[];
   } | null {
     if (!content) return null;
@@ -73,7 +88,7 @@ export class EavSystemPhase extends AuditPhase {
       const c = content as Record<string, unknown>;
       return {
         text: c.text as string,
-        eavs: c.eavs as { entity: string; attribute: string; value: string }[] | undefined,
+        eavs: c.eavs as { entity: string; attribute: string; value: string; category?: string }[] | undefined,
         rootAttributes: c.rootAttributes as string[] | undefined,
       };
     }

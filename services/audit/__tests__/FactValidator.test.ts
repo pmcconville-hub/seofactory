@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { FactValidator } from '../FactValidator';
+import { FactValidator, createPerplexityVerifier } from '../FactValidator';
 import type { FactClaim, VerificationSource } from '../types';
 import type { ClaimVerifier, FactValidationCacheAdapter } from '../FactValidator';
 
@@ -226,7 +226,7 @@ describe('FactValidator', () => {
       expect(mockVerifier).toHaveBeenCalled();
     });
 
-    it('handles cache set failure gracefully', async () => {
+    it('handles cache set failure gracefully (non-fatal)', async () => {
       const mockVerifier: ClaimVerifier = vi.fn().mockResolvedValue({
         status: 'verified',
         sources: [],
@@ -249,6 +249,130 @@ describe('FactValidator', () => {
       // Should not throw despite cache failure
       const result = await validator.verifyClaim(claim);
       expect(result.verificationStatus).toBe('verified');
+    });
+  });
+
+  describe('createPerplexityVerifier', () => {
+    beforeEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('returns verified status from API response', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          choices: [{
+            message: {
+              content: '{"status": "verified", "sources": [{"url": "https://source.com", "title": "Source"}], "suggestion": "Claim is accurate"}',
+            },
+          }],
+        }),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const verifier = createPerplexityVerifier('test-api-key');
+      const result = await verifier('The Earth is round');
+      expect(result.status).toBe('verified');
+      expect(result.sources).toHaveLength(1);
+      expect(result.sources[0].url).toBe('https://source.com');
+      expect(result.suggestion).toBe('Claim is accurate');
+    });
+
+    it('returns disputed status from API response', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          choices: [{
+            message: {
+              content: '{"status": "disputed", "sources": [], "suggestion": "This claim is disputed by recent studies"}',
+            },
+          }],
+        }),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const verifier = createPerplexityVerifier('test-api-key');
+      const result = await verifier('Disputed claim');
+      expect(result.status).toBe('disputed');
+    });
+
+    it('handles API error gracefully', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const verifier = createPerplexityVerifier('test-api-key');
+      const result = await verifier('Some claim');
+      expect(result.status).toBe('unable_to_verify');
+      expect(result.suggestion).toContain('HTTP 429');
+    });
+
+    it('handles malformed API response gracefully', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          choices: [{
+            message: { content: 'This is not valid JSON at all' },
+          }],
+        }),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const verifier = createPerplexityVerifier('test-api-key');
+      const result = await verifier('Some claim');
+      expect(result.status).toBe('unable_to_verify');
+    });
+
+    it('handles network error gracefully', async () => {
+      const mockFetch = vi.fn().mockRejectedValue(new Error('Network timeout'));
+      vi.stubGlobal('fetch', mockFetch);
+
+      const verifier = createPerplexityVerifier('test-api-key');
+      const result = await verifier('Some claim');
+      expect(result.status).toBe('unable_to_verify');
+      expect(result.suggestion).toBe('Verification service unavailable.');
+    });
+
+    it('sends correct headers with API key', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          choices: [{ message: { content: '{"status": "verified", "sources": []}' } }],
+        }),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const verifier = createPerplexityVerifier('my-secret-key');
+      await verifier('Test');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Authorization': 'Bearer my-secret-key',
+            'Content-Type': 'application/json',
+          }),
+        }),
+      );
+    });
+
+    it('maps invalid status to unable_to_verify', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          choices: [{
+            message: { content: '{"status": "some_invalid_status", "sources": []}' },
+          }],
+        }),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const verifier = createPerplexityVerifier('key');
+      const result = await verifier('Claim');
+      expect(result.status).toBe('unable_to_verify');
     });
   });
 });

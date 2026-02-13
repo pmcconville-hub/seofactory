@@ -10,7 +10,7 @@
  *   saas           (rules 411-420)
  *   b2b            (rules 421-425)
  *   blog           (rules 426-432)
- *   local-business (future expansion)
+ *   local-business (rules 433-437)
  *   other          (no type-specific rules)
  */
 
@@ -290,9 +290,122 @@ export class WebsiteTypeRuleEngine {
   // Local Business (stub for future expansion)
   // -----------------------------------------------------------------------
 
-  private validateLocalBusiness(_input: WebsiteTypeInput): WebsiteTypeIssue[] {
-    // Future: rules for NAP consistency, LocalBusiness schema, Maps embed, etc.
-    return [];
+  private validateLocalBusiness(input: WebsiteTypeInput): WebsiteTypeIssue[] {
+    const issues: WebsiteTypeIssue[] = [];
+    const { html } = input;
+    const schemas = input.schemaTypes ?? this.extractSchemaTypes(html);
+
+    // Rule 433: LocalBusiness schema present
+    const localBusinessTypes = [
+      'LocalBusiness', 'Restaurant', 'Store', 'FoodEstablishment',
+      'HealthAndBeautyBusiness', 'LegalService', 'FinancialService',
+      'AutomotiveBusiness', 'MedicalBusiness', 'ProfessionalService',
+      'HomeAndConstructionBusiness', 'SportsActivityLocation',
+      'EntertainmentBusiness', 'DryCleaningOrLaundry', 'Dentist',
+      'Physician', 'RealEstateAgent', 'TravelAgency', 'Electrician',
+      'Plumber', 'RoofingContractor', 'LodgingBusiness', 'Bakery',
+      'BarOrPub', 'CafeOrCoffeeShop',
+    ];
+    if (!schemas.some(s => localBusinessTypes.includes(s))) {
+      issues.push({
+        ruleId: 'rule-433',
+        severity: 'critical',
+        title: 'Missing LocalBusiness schema',
+        description:
+          'Local business pages should include JSON-LD with "@type": "LocalBusiness" (or a subtype like Restaurant, Store, etc.) for local search visibility.',
+        exampleFix:
+          'Add a JSON-LD script block with "@type": "LocalBusiness" including name, address, telephone, and openingHours.',
+      });
+    }
+
+    // Rule 434: NAP consistency — Name, Address, Phone
+    const hasName = /"name"\s*:/i.test(html) || /<h1\b/i.test(html);
+    const hasAddress = this.hasAddressInfo(html);
+    const hasPhone = this.hasPhoneInfo(html);
+    const napMissing: string[] = [];
+    if (!hasName) napMissing.push('Name');
+    if (!hasAddress) napMissing.push('Address');
+    if (!hasPhone) napMissing.push('Phone');
+    if (napMissing.length > 0) {
+      issues.push({
+        ruleId: 'rule-434',
+        severity: napMissing.length >= 2 ? 'high' : 'medium',
+        title: 'Incomplete NAP information',
+        description:
+          `Missing NAP elements: ${napMissing.join(', ')}. Local businesses must display Name, Address, and Phone number consistently.`,
+        affectedElement: napMissing.join(', '),
+        exampleFix:
+          'Add visible business name, full address, and phone number. Include them in LocalBusiness schema as well.',
+      });
+    }
+
+    // Rule 435: Location signals — map embed, directions link, or <address> tag
+    const hasMapEmbed = /maps\.google\.com|google\.com\/maps|goo\.gl\/maps/i.test(html);
+    const hasDirectionsLink = /\b(directions?|get directions|how to get here|find us)\b/i.test(html);
+    const hasAddressTag = /<address\b/i.test(html);
+    if (!hasMapEmbed && !hasDirectionsLink && !hasAddressTag) {
+      issues.push({
+        ruleId: 'rule-435',
+        severity: 'medium',
+        title: 'No location signals found',
+        description:
+          'Local business pages should include location signals such as an embedded Google Map, a directions link, or an <address> HTML tag.',
+        exampleFix:
+          'Embed a Google Maps iframe, add a "Get Directions" link, or wrap your address in an <address> HTML tag.',
+      });
+    }
+
+    // Rule 436: Service area — location-specific content or areaServed in schema
+    const hasAreaServed = /"areaServed"\s*:/i.test(html);
+    const hasLocationContent = /\b(serving|service area|we serve|available in|located in|our location)\b/i.test(html);
+    if (!hasAreaServed && !hasLocationContent) {
+      issues.push({
+        ruleId: 'rule-436',
+        severity: 'low',
+        title: 'No service area information',
+        description:
+          'Local businesses should specify their service area through schema markup (areaServed) or location-specific content.',
+        exampleFix:
+          'Add "areaServed" to your LocalBusiness schema or include text like "Serving the Greater [City] area".',
+      });
+    }
+
+    // Rule 437: Opening hours — in schema or visible pattern
+    const hasOpeningHoursSchema = /"openingHours"\s*:|"openingHoursSpecification"\s*:/i.test(html);
+    const hasHoursPattern = /\b(hours|open|closed|mon|tue|wed|thu|fri|sat|sun)\b.*\d{1,2}[:.]\d{2}/i.test(html);
+    const hasHoursKeyword = /\b(opening hours|business hours|hours of operation|store hours)\b/i.test(html);
+    if (!hasOpeningHoursSchema && !hasHoursPattern && !hasHoursKeyword) {
+      issues.push({
+        ruleId: 'rule-437',
+        severity: 'medium',
+        title: 'No opening hours found',
+        description:
+          'Local business pages should display opening hours visibly and/or in schema markup for local search and Google Business Profile alignment.',
+        exampleFix:
+          'Add "openingHours" or "openingHoursSpecification" to your LocalBusiness schema, and display hours visibly on the page.',
+      });
+    }
+
+    return issues;
+  }
+
+  /** Check for address patterns in HTML. */
+  private hasAddressInfo(html: string): boolean {
+    const hasAddressTag = /<address\b/i.test(html);
+    const hasAddressSchema = /"address"\s*:|"streetAddress"\s*:|"postalCode"\s*:/i.test(html);
+    const hasAddressItemprop = /itemprop=["']address["']/i.test(html);
+    const hasZipPattern = /\b\d{5}(-\d{4})?\b/.test(html); // US ZIP
+    const hasPostcodePattern = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i.test(html); // UK postcode
+    return hasAddressTag || hasAddressSchema || hasAddressItemprop || hasZipPattern || hasPostcodePattern;
+  }
+
+  /** Check for phone number patterns in HTML. */
+  private hasPhoneInfo(html: string): boolean {
+    const hasPhoneSchema = /"telephone"\s*:/i.test(html);
+    const hasPhoneLink = /href=["']tel:/i.test(html);
+    const hasPhonePattern = /\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/.test(html);
+    const hasPhoneItemprop = /itemprop=["']telephone["']/i.test(html);
+    return hasPhoneSchema || hasPhoneLink || hasPhonePattern || hasPhoneItemprop;
   }
 
   // -----------------------------------------------------------------------

@@ -8,6 +8,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
     runSiteAudit,
     SiteAuditResult,
@@ -47,6 +48,9 @@ const PHASE_DESCRIPTIONS: Record<AuditPhase, string> = {
     4: 'Generating prioritized improvement recommendations'
 };
 
+/**
+ * @deprecated Use the Unified 15-Phase Audit at `/p/:projectId/m/:mapId/audit` instead.
+ */
 export const SiteAuditWizard: React.FC<SiteAuditWizardProps> = ({
     projectId,
     domain,
@@ -343,6 +347,26 @@ export const SiteAuditWizard: React.FC<SiteAuditWizardProps> = ({
 
     return (
         <div className="bg-gray-900 rounded-xl border border-gray-700 p-6 max-w-2xl mx-auto">
+            {/* Deprecation Banner */}
+            <div className="mb-4 p-3 bg-amber-900/30 border border-amber-700 rounded-lg flex items-start gap-3" data-testid="deprecation-banner">
+                <svg className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <div>
+                    <p className="text-sm text-amber-300 font-medium">
+                        This audit view has been superseded by the Unified 15-Phase Audit.
+                    </p>
+                    <button
+                        onClick={() => {
+                            window.location.hash = `#/p/${projectId}/m/audit`;
+                        }}
+                        className="text-sm text-amber-400 hover:text-amber-300 underline mt-1"
+                    >
+                        Go to Unified Audit
+                    </button>
+                </div>
+            </div>
+
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">

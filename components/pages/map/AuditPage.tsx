@@ -7,8 +7,10 @@ import { UnifiedAuditDashboard } from '../../audit/UnifiedAuditDashboard';
 import { UnifiedAuditOrchestrator } from '../../../services/audit/UnifiedAuditOrchestrator';
 import type { AuditProgressEvent } from '../../../services/audit/UnifiedAuditOrchestrator';
 import { ContentFetcher } from '../../../services/audit/ContentFetcher';
+import { RelatedUrlDiscoverer } from '../../../services/audit/RelatedUrlDiscoverer';
 import type { AuditRequest, AuditPhaseName, UnifiedAuditReport, TopicalMapContext } from '../../../services/audit/types';
 import type { SemanticTriple } from '../../../types';
+import { AuditPrerequisiteGate } from '../../audit/AuditPrerequisiteGate';
 
 // Phase imports
 import { StrategicFoundationPhase } from '../../../services/audit/phases/StrategicFoundationPhase';
@@ -26,6 +28,7 @@ import { UrlArchitecturePhase } from '../../../services/audit/phases/UrlArchitec
 import { CrossPageConsistencyPhase } from '../../../services/audit/phases/CrossPageConsistencyPhase';
 import { WebsiteTypeSpecificPhase } from '../../../services/audit/phases/WebsiteTypeSpecificPhase';
 import { FactValidationPhase } from '../../../services/audit/phases/FactValidationPhase';
+import { createPerplexityVerifier } from '../../../services/audit/FactValidator';
 
 const ALL_PHASE_NAMES: AuditPhaseName[] = [
   'strategicFoundation',
@@ -45,7 +48,8 @@ const ALL_PHASE_NAMES: AuditPhaseName[] = [
   'factValidation',
 ];
 
-function createAllPhases() {
+function createAllPhases(perplexityApiKey?: string) {
+  const verifier = perplexityApiKey ? createPerplexityVerifier(perplexityApiKey) : undefined;
   return [
     new StrategicFoundationPhase(),
     new EavSystemPhase(),
@@ -61,7 +65,7 @@ function createAllPhases() {
     new UrlArchitecturePhase(),
     new CrossPageConsistencyPhase(),
     new WebsiteTypeSpecificPhase(),
-    new FactValidationPhase(),
+    new FactValidationPhase(verifier),
   ];
 }
 
@@ -86,6 +90,7 @@ const AuditPage: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ percent: number; label: string }>({ percent: 0, label: '' });
+  const [gateDismissed, setGateDismissed] = useState(false);
 
   const hasAutoTriggered = useRef(false);
 
@@ -144,6 +149,12 @@ const AuditPage: React.FC = () => {
     };
   }, [activeMap]);
 
+  const prerequisites = useMemo(() => ({
+    businessInfo: !!topicalMapContext?.sourceContext?.businessName,
+    pillars: !!topicalMapContext?.centralEntity,
+    eavs: (topicalMapContext?.eavs?.length ?? 0) > 0,
+  }), [topicalMapContext]);
+
   const runAudit = useCallback(async (config: { url: string; provider: 'jina' | 'firecrawl' | 'apify' | 'direct'; discoverRelated: boolean }) => {
     if (!projectId) return;
 
@@ -162,8 +173,15 @@ const AuditPage: React.FC = () => {
         } : undefined,
       });
 
-      const phases = createAllPhases();
-      const orchestrator = new UnifiedAuditOrchestrator(phases, fetcher, undefined, {
+      const urlDiscoverer = (businessInfo.supabaseUrl && businessInfo.supabaseAnonKey)
+        ? new RelatedUrlDiscoverer({
+            supabaseUrl: businessInfo.supabaseUrl,
+            supabaseAnonKey: businessInfo.supabaseAnonKey,
+          })
+        : new RelatedUrlDiscoverer();
+
+      const phases = createAllPhases(businessInfo.perplexityApiKey);
+      const orchestrator = new UnifiedAuditOrchestrator(phases, fetcher, config.discoverRelated ? urlDiscoverer : undefined, {
         supabase: supabase ?? undefined,
         mapEavs: topicalMapContext?.eavs,
         topicalMapContext,
@@ -216,6 +234,15 @@ const AuditPage: React.FC = () => {
           Run a 15-phase content audit on any URL to identify SEO improvements.
         </p>
       </div>
+
+      {/* Prerequisite Gate */}
+      {!gateDismissed && (
+        <AuditPrerequisiteGate
+          prerequisites={prerequisites}
+          isExternalUrl={true}
+          onProceedAnyway={() => setGateDismissed(true)}
+        />
+      )}
 
       {/* URL Input */}
       <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-5">

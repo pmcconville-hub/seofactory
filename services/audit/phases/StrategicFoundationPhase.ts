@@ -44,7 +44,7 @@ export class StrategicFoundationPhase extends AuditPhase {
     // Rule 6: Source Context / Content Specification alignment
     const contentData = this.extractContent(content);
     if (contentData?.sourceContext && contentData?.contentSpec) {
-      totalChecks++;
+      totalChecks += 4; // CE, business, keywords, attributes checks
       const aligner = new SourceContextAligner();
       const alignmentIssues = aligner.validate(
         contentData.text,
@@ -67,7 +67,7 @@ export class StrategicFoundationPhase extends AuditPhase {
 
     // Rules 4-5, 7-9, 11-13: CE position and SC/CSI alignment
     if (contentData?.text && contentData?.centralEntity) {
-      totalChecks++;
+      totalChecks += 5; // first-2-sentences, first-sentence, SC attributes, CS/AS, CSI predicates
       const ceChecker = new CentralEntityPositionChecker();
       const ceIssues = ceChecker.validate({
         text: contentData.text,
@@ -91,7 +91,7 @@ export class StrategicFoundationPhase extends AuditPhase {
 
     // Rules 17, 19: Author entity / E-E-A-T signals
     if (contentData?.html) {
-      totalChecks++;
+      totalChecks += 2; // author entity exists, Person schema checks
       const authorChecker = new AuthorEntityChecker();
       const authorIssues = authorChecker.validate(contentData.html);
       for (const issue of authorIssues) {
@@ -110,7 +110,7 @@ export class StrategicFoundationPhase extends AuditPhase {
 
     // Rules 85-93: Context qualifiers (temporal, spatial, conditional, etc.)
     if (contentData?.text) {
-      totalChecks++;
+      totalChecks += 9; // temporal, spatial, conditional, source, comparative, audience, version, methodology, certainty
       const qualifierDetector = new ContextQualifierDetector();
       const qualifierIssues = qualifierDetector.validate(contentData.text);
       for (const issue of qualifierIssues) {
@@ -125,6 +125,15 @@ export class StrategicFoundationPhase extends AuditPhase {
           category: 'Strategic Foundation',
         }));
       }
+    }
+
+    // Central Entity consistency analysis — requires HTML + centralEntity
+    if (contentData?.html && contentData?.centralEntity) {
+      totalChecks += 7; // H1, title, intro, schema, heading ratio, distribution, drift
+      const parsedContent = parseHtmlContent(contentData.html);
+      const ceAnalysis = analyzeCentralEntityConsistency(parsedContent, contentData.centralEntity);
+      const ceFindings = this.transformCeIssues(ceAnalysis.issues);
+      findings.push(...ceFindings);
     }
 
     return this.buildResult(findings, totalChecks);

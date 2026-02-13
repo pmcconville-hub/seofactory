@@ -1,8 +1,88 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RelatedUrlDiscoverer } from '../RelatedUrlDiscoverer';
 
 describe('RelatedUrlDiscoverer', () => {
   const discoverer = new RelatedUrlDiscoverer();
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('proxy support', () => {
+    it('routes sitemap fetch through proxy when config provided', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          ok: true,
+          status: 200,
+          body: `<?xml version="1.0"?><urlset><url><loc>https://example.com/p1</loc></url></urlset>`,
+        }),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const proxyDiscoverer = new RelatedUrlDiscoverer({
+        supabaseUrl: 'https://my.supabase.co',
+        supabaseAnonKey: 'anon-key',
+      });
+      const urls = await proxyDiscoverer.fetchSitemap('https://example.com');
+      expect(urls).toContain('https://example.com/p1');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://my.supabase.co/functions/v1/fetch-proxy',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({ 'apikey': 'anon-key' }),
+        }),
+      );
+    });
+
+    it('routes child sitemap fetches through proxy', async () => {
+      let callCount = 0;
+      const mockFetch = vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+              ok: true, status: 200,
+              body: `<sitemapindex><sitemap><loc>https://example.com/sitemap-1.xml</loc></sitemap></sitemapindex>`,
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            ok: true, status: 200,
+            body: `<urlset><url><loc>https://example.com/child</loc></url></urlset>`,
+          }),
+        });
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const proxyDiscoverer = new RelatedUrlDiscoverer({
+        supabaseUrl: 'https://my.supabase.co',
+        supabaseAnonKey: 'key',
+      });
+      const urls = await proxyDiscoverer.fetchSitemap('https://example.com');
+      expect(urls).toContain('https://example.com/child');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('uses direct fetch when no proxy config', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(`<urlset><url><loc>https://example.com/direct</loc></url></urlset>`),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const noProxyDiscoverer = new RelatedUrlDiscoverer();
+      const urls = await noProxyDiscoverer.fetchSitemap('https://example.com');
+      expect(urls).toContain('https://example.com/direct');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://example.com/sitemap.xml',
+        expect.objectContaining({ headers: expect.objectContaining({ 'User-Agent': expect.any(String) }) }),
+      );
+    });
+  });
 
   describe('parseSitemapXml', () => {
     it('parses sitemap.xml and returns URLs', () => {

@@ -4,7 +4,18 @@ export interface DiscoveredUrl {
   relevanceScore: number;
 }
 
+export interface ProxyConfig {
+  supabaseUrl: string;
+  supabaseAnonKey: string;
+}
+
 export class RelatedUrlDiscoverer {
+  private readonly proxyConfig?: ProxyConfig;
+
+  constructor(proxyConfig?: ProxyConfig) {
+    this.proxyConfig = proxyConfig;
+  }
+
   /**
    * Discover related URLs for a given page.
    * Strategies: sitemap parsing, internal link extraction, URL pattern matching.
@@ -33,12 +44,44 @@ export class RelatedUrlDiscoverer {
   }
 
   /**
+   * Fetch via proxy to avoid CORS issues in browser environment.
+   * Falls back to direct fetch when no proxy config is provided.
+   */
+  private async fetchViaProxy(url: string): Promise<{ ok: boolean; status: number; body?: string }> {
+    if (!this.proxyConfig?.supabaseUrl) {
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'HolisticSEO-SiteAnalyzer/1.0' },
+      });
+      const body = await response.text();
+      return { ok: response.ok, status: response.status, body };
+    }
+
+    const proxyUrl = `${this.proxyConfig.supabaseUrl}/functions/v1/fetch-proxy`;
+    const response = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': this.proxyConfig.supabaseAnonKey,
+        'Authorization': `Bearer ${this.proxyConfig.supabaseAnonKey}`,
+      },
+      body: JSON.stringify({ url, method: 'GET' }),
+    });
+
+    const data = await response.json();
+    return {
+      ok: data.ok,
+      status: data.status,
+      body: data.body,
+    };
+  }
+
+  /**
    * Fetch sitemap.xml from root domain.
    */
   async fetchSitemap(baseUrl: string): Promise<string[]> {
-    const response = await fetch(`${baseUrl}/sitemap.xml`);
-    if (!response.ok) throw new Error(`Sitemap not found: HTTP ${response.status}`);
-    const xml = await response.text();
+    const result = await this.fetchViaProxy(`${baseUrl}/sitemap.xml`);
+    if (!result.ok || !result.body) throw new Error(`Sitemap not found: HTTP ${result.status}`);
+    const xml = result.body;
 
     // Check if this is a sitemap index
     if (xml.includes('<sitemapindex')) {
@@ -61,10 +104,9 @@ export class RelatedUrlDiscoverer {
     const allUrls: string[] = [];
     for (const sitemapUrl of sitemapUrls.slice(0, 3)) {
       try {
-        const response = await fetch(sitemapUrl);
-        if (response.ok) {
-          const childXml = await response.text();
-          allUrls.push(...this.parseSitemapXml(childXml));
+        const result = await this.fetchViaProxy(sitemapUrl);
+        if (result.ok && result.body) {
+          allUrls.push(...this.parseSitemapXml(result.body));
         }
       } catch {
         // Skip failed child sitemaps

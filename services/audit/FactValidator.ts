@@ -1,4 +1,5 @@
 import type { FactClaim, VerificationSource } from './types';
+import { getDefaultModel, SERVICE_REGISTRY } from '../../config/serviceRegistry';
 
 /**
  * Function signature for claim verification.
@@ -215,4 +216,71 @@ export class FactValidator {
     sources: [],
     suggestion: 'No verification service configured.',
   });
+}
+
+/**
+ * Create a ClaimVerifier backed by the Perplexity API for real fact-checking.
+ * Uses the Perplexity search-augmented LLM to verify factual claims.
+ */
+export function createPerplexityVerifier(apiKey: string): ClaimVerifier {
+  const apiUrl = SERVICE_REGISTRY.providers.perplexity.endpoints.chat;
+  const model = getDefaultModel('perplexity');
+
+  return async (claimText: string) => {
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a fact-checking assistant. You verify factual claims and return structured JSON results. Always respond with valid JSON only.',
+            },
+            {
+              role: 'user',
+              content: `Verify this factual claim. Is it accurate, disputed, or outdated? Return JSON: {"status": "verified"|"unverified"|"disputed"|"outdated", "sources": [{"url": "...", "title": "..."}], "suggestion": "..."}\n\nClaim: ${claimText}`,
+            },
+          ],
+          max_tokens: 500,
+        }),
+      });
+
+      if (!response.ok) {
+        return { status: 'unable_to_verify' as const, sources: [], suggestion: `Perplexity API error: HTTP ${response.status}` };
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content ?? '';
+
+      // Extract JSON from response
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return { status: 'unable_to_verify' as const, sources: [], suggestion: 'Could not parse verification response.' };
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      const validStatuses = ['verified', 'unverified', 'disputed', 'outdated', 'unable_to_verify'] as const;
+      const status = validStatuses.includes(parsed.status) ? parsed.status : 'unable_to_verify';
+
+      const sources: VerificationSource[] = Array.isArray(parsed.sources)
+        ? parsed.sources.filter((s: unknown) => s && typeof s === 'object' && 'url' in (s as Record<string, unknown>)).map((s: Record<string, unknown>) => ({
+            url: String(s.url ?? ''),
+            title: String(s.title ?? ''),
+          }))
+        : [];
+
+      return {
+        status: status as FactClaim['verificationStatus'],
+        sources,
+        suggestion: typeof parsed.suggestion === 'string' ? parsed.suggestion : undefined,
+      };
+    } catch {
+      return { status: 'unable_to_verify' as const, sources: [], suggestion: 'Verification service unavailable.' };
+    }
+  };
 }
