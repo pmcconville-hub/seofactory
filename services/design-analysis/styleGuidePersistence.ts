@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { StyleGuide, SavedStyleGuide } from '../../types/styleGuide';
+import { uploadElementScreenshots, getScreenshotUrl } from './screenshotStorage';
 
 /**
  * Save a style guide to the database.
@@ -14,7 +15,8 @@ import type { StyleGuide, SavedStyleGuide } from '../../types/styleGuide';
 export async function saveStyleGuide(
   supabase: SupabaseClient,
   userId: string,
-  styleGuide: StyleGuide
+  styleGuide: StyleGuide,
+  topicalMapId?: string
 ): Promise<SavedStyleGuide | null> {
   // Get current max version for this hostname
   const { data: existing } = await supabase
@@ -27,18 +29,51 @@ export async function saveStyleGuide(
 
   const nextVersion = (existing?.[0]?.version ?? 0) + 1;
 
-  const record = {
+  // Upload element screenshots to Storage before inserting
+  let screenshotStoragePaths: Record<string, string> | null = null;
+  try {
+    const pathsMap = await uploadElementScreenshots(
+      supabase,
+      styleGuide.hostname, // Use hostname as project key for style guides
+      styleGuide.id,
+      styleGuide.elements
+    );
+    if (pathsMap.size > 0) {
+      screenshotStoragePaths = Object.fromEntries(pathsMap);
+    }
+  } catch (uploadErr) {
+    console.warn('[styleGuidePersistence] Screenshot upload failed (continuing with base64):', uploadErr);
+  }
+
+  // Build style_guide payload — strip base64 from elements whose screenshots were uploaded
+  const uploadedElementIds = new Set(
+    screenshotStoragePaths ? Object.keys(screenshotStoragePaths) : []
+  );
+  const elementsForStorage = styleGuide.elements.map(el => {
+    if (uploadedElementIds.has(el.id) && el.elementScreenshotBase64) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { elementScreenshotBase64: _stripped, ...rest } = el;
+      return rest;
+    }
+    return el;
+  });
+
+  const record: Record<string, unknown> = {
     user_id: userId,
     hostname: styleGuide.hostname,
     source_url: styleGuide.sourceUrl,
     style_guide: {
       ...styleGuide,
+      elements: elementsForStorage,
       version: nextVersion,
-      // Cap screenshot size to avoid exceeding column limits
-      screenshotBase64: styleGuide.screenshotBase64?.substring(0, 500000) || null,
+      screenshotBase64: styleGuide.screenshotBase64 || null,
     },
     version: nextVersion,
+    screenshot_storage_paths: screenshotStoragePaths,
   };
+  if (topicalMapId) {
+    record.topical_map_id = topicalMapId;
+  }
 
   const { data, error } = await supabase
     .from('style_guides')
@@ -60,19 +95,43 @@ export async function saveStyleGuide(
 export async function loadStyleGuide(
   supabase: SupabaseClient,
   userId: string,
-  hostname: string
+  hostname: string,
+  topicalMapId?: string
 ): Promise<SavedStyleGuide | null> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('style_guides')
     .select('*')
     .eq('user_id', userId)
-    .eq('hostname', hostname)
+    .eq('hostname', hostname);
+
+  if (topicalMapId) {
+    query = query.eq('topical_map_id', topicalMapId);
+  }
+
+  const { data, error } = await query
     .order('version', { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (error || !data) return null;
-  return data as unknown as SavedStyleGuide;
+
+  // Resolve element screenshot URLs from Storage paths
+  const saved = data as unknown as SavedStyleGuide;
+  if (saved.screenshot_storage_paths && saved.style_guide?.elements) {
+    const paths = saved.screenshot_storage_paths;
+    saved.style_guide.elements = saved.style_guide.elements.map(el => {
+      const storagePath = paths[el.id];
+      if (storagePath) {
+        return {
+          ...el,
+          elementScreenshotUrl: getScreenshotUrl(supabase, storagePath),
+        };
+      }
+      return el;
+    });
+  }
+
+  return saved;
 }
 
 /**
@@ -92,6 +151,78 @@ export async function loadStyleGuideHistory(
 
   if (error || !data) return [];
   return data as any[];
+}
+
+/**
+ * Load a specific style guide version by its database ID.
+ */
+export async function loadStyleGuideById(
+  supabase: SupabaseClient,
+  styleGuideId: string
+): Promise<SavedStyleGuide | null> {
+  const { data, error } = await supabase
+    .from('style_guides')
+    .select('*')
+    .eq('id', styleGuideId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  // Resolve element screenshot URLs from Storage paths
+  const saved = data as unknown as SavedStyleGuide;
+  if (saved.screenshot_storage_paths && saved.style_guide?.elements) {
+    const paths = saved.screenshot_storage_paths;
+    saved.style_guide.elements = saved.style_guide.elements.map(el => {
+      const storagePath = paths[el.id];
+      if (storagePath) {
+        return {
+          ...el,
+          elementScreenshotUrl: getScreenshotUrl(supabase, storagePath),
+        };
+      }
+      return el;
+    });
+  }
+
+  return saved;
+}
+
+/**
+ * Load a specific version number for a hostname.
+ */
+export async function loadStyleGuideByVersion(
+  supabase: SupabaseClient,
+  userId: string,
+  hostname: string,
+  version: number
+): Promise<SavedStyleGuide | null> {
+  const { data, error } = await supabase
+    .from('style_guides')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('hostname', hostname)
+    .eq('version', version)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  // Resolve element screenshot URLs from Storage paths
+  const saved = data as unknown as SavedStyleGuide;
+  if (saved.screenshot_storage_paths && saved.style_guide?.elements) {
+    const paths = saved.screenshot_storage_paths;
+    saved.style_guide.elements = saved.style_guide.elements.map(el => {
+      const storagePath = paths[el.id];
+      if (storagePath) {
+        return {
+          ...el,
+          elementScreenshotUrl: getScreenshotUrl(supabase, storagePath),
+        };
+      }
+      return el;
+    });
+  }
+
+  return saved;
 }
 
 /**

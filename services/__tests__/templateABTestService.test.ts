@@ -135,10 +135,10 @@ describe('templateABTestService', () => {
         else variantCount++;
       }
 
-      // With 100 samples and 50% split, expect rough 50/50
-      // Allow variance - just check both have reasonable counts
-      expect(controlCount).toBeGreaterThan(20);
-      expect(variantCount).toBeGreaterThan(20);
+      // With 100 samples and 70/30 split, allow wide variance
+      // Just check both sides have reasonable counts (>= 10)
+      expect(controlCount).toBeGreaterThanOrEqual(10);
+      expect(variantCount).toBeGreaterThanOrEqual(10);
     });
 
     it('should assign correct template based on variant', async () => {

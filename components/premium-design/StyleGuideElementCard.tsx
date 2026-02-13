@@ -93,6 +93,7 @@ interface StyleGuideElementCardProps {
   onReferenceImage?: (id: string, base64: string) => void;
   onReferenceUrl?: (id: string, url: string) => void;
   onAiRedo?: (id: string) => void;
+  onUndo?: (id: string) => void;
   isRefining?: boolean;
   googleFontsUrls?: string[];
 }
@@ -106,6 +107,7 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
   onReferenceImage,
   onReferenceUrl,
   onAiRedo,
+  onUndo,
   isRefining,
   googleFontsUrls,
 }) => {
@@ -115,16 +117,21 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
   const [refUrl, setRefUrl] = useState(element.referenceUrl || '');
   const [previewHeight, setPreviewHeight] = useState(180);
   const [showUpdated, setShowUpdated] = useState(false);
+  const [showUndo, setShowUndo] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const prevHtmlRef = useRef(element.selfContainedHtml);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Flash "Updated" indicator when selfContainedHtml changes (after AI refinement)
   useEffect(() => {
     if (prevHtmlRef.current !== element.selfContainedHtml && prevHtmlRef.current !== '') {
       setShowUpdated(true);
+      setShowUndo(true);
       const timer = setTimeout(() => setShowUpdated(false), 3000);
+      const undoTimer = setTimeout(() => setShowUndo(false), 10000);
+      undoTimerRef.current = undoTimer;
       prevHtmlRef.current = element.selfContainedHtml;
-      return () => clearTimeout(timer);
+      return () => { clearTimeout(timer); clearTimeout(undoTimer); };
     }
     prevHtmlRef.current = element.selfContainedHtml;
   }, [element.selfContainedHtml]);
@@ -272,6 +279,19 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
               Updated
             </span>
           )}
+          {showUndo && onUndo && (
+            <button
+              onClick={() => { onUndo(element.id); setShowUndo(false); }}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors shrink-0"
+            >
+              Undo
+            </button>
+          )}
+          {element.refinementHistory && element.refinementHistory.length > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 shrink-0">
+              Refined {element.refinementHistory.length}x
+            </span>
+          )}
         </div>
         <span className="text-[10px] text-zinc-600 shrink-0">{element.pageRegion}</span>
       </div>
@@ -297,7 +317,7 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
       {/* Preview: Original vs Rendered comparison */}
       <div className="border-t border-zinc-700/50" style={{ minHeight: 100 }}>
         <div className="flex" style={{ minHeight: 100 }}>
-          {element.elementScreenshotBase64 ? (
+          {(element.elementScreenshotBase64 || element.elementScreenshotUrl) ? (
             <>
               {/* Left: Original screenshot */}
               <div className="w-1/2 overflow-hidden border-r border-zinc-700/50 flex flex-col">
@@ -307,7 +327,7 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
                   style={{ height: previewHeight }}
                 >
                   <img
-                    src={`data:image/jpeg;base64,${element.elementScreenshotBase64}`}
+                    src={element.elementScreenshotUrl || `data:image/jpeg;base64,${element.elementScreenshotBase64}`}
                     alt={element.label}
                     className="max-w-full max-h-full object-contain"
                   />
@@ -375,6 +395,37 @@ export const StyleGuideElementCard: React.FC<StyleGuideElementCardProps> = ({
           </div>
         </details>
       </div>
+
+      {/* Quick refinement actions */}
+      {onRefine && !isRefining && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 border-t border-zinc-700/30">
+          <span className="text-[10px] text-zinc-600 mr-1">Quick:</span>
+          <button
+            onClick={() => onRefine(element.id, 'Match the brand colors more closely. Use the approved color palette.')}
+            className="px-2 py-0.5 text-[10px] rounded bg-zinc-700/40 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
+          >
+            Match colors
+          </button>
+          <button
+            onClick={() => onRefine(element.id, 'Fix contrast issues. Ensure text is readable against the background.')}
+            className="px-2 py-0.5 text-[10px] rounded bg-zinc-700/40 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
+          >
+            Fix contrast
+          </button>
+          <button
+            onClick={() => onRefine(element.id, 'Match the brand fonts. Use the heading and body fonts from the style guide.')}
+            className="px-2 py-0.5 text-[10px] rounded bg-zinc-700/40 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
+          >
+            Match font
+          </button>
+          <button
+            onClick={() => onRefine(element.id, 'Make the spacing more consistent. Improve padding and margins.')}
+            className="px-2 py-0.5 text-[10px] rounded bg-zinc-700/40 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
+          >
+            Fix spacing
+          </button>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex items-center gap-1.5 px-3 py-2 border-t border-zinc-700/50">

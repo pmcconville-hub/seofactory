@@ -31,6 +31,7 @@ export interface StyleGuideElement {
   referenceUrl?: string;
   qualityScore?: number;              // AI validation score 0-100
   elementScreenshotBase64?: string;   // Playwright element screenshot
+  elementScreenshotUrl?: string;      // Public URL from Supabase Storage (replaces base64)
   sourcePageUrl?: string;             // Which page this element was found on
   aiValidated?: boolean;              // Whether AI has validated this element
   aiGenerated?: boolean;              // Whether AI created this element (fallback)
@@ -40,6 +41,11 @@ export interface StyleGuideElement {
   aiRepaired?: boolean;               // Whether AI regenerated the HTML
   suggestedBackground?: string;       // AI-suggested background color
   validationReason?: string;          // AI explanation for quality score
+  refinementHistory?: Array<{
+    timestamp: string;
+    comment: string;
+    previousHtml: string;
+  }>;
 }
 
 export interface StyleGuideColor {
@@ -70,6 +76,7 @@ export interface StyleGuide {
   hostname: string;
   sourceUrl: string;
   screenshotBase64?: string;
+  screenshotUrl?: string;             // Public URL from Supabase Storage
   extractedAt: string;
   elements: StyleGuideElement[];
   colors: StyleGuideColor[];
@@ -94,4 +101,5 @@ export interface SavedStyleGuide {
   version: number;
   created_at: string;
   updated_at: string;
+  screenshot_storage_paths?: Record<string, string>;
 }

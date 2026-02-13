@@ -15,6 +15,11 @@ import type {
   PageSectionInfo,
 } from '../../types/styleGuide';
 import type { RawStyleGuideExtraction, RawExtractedElement } from './StyleGuideExtractor';
+import {
+  parseColorToHex as wcagParseColorToHex,
+  getContrastRatio as wcagGetContrastRatio,
+  meetsWCAGAA as wcagMeetsAA,
+} from './WCAGContrastService';
 import { API_ENDPOINTS } from '../../config/apiEndpoints';
 import { FAST_MODELS } from '../ai/providerConfig';
 import { retryWithBackoff } from '../ai/shared/retryWithBackoff';
@@ -395,7 +400,8 @@ Return ONLY a valid JSON array (no markdown, no explanation):
       fonts?: string[];
       visualIssues?: string[];
       brandOverview?: BrandOverview;
-    }
+    },
+    userPreferences?: Array<{ preference_type: string; context: string; choice: string; frequency: number }>,
   ): Promise<{ selfContainedHtml: string; computedCss: Record<string, string> }> {
     if (!aiConfig?.apiKey) {
       throw new Error('AI API key is required for element refinement');
@@ -408,6 +414,10 @@ Return ONLY a valid JSON array (no markdown, no explanation):
 - Brand Fonts: ${brandContext.fonts?.join(', ') || 'system-ui'}
 ${brandContext.visualIssues?.length ? `- Known Visual Issues: ${brandContext.visualIssues.join('; ')}` : ''}
 ${brandContext.brandOverview ? `- Brand Personality: ${brandContext.brandOverview.brandPersonality}\n- Overall Feel: ${brandContext.brandOverview.overallFeel}` : ''}`
+      : '';
+
+    const preferencesSection = userPreferences?.length
+      ? `\nUSER DESIGN PREFERENCES (from previous approvals):\nUser has previously approved these patterns: ${userPreferences.map(p => p.choice).join(', ')}. Incorporate similar styling choices.`
       : '';
 
     // Category-specific structural requirements
@@ -434,7 +444,7 @@ ${element.selfContainedHtml}
 
 CURRENT COMPUTED CSS:
 ${JSON.stringify(element.computedCss, null, 2)}
-${brandSection}
+${brandSection}${preferencesSection}
 ${categoryInstructions ? `\nCATEGORY REQUIREMENTS:\n${categoryInstructions}` : ''}
 
 USER FEEDBACK: "${userComment}"
@@ -1020,21 +1030,17 @@ function runStructuralValidation(element: StyleGuideElement): string[] {
     issues.push('Empty wrapper div');
   }
 
-  // Flag low contrast: text color too similar to background
+  // Flag low contrast: WCAG 2.1 contrast ratio check
   const textColor = element.computedCss.color;
   const bgColorCss = element.computedCss.backgroundColor ||
     element.ancestorBackground?.backgroundColor;
   if (textColor && bgColorCss) {
-    const textRgb = parseRgb(textColor);
-    const bgRgb = parseRgb(bgColorCss);
-    if (textRgb && bgRgb) {
-      const distance = Math.sqrt(
-        (textRgb[0] - bgRgb[0]) ** 2 +
-        (textRgb[1] - bgRgb[1]) ** 2 +
-        (textRgb[2] - bgRgb[2]) ** 2
-      );
-      if (distance < 30) {
-        issues.push('Low contrast: text and background colors too similar');
+    const fgHex = wcagParseColorToHex(textColor);
+    const bgHex = wcagParseColorToHex(bgColorCss);
+    if (fgHex && bgHex) {
+      const ratio = wcagGetContrastRatio(fgHex, bgHex);
+      if (!wcagMeetsAA(ratio, false)) {
+        issues.push(`WCAG: contrast ratio ${ratio.toFixed(1)}:1 (needs 4.5:1 for AA)`);
       }
     }
   }

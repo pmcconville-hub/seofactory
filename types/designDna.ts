@@ -5,6 +5,8 @@
  * This is the foundation for generating unique brand design systems.
  */
 
+import type { CSSVariableAuditResult } from '../services/design-analysis/CSSVariableAudit';
+
 export interface ColorWithUsage {
   hex: string;
   usage: string;
@@ -350,6 +352,10 @@ export interface BrandDesignSystem {
 
   // COMPLETE COMPILED CSS
   compiledCss: string;
+
+  // CSS VARIABLE AUDIT RESULT
+  /** Result of CSS variable audit (undefined, unused, circular refs, health score) */
+  cssAuditResult?: CSSVariableAuditResult;
 
   // VARIANT MAPPINGS
   variantMappings: {

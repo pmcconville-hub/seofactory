@@ -54,7 +54,7 @@ export function categorizeError(error: Error | null): { title: string; message: 
   const errorString = error.toString().toLowerCase();
   const errorName = error.name?.toLowerCase() || '';
 
-  if (errorName === 'chunkloaderror' || errorString.includes('chunkloaderror') || errorString.includes('loading chunk')) {
+  if (errorName === 'chunkloaderror' || errorString.includes('chunkloaderror') || errorString.includes('loading chunk') || errorString.includes('dynamically imported module')) {
     return { ...ERROR_MESSAGES.CHUNK_LOAD_ERROR, action: 'Reload', category: 'CHUNK_LOAD_ERROR' };
   }
 

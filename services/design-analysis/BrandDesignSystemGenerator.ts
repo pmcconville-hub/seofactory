@@ -6,6 +6,7 @@ import type {
 } from '../../types/designDna';
 import { buildDesignSystemGenerationPrompt } from './prompts/designSystemPrompt';
 import { CSSPostProcessor, type PostProcessResult } from './CSSPostProcessor';
+import { auditCSSVariables } from './CSSVariableAudit';
 import { API_ENDPOINTS } from '../../config/apiEndpoints';
 import { getFastModel } from '../../config/serviceRegistry';
 import { retryWithBackoff } from '../ai/shared/retryWithBackoff';
@@ -159,6 +160,17 @@ export class BrandDesignSystemGenerator {
       console.warn('[BrandDesignSystemGenerator] CSS warnings:', postProcessResult.warnings);
     }
 
+    // Run CSS variable audit on the post-processed CSS
+    console.log('[BrandDesignSystemGenerator] Running CSS variable audit...');
+    const cssAuditResult = auditCSSVariables(postProcessResult.css, tokens.json);
+    if (cssAuditResult.undefinedVars.length > 0) {
+      console.warn(`[BrandDesignSystemGenerator] CSS audit: ${cssAuditResult.undefinedVars.length} undefined variables found`);
+    }
+    if (cssAuditResult.unusedVars.length > 0) {
+      console.log(`[BrandDesignSystemGenerator] CSS audit: ${cssAuditResult.unusedVars.length} unused variables found`);
+    }
+    console.log(`[BrandDesignSystemGenerator] CSS health score: ${cssAuditResult.healthScore}/100`);
+
     // Prepend Google Fonts @import if available
     let finalCss = postProcessResult.css;
     if (googleFontsUrl) {
@@ -184,6 +196,7 @@ export class BrandDesignSystemGenerator {
       typographyTreatments,
       imageTreatments,
       compiledCss: finalCss,
+      cssAuditResult,
       variantMappings: this.getDefaultVariantMappings(designDna)
     };
   }

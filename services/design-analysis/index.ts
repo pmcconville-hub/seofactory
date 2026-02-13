@@ -18,8 +18,18 @@ export {
   getDesignDNA,
   saveBrandDesignSystem,
   getBrandDesignSystem,
-  hasDesignSystemForHash
+  hasDesignSystemForHash,
+  listBrandProfiles,
+  setActiveBrand
 } from './brandDesignSystemStorage';
+
+// CSS Variable Audit
+export {
+  auditCSSVariables,
+  autoFixUndefinedVariables,
+  suggestFixes,
+} from './CSSVariableAudit';
+export type { CSSVariableAuditResult, UndefinedVariable } from './CSSVariableAudit';
 
 // Prompts (for debugging/inspection)
 export { DESIGN_DNA_EXTRACTION_PROMPT, DESIGN_DNA_VALIDATION_PROMPT } from './prompts/designDnaPrompt';

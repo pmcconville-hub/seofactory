@@ -3,9 +3,17 @@
 // =============================================================================
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import type { StyleGuide, StyleGuideCategory, StyleGuideElement, StyleGuideColor, BrandOverview } from '../../types/styleGuide';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { StyleGuide, StyleGuideCategory, StyleGuideElement, StyleGuideColor, BrandOverview, SavedStyleGuide } from '../../types/styleGuide';
 import { StyleGuideElementCard } from './StyleGuideElementCard';
 import { ColorPaletteView } from './ColorPaletteView';
+import { WCAGContrastPanel } from './WCAGContrastPanel';
+import { StyleGuideVersionPanel } from './StyleGuideVersionPanel';
+import { StyleGuideDiffView } from './StyleGuideDiffView';
+import { auditStyleGuideContrast, autoFixContrastIssues } from '../../services/design-analysis/WCAGContrastService';
+import type { WCAGAuditResult } from '../../services/design-analysis/WCAGContrastService';
+import { diffStyleGuides } from '../../services/design-analysis/styleGuideDiff';
+import type { StyleGuideDiff } from '../../services/design-analysis/styleGuideDiff';
 
 // =============================================================================
 // Types
@@ -19,9 +27,14 @@ interface StyleGuideViewProps {
   onRefineElement?: (elementId: string, commentOverride?: string) => void;
   refiningElementId?: string | null;
   onChange?: (guide: StyleGuide) => void;
+  onUndoRefinement?: (elementId: string) => void;
+  supabase?: SupabaseClient;
+  userId?: string;
 }
 
-const CATEGORY_TABS: { key: StyleGuideCategory | 'all'; label: string }[] = [
+type TabKey = StyleGuideCategory | 'all' | 'accessibility';
+
+const CATEGORY_TABS: { key: TabKey; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'typography', label: 'Typography' },
   { key: 'buttons', label: 'Buttons' },
@@ -34,6 +47,7 @@ const CATEGORY_TABS: { key: StyleGuideCategory | 'all'; label: string }[] = [
   { key: 'tables', label: 'Tbl' },
   { key: 'forms', label: 'Forms' },
   { key: 'colors', label: 'Colors' },
+  { key: 'accessibility', label: 'A11y' },
 ];
 
 // =============================================================================
@@ -122,9 +136,14 @@ export const StyleGuideView: React.FC<StyleGuideViewProps> = ({
   onRefineElement,
   refiningElementId,
   onChange,
+  onUndoRefinement,
+  supabase,
+  userId,
 }) => {
-  const [activeTab, setActiveTab] = useState<StyleGuideCategory | 'all'>('all');
+  const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [guide, setGuide] = useState<StyleGuide>(styleGuide);
+  const [showVersions, setShowVersions] = useState(false);
+  const [diffResult, setDiffResult] = useState<StyleGuideDiff | null>(null);
 
   // Sync local state when parent styleGuide prop changes (e.g. after AI refinement)
   useEffect(() => {
@@ -141,7 +160,7 @@ export const StyleGuideView: React.FC<StyleGuideViewProps> = ({
 
   // Filter elements by category
   const filteredElements = useMemo(() => {
-    if (activeTab === 'all' || activeTab === 'colors') return guide.elements;
+    if (activeTab === 'all' || activeTab === 'colors' || activeTab === 'accessibility') return guide.elements;
     return guide.elements.filter(el => el.category === activeTab);
   }, [guide.elements, activeTab]);
 
@@ -320,6 +339,80 @@ export const StyleGuideView: React.FC<StyleGuideViewProps> = ({
   const hasLowQualityInTab = activeTab !== 'all' && activeTab !== 'colors' &&
     guide.elements.some(el => el.category === activeTab && el.qualityScore !== undefined && el.qualityScore < 40);
 
+  // WCAG contrast audit
+  const wcagAuditResult = useMemo<WCAGAuditResult>(() => {
+    return auditStyleGuideContrast(guide.elements);
+  }, [guide.elements]);
+
+  // WCAG fix/undo handlers
+  const handleWcagFixSingle = useCallback((elementId: string, fixedColor: string) => {
+    const updated = {
+      ...guide,
+      elements: guide.elements.map(el =>
+        el.id === elementId
+          ? { ...el, computedCss: { ...el.computedCss, color: fixedColor } }
+          : el
+      ),
+    };
+    updateGuide(updated);
+  }, [guide, updateGuide]);
+
+  const handleWcagFixAll = useCallback(() => {
+    const fixes = autoFixContrastIssues(wcagAuditResult.issues);
+    const fixMap = new Map(fixes.map(f => [f.elementId, f.fixed]));
+    const updated = {
+      ...guide,
+      elements: guide.elements.map(el =>
+        fixMap.has(el.id)
+          ? { ...el, computedCss: { ...el.computedCss, color: fixMap.get(el.id)! } }
+          : el
+      ),
+    };
+    updateGuide(updated);
+  }, [guide, updateGuide, wcagAuditResult.issues]);
+
+  const handleWcagUndoSingle = useCallback((elementId: string, originalColor: string) => {
+    const updated = {
+      ...guide,
+      elements: guide.elements.map(el =>
+        el.id === elementId
+          ? { ...el, computedCss: { ...el.computedCss, color: originalColor } }
+          : el
+      ),
+    };
+    updateGuide(updated);
+  }, [guide, updateGuide]);
+
+  const handleWcagUndoAll = useCallback(() => {
+    // Restore all original foreground colors from the issues
+    const undoMap = new Map(
+      wcagAuditResult.issues.map(i => [i.elementId, i.originalForeground])
+    );
+    const updated = {
+      ...guide,
+      elements: guide.elements.map(el =>
+        undoMap.has(el.id)
+          ? { ...el, computedCss: { ...el.computedCss, color: undoMap.get(el.id)! } }
+          : el
+      ),
+    };
+    updateGuide(updated);
+  }, [guide, updateGuide, wcagAuditResult.issues]);
+
+  // Version panel handlers
+  const handleSelectVersion = useCallback((saved: SavedStyleGuide) => {
+    setGuide(saved.style_guide);
+    onChange?.(saved.style_guide);
+    setShowVersions(false);
+    setDiffResult(null);
+  }, [onChange]);
+
+  const handleCompareVersions = useCallback((oldSaved: SavedStyleGuide, newSaved: SavedStyleGuide) => {
+    const diff = diffStyleGuides(oldSaved.style_guide, newSaved.style_guide);
+    setDiffResult(diff);
+    setShowVersions(false);
+  }, []);
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -334,6 +427,18 @@ export const StyleGuideView: React.FC<StyleGuideViewProps> = ({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {guide.version > 0 && supabase && userId && (
+            <button
+              onClick={() => { setShowVersions(!showVersions); setDiffResult(null); }}
+              className={`px-2 py-1 text-[11px] rounded transition-colors ${
+                showVersions
+                  ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30'
+                  : 'bg-zinc-700/50 hover:bg-zinc-700 text-zinc-400'
+              }`}
+            >
+              v{guide.version} {showVersions ? '\u25B2' : '\u25BC'}
+            </button>
+          )}
           <button
             onClick={onReextract}
             className="px-2.5 py-1 text-[11px] bg-zinc-700/50 hover:bg-zinc-700 text-zinc-400 rounded transition-colors"
@@ -353,10 +458,14 @@ export const StyleGuideView: React.FC<StyleGuideViewProps> = ({
       {/* Category tabs */}
       <div className="flex items-center gap-1 overflow-x-auto py-2 border-b border-zinc-800">
         {CATEGORY_TABS.map(tab => {
-          const count = categoryCounts[tab.key] || 0;
-          if (count === 0 && tab.key !== 'all') return null;
+          const count = tab.key === 'accessibility'
+            ? wcagAuditResult.issues.length
+            : (categoryCounts[tab.key] || 0);
+          if (count === 0 && tab.key !== 'all' && tab.key !== 'accessibility') return null;
           const isActive = activeTab === tab.key;
-          const issueCount = categoryIssueCounts[tab.key] || 0;
+          const issueCount = tab.key === 'accessibility'
+            ? wcagAuditResult.issues.filter(i => i.level === 'AA').length
+            : (categoryIssueCounts[tab.key] || 0);
           return (
             <button
               key={tab.key}
@@ -378,6 +487,30 @@ export const StyleGuideView: React.FC<StyleGuideViewProps> = ({
           );
         })}
       </div>
+
+      {/* Version panel (collapsible) */}
+      {showVersions && supabase && userId && (
+        <div className="py-2 px-1 border-b border-zinc-800">
+          <StyleGuideVersionPanel
+            supabase={supabase}
+            userId={userId}
+            hostname={guide.hostname}
+            currentVersion={guide.version}
+            onSelectVersion={handleSelectVersion}
+            onCompareVersions={handleCompareVersions}
+          />
+        </div>
+      )}
+
+      {/* Diff view (shown after comparing versions) */}
+      {diffResult && (
+        <div className="py-2 px-1 border-b border-zinc-800">
+          <StyleGuideDiffView
+            diff={diffResult}
+            onClose={() => setDiffResult(null)}
+          />
+        </div>
+      )}
 
       {/* Quality summary bar */}
       {qualityStats.scoredCount > 0 && (
@@ -403,6 +536,25 @@ export const StyleGuideView: React.FC<StyleGuideViewProps> = ({
             <span className="text-purple-300 animate-pulse">
               Refining element...
             </span>
+          )}
+          {qualityStats.issueCount > 0 && onRefineElement && (
+            <button
+              onClick={() => {
+                const lowQuality = guide.elements.filter(
+                  e => (e.qualityScore !== undefined && e.qualityScore < 60) ||
+                       (e.visualIssues && e.visualIssues.length > 0)
+                );
+                lowQuality.forEach((el, i) => {
+                  const issues = el.visualIssues?.join(', ') || 'low quality score';
+                  const comment = `AUTO-REFINE: Fix visual issues — ${issues}. Improve element to match brand style.`;
+                  setTimeout(() => onRefineElement(el.id, comment), i * 2000);
+                });
+              }}
+              disabled={!!refiningElementId}
+              className="px-2 py-0.5 text-[10px] rounded bg-purple-600/15 text-purple-400 hover:bg-purple-600/25 transition-colors disabled:opacity-50"
+            >
+              Auto-refine {qualityStats.issueCount} with issues
+            </button>
           )}
 
           {/* Bulk actions for specific category tabs */}
@@ -433,7 +585,15 @@ export const StyleGuideView: React.FC<StyleGuideViewProps> = ({
         {activeTab === 'all' && guide.brandOverview && (
           <BrandOverviewSection overview={guide.brandOverview} />
         )}
-        {activeTab === 'colors' ? (
+        {activeTab === 'accessibility' ? (
+          <WCAGContrastPanel
+            auditResult={wcagAuditResult}
+            onFixSingle={handleWcagFixSingle}
+            onFixAll={handleWcagFixAll}
+            onUndoSingle={handleWcagUndoSingle}
+            onUndoAll={handleWcagUndoAll}
+          />
+        ) : activeTab === 'colors' ? (
           <ColorPaletteView
             colors={guide.colors}
             onApprove={handleColorApprove}
@@ -452,6 +612,7 @@ export const StyleGuideView: React.FC<StyleGuideViewProps> = ({
                 onReferenceImage={handleReferenceImage}
                 onReferenceUrl={handleReferenceUrl}
                 onAiRedo={handleAiRedo}
+                onUndo={onUndoRefinement}
                 isRefining={refiningElementId === element.id}
                 googleFontsUrls={guide.googleFontsUrls}
               />

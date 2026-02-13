@@ -1909,6 +1909,7 @@ export const StylePublishModal: React.FC<StylePublishModalProps> = ({
               supabaseUrl={supabaseUrl}
               supabaseAnonKey={supabaseAnonKey}
               projectId={projectId}
+              topicalMapId={topicalMap?.id}
               designDna={detectedDesignDna}
               brandDesignSystem={detectedDesignSystem}
               screenshotBase64={detectedScreenshot}

@@ -24,6 +24,8 @@ import { StyleGuideGenerator, type AiRefineConfig } from '../../services/design-
 import { loadStyleGuide, saveStyleGuide, getHostnameFromUrl } from '../../services/design-analysis/styleGuidePersistence';
 import { StyleGuideView } from './StyleGuideView';
 import { generateStyleGuideHtml } from './StyleGuideExport';
+import { BrandProfileManager } from './BrandProfileManager';
+import { DesignInheritanceService } from '../../services/publishing/designInheritance/DesignInheritanceService';
 
 // =============================================================================
 // Types
@@ -331,6 +333,10 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
   // Style guide approval state
   const [isGuideApproved, setIsGuideApproved] = useState(false);
 
+  // Design preference learning
+  const designInheritanceRef = useRef<DesignInheritanceService | null>(null);
+  const [preferencesCount, setPreferencesCount] = useState(0);
+
   // Page discovery state
   const [discoveredPages, setDiscoveredPages] = useState<DiscoveredPage[]>([]);
   const [selectedPageUrls, setSelectedPageUrls] = useState<string[]>([]);
@@ -358,6 +364,31 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
     if (bi?.openAiApiKey) return { provider: 'openai', apiKey: bi.openAiApiKey };
     return null;
   }, [state.businessInfo]);
+
+  // Initialize DesignInheritanceService when Supabase is available
+  useEffect(() => {
+    const supabase = getSupabase();
+    if (supabase) {
+      designInheritanceRef.current = new DesignInheritanceService({ supabase });
+    }
+  }, [getSupabase]);
+
+  // Load learned preferences count when modal opens
+  useEffect(() => {
+    if (!isOpen || !projectId) return;
+    const loadPrefs = async () => {
+      const supabase = getSupabase();
+      if (!supabase) return;
+      try {
+        const { count } = await supabase
+          .from('design_preferences')
+          .select('id', { count: 'exact', head: true })
+          .eq('project_id', projectId);
+        setPreferencesCount(count || 0);
+      } catch { /* table may not exist */ }
+    };
+    loadPrefs();
+  }, [isOpen, projectId, getSupabase]);
 
   // Load saved design when modal opens
   useEffect(() => {
@@ -815,6 +846,22 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
       saveStyleGuide(supabase, userId, approvedGuide).catch(() => { /* table may not exist */ });
     }
 
+    // Record approved element preferences for design learning
+    if (designInheritanceRef.current && projectId) {
+      const approved = approvedGuide.elements.filter(e => e.approvalStatus === 'approved');
+      for (let i = 0; i < approved.length; i++) {
+        designInheritanceRef.current.recordFeedback(projectId, {
+          sectionIndex: i,
+          originalComponent: approved[i].category,
+          chosenComponent: `${approved[i].category}/${approved[i].subcategory}`,
+          feedbackType: 'alternative-selected',
+          timestamp: new Date().toISOString(),
+        }).catch(() => {}); // best-effort, don't block approval flow
+      }
+      // Update preferences count (best-effort)
+      setPreferencesCount(prev => prev + approved.length);
+    }
+
     // Auto-download the style guide HTML
     const html = generateStyleGuideHtml(approvedGuide);
     const filename = `${approvedGuide.hostname}-style-guide.html`;
@@ -822,7 +869,7 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
     dispatch({ type: 'SET_NOTIFICATION', payload: `Style guide approved and downloaded: ${filename}` });
 
     // Stay on style-guide view — user can re-export or continue to premium design
-  }, [dispatch, getSupabase, state.user?.id]);
+  }, [dispatch, getSupabase, state.user?.id, projectId]);
 
   // Continue to Premium Design pipeline (optional — user must click explicitly)
   const handleContinueToPremiumDesign = useCallback(async () => {
@@ -937,11 +984,24 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
         { provider: provider as 'gemini' | 'anthropic' | 'openai', apiKey },
         brandContext
       );
+      const currentElement = styleGuide.elements.find(e => e.id === elementId);
+      const previousHtml = currentElement?.selfContainedHtml || '';
+      const previousComment = comment || '';
+
       setStyleGuide({
         ...styleGuide,
         elements: styleGuide.elements.map(el =>
           el.id === elementId
-            ? { ...el, selfContainedHtml: result.selfContainedHtml, computedCss: result.computedCss, aiRepaired: true }
+            ? {
+                ...el,
+                selfContainedHtml: result.selfContainedHtml,
+                computedCss: result.computedCss,
+                aiRepaired: true,
+                refinementHistory: [
+                  ...(el.refinementHistory || []),
+                  { timestamp: new Date().toISOString(), comment: previousComment, previousHtml },
+                ],
+              }
             : el
         ),
       });
@@ -951,6 +1011,27 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
       setRefiningElementId(null);
     }
   }, [styleGuide, state.businessInfo]);
+
+  // Undo last refinement — restore previous HTML from refinementHistory
+  const handleUndoRefinement = useCallback((elementId: string) => {
+    if (!styleGuide) return;
+    const element = styleGuide.elements.find(e => e.id === elementId);
+    if (!element?.refinementHistory?.length) return;
+
+    const lastHistory = element.refinementHistory[element.refinementHistory.length - 1];
+    setStyleGuide({
+      ...styleGuide,
+      elements: styleGuide.elements.map(el =>
+        el.id === elementId
+          ? {
+              ...el,
+              selfContainedHtml: lastHistory.previousHtml,
+              refinementHistory: el.refinementHistory?.slice(0, -1),
+            }
+          : el
+      ),
+    });
+  }, [styleGuide]);
 
   // Handle style guide export
   const handleStyleGuideExport = useCallback(() => {
@@ -1196,6 +1277,20 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
               {/* URL Input — always visible in style guide mode */}
               {(!hasSavedDesign || styleGuideMode) && (
                 <div className="space-y-3 max-w-lg mx-auto mt-4">
+                  {/* Brand Profile Manager — shown when multiple brand profiles exist */}
+                  {projectId && (
+                    <BrandProfileManager
+                      projectId={projectId}
+                      topicalMapId={topicalMap?.id}
+                      onSelectBrand={() => {
+                        // Brand selection changed — clear current state
+                        setForceRegenerate(false);
+                      }}
+                      onAddBrand={() => {
+                        // Scroll to URL input (already visible below)
+                      }}
+                    />
+                  )}
                   {forceRegenerate && (
                     <div className="p-3 bg-yellow-900/20 border border-yellow-500/30 rounded-lg mb-2">
                       <p className="text-xs text-yellow-400">
@@ -1465,6 +1560,15 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
                   </p>
                 </div>
               )}
+              {preferencesCount > 0 && (
+                <div className="mx-1 mb-2 px-3 py-1.5 rounded-lg bg-blue-600/10 border border-blue-500/20 flex items-center gap-2">
+                  <svg className="w-3.5 h-3.5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                    <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-[11px] text-blue-400">Learned {preferencesCount} design preference{preferencesCount !== 1 ? 's' : ''}</span>
+                </div>
+              )}
               <StyleGuideView
                 styleGuide={styleGuide}
                 onApprove={handleStyleGuideApproved}
@@ -1477,6 +1581,9 @@ export const PremiumDesignModal: React.FC<PremiumDesignModalProps> = ({
                 onRefineElement={handleRefineElement}
                 refiningElementId={refiningElementId}
                 onChange={setStyleGuide}
+                onUndoRefinement={handleUndoRefinement}
+                supabase={getSupabase() || undefined}
+                userId={state.user?.id}
               />
 
               {/* Post-approval actions */}

@@ -250,4 +250,102 @@ describe('DesignInheritanceService', () => {
       expect(mockSupabase._chainable.update).toHaveBeenCalled();
     });
   });
+
+  describe('recordFeedback', () => {
+    it('should upsert feedback with correct payload structure', async () => {
+      await service.recordFeedback('project-123', {
+        sectionIndex: 2,
+        originalComponent: 'typography',
+        chosenComponent: 'typography/heading-h1',
+        feedbackType: 'alternative-selected',
+        timestamp: '2026-02-13T10:00:00.000Z',
+      });
+
+      expect(mockSupabase.from).toHaveBeenCalledWith('design_preferences');
+      expect(mockSupabase._chainable.upsert).toHaveBeenCalledWith(
+        {
+          project_id: 'project-123',
+          preference_type: 'alternative-selected',
+          context: 'section_2',
+          choice: 'typography/heading-h1',
+          frequency: 1,
+          last_used: '2026-02-13T10:00:00.000Z',
+        },
+        {
+          onConflict: 'project_id,preference_type,context',
+          ignoreDuplicates: false,
+        }
+      );
+    });
+
+    it('should call RPC to increment frequency after successful upsert', async () => {
+      await service.recordFeedback('project-123', {
+        sectionIndex: 0,
+        originalComponent: 'buttons',
+        chosenComponent: 'buttons/cta-primary',
+        feedbackType: 'alternative-selected',
+        timestamp: '2026-02-13T10:00:00.000Z',
+      });
+
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('increment_design_preference_frequency', {
+        p_project_id: 'project-123',
+        p_preference_type: 'alternative-selected',
+        p_context: 'section_0',
+      });
+    });
+
+    it('should handle upsert errors gracefully without throwing', async () => {
+      mockSupabase._chainable.upsert.mockResolvedValueOnce({
+        data: null,
+        error: { message: 'Some DB error', code: '42703' },
+      });
+
+      // Should not throw
+      await expect(
+        service.recordFeedback('project-123', {
+          sectionIndex: 1,
+          originalComponent: 'cards',
+          chosenComponent: 'cards/content-card',
+          feedbackType: 'alternative-selected',
+          timestamp: '2026-02-13T10:00:00.000Z',
+        })
+      ).resolves.not.toThrow();
+    });
+
+    it('should silently handle missing table errors', async () => {
+      mockSupabase._chainable.upsert.mockResolvedValueOnce({
+        data: null,
+        error: { message: 'relation "design_preferences" does not exist', code: '42P01' },
+      });
+
+      // Should not throw — table-missing errors are expected during initial setup
+      await expect(
+        service.recordFeedback('project-123', {
+          sectionIndex: 0,
+          originalComponent: 'navigation',
+          chosenComponent: 'navigation/main-nav',
+          feedbackType: 'alternative-selected',
+          timestamp: '2026-02-13T10:00:00.000Z',
+        })
+      ).resolves.not.toThrow();
+
+      // RPC should NOT be called when upsert has a table-missing error
+      expect(mockSupabase.rpc).not.toHaveBeenCalled();
+    });
+
+    it('should handle exceptions in the entire flow gracefully', async () => {
+      mockSupabase._chainable.upsert.mockRejectedValueOnce(new Error('Network error'));
+
+      // Should not throw — the method catches all exceptions
+      await expect(
+        service.recordFeedback('project-123', {
+          sectionIndex: 0,
+          originalComponent: 'buttons',
+          chosenComponent: 'buttons/secondary',
+          feedbackType: 'alternative-selected',
+          timestamp: '2026-02-13T10:00:00.000Z',
+        })
+      ).resolves.not.toThrow();
+    });
+  });
 });

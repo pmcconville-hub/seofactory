@@ -1,0 +1,1 @@
+const fs = require("fs"); const p = "D:/www/cost-of-retreival-reducer/docs/STATUS-STYLEGUIDE.md"; let c = ""; process.stdin.on("data", d => c += d); process.stdin.on("end", () => { fs.writeFileSync(p, c, "utf8"); console.log("SUCCESS"); });

@@ -25,6 +25,7 @@ import { useBrandDetection } from '../../../hooks/useBrandDetection';
 import { useBrandExtraction } from '../../../hooks/useBrandExtraction';
 import { BrandUrlDiscovery, BrandExtractionProgress, BrandComponentPreview } from '../brand';
 import { BrandDesignSystemGenerator } from '../../../services/design-analysis/BrandDesignSystemGenerator';
+import { BrandProfileManager } from '../../premium-design/BrandProfileManager';
 import type { DesignDNA, BrandDesignSystem } from '../../../types/designDna';
 import type { UrlSuggestion } from '../../../services/brand-extraction/UrlDiscoveryService';
 import type { ExtractedComponent } from '../../../types/brandExtraction';
@@ -42,6 +43,8 @@ interface BrandIntelligenceStepProps {
   supabaseUrl: string;
   supabaseAnonKey: string;
   projectId?: string;
+  /** Topical map ID for multi-brand scoping */
+  topicalMapId?: string;
 
   // Detection results (passed in when already detected)
   designDna: DesignDNA | null;
@@ -139,6 +142,7 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
   supabaseUrl,
   supabaseAnonKey,
   projectId,
+  topicalMapId,
   designDna,
   brandDesignSystem,
   screenshotBase64,
@@ -814,6 +818,23 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
         </div>
       </div>
 
+      {/* Multi-brand profile selector — shown when multiple brands exist for this map */}
+      {projectId && !detection.isAnalyzing && !isLoadingSavedData && (
+        <BrandProfileManager
+          projectId={projectId}
+          topicalMapId={topicalMapId}
+          onSelectBrand={() => {
+            // Brand selection changed — trigger re-detection from saved data
+            if (onRegenerate) onRegenerate();
+          }}
+          onAddBrand={() => {
+            // Reset to allow new brand detection
+            detection.reset();
+            if (onReset) onReset();
+          }}
+        />
+      )}
+
       {/* Mode Toggle - show when no detection yet */}
       {!hasDetection && !detection.isAnalyzing && !isLoadingSavedData && (
         <div className="flex gap-2 mb-4">
@@ -1106,6 +1127,35 @@ export const BrandIntelligenceStep: React.FC<BrandIntelligenceStepProps> = ({
               <p className="text-sm text-blue-300">
                 Generating brand-matched CSS styles... The brand summary is ready for review while styles are being created.
               </p>
+            </div>
+          )}
+
+          {/* CSS Variable Audit Badge */}
+          {brandDesignSystem?.cssAuditResult && (
+            brandDesignSystem.cssAuditResult.undefinedVars.length > 0 ||
+            brandDesignSystem.cssAuditResult.unusedVars.length > 0 ||
+            brandDesignSystem.cssAuditResult.circularRefs.length > 0
+          ) && (
+            <div className="p-3 bg-yellow-900/20 border border-yellow-500/30 rounded-xl flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-yellow-400 text-sm">&#9888;</span>
+                <p className="text-sm text-yellow-300">
+                  {(() => {
+                    const r = brandDesignSystem!.cssAuditResult!;
+                    const issues = r.undefinedVars.length + r.unusedVars.length + r.circularRefs.length;
+                    return `${issues} CSS issue${issues !== 1 ? 's' : ''} detected`;
+                  })()}
+                </p>
+              </div>
+              <div className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                brandDesignSystem!.cssAuditResult!.healthScore >= 90
+                  ? 'bg-green-900/40 text-green-400'
+                  : brandDesignSystem!.cssAuditResult!.healthScore >= 70
+                    ? 'bg-yellow-900/40 text-yellow-400'
+                    : 'bg-red-900/40 text-red-400'
+              }`}>
+                Health: {brandDesignSystem!.cssAuditResult!.healthScore}%
+              </div>
             </div>
           )}
 

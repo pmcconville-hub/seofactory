@@ -27,7 +27,7 @@ export interface PostProcessResult {
 /**
  * Map of common AI-generated variable names to their correct equivalents
  */
-const VARIABLE_NORMALIZATION_MAP: Record<string, string> = {
+export const VARIABLE_NORMALIZATION_MAP: Record<string, string> = {
   // Neutral color scale (numeric to named)
   '--ctc-neutral-0': '--ctc-neutral-lightest',
   '--ctc-neutral-1': '--ctc-neutral-lightest',
@@ -122,7 +122,7 @@ const VARIABLE_NORMALIZATION_MAP: Record<string, string> = {
 /**
  * Valid CSS variable names that should exist in the design system
  */
-const VALID_VARIABLE_NAMES = new Set([
+export const VALID_VARIABLE_NAMES = new Set([
   // Colors
   '--ctc-primary', '--ctc-primary-light', '--ctc-primary-dark',
   '--ctc-secondary', '--ctc-accent',
