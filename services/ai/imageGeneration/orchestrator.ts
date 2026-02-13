@@ -2,7 +2,7 @@
 import { ImagePlaceholder, BusinessInfo, BrandKit, ImageGenerationProgress } from '../../../types';
 import { markupGoProvider } from './providers/markupGoProvider';
 import { geminiImageProvider } from './providers/geminiImageProvider';
-import { openAiImageProvider, setSupabaseFunctionsUrl } from './providers/openAiImageProvider';
+import { openAiImageProvider, setSupabaseConnection } from './providers/openAiImageProvider';
 import { ImageProvider, ImageGenerationOptions, GenerationResult, ProgressCallback } from './providers/types';
 import { uploadToCloudinary } from '../../cloudinaryService';
 import { DEFAULT_HERO_TEMPLATES } from '../../../config/imageTemplates';
@@ -20,13 +20,13 @@ let supabaseClientRef: SupabaseClient | null = null;
  * Initialize image generation with Supabase client for proxy support
  * Must be called before generating images to enable CORS-free generation
  */
-export function initImageGeneration(supabase: SupabaseClient | null, supabaseUrl?: string) {
+export function initImageGeneration(supabase: SupabaseClient | null, supabaseUrl?: string, supabaseAnonKey?: string) {
   supabaseClientRef = supabase;
   // Build the functions URL from the project URL for the OpenAI image proxy
   if (supabaseUrl) {
-    setSupabaseFunctionsUrl(`${supabaseUrl}/functions/v1`);
+    setSupabaseConnection(`${supabaseUrl}/functions/v1`, supabaseAnonKey || null);
   } else {
-    setSupabaseFunctionsUrl(null);
+    setSupabaseConnection(null, null);
   }
 }
 

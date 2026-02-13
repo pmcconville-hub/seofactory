@@ -108,14 +108,14 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
 
   useEffect(() => {
     if (supabase) {
-      initImageGeneration(supabase, state.businessInfo.supabaseUrl);
+      initImageGeneration(supabase, state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
       ensureClientReady().then(() => {
         setIsClientReady(true);
       });
     } else {
       setIsClientReady(true);
     }
-  }, [supabase, state.businessInfo.supabaseUrl]);
+  }, [supabase, state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
 
   // Persist generated image to database so it's not lost on navigation
   const persistGeneratedImage = useCallback(async (placeholderId: string, result: ImagePlaceholder) => {

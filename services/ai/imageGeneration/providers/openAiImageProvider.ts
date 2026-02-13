@@ -12,15 +12,18 @@ import { ImageStyle } from '../../../../types/contextualEditor';
 
 const DEFAULT_TIMEOUT_MS = 60000; // 60 seconds for image generation
 
-// Supabase function URL — set by orchestrator
+// Supabase connection — set by orchestrator
 let supabaseFunctionsUrl: string | null = null;
+let supabaseAnonKey: string | null = null;
 
 /**
- * Set the Supabase functions base URL for proxy requests.
- * Expected format: "https://<project>.supabase.co/functions/v1"
+ * Set the Supabase connection details for proxy requests.
+ * @param url Functions base URL, e.g. "https://<project>.supabase.co/functions/v1"
+ * @param anonKey Supabase anon key — required by the API gateway for routing
  */
-export function setSupabaseFunctionsUrl(url: string | null) {
+export function setSupabaseConnection(url: string | null, anonKey: string | null) {
   supabaseFunctionsUrl = url;
+  supabaseAnonKey = anonKey;
 }
 
 /**
@@ -154,12 +157,18 @@ async function generateViaProxy(
       body.response_format = 'b64_json';
     }
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-openai-api-key': apiKey,
+    };
+    // Supabase API gateway requires the anon key for routing (separate from JWT auth)
+    if (supabaseAnonKey) {
+      headers['apikey'] = supabaseAnonKey;
+    }
+
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-openai-api-key': apiKey,
-      },
+      headers,
       body: JSON.stringify(body),
       signal: controller.signal,
     });

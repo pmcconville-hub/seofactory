@@ -10,10 +10,10 @@ import {
 } from '../../../../config/imageTypeRouting';
 import { ImageStyle } from '../../../../types/contextualEditor';
 
-// Imagen models — Imagen 3 (stable) first, Imagen 4 (experimental) as fallback
+// Imagen models — try newer first, fall back to older
 const IMAGEN_MODELS = [
-  'imagen-3.0-generate-001',
   'imagen-4.0-generate-001',
+  'imagen-3.0-generate-001',
 ];
 
 const DEFAULT_TIMEOUT_MS = 60000; // 60 seconds for image generation
