@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { AppStep, BusinessInfo, EnrichedTopic, FreshnessProfile, SemanticTriple } from '../types';
 import { AppState, AppAction } from '../state/appState';
 import type { BlueprintConfig } from '../components/wizards/WebsiteBlueprintWizard';
@@ -13,15 +14,20 @@ import { validateContentFlow } from '../services/ai/contentFlowValidator';
 import { batchInferSerpData } from '../services/ai/serpInference';
 import { buildSerpIntelligenceForMap } from '../config/prompts';
 import type { SerpIntelligenceForMap } from '../config/prompts';
+import { isProviderConfigured } from '../services/ai/providerDispatcher';
+import { handleOperationError } from '../utils/errorHandling';
 
 export const useMapGeneration = (
     state: AppState,
     dispatch: React.Dispatch<AppAction>
 ) => {
     const { activeMapId, businessInfo } = state;
+    const isGeneratingRef = useRef(false);
 
     // Blueprint wizard completion - generates the map with blueprint config
     const handleFinalizeBlueprint = async (blueprintConfig: BlueprintConfig) => {
+        if (isGeneratingRef.current) return;
+
         console.log('=== handleFinalizeBlueprint START ===');
         console.log('blueprintConfig:', blueprintConfig);
         console.log('activeMapId:', activeMapId);
@@ -57,16 +63,25 @@ export const useMapGeneration = (
 
     // Skip blueprint - generate map without blueprint config
     const handleSkipBlueprint = async () => {
+        if (isGeneratingRef.current) return;
         await generateMapWithBlueprint(undefined);
     };
 
     // Shared map generation logic
     const generateMapWithBlueprint = async (blueprintConfig?: BlueprintConfig) => {
+        // Re-entrance guard: prevent double-clicks from spawning parallel generations
+        if (isGeneratingRef.current) {
+            dispatch({ type: 'SET_NOTIFICATION', payload: { message: 'Map generation already in progress.', severity: 'warning' } });
+            return;
+        }
+        isGeneratingRef.current = true;
+
         console.log('=== generateMapWithBlueprint START ===');
         console.log('activeMapId:', activeMapId);
 
         if (!activeMapId) {
             console.error('No activeMapId in generateMapWithBlueprint');
+            isGeneratingRef.current = false;
             return;
         }
         const user = state.user;
@@ -74,11 +89,30 @@ export const useMapGeneration = (
         if (!user) {
             console.error('No user in generateMapWithBlueprint');
             dispatch({ type: 'SET_ERROR', payload: "User not authenticated. Cannot save map." });
+            isGeneratingRef.current = false;
+            return;
+        }
+
+        // Compute effective business info early — needed for API key validation
+        const currentMapForValidation = state.topicalMaps.find(m => m.id === activeMapId);
+        const mapBusinessInfoForValidation = currentMapForValidation?.business_info as Partial<BusinessInfo> || {};
+        const { aiProvider: _ap2, aiModel: _am2, geminiApiKey: _g2, openAiApiKey: _o2, anthropicApiKey: _a2, perplexityApiKey: _p2, openRouterApiKey: _or2, ...mapBizCtx } = mapBusinessInfoForValidation;
+        const effectiveBusinessInfoForValidation = {
+            ...state.businessInfo,
+            ...mapBizCtx,
+            aiProvider: state.businessInfo.aiProvider,
+            aiModel: state.businessInfo.aiModel,
+        };
+
+        // API key pre-validation: fail fast with a clear message instead of a cryptic provider error
+        if (!isProviderConfigured(effectiveBusinessInfoForValidation)) {
+            isGeneratingRef.current = false;
+            dispatch({ type: 'SET_ERROR', payload: `No API key configured for ${effectiveBusinessInfoForValidation.aiProvider}. Add your API key in Settings before generating.` });
             return;
         }
 
         console.log('Setting loading state...');
-        dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: true } });
+        dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: true, context: 'Step 1/6: Saving wizard configuration...' } });
         try {
             console.log('Getting supabase client...');
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
@@ -132,6 +166,8 @@ export const useMapGeneration = (
                 aiModel: state.businessInfo.aiModel,
             };
             console.log('effectiveBusinessInfo.aiProvider:', effectiveBusinessInfo.aiProvider);
+
+            dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: true, context: 'Step 2/6: Gathering SERP intelligence...' } });
 
             // NOTE: If pillars are missing here (shouldn't happen if flow is followed), we might want to throw.
             if (!currentMap.pillars || !currentMap.eavs) {
@@ -187,6 +223,7 @@ export const useMapGeneration = (
                 });
             }
 
+            dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: true, context: 'Step 3/6: Generating topics with AI...' } });
             console.log('Step 2: Generating initial topical map with AI...');
 
             const { coreTopics, outerTopics } = await aiService.generateInitialTopicalMap(
@@ -198,6 +235,31 @@ export const useMapGeneration = (
                 serpIntel
             );
 
+            dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: true, context: 'Step 4/6: Processing and validating topics...' } });
+
+            // In-memory title dedup: AI can return duplicate titles across core/outer
+            const seenTitles = new Set<string>();
+            const dedupFilter = (topics: typeof coreTopics) => {
+                const deduped = topics.filter(t => {
+                    if (!t.title) return true; // let the isValidTopic filter handle missing titles
+                    const key = t.title.trim().toLowerCase();
+                    if (seenTitles.has(key)) return false;
+                    seenTitles.add(key);
+                    return true;
+                });
+                return deduped;
+            };
+            const dedupedCoreTopics = dedupFilter(coreTopics);
+            const dedupedOuterTopics = dedupFilter(outerTopics);
+            const totalDupsRemoved = (coreTopics.length + outerTopics.length) - (dedupedCoreTopics.length + dedupedOuterTopics.length);
+            if (totalDupsRemoved > 0) {
+                console.warn(`[MapGeneration] Removed ${totalDupsRemoved} duplicate topic titles from AI output`);
+                dispatch({
+                    type: 'LOG_EVENT',
+                    payload: { service: 'MapGeneration', message: `Removed ${totalDupsRemoved} duplicate topic titles from AI output`, status: 'warning', timestamp: Date.now() },
+                });
+            }
+
             // 3. Process and ID assignment
             const topicMap = new Map<string, string>(); // Maps temp ID (e.g. "core_1") to real UUID
             const finalTopics: EnrichedTopic[] = [];
@@ -206,7 +268,7 @@ export const useMapGeneration = (
             const isValidTopic = (t: any): boolean => t && t.title && typeof t.title === 'string' && t.title.trim().length > 0;
 
             // Process Core Topics first (filter out invalid ones)
-            coreTopics.filter(isValidTopic).forEach(core => {
+            dedupedCoreTopics.filter(isValidTopic).forEach(core => {
                 const realId = uuidv4();
                 topicMap.set(core.id, realId); // Store mapping
 
@@ -222,7 +284,7 @@ export const useMapGeneration = (
             });
 
             // Process Outer Topics (filter out invalid ones)
-            outerTopics.filter(isValidTopic).forEach(outer => {
+            dedupedOuterTopics.filter(isValidTopic).forEach(outer => {
                 const parentRealId = outer.parent_topic_id ? topicMap.get(outer.parent_topic_id) : null;
                 const parentTopic = finalTopics.find(t => t.id === parentRealId);
                 const parentSlug = parentTopic ? parentTopic.slug : '';
@@ -317,7 +379,32 @@ export const useMapGeneration = (
                 }
             }));
 
+            dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: true, context: `Step 5/6: Saving ${dbTopics.length} topics to database...` } });
+
             if (dbTopics.length > 0) {
+                // Layer 1 dedup: delete existing topics for this map before inserting new ones
+                try {
+                    const { data: existingTopics } = await supabase
+                        .from('topics')
+                        .select('id')
+                        .eq('map_id', activeMapId);
+
+                    if (existingTopics && existingTopics.length > 0) {
+                        console.log(`[MapGeneration] Replacing ${existingTopics.length} existing topics with ${dbTopics.length} newly generated topics`);
+                        dispatch({
+                            type: 'LOG_EVENT',
+                            payload: { service: 'MapGeneration', message: `Replacing ${existingTopics.length} existing topics with ${dbTopics.length} newly generated topics`, status: 'info', timestamp: Date.now() },
+                        });
+                        await supabase
+                            .from('topics')
+                            .delete()
+                            .eq('map_id', activeMapId);
+                    }
+                } catch (deleteError) {
+                    // Non-blocking: duplicates are better than data loss
+                    console.warn('[MapGeneration] Failed to delete existing topics before insert, continuing:', deleteError);
+                }
+
                 // Log topic_class distribution for debugging
                 const monetizationCount = finalTopics.filter(t => t.topic_class === 'monetization').length;
                 const informationalCount = finalTopics.filter(t => t.topic_class === 'informational').length;
@@ -358,6 +445,7 @@ export const useMapGeneration = (
             dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: activeMapId, topics: validTopics } });
 
             // 6. Generate Foundation Pages (non-blocking)
+            dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: true, context: 'Step 6/6: Generating foundation pages...' } });
             try {
                 // Get selected pages from blueprint config, default to standard 5 pages
                 const selectedPages = blueprintConfig?.selectedPages || ['homepage', 'about', 'contact', 'privacy', 'terms'];
@@ -438,9 +526,9 @@ export const useMapGeneration = (
             dispatch({ type: 'SET_STEP', payload: AppStep.PROJECT_DASHBOARD });
 
         } catch (e) {
-            console.error("Map Generation Error:", e);
-            dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : "Failed to save map settings or generate topics." });
+            handleOperationError(e, dispatch, 'MapGeneration');
         } finally {
+            isGeneratingRef.current = false;
             dispatch({ type: 'SET_LOADING', payload: { key: 'map', value: false } });
         }
     };

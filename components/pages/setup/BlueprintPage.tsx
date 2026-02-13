@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAppState } from '../../../state/appState';
 import { WebsiteBlueprintWizard } from '../../wizards';
@@ -13,6 +13,7 @@ const BlueprintPage: React.FC = () => {
     const navigate = useNavigate();
     const { projectId, mapId } = useParams<{ projectId: string; mapId: string }>();
     const { handleFinalizeBlueprint, handleSkipBlueprint } = useMapGeneration(state, dispatch);
+    const isSubmittingRef = useRef(false);
 
     const currentMap = state.topicalMaps.find(m => m.id === mapId);
     const mapBusinessInfo = currentMap?.business_info as Partial<BusinessInfo> || {};
@@ -29,13 +30,25 @@ const BlueprintPage: React.FC = () => {
     };
 
     const handleComplete = async (config: Parameters<typeof handleFinalizeBlueprint>[0]) => {
-        await handleFinalizeBlueprint(config);
-        navigate(`/p/${projectId}/m/${mapId}`);
+        if (isSubmittingRef.current) return;
+        isSubmittingRef.current = true;
+        try {
+            await handleFinalizeBlueprint(config);
+            navigate(`/p/${projectId}/m/${mapId}`);
+        } finally {
+            isSubmittingRef.current = false;
+        }
     };
 
     const handleSkip = async () => {
-        await handleSkipBlueprint();
-        navigate(`/p/${projectId}/m/${mapId}`);
+        if (isSubmittingRef.current) return;
+        isSubmittingRef.current = true;
+        try {
+            await handleSkipBlueprint();
+            navigate(`/p/${projectId}/m/${mapId}`);
+        } finally {
+            isSubmittingRef.current = false;
+        }
     };
 
     return (

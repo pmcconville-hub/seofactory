@@ -12,13 +12,26 @@
 import React from 'react';
 
 // ============================================================================
+// NOTIFICATION TYPES
+// ============================================================================
+
+export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error';
+
+export interface AppNotification {
+  message: string;
+  severity: NotificationSeverity;
+  duration?: number;
+}
+
+// ============================================================================
 // STATE TYPES
 // ============================================================================
 
 export interface UIState {
   isLoading: Record<string, boolean | undefined>;
+  loadingContext: Record<string, string | undefined>;
   error: string | null;
-  notification: string | null;
+  notification: AppNotification | string | null;
   isStrategistOpen: boolean;
   modals: Record<string, boolean>;
   confirmation: { title: string; message: React.ReactNode; onConfirm: () => void } | null;
@@ -30,6 +43,7 @@ export interface UIState {
 
 export const initialUIState: UIState = {
   isLoading: {},
+  loadingContext: {},
   error: null,
   notification: null,
   isStrategistOpen: false,
@@ -42,9 +56,9 @@ export const initialUIState: UIState = {
 // ============================================================================
 
 export type UIAction =
-  | { type: 'SET_LOADING'; payload: { key: string; value: boolean } }
+  | { type: 'SET_LOADING'; payload: { key: string; value: boolean; context?: string } }
   | { type: 'SET_ERROR'; payload: string | null }
-  | { type: 'SET_NOTIFICATION'; payload: string | null }
+  | { type: 'SET_NOTIFICATION'; payload: AppNotification | string | null }
   | { type: 'TOGGLE_STRATEGIST'; payload?: boolean }
   | { type: 'SET_MODAL_VISIBILITY'; payload: { modal: string; visible: boolean } }
   | { type: 'SHOW_CONFIRMATION'; payload: { title: string; message: React.ReactNode; onConfirm: () => void } }
@@ -56,11 +70,19 @@ export type UIAction =
 
 export function uiReducer(state: UIState, action: UIAction): UIState {
   switch (action.type) {
-    case 'SET_LOADING':
+    case 'SET_LOADING': {
+      const newLoadingContext = { ...state.loadingContext };
+      if (action.payload.value && action.payload.context) {
+        newLoadingContext[action.payload.key] = action.payload.context;
+      } else if (!action.payload.value) {
+        delete newLoadingContext[action.payload.key];
+      }
       return {
         ...state,
-        isLoading: { ...state.isLoading, [action.payload.key]: action.payload.value }
+        isLoading: { ...state.isLoading, [action.payload.key]: action.payload.value },
+        loadingContext: newLoadingContext,
       };
+    }
 
     case 'SET_ERROR':
       return { ...state, error: action.payload };
@@ -96,9 +118,9 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
 // ============================================================================
 
 export const uiActions = {
-  setLoading: (key: string, value: boolean): UIAction => ({
+  setLoading: (key: string, value: boolean, context?: string): UIAction => ({
     type: 'SET_LOADING',
-    payload: { key, value }
+    payload: { key, value, context }
   }),
 
   setError: (error: string | null): UIAction => ({
@@ -106,7 +128,7 @@ export const uiActions = {
     payload: error
   }),
 
-  setNotification: (notification: string | null): UIAction => ({
+  setNotification: (notification: AppNotification | string | null): UIAction => ({
     type: 'SET_NOTIFICATION',
     payload: notification
   }),

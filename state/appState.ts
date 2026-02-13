@@ -12,6 +12,8 @@ import { User } from '@supabase/supabase-js';
 import {
   type UIState,
   type UIAction,
+  type AppNotification,
+  type NotificationSeverity,
   initialUIState,
   uiReducer,
 } from './slices/uiSlice';
@@ -102,6 +104,9 @@ import {
     PublicationPlanResult,
 } from '../types';
 
+// Re-export notification types for convenience
+export type { AppNotification, NotificationSeverity } from './slices/uiSlice';
+
 // Union type for schema results - supports both legacy and enhanced schema
 export type SchemaResult = SchemaGenerationResult | EnhancedSchemaResult;
 import { AuditProgress } from '../services/ai/unifiedAudit';
@@ -113,8 +118,9 @@ export interface AppState {
     appStep: AppStep;
     viewMode: 'CREATION' | 'MIGRATION'; // NEW: Toggle between creation and migration workflows
     isLoading: { [key: string]: boolean | undefined; };
+    loadingContext: { [key: string]: string | undefined; };
     error: string | null;
-    notification: string | null;
+    notification: AppNotification | string | null;
 
     // UX State
     isStrategistOpen: boolean;
@@ -207,9 +213,9 @@ export type AppAction =
   | { type: 'SET_STEP'; payload: AppStep }
   | { type: 'SET_VIEW_MODE'; payload: 'CREATION' | 'MIGRATION' } // NEW: Toggle workflows
   | { type: 'TOGGLE_STRATEGIST'; payload?: boolean } // NEW: Toggle strategist panel
-  | { type: 'SET_LOADING'; payload: { key: string; value: boolean } }
+  | { type: 'SET_LOADING'; payload: { key: string; value: boolean; context?: string } }
   | { type: 'SET_ERROR'; payload: string | null }
-  | { type: 'SET_NOTIFICATION'; payload: string | null }
+  | { type: 'SET_NOTIFICATION'; payload: AppNotification | string | null }
   | { type: 'SET_BUSINESS_INFO'; payload: BusinessInfo }
   | { type: 'SET_PROJECTS'; payload: Project[] }
   | { type: 'ADD_PROJECT'; payload: Project }
@@ -330,6 +336,7 @@ export const initialState: AppState = {
     appStep: AppStep.AUTH,
     viewMode: 'CREATION',
     isLoading: {},
+    loadingContext: {},
     error: null,
     notification: null,
     isStrategistOpen: false,
@@ -400,7 +407,15 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
         case 'SET_STEP': return { ...state, appStep: action.payload };
         case 'SET_VIEW_MODE': return { ...state, viewMode: action.payload }; // Handle viewMode toggle
         case 'TOGGLE_STRATEGIST': return { ...state, isStrategistOpen: action.payload !== undefined ? action.payload : !state.isStrategistOpen };
-        case 'SET_LOADING': return { ...state, isLoading: { ...state.isLoading, [action.payload.key]: action.payload.value } };
+        case 'SET_LOADING': {
+            const newLoadingContext = { ...state.loadingContext };
+            if (action.payload.value && action.payload.context) {
+                newLoadingContext[action.payload.key] = action.payload.context;
+            } else if (!action.payload.value) {
+                delete newLoadingContext[action.payload.key];
+            }
+            return { ...state, isLoading: { ...state.isLoading, [action.payload.key]: action.payload.value }, loadingContext: newLoadingContext };
+        }
         case 'SET_ERROR': return { ...state, error: action.payload };
         case 'SET_NOTIFICATION': return { ...state, notification: action.payload };
         case 'SET_BUSINESS_INFO': return { ...state, businessInfo: action.payload };
