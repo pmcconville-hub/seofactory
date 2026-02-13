@@ -9,6 +9,7 @@ export interface ImageGenerationOptions {
   // Style and customization
   style?: 'photorealistic' | 'illustration' | 'cartoon' | 'minimal' | 'artistic' | 'technical';
   customInstructions?: string; // Additional instructions from map settings
+  figcaption?: string; // Figcaption from placeholder — used as semantic context hint
 }
 
 export interface ProviderConfig {

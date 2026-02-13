@@ -285,6 +285,35 @@ async function generateWithModel(
 }
 
 /**
+ * Get type-specific entity instruction for non-HERO images.
+ * Each image type gets a semantic framing that ties it to the central entity.
+ */
+function getEntityInstructionForType(normalizedType: string, entity: string): string | null {
+  switch (normalizedType) {
+    case 'scene':
+      return `Show the real-world environment or setting where ${entity} is applied or operates`;
+    case 'object':
+      return `Focus on a key element, tool, or product directly related to ${entity}`;
+    case 'action':
+      return `Show a professional actively working with or demonstrating ${entity} in practice`;
+    case 'concept':
+      return `Create a visual metaphor that captures the essence of ${entity}`;
+    case 'portrait':
+      return `Professional expert in the ${entity} field`;
+    case 'flowchart':
+      return `The flow represents a core process within ${entity}`;
+    case 'hierarchy':
+      return `The structure represents the organization of ${entity}`;
+    case 'comparison':
+      return `The comparison relates to key aspects of ${entity}`;
+    case 'relationship':
+      return `The connections represent relationships within ${entity}`;
+    default:
+      return `Visually connected to ${entity}`;
+  }
+}
+
+/**
  * Filter description to remove terms that could trigger unwanted text generation
  */
 function filterDescriptionForAvoidTerms(description: string, avoidTerms: readonly string[]): string {
@@ -315,7 +344,7 @@ function buildImagePrompt(
   const entity = businessInfo.seedKeyword || '';
 
   // HERO images: entity-driven opening (Semantic SEO Rule IV.F)
-  // Non-hero: tier-appropriate base instruction
+  // Non-hero: tier-appropriate base instruction with entity context
   if (isHero && entity) {
     parts.push(`Create a professional photograph that visually demonstrates the concept of "${entity}"`);
     parts.push('The image must directly represent this specific topic, not generic stock photography');
@@ -324,6 +353,14 @@ function buildImagePrompt(
     parts.push('Create a professional photograph');
   } else if (mapping.tier === 'minimal-diagram') {
     parts.push('Create a minimal diagram with simple geometric shapes');
+  }
+
+  // Non-HERO: add type-specific entity context (Semantic SEO Rules IV.B, IV.F)
+  if (!isHero && entity) {
+    const entityInstruction = getEntityInstructionForType(normalizedType, entity);
+    if (entityInstruction) {
+      parts.push(entityInstruction);
+    }
   }
 
   // Add the prompt modifiers from the routing configuration
@@ -336,6 +373,16 @@ function buildImagePrompt(
   );
   if (filteredDescription) {
     parts.push(filteredDescription);
+  }
+
+  // Use alt text as vocabulary-extension hint (leverages Pass 4 synonyms)
+  if (options.altText) {
+    parts.push(`The image should be relevant to: ${options.altText}`);
+  }
+
+  // Use figcaption as semantic context for image purpose
+  if (options.figcaption) {
+    parts.push(`Image purpose: ${options.figcaption}`);
   }
 
   // Add text overlay context if provided (but not as literal text in image)
@@ -359,9 +406,13 @@ function buildImagePrompt(
     parts.push(`Incorporate the brand color ${businessInfo.brandKit.colors.primary} subtly where appropriate.`);
   }
 
-  // HERO images: reinforce centerpiece alignment (Semantic SEO Rule IV.B)
-  if (isHero && entity) {
-    parts.push(`The visual must reinforce the central entity "${entity}" — every element should relate to this topic`);
+  // Reinforce centerpiece alignment for ALL types (Semantic SEO Rule IV.B)
+  if (entity) {
+    if (isHero) {
+      parts.push(`The visual must reinforce the central entity "${entity}" — every element should relate to this topic`);
+    } else {
+      parts.push(`Every visual element should relate to ${entity}, not be a generic stock image`);
+    }
   }
 
   parts.push(buildNoTextInstruction(normalizedType));

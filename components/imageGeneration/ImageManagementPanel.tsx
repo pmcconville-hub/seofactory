@@ -328,13 +328,18 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
       });
     }
 
+    // When no custom instructions are set, provide entity context as fallback
+    const effectiveCustomInstructions = customInstructions
+      || (businessInfo.seedKeyword ? `All images must visually relate to the central topic: ${businessInfo.seedKeyword}` : undefined);
+
     generateImage(
       placeholder,
       {
         altText: placeholder.altTextSuggestion,
         textOverlay: placeholder.specs.textOverlay?.text,
         style: selectedStyle,
-        customInstructions: customInstructions || undefined,
+        customInstructions: effectiveCustomInstructions || undefined,
+        figcaption: placeholder.figcaption || undefined,
       },
       businessInfo,
       setProgress
