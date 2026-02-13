@@ -282,7 +282,8 @@ function getStyleDescription(style?: string): string {
 
 /**
  * Build a detailed prompt for DALL-E image generation
- * Uses photographic-first routing configuration
+ * Uses photographic-first routing configuration.
+ * HERO images get special semantic SEO treatment: entity-driven, centerpiece-aligned.
  */
 function buildImagePrompt(
   placeholder: ImagePlaceholder,
@@ -290,12 +291,20 @@ function buildImagePrompt(
   businessInfo: BusinessInfo
 ): string {
   const parts: string[] = [];
+  const isHero = placeholder.type === 'HERO';
 
   const normalizedType = normalizeImageType(placeholder.type as ImageStyle);
   const mapping = IMAGE_TYPE_PROMPTS[normalizedType];
   const avoidTerms = getAvoidTerms(normalizedType);
+  const entity = businessInfo.seedKeyword || '';
 
-  if (mapping?.tier === 'minimal-diagram') {
+  // HERO images: entity-driven opening (Semantic SEO Rule IV.F)
+  // Non-hero: tier-appropriate base instruction
+  if (isHero && entity) {
+    parts.push(`Professional photograph that visually demonstrates the concept of "${entity}"`);
+    parts.push('The image must directly represent this specific topic, not generic stock photography');
+    parts.push(`Show a concrete, real-world scenario where ${entity} is actively applied or its outcome is visible`);
+  } else if (mapping?.tier === 'minimal-diagram') {
     parts.push('Minimal diagram with simple geometric shapes');
   } else {
     parts.push('Professional photograph');
@@ -339,8 +348,13 @@ function buildImagePrompt(
     parts.push(`Consider incorporating the color ${businessInfo.brandKit.colors.primary} where appropriate.`);
   }
 
-  if (!options.style) {
+  if (!options.style && !isHero) {
     parts.push('Professional quality, clean composition, suitable for a website hero image or blog post.');
+  }
+
+  // HERO images: reinforce centerpiece alignment (Semantic SEO Rule IV.B)
+  if (isHero && entity) {
+    parts.push(`The visual must reinforce the central entity "${entity}" — every element should relate to this topic`);
   }
 
   parts.push(buildNoTextInstruction(normalizedType));

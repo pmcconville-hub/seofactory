@@ -169,10 +169,9 @@ async function generateWithRetry(
 
     lastError = result.error || 'Unknown error';
 
-    // Check if this error is retryable
-    // We create a synthetic error to check
-    const syntheticError = new Error(lastError);
-    if (!isRetryableError(syntheticError) || attempt === MAX_RETRIES - 1) {
+    // Check if this error is retryable based on the error message
+    const isRetryable = /\b(429|500|503|rate.?limit|quota|internal|unavailable)\b/i.test(lastError);
+    if (!isRetryable || attempt === MAX_RETRIES - 1) {
       return result;
     }
 
@@ -299,7 +298,8 @@ function filterDescriptionForAvoidTerms(description: string, avoidTerms: readonl
 
 /**
  * Build a detailed prompt for image generation based on placeholder and context
- * Uses the photographic-first routing configuration for optimal results
+ * Uses the photographic-first routing configuration for optimal results.
+ * HERO images get special semantic SEO treatment: entity-driven, centerpiece-aligned.
  */
 function buildImagePrompt(
   placeholder: ImagePlaceholder,
@@ -307,13 +307,20 @@ function buildImagePrompt(
   businessInfo: BusinessInfo
 ): string {
   const parts: string[] = [];
+  const isHero = placeholder.type === 'HERO';
 
   // Normalize the image type and get the mapping
   const normalizedType = normalizeImageType(placeholder.type as ImageStyle);
   const mapping = IMAGE_TYPE_PROMPTS[normalizedType] ?? IMAGE_TYPE_PROMPTS.scene;
+  const entity = businessInfo.seedKeyword || '';
 
-  // Start with tier-appropriate base instruction
-  if (mapping.tier === 'photographic') {
+  // HERO images: entity-driven opening (Semantic SEO Rule IV.F)
+  // Non-hero: tier-appropriate base instruction
+  if (isHero && entity) {
+    parts.push(`Create a professional photograph that visually demonstrates the concept of "${entity}"`);
+    parts.push('The image must directly represent this specific topic, not generic stock photography');
+    parts.push(`Show a concrete, real-world scenario where ${entity} is actively applied or its outcome is visible`);
+  } else if (mapping.tier === 'photographic') {
     parts.push('Create a professional photograph');
   } else if (mapping.tier === 'minimal-diagram') {
     parts.push('Create a minimal diagram with simple geometric shapes');
@@ -350,6 +357,11 @@ function buildImagePrompt(
 
   if (businessInfo.brandKit?.colors?.primary) {
     parts.push(`Incorporate the brand color ${businessInfo.brandKit.colors.primary} subtly where appropriate.`);
+  }
+
+  // HERO images: reinforce centerpiece alignment (Semantic SEO Rule IV.B)
+  if (isHero && entity) {
+    parts.push(`The visual must reinforce the central entity "${entity}" — every element should relate to this topic`);
   }
 
   parts.push(buildNoTextInstruction(normalizedType));

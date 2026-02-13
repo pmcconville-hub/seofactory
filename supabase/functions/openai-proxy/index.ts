@@ -131,9 +131,11 @@ Deno.serve(async (req: Request) => {
       };
 
       // Handle max_tokens vs max_completion_tokens based on model
+      // GPT-5.x, o1, o3, and o4 models require max_completion_tokens (max_tokens returns 400)
       if (body.max_tokens) {
-        // For o1/o3 models, use max_completion_tokens
-        if (body.model.startsWith('o1') || body.model.startsWith('o3')) {
+        const m = body.model;
+        const needsCompletionTokens = m.startsWith('o1') || m.startsWith('o3') || m.startsWith('o4') || m.startsWith('gpt-5');
+        if (needsCompletionTokens) {
           openaiBody.max_completion_tokens = body.max_tokens;
         } else {
           openaiBody.max_tokens = body.max_tokens;
