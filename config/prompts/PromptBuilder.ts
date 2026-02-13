@@ -13,6 +13,7 @@
 
 import type { BusinessInfo, AuthorProfile, WebsiteType, SEOPillars } from '../../types';
 import { getWebsiteTypeConfig } from '../websiteTypeTemplates';
+import { getRegionalLanguageVariant, getLanguageAndRegionInstruction } from '../../utils/languageUtils';
 
 // ============================================================================
 // CONSTANTS
@@ -71,8 +72,14 @@ ${examples}
  */
 export function businessContext(info: BusinessInfo): string {
   const typeConfig = info.websiteType ? getWebsiteTypeConfig(info.websiteType) : null;
+  const regionalVariant = getRegionalLanguageVariant(info.language, info.region);
+  const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
 
   return `
+${languageInstruction}
+
+**OUTPUT LANGUAGE: ${regionalVariant}** — All generated text MUST be in ${regionalVariant}. Only JSON keys remain in English.
+
 Business Context:
 - Domain: ${info.domain}
 - Industry: ${info.industry}
@@ -83,7 +90,8 @@ Business Context:
 - Stated Expertise Level: ${info.expertise}
 - Main Topic / Seed Keyword: ${info.seedKeyword}
 - Target Market: ${info.targetMarket}
-- Language: ${info.language}
+- Language: ${regionalVariant}
+- Region/Location: ${info.region || 'Not specified'}
 ${info.authorName ? `- Author: ${info.authorName} (${info.authorBio || ''})` : ''}
 ${info.authorCredentials ? `- Author Credentials: ${info.authorCredentials}` : ''}
 ${info.uniqueDataAssets ? `- Unique Data Assets: ${info.uniqueDataAssets}` : ''}
@@ -94,7 +102,8 @@ ${info.uniqueDataAssets ? `- Unique Data Assets: ${info.uniqueDataAssets}` : ''}
  * Generate a compact business context for token-limited prompts
  */
 export function compactBusinessContext(info: BusinessInfo): string {
-  return `Business: ${info.domain} | Industry: ${info.industry} | Audience: ${info.audience} | Seed: ${info.seedKeyword}`;
+  const regionalVariant = getRegionalLanguageVariant(info.language, info.region);
+  return `Business: ${info.domain} | Industry: ${info.industry} | Audience: ${info.audience} | Seed: ${info.seedKeyword} | Language: ${regionalVariant}`;
 }
 
 // ============================================================================

@@ -6,6 +6,7 @@ import { KnowledgeGraph } from '../../lib/knowledgeGraph';
 import {
     businessContext,
     jsonResponseInstruction,
+    getLanguageName,
 } from './_common';
 
 export const VALIDATE_TOPICAL_MAP_PROMPT = (
@@ -150,6 +151,8 @@ ${businessContext(info)}
    - NAP display should be enabled for local businesses
    - Flag if link limits are exceeded or essential links missing
 
+**Write summary, issue messages, and suggestedAction text in ${getLanguageName(info.language)}.**
+
 **Output Format:**
 {
   "overallScore": 0-100,
@@ -258,6 +261,8 @@ Generate concrete actions to resolve ALL issues while maintaining proper hierarc
    - Assign them to the appropriate core topic parent
    - Keep valid distinct attribute facets as CORE topics
 
+5. **All new topic titles and descriptions MUST be in ${getLanguageName(info.language)}**
+
 **Output Format:**
 {
   "newTopics": [
@@ -321,6 +326,8 @@ For each opportunity:
 - "newTopic" (title, description).
 - "reasoning".
 
+**Write newTopic title and description in ${getLanguageName(info.language)}.**
+
 ${jsonResponseInstruction}
 Return a JSON array of merge suggestion objects.
 `;
@@ -338,6 +345,7 @@ Identify top 3-5 source topics. For each, provide:
 - "sourceTopicTitle"
 - "anchorText"
 - "reasoning"
+- **anchorText MUST be in ${getLanguageName(businessInfo.language)}** — it will be inserted into ${getLanguageName(businessInfo.language)} content
 
 ${jsonResponseInstruction}
 Return a JSON array of linking opportunity objects.
@@ -360,6 +368,8 @@ Evaluate coverage across:
 
 Provide JSON with: "summary", "macroCoverage" (0-100), "microCoverage" (0-100), "temporalCoverage" (0-100), "intentionalCoverage" (0-100), and "gaps" (array of {context, reasoning, type}).
 
+**Write summary and gap descriptions in ${getLanguageName(info.language)}.**
+
 ${jsonResponseInstruction}
 `;
 
@@ -376,6 +386,8 @@ Instructions:
 2.  Identify "dilutionRisks".
 
 Provide JSON with "summary", "missedLinks", "dilutionRisks".
+
+**Write summary and recommendations in ${getLanguageName(info.language)}.**
 
 ${jsonResponseInstruction}
 `;
@@ -395,6 +407,8 @@ ${businessContext(info)}
 
 Instructions:
 Provide JSON with "overallScore", "summary", and "breakdown" ({contentDepth, contentBreadth, interlinking, semanticRichness}).
+
+**Write summary in ${getLanguageName(info.language)}.**
 
 ${jsonResponseInstruction}
 `;
@@ -454,6 +468,8 @@ Analyze the semantic relationships and provide:
 2. **summary**: A 2-3 sentence overview of the semantic structure (clustering patterns, isolated topics, etc.)
 
 3. **actionableSuggestions**: 3-5 specific recommendations for improving topic connectivity
+
+**Write summary and actionableSuggestions in ${getLanguageName(businessInfo.language)}.**
 
 OUTPUT FORMAT (JSON):
 {

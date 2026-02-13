@@ -659,35 +659,54 @@ export async function verifiedBulkDelete(
   }
 
   try {
-    // Step 1: Perform the bulk delete
-    let query = supabase.from(table).delete();
+    // Batch size to stay under PostgREST ~8KB URL limit (200 UUIDs ≈ 7,400 chars)
+    const IN_BATCH_SIZE = 200;
+
+    // Step 1: Perform the bulk delete (batched for large ID sets)
     if (filterSpec.operator === 'in' && Array.isArray(filterSpec.value)) {
-      query = query.in(filterSpec.column, filterSpec.value);
+      const ids = filterSpec.value;
+      for (let i = 0; i < ids.length; i += IN_BATCH_SIZE) {
+        const batch = ids.slice(i, i + IN_BATCH_SIZE);
+        const { error: deleteError } = await supabase.from(table).delete().in(filterSpec.column, batch);
+        if (deleteError) {
+          console.error(`[VerifiedDB] BULK DELETE failed for ${opDesc} (batch ${Math.floor(i / IN_BATCH_SIZE) + 1}):`, deleteError);
+          return {
+            success: false,
+            data: null,
+            error: `Failed to ${opDesc}: ${deleteError.message}`,
+            verificationPassed: false
+          };
+        }
+      }
     } else {
-      query = query.eq(filterSpec.column, filterSpec.value as string);
+      const { error: deleteError } = await supabase.from(table).delete().eq(filterSpec.column, filterSpec.value as string);
+      if (deleteError) {
+        console.error(`[VerifiedDB] BULK DELETE failed for ${opDesc}:`, deleteError);
+        return {
+          success: false,
+          data: null,
+          error: `Failed to ${opDesc}: ${deleteError.message}`,
+          verificationPassed: false
+        };
+      }
     }
 
-    const { error: deleteError } = await query;
-
-    if (deleteError) {
-      console.error(`[VerifiedDB] BULK DELETE failed for ${opDesc}:`, deleteError);
-      return {
-        success: false,
-        data: null,
-        error: `Failed to ${opDesc}: ${deleteError.message}`,
-        verificationPassed: false
-      };
-    }
-
-    // Step 2: Verify deletion by trying to count remaining records
-    let verifyQuery = supabase.from(table).select('id');
+    // Step 2: Verify deletion by trying to count remaining records (batched for large ID sets)
+    let remainingData: any[] = [];
+    let verifyError: any = null;
     if (filterSpec.operator === 'in' && Array.isArray(filterSpec.value)) {
-      verifyQuery = verifyQuery.in(filterSpec.column, filterSpec.value);
+      const ids = filterSpec.value;
+      for (let i = 0; i < ids.length; i += IN_BATCH_SIZE) {
+        const batch = ids.slice(i, i + IN_BATCH_SIZE);
+        const { data, error } = await supabase.from(table).select('id').in(filterSpec.column, batch);
+        if (error) { verifyError = error; break; }
+        if (data) remainingData.push(...data);
+      }
     } else {
-      verifyQuery = verifyQuery.eq(filterSpec.column, filterSpec.value as string);
+      const { data, error } = await supabase.from(table).select('id').eq(filterSpec.column, filterSpec.value as string);
+      verifyError = error;
+      if (data) remainingData = data;
     }
-
-    const { data: remainingData, error: verifyError } = await verifyQuery;
     const remainingCount = remainingData?.length || 0;
 
     if (remainingCount > 0) {

@@ -6,6 +6,7 @@ import { KnowledgeGraph } from '../../lib/knowledgeGraph';
 import {
     businessContext,
     jsonResponseInstruction,
+    getLanguageName,
 } from './_common';
 
 export const ADD_TOPIC_INTELLIGENTLY_PROMPT = (newTopicTitle: string, newTopicDescription: string, allTopics: EnrichedTopic[], businessInfo: BusinessInfo): string => `
@@ -102,6 +103,8 @@ Instructions:
 Generate 3-5 new, highly relevant 'outer' topics based strictly on the Expansion Mode.
 Provide "title" and "description".
 
+**All topic titles and descriptions MUST be in ${getLanguageName(businessInfo.language)}.**
+
 ${jsonResponseInstruction}
 Return a JSON array of topic objects.
 `;
@@ -122,6 +125,8 @@ Criteria:
 1.  **Search Demand:** Is there specific search intent?
 2.  **Complexity:** Can it be fully explained in >300 words without fluff?
 
+**Write reasoning and targetParent suggestion in ${getLanguageName(businessInfo.language)}.**
+
 ${jsonResponseInstruction}
 Return a JSON object with:
 - "decision": 'PAGE' or 'SECTION'
@@ -139,6 +144,8 @@ ${businessContext(info)}
 Instructions:
 Based on the user's input and the business context, suggest 3-5 high-value Core Topics.
 These topics should be distinct, substantial concepts suitable for a pillar page.
+
+**Generate topic titles, descriptions, and reasoning in ${getLanguageName(info.language)}.**
 
 ${jsonResponseInstruction}
 Return a JSON array of objects:
@@ -177,6 +184,8 @@ Instructions:
     *   OR, it can be one of the **New Core Topics** you are creating in this very response.
     *   If it creates a new hierarchy, ensure the Core topic is listed first.
 
+**All topic titles and descriptions MUST be in ${getLanguageName(info.language)}.**
+
 ${jsonResponseInstruction}
 Return a JSON array of objects. Each object must have:
 - "title": string
@@ -210,6 +219,8 @@ For EACH topic provided, you must generate the following specific data points:
 4.  "attribute_focus": The specific subtopic/facet of the Central Entity being covered (e.g., 'Cost', 'History', 'Features', 'Definition').
 5.  "query_type": The classification of the query (e.g., 'Definitional', 'Comparative', 'Instructional', 'Commercial').
 6.  "topical_border_note": A brief note defining what this topic covers and where it ends to avoid cannibalization with neighbors.
+
+**Generate canonical_query, query_network, and attribute_focus in ${getLanguageName(info.language)}.** The url_slug_hint should use language-appropriate slugification.
 
 ${jsonResponseInstruction}
 Return a JSON array of objects, where each object corresponds to a topic and includes:
@@ -245,6 +256,8 @@ For EACH topic, generate a blueprint containing:
 5.  **interlinking_strategy**: A rule for how this page should link to other pages (e.g., "Link to Core Section for definition of [Entity]").
 6.  **anchor_text**: The recommended anchor text to use when OTHER pages link TO this topic.
 7.  **annotation_hint**: A hint for the text surrounding the anchor link (e.g., "Mention this when discussing cost efficiencies").
+
+**Generate contextual_vector headings, anchor_text, annotation_hint, and subordinate_hint in ${getLanguageName(info.language)}.**
 
 ${jsonResponseInstruction}
 Return a JSON array of objects. Each object must contain:

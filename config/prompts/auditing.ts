@@ -6,6 +6,7 @@ import { KnowledgeGraph } from '../../lib/knowledgeGraph';
 import {
     businessContext,
     jsonResponseInstruction,
+    getLanguageName,
 } from './_common';
 
 export const AUDIT_CONTENT_INTEGRITY_PROMPT = (brief: ContentBrief, draft: string, info: BusinessInfo): string => `
@@ -29,6 +30,8 @@ Audit Criteria:
     - "Bold the Answer, Not the Keyword".
     - "Mandatory N-Grams": Does the text contain specific keywords/phrases from the Value Proposition ("${info.valueProp}") in the Introduction and Conclusion?
 
+**Write overallSummary and all audit findings in ${getLanguageName(info.language)}.**
+
 ${jsonResponseInstruction}
 Provide a JSON object with: "overallSummary", "eavCheck", "linkCheck", "linguisticModality", "frameworkRules".
 `;
@@ -44,6 +47,8 @@ Content Brief:
 ${JSON.stringify(brief, null, 2)}
 
 ${info ? businessContext(info) : ''}
+
+**Write the "reasoning" field in ${getLanguageName(info?.language || 'en')}.**
 
 ${jsonResponseInstruction}
 Respond with "schema" (stringified JSON) and "reasoning".
@@ -65,6 +70,8 @@ Knowledge Graph Terms:
 ${kgTerms}
 
 ${info ? businessContext(info) : ''}
+
+**Write reasoning in ${getLanguageName(info?.language || 'en')}.**
 
 For the top 5-7 opportunities (High Impressions, Low CTR), provide:
 - "query", "impressions", "ctr".

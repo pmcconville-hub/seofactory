@@ -5,6 +5,7 @@ import { BusinessInfo, SEOPillars, EnrichedTopic, FoundationPage } from '../../t
 import {
     businessContext,
     jsonResponseInstruction,
+    getLanguageName,
 } from './_common';
 
 // ============================================
@@ -28,6 +29,7 @@ ${markdown}
 3. Preserve heading hierarchy context
 4. Identify the semantic focus of each chunk
 5. Tag each chunk with relevant entity types
+6. Write semantic_focus descriptions in ${getLanguageName(businessInfo.language)}
 
 ${jsonResponseInstruction}
 Return a JSON array of chunk objects:
@@ -79,6 +81,8 @@ Evaluate the page against these criteria:
 - REDIRECT_301: Page should redirect to a more relevant destination
 - PRUNE_410: Page should be removed (low value, no redirect target)
 - CANONICALIZE: Page is duplicate, should point to canonical version
+
+**Write reasoning, estimated_effort, and key_content_to_preserve in ${getLanguageName(businessInfo.language)}.**
 
 ${jsonResponseInstruction}
 Return a JSON object:
@@ -148,6 +152,8 @@ Generate specifications for 5 essential foundation pages that establish authorit
 **NAP Data Suggestions:**
 Based on the business context, suggest appropriate NAP (Name, Address, Phone) structure.
 If specific data isn't available, provide placeholder guidance.
+
+**CRITICAL: All page titles, meta_descriptions, h1_templates, section headings, and NAP suggestions MUST be generated in ${getLanguageName(info.language)} for the ${info.targetMarket} market.**
 
 ${jsonResponseInstruction}
 Return a JSON object:
@@ -223,6 +229,7 @@ ${informationalTopics.slice(0, 8).map(t => `- ${t.title} (${t.slug || 'no-slug'}
 8. **Pure HTML links** - No JavaScript-dependent navigation
 9. **Descriptive anchor text** - Never "Click here" or "Read more"
 10. **N-gram injection** - Include Central Entity in header link text where natural
+11. **All link text, alt text, CTA text, section headings, and copyright text MUST be in ${getLanguageName(info.language)}**
 
 **PageRank Flow Strategy:**
 - Direct PageRank to PILLAR pages first (hub pages)
@@ -342,6 +349,8 @@ ${navigation ? JSON.stringify(navigation, null, 2) : 'No navigation configured'}
 - Flag any standard foundation pages that don't exist
 - Rate severity based on E-A-T impact
 
+**Generate all issue messages, suggestions, and fix descriptions in ${getLanguageName(info.language)}.**
+
 ${jsonResponseInstruction}
 Return a JSON object:
 {
@@ -411,6 +420,7 @@ ${businessContext(info)}
 4. Keep anchors natural and readable
 5. Vary sentence structure (some can be noun phrases, others action-oriented)
 6. Each variation should be distinctly different
+7. **All anchor text MUST be in ${getLanguageName(info.language)}** — match the language of the article content
 
 ${jsonResponseInstruction}
 Return a JSON object:
@@ -459,8 +469,9 @@ This bridge will appear at the end of the source article to create a logical tra
 4. Include a natural anchor text placement (mark with [ANCHOR]text[/ANCHOR])
 5. The transition should feel organic, not forced
 6. Use H4 or H5 heading to introduce the bridge section
+7. **Write the entire bridge paragraph, heading, and anchor text in ${getLanguageName(info.language)}**
 
-**Example structure:**
+**Example structure** (Example shown in English — generate in ${getLanguageName(info.language)}):
 "While we've covered [source topic aspect], understanding [related concept] becomes crucial when [connection to target]. [ANCHOR]Target Topic[/ANCHOR] explores this in depth, covering [key aspect of target]."
 
 ${jsonResponseInstruction}
@@ -498,6 +509,7 @@ ${candidateTopics.map((t, i) => `${i + 1}. [${t.type.toUpperCase()}] ${t.title}:
 3. Reader journey: The link should make sense in context
 4. Avoid redundancy: Don't suggest sources already linking to this topic
 5. PageRank consideration: Core topics have more authority to share
+6. **Generate suggestedAnchor and linkContext in ${getLanguageName(info.language)}**
 
 ${jsonResponseInstruction}
 Return a JSON object:
@@ -544,6 +556,8 @@ ${externalLinks.map((l, i) => `${i + 1}. URL: ${l.url}\n   Domain: ${l.domain}\n
 - News/media: Medium authority
 - Personal blogs: Low authority (unless expert)
 - Competitor sites: Flag as issue
+
+**Write all reasoning and recommendations in ${getLanguageName(info.language)}.**
 
 ${jsonResponseInstruction}
 Return a JSON object:

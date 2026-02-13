@@ -158,7 +158,12 @@ Respond with a valid JSON object. Do not include any explanatory text or markdow
 export const businessContext = (info: BusinessInfo): string => {
     const typeConfig = info.websiteType ? getWebsiteTypeConfig(info.websiteType) : null;
     const regionalVariant = getRegionalLanguageVariant(info.language, info.region);
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
     return `
+${languageInstruction}
+
+**OUTPUT LANGUAGE: ${regionalVariant}** — All generated text (titles, descriptions, anchor text, summaries, suggestions, headings, paragraphs) MUST be in ${regionalVariant}. Only JSON keys remain in English.
+
 Business Context:
 - Domain: ${info.domain}
 - Industry: ${info.industry}
@@ -174,8 +179,6 @@ Business Context:
 ${info.authorName ? `- Author: ${info.authorName} (${info.authorBio || ''})` : ''}
 ${info.authorCredentials ? `- Author Credentials: ${info.authorCredentials}` : ''}
 ${info.uniqueDataAssets ? `- Unique Data Assets: ${info.uniqueDataAssets}` : ''}
-
-**Language Directive**: All generated text content (titles, descriptions, suggestions, summaries) MUST be written in ${regionalVariant}. JSON structure keys must remain in English.
 `;
 };
 
