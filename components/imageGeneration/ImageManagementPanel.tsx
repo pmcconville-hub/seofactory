@@ -108,14 +108,14 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
 
   useEffect(() => {
     if (supabase) {
-      initImageGeneration(supabase, state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+      initImageGeneration(supabase);
       ensureClientReady().then(() => {
         setIsClientReady(true);
       });
     } else {
       setIsClientReady(true);
     }
-  }, [supabase, state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
+  }, [supabase]);
 
   // Persist generated image to database so it's not lost on navigation
   const persistGeneratedImage = useCallback(async (placeholderId: string, result: ImagePlaceholder) => {
@@ -280,7 +280,7 @@ export const ImageManagementPanel: React.FC<ImageManagementPanelProps> = ({
   const availableProviders: string[] = [];
   if (businessInfo.markupGoApiKey) availableProviders.push('MarkupGo (HERO only)');
   if (businessInfo.geminiApiKey) availableProviders.push('Gemini Imagen');
-  if (businessInfo.openAiApiKey) availableProviders.push('OpenAI Images');
+  if (businessInfo.openAiApiKey) availableProviders.push('DALL-E 3');
 
   const hasProviders = availableProviders.length > 0;
 

@@ -120,31 +120,19 @@ serve(async (req: Request) => {
       );
     }
 
-    const model = requestBody.model || 'dall-e-3';
-    const isGptImage = model === 'gpt-image-1';
-
-    // Build OpenAI request — gpt-image-1 uses different parameters
-    const openaiRequest: Record<string, unknown> = {
-      model,
+    // Build OpenAI request
+    const openaiRequest = {
+      model: requestBody.model || 'dall-e-3',
       prompt: requestBody.prompt,
       size: requestBody.size || '1024x1024',
+      quality: requestBody.quality || 'standard',
+      style: requestBody.style || 'vivid',
       n: requestBody.n || 1,
+      response_format: requestBody.response_format || 'url'
     };
 
-    if (isGptImage) {
-      // gpt-image-1: quality is low/medium/high, no style parameter
-      openaiRequest.quality = requestBody.quality || 'medium';
-      // gpt-image-1 returns b64_json by default via output_format
-      openaiRequest.output_format = 'png';
-    } else {
-      // dall-e-3: quality is standard/hd, has style parameter
-      openaiRequest.quality = requestBody.quality || 'standard';
-      openaiRequest.style = requestBody.style || 'vivid';
-      openaiRequest.response_format = requestBody.response_format || 'url';
-    }
-
     console.log(`[OpenAI Image Proxy] Generating image for user ${userId}`);
-    console.log(`[OpenAI Image Proxy] Model: ${model}, Size: ${openaiRequest.size}`);
+    console.log(`[OpenAI Image Proxy] Model: ${openaiRequest.model}, Size: ${openaiRequest.size}`);
 
     // Make request to OpenAI
     const openaiResponse = await fetch('https://api.openai.com/v1/images/generations', {
@@ -171,20 +159,7 @@ serve(async (req: Request) => {
       );
     }
 
-    // gpt-image-1 returns data differently — normalize the response
-    if (isGptImage) {
-      // gpt-image-1 returns: { data: [{ b64_json: "..." }] }
-      return new Response(
-        JSON.stringify({
-          success: true,
-          data: responseData.data,
-          created: responseData.created
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Return successful response (dall-e-3)
+    // Return successful response
     return new Response(
       JSON.stringify({
         success: true,
