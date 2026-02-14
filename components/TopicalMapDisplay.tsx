@@ -6,7 +6,7 @@ import TopicItem from './TopicItem';
 import { TopicTableView } from './TopicTableView';
 import { Button } from './ui/Button';
 import TopicalMapGraphView from './TopicalMapGraphView';
-import { ReportExportButton, ReportModal } from './reports';
+import { ReportModal } from './reports';
 import { useTopicalMapReport } from '../hooks/useReportGeneration';
 import * as aiService from '../services/aiService';
 import { useAppState } from '../state/appState';
@@ -15,15 +15,14 @@ import { verifiedDelete, verifiedBulkDelete } from '../services/verifiedDatabase
 import { v4 as uuidv4 } from 'uuid';
 import { slugify } from '../utils/helpers';
 import MergeConfirmationModal from './ui/MergeConfirmationModal';
-import { InfoTooltip } from './ui/InfoTooltip';
 import { BriefHealthStatsBar } from './ui/BriefHealthBadge';
 import { calculateBriefHealthStats } from '../utils/briefQualityScore';
 import MapUsageReport from './admin/MapUsageReport';
 import { useTopicPublications } from '../hooks/useTopicPublications';
 import { MapSizeWarning } from './ui/MapSizeWarning';
-// Template panel moved to AddTopicModal
-// import { QueryTemplatePanel } from './templates/QueryTemplatePanel';
-// import { LocationManagerModal } from './templates/LocationManagerModal';
+import { TopicToolbar } from './TopicToolbar';
+import { TopicBulkActionBar } from './TopicBulkActionBar';
+import { useTopicSearch } from '../hooks/useTopicSearch';
 import type { ExpandedTemplateResult } from '../types';
 
 interface TopicalMapDisplayProps {
@@ -128,6 +127,9 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
   const [showUsageReport, setShowUsageReport] = useState(false);
   const [pipelineFilter, setPipelineFilter] = useState<'all' | 'needs-brief' | 'needs-draft' | 'needs-audit' | 'published'>('all');
   const [listViewLimit, setListViewLimit] = useState(50);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const allTopics = useMemo(() => [...coreTopics, ...outerTopics, ...childTopics], [coreTopics, outerTopics, childTopics]);
 
   // Pipeline-filtered topic IDs (used to hide non-matching topics)
   const pipelineFilteredIds = useMemo(() => {
@@ -148,6 +150,21 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
     }
     return ids;
   }, [pipelineFilter, coreTopics, outerTopics, childTopics, briefs]);
+  // Search-filtered topic IDs
+  const searchFilteredIds = useTopicSearch(allTopics, briefs, searchQuery);
+
+  // Combined filter: intersection when both search + pipeline active
+  const combinedFilteredIds = useMemo(() => {
+    if (!pipelineFilteredIds && !searchFilteredIds) return null;
+    if (!pipelineFilteredIds) return searchFilteredIds;
+    if (!searchFilteredIds) return pipelineFilteredIds;
+    const combined = new Set<string>();
+    for (const id of pipelineFilteredIds) {
+      if (searchFilteredIds.has(id)) combined.add(id);
+    }
+    return combined;
+  }, [pipelineFilteredIds, searchFilteredIds]);
+
   // Template panel moved to AddTopicModal - no longer needed here
   // const [showTemplatePanel, setShowTemplatePanel] = useState(false);
   // const [showLocationManager, setShowLocationManager] = useState(false);
@@ -203,9 +220,9 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
   // Sorted core topics (filtered by pipeline filter when active)
   const sortedCoreTopics = useMemo(() => {
     const sorted = sortTopics(coreTopics);
-    if (!pipelineFilteredIds) return sorted;
-    return sorted.filter(t => pipelineFilteredIds.has(t.id));
-  }, [coreTopics, sortTopics, pipelineFilteredIds]);
+    if (!combinedFilteredIds) return sorted;
+    return sorted.filter(t => combinedFilteredIds.has(t.id));
+  }, [coreTopics, sortTopics, combinedFilteredIds]);
 
   const topicsByParent = useMemo(() => {
     const map = new Map<string, EnrichedTopic[]>();
@@ -226,9 +243,9 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
   // Sorted outer topics (flat list for table view, filtered by pipeline)
   const sortedOuterTopics = useMemo(() => {
     const sorted = sortTopics(outerTopics);
-    if (!pipelineFilteredIds) return sorted;
-    return sorted.filter(t => pipelineFilteredIds.has(t.id));
-  }, [outerTopics, sortTopics, pipelineFilteredIds]);
+    if (!combinedFilteredIds) return sorted;
+    return sorted.filter(t => combinedFilteredIds.has(t.id));
+  }, [outerTopics, sortTopics, combinedFilteredIds]);
 
   // Convert briefs object to Map (for table view)
   const briefsMap = useMemo(() => {
@@ -274,8 +291,6 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
       !topic.parent_topic_id || !outerTopicIds.has(topic.parent_topic_id)
     );
   }, [childTopics, outerTopics]);
-
-  const allTopics = useMemo(() => [...coreTopics, ...outerTopics, ...childTopics], [coreTopics, outerTopics, childTopics]);
 
   // Pipeline filter counts
   const pipelineFilterCounts = useMemo(() => {
@@ -689,142 +704,128 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
     setDraggedTopicId(null);
   };
 
+  // Core delete logic (without per-topic confirm) for bulk operations
+  const handleDeleteTopicCore = useCallback(async (topicId: string) => {
+    if (!activeMapId) return;
+    const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+
+    // Delete content briefs
+    const briefsResult = await verifiedBulkDelete(
+      supabase,
+      { table: 'content_briefs', operationDescription: `delete briefs for topic ${topicId}` },
+      { column: 'topic_id', operator: 'eq', value: topicId }
+    );
+    if (!briefsResult.success && briefsResult.error && !briefsResult.error.includes('0 records')) {
+      console.warn(`[BulkDelete] Content briefs deletion issue:`, briefsResult.error);
+    }
+
+    // Delete the topic
+    const result = await verifiedDelete(
+      supabase,
+      { table: 'topics', operationDescription: `delete topic ${topicId}` },
+      { column: 'id', value: topicId }
+    );
+    if (!result.success) {
+      throw new Error(result.error || 'Topic deletion verification failed');
+    }
+
+    dispatch({ type: 'DELETE_TOPIC', payload: { mapId: activeMapId, topicId } });
+  }, [activeMapId, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey, dispatch]);
+
+  // Bulk delete with single confirmation
+  const handleBulkDeleteTopics = useCallback(async () => {
+    if (selectedTopicIds.length === 0 || !activeMapId) return;
+    if (!window.confirm(`Delete ${selectedTopicIds.length} selected topic(s)? This action cannot be undone.`)) return;
+
+    dispatch({ type: 'SET_LOADING', payload: { key: 'deleteTopic', value: true } });
+    try {
+      for (const topicId of selectedTopicIds) {
+        await handleDeleteTopicCore(topicId);
+      }
+      dispatch({ type: 'SET_NOTIFICATION', payload: `Deleted ${selectedTopicIds.length} topic(s).` });
+      setSelectedTopicIds([]);
+    } catch (e) {
+      console.error('Bulk delete error:', e);
+      dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to delete topics.' });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: { key: 'deleteTopic', value: false } });
+    }
+  }, [selectedTopicIds, activeMapId, handleDeleteTopicCore, dispatch]);
+
+  // Bulk promote: outer -> core
+  const handleBulkPromote = useCallback(() => {
+    const outerSelected = allTopics.filter(t => selectedTopicIds.includes(t.id) && t.type === 'outer');
+    if (outerSelected.length === 0) return;
+    if (!window.confirm(`Promote ${outerSelected.length} topic(s) to Core?`)) return;
+
+    for (const topic of outerSelected) {
+      onUpdateTopic(topic.id, { type: 'core', parent_topic_id: null });
+    }
+    dispatch({ type: 'SET_NOTIFICATION', payload: `Promoted ${outerSelected.length} topic(s) to Core.` });
+  }, [selectedTopicIds, allTopics, onUpdateTopic, dispatch]);
+
+  // Bulk demote: core -> outer under a chosen parent
+  const handleBulkDemote = useCallback((parentCoreId: string) => {
+    const coreSelected = allTopics.filter(t => selectedTopicIds.includes(t.id) && t.type === 'core');
+    if (coreSelected.length === 0) return;
+
+    // Safety: at least 1 core must remain
+    const remainingCoreCount = coreTopics.filter(t => !selectedTopicIds.includes(t.id)).length;
+    if (remainingCoreCount < 1) {
+      dispatch({ type: 'SET_ERROR', payload: 'Cannot demote all core topics. At least 1 must remain.' });
+      return;
+    }
+
+    const parentCore = coreTopics.find(t => t.id === parentCoreId);
+    if (!parentCore) return;
+
+    if (!window.confirm(`Demote ${coreSelected.length} topic(s) to Outer under "${parentCore.title}"?`)) return;
+
+    for (const topic of coreSelected) {
+      const newSlug = `${parentCore.slug}/${slugify(topic.title)}`;
+      onUpdateTopic(topic.id, { type: 'outer', parent_topic_id: parentCoreId, slug: newSlug });
+    }
+    dispatch({ type: 'SET_NOTIFICATION', payload: `Demoted ${coreSelected.length} topic(s) to Outer.` });
+  }, [selectedTopicIds, allTopics, coreTopics, onUpdateTopic, dispatch]);
+
+  // Bulk generate briefs for selected topics without briefs
+  const handleBulkGenerateBriefs = useCallback(() => {
+    const topicsNeedingBriefs = allTopics.filter(t => selectedTopicIds.includes(t.id) && !briefs[t.id]);
+    for (const topic of topicsNeedingBriefs) {
+      onSelectTopicForBrief(topic);
+    }
+  }, [selectedTopicIds, allTopics, briefs, onSelectTopicForBrief]);
+
+  // Search result count for the toolbar
+  const searchResultCount = searchFilteredIds ? searchFilteredIds.size : null;
 
   return (
     <div className="space-y-6">
-        <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-white">Topical Map</h2>
-            <div className="flex items-center gap-4">
-                 <Button onClick={handleFindMergeOpportunities} disabled={selectedTopicIds.length < 2 || isLoading.merge}>
-                    {isLoading.merge ? 'Analyzing...' : `Merge Selected (${selectedTopicIds.length})`}
-                </Button>
-                {(viewMode === 'list' || viewMode === 'table') && coreTopics.length > 0 && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                        {/* Sorting dropdown */}
-                        <select
-                            value={sortOption}
-                            onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
-                            className="bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded py-1 px-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                            <option value="created_desc">Newest first</option>
-                            <option value="created_asc">Oldest first</option>
-                            <option value="title_asc">Title A-Z</option>
-                            <option value="title_desc">Title Z-A</option>
-                            <option value="updated_desc">Recently updated</option>
-                            <option value="updated_asc">Least recently updated</option>
-                        </select>
-                        <Button onClick={handleExpandAll} variant="secondary" className="!py-1 !px-3 text-xs">Expand All</Button>
-                        <Button onClick={handleCollapseAll} variant="secondary" className="!py-1 !px-3 text-xs">Collapse All</Button>
-                        <div className="flex items-center gap-1">
-                            <Button
-                                onClick={handleRepairSectionLabels}
-                                variant="secondary"
-                                className="!py-1 !px-3 text-xs"
-                                disabled={isRepairingLabels || allTopics.length === 0}
-                            >
-                                {isRepairingLabels ? 'Classifying...' : 'Repair Section Labels'}
-                            </Button>
-                            <InfoTooltip text="Uses AI to classify topics into Core Section (monetization/service pages) or Author Section (informational/trust pages). Useful for fixing maps generated before section labels were implemented." />
-                        </div>
-                        {onRepairFoundationPages && (
-                            <div className="flex items-center gap-1">
-                                <Button
-                                    onClick={onRepairFoundationPages}
-                                    variant="secondary"
-                                    className="!py-1 !px-3 text-xs bg-purple-900/30 border-purple-700 hover:bg-purple-800/40"
-                                    disabled={isRepairingFoundation}
-                                >
-                                    {isRepairingFoundation ? 'Generating...' : 'Foundation Pages'}
-                                </Button>
-                                <InfoTooltip text="Generate or repair foundation pages (Homepage, About, Contact, Privacy, Terms) for complete website structure." />
-                            </div>
-                        )}
-                        {onOpenNavigation && (
-                            <Button
-                                onClick={onOpenNavigation}
-                                variant="secondary"
-                                className="!py-1 !px-3 text-xs bg-teal-900/30 border-teal-700 hover:bg-teal-800/40"
-                            >
-                                Navigation
-                            </Button>
-                        )}
-                        {reportHook.canGenerate && (
-                            <ReportExportButton
-                                reportType="topical-map"
-                                onClick={reportHook.open}
-                                variant="primary"
-                                size="sm"
-                                label="Generate Report"
-                            />
-                        )}
-                        {activeMapId && (
-                            <Button
-                                onClick={() => setShowUsageReport(true)}
-                                variant="secondary"
-                                className="!py-1 !px-3 text-xs bg-amber-900/30 border-amber-700 hover:bg-amber-800/40"
-                            >
-                                AI Usage
-                            </Button>
-                        )}
-                        {/* Template button removed - templates now accessible via Content > Add Topics */}
-                    </div>
-                )}
-                {/* Hierarchy Mode Toggle - SEO vs Business view */}
-                {viewMode === 'list' && (
-                    <div className="flex rounded-lg bg-gray-700 p-1" role="tablist" aria-label="Hierarchy mode" title="SEO View shows behavioral hierarchy (affects SEO). Business View shows visual groupings (for presentations).">
-                        <Button
-                            onClick={() => setHierarchyMode('seo')}
-                            variant={hierarchyMode === 'seo' ? 'primary' : 'secondary'}
-                            className="!py-1 !px-3 text-sm"
-                            role="tab"
-                            aria-selected={hierarchyMode === 'seo'}
-                        >
-                            SEO View
-                        </Button>
-                        <Button
-                            onClick={() => setHierarchyMode('business')}
-                            variant={hierarchyMode === 'business' ? 'primary' : 'secondary'}
-                            className="!py-1 !px-3 text-sm"
-                            role="tab"
-                            aria-selected={hierarchyMode === 'business'}
-                        >
-                            Business View
-                        </Button>
-                    </div>
-                )}
-                <div className="flex rounded-lg bg-gray-700 p-1" role="tablist" aria-label="View mode">
-                    <Button onClick={() => setViewMode('list')} variant={viewMode === 'list' ? 'primary' : 'secondary'} className="!py-1 !px-3 text-sm" role="tab" aria-selected={viewMode === 'list'} aria-controls="topic-view-panel">Cards</Button>
-                    <Button onClick={() => setViewMode('table')} variant={viewMode === 'table' ? 'primary' : 'secondary'} className="!py-1 !px-3 text-sm" role="tab" aria-selected={viewMode === 'table'} aria-controls="topic-view-panel">Table</Button>
-                    <Button onClick={() => setViewMode('graph')} variant={viewMode === 'graph' ? 'primary' : 'secondary'} className="!py-1 !px-3 text-sm" role="tab" aria-selected={viewMode === 'graph'} aria-controls="topic-view-panel">Graph</Button>
-                </div>
-            </div>
-        </div>
-
-        {/* Pipeline Filter Chips */}
-        {allTopics.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap" role="tablist" aria-label="Pipeline filter">
-                {([
-                    { key: 'all' as const, label: 'All' },
-                    { key: 'needs-brief' as const, label: 'Needs Brief' },
-                    { key: 'needs-draft' as const, label: 'Needs Draft' },
-                    { key: 'needs-audit' as const, label: 'Needs Audit' },
-                ]).map(chip => (
-                    <button
-                        key={chip.key}
-                        role="tab"
-                        aria-selected={pipelineFilter === chip.key}
-                        onClick={() => setPipelineFilter(chip.key)}
-                        className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                            pipelineFilter === chip.key
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                        }`}
-                    >
-                        {chip.label} ({pipelineFilterCounts[chip.key]})
-                    </button>
-                ))}
-            </div>
-        )}
+        <TopicToolbar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            searchResultCount={searchResultCount}
+            totalTopicCount={allTopics.length}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            hierarchyMode={hierarchyMode}
+            onHierarchyModeChange={setHierarchyMode}
+            sortOption={sortOption}
+            onSortChange={(opt) => setSortOption(opt as typeof sortOption)}
+            onExpandAll={handleExpandAll}
+            onCollapseAll={handleCollapseAll}
+            pipelineFilter={pipelineFilter}
+            onPipelineFilterChange={(f) => setPipelineFilter(f as typeof pipelineFilter)}
+            pipelineFilterCounts={pipelineFilterCounts}
+            onRepairSectionLabels={handleRepairSectionLabels}
+            isRepairingLabels={isRepairingLabels}
+            onRepairFoundationPages={onRepairFoundationPages}
+            isRepairingFoundation={isRepairingFoundation}
+            onOpenNavigation={onOpenNavigation}
+            onGenerateReport={reportHook.canGenerate ? reportHook.open : undefined}
+            onShowUsageReport={activeMapId ? () => setShowUsageReport(true) : undefined}
+            hasTopics={allTopics.length > 0}
+        />
 
         {activeMapId && <MapSizeWarning topicCount={allTopics.length} mapId={activeMapId} />}
 
@@ -1382,6 +1383,25 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
                 businessInfo={businessInfo}
             />
         )}
+
+      {/* Bulk Action Bar (shared across card + table view) */}
+      {selectedTopicIds.length > 0 && viewMode !== 'graph' && (
+        <TopicBulkActionBar
+          selectedTopicIds={selectedTopicIds}
+          allTopics={allTopics}
+          briefs={briefs}
+          coreTopics={coreTopics}
+          onBulkGenerateBriefs={handleBulkGenerateBriefs}
+          onMerge={handleFindMergeOpportunities}
+          onBulkPromote={handleBulkPromote}
+          onBulkDemote={handleBulkDemote}
+          onBulkDelete={handleBulkDeleteTopics}
+          onClearSelection={() => setSelectedTopicIds([])}
+          canGenerateBriefs={canGenerateBriefs}
+          isMerging={!!isLoading.merge}
+        />
+      )}
+
       <MergeConfirmationModal
         isOpen={isMergeModalOpen}
         onClose={() => setIsMergeModalOpen(false)}

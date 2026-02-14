@@ -377,48 +377,7 @@ export const TopicTableView: React.FC<TopicTableViewProps> = ({
         )}
       </div>
 
-      {/* Bulk Action Bar (sticky bottom) */}
-      {selectedTopicIds.size > 0 && (
-        <div className="sticky bottom-0 flex items-center justify-between px-4 py-2 bg-gray-800 border-t border-gray-700">
-          <span className="text-sm text-gray-300">
-            {selectedTopicIds.size} topic{selectedTopicIds.size > 1 ? 's' : ''} selected
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                // Bulk generate briefs for selected
-                flattenedTopics
-                  .filter(({ topic }) => selectedTopicIds.has(topic.id))
-                  .forEach(({ topic }) => {
-                    if (!briefs.has(topic.id) && canGenerateBriefs) {
-                      onGenerateBrief(topic);
-                    }
-                  });
-              }}
-              disabled={!canGenerateBriefs}
-              className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Generate Briefs
-            </button>
-            <button
-              onClick={() => {
-                if (confirm(`Delete ${selectedTopicIds.size} selected topics?`)) {
-                  selectedTopicIds.forEach(id => onDelete(id));
-                }
-              }}
-              className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded"
-            >
-              Delete Selected
-            </button>
-            <button
-              onClick={onDeselectAll}
-              className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded"
-            >
-              Clear Selection
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Bulk action bar removed — parent component (TopicalMapDisplay) now provides TopicBulkActionBar */}
     </div>
   );
 };
