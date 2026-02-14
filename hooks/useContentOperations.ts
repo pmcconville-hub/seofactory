@@ -56,6 +56,7 @@ interface UseContentOperationsParams {
     // Local state setters
     setShowExportSettings: (v: boolean) => void;
     setShowBulkSummary: (v: boolean) => void;
+    setBulkBatchTopicIds: (ids: string[] | null) => void;
 }
 
 export function useContentOperations({
@@ -77,6 +78,7 @@ export function useContentOperations({
     websiteStructure,
     setShowExportSettings,
     setShowBulkSummary,
+    setBulkBatchTopicIds,
 }: UseContentOperationsParams) {
 
     // --- START ANALYSIS ---
@@ -142,19 +144,21 @@ export function useContentOperations({
     // --- BULK BRIEF GENERATION ---
     const onGenerateAllBriefs = useCallback(async () => {
         const processor = new BatchProcessor(dispatch, () => stateRef.current);
+        setBulkBatchTopicIds(null); // null = all-topics mode
         await processor.generateAllBriefs(allTopics);
         // Show bulk generation summary modal after completion
         setShowBulkSummary(true);
-    }, [dispatch, allTopics, stateRef, setShowBulkSummary]);
+    }, [dispatch, allTopics, stateRef, setShowBulkSummary, setBulkBatchTopicIds]);
 
     // --- BULK BRIEF GENERATION (selected topics only) ---
     const onBulkGenerateSelectedBriefs = useCallback(async (topicIds: string[]) => {
         const selectedTopics = allTopics.filter(t => topicIds.includes(t.id));
         if (selectedTopics.length === 0) return;
+        setBulkBatchTopicIds(topicIds); // track which topics were in this batch
         const processor = new BatchProcessor(dispatch, () => stateRef.current);
         await processor.generateAllBriefs(selectedTopics);
         setShowBulkSummary(true);
-    }, [dispatch, allTopics, stateRef, setShowBulkSummary]);
+    }, [dispatch, allTopics, stateRef, setShowBulkSummary, setBulkBatchTopicIds]);
 
     const onCancelBriefGeneration = useCallback(() => {
         dispatch({ type: 'CANCEL_BRIEF_GENERATION' });
@@ -952,12 +956,13 @@ export function useContentOperations({
     const handleRegenerateFailed = useCallback((topicIds: string[]) => {
         const topicsToRegenerate = allTopics.filter(t => topicIds.includes(t.id));
         if (topicsToRegenerate.length > 0) {
+            setBulkBatchTopicIds(topicIds);
             const processor = new BatchProcessor(dispatch, () => stateRef.current);
             processor.generateAllBriefs(topicsToRegenerate).then(() => {
                 setShowBulkSummary(true);
             });
         }
-    }, [allTopics, dispatch, stateRef, setShowBulkSummary]);
+    }, [allTopics, dispatch, stateRef, setShowBulkSummary, setBulkBatchTopicIds]);
 
     return {
         // Analysis

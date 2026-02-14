@@ -68,6 +68,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
 
     // Bulk generation summary modal state
     const [showBulkSummary, setShowBulkSummary] = useState(false);
+    const [bulkBatchTopicIds, setBulkBatchTopicIds] = useState<string[] | null>(null);
 
     // Improvement confirmation modal state
     const [showImprovementConfirmation, setShowImprovementConfirmation] = useState(false);
@@ -282,6 +283,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
         websiteStructure: state.websiteStructure,
         setShowExportSettings,
         setShowBulkSummary,
+        setBulkBatchTopicIds,
     });
 
     const stateSnapshot = {
@@ -482,7 +484,9 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 onClose={() => setShowBulkSummary(false)}
                 topics={allTopics}
                 briefs={briefs}
+                batchTopicIds={bulkBatchTopicIds}
                 onRegenerateFailed={handleRegenerateFailed}
+                onGenerateRemaining={onGenerateAllBriefs}
             />
 
             {/* Improvement Confirmation Modal */}
