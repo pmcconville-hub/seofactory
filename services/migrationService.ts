@@ -4,24 +4,6 @@ import { BusinessInfo, SiteInventoryItem } from '../types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
- * Ensures the Supabase client has a valid authenticated session.
- * Without a session, RLS policies reject all writes (auth.uid() = NULL → 403).
- * Attempts a refresh if the session is missing or expired.
- */
-const ensureAuthenticated = async (supabase: SupabaseClient): Promise<void> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) return;
-
-    // Session missing — try refreshing
-    const { data: { session: refreshed }, error } = await supabase.auth.refreshSession();
-    if (!refreshed || error) {
-        throw new Error(
-            'Your session has expired. Please refresh the page and log in again.'
-        );
-    }
-};
-
-/**
  * Parses a CSV string from a Google Search Console Pages export.
  * @param csvText The raw CSV content as a string.
  * @returns A promise that resolves to an array of page row objects.
@@ -208,7 +190,7 @@ export const initializeInventory = async (
     if (urls.length === 0) return;
 
     const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
-    await ensureAuthenticated(supabase);
+
     const CHUNK_SIZE = 100;
     let processed = 0;
 
@@ -250,7 +232,7 @@ export const processGscPages = async (
     }
 
     const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
-    await ensureAuthenticated(supabase);
+
     const CHUNK_SIZE = 100;
     let processed = 0;
 
@@ -301,7 +283,7 @@ export const runTechnicalCrawl = async (
     onProgress?: (count: number, total: number) => void
 ): Promise<void> => {
     const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
-    await ensureAuthenticated(supabase);
+
     let processed = 0;
 
     for (const url of urls) {
@@ -551,7 +533,7 @@ export const importGscFromApi = async (
     onStatus?: (msg: string) => void
 ): Promise<number> => {
     const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
-    await ensureAuthenticated(supabase);
+
 
     // 1. Get linked GSC property
     const property = await getLinkedGscProperty(projectId, supabaseUrl, supabaseAnonKey);
