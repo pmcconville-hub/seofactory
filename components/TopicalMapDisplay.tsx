@@ -45,6 +45,8 @@ interface TopicalMapDisplayProps {
   onRepairFoundationPages?: () => void;
   isRepairingFoundation?: boolean;
   onOpenNavigation?: () => void;
+  // Bulk brief generation (uses BatchProcessor, no modal)
+  onBulkGenerateSelectedBriefs?: (topicIds: string[]) => Promise<void>;
 }
 
 export type { TopicalMapDisplayProps };
@@ -63,7 +65,8 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
   onUpdateTopic,
   onRepairFoundationPages,
   isRepairingFoundation,
-  onOpenNavigation
+  onOpenNavigation,
+  onBulkGenerateSelectedBriefs
 }) => {
   const { state, dispatch } = useAppState();
   const { activeMapId, businessInfo, isLoading, briefGenerationStatus, user } = state;
@@ -789,12 +792,25 @@ const TopicalMapDisplay: React.FC<TopicalMapDisplayProps> = ({
   }, [selectedTopicIds, allTopics, coreTopics, onUpdateTopic, dispatch]);
 
   // Bulk generate briefs for selected topics without briefs
-  const handleBulkGenerateBriefs = useCallback(() => {
-    const topicsNeedingBriefs = allTopics.filter(t => selectedTopicIds.includes(t.id) && !briefs[t.id]);
-    for (const topic of topicsNeedingBriefs) {
-      onSelectTopicForBrief(topic);
+  const handleBulkGenerateBriefs = useCallback(async () => {
+    const topicIds = allTopics
+      .filter(t => selectedTopicIds.includes(t.id) && !briefs[t.id])
+      .map(t => t.id);
+    if (topicIds.length === 0) {
+      dispatch({ type: 'SET_NOTIFICATION', payload: 'All selected topics already have briefs.' });
+      return;
     }
-  }, [selectedTopicIds, allTopics, briefs, onSelectTopicForBrief]);
+    if (onBulkGenerateSelectedBriefs) {
+      // Use batch processor (sequential, no modals, with progress tracking)
+      dispatch({ type: 'SET_NOTIFICATION', payload: `Starting bulk brief generation for ${topicIds.length} topic(s)...` });
+      await onBulkGenerateSelectedBriefs(topicIds);
+    } else {
+      // Fallback: generate one at a time (will open modal for last topic only)
+      for (const topic of allTopics.filter(t => topicIds.includes(t.id))) {
+        onSelectTopicForBrief(topic);
+      }
+    }
+  }, [selectedTopicIds, allTopics, briefs, onBulkGenerateSelectedBriefs, onSelectTopicForBrief, dispatch]);
 
   // Search result count for the toolbar
   const searchResultCount = searchFilteredIds ? searchFilteredIds.size : null;

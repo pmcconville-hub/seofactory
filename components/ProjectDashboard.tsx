@@ -92,6 +92,7 @@ interface ProjectDashboardProps {
   onViewInternalLinking: () => void;
   onUploadGsc: () => void;
   onGenerateAllBriefs: () => void;
+  onBulkGenerateSelectedBriefs?: (topicIds: string[]) => Promise<void>;
   onExportData: (format: 'csv' | 'xlsx') => void;
   onValidateMap: () => void;
   onFindMergeOpportunities: () => void;
@@ -188,6 +189,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
     onViewInternalLinking,
     onUploadGsc,
     onGenerateAllBriefs,
+    onBulkGenerateSelectedBriefs,
     onExportData,
     onValidateMap,
     onFindMergeOpportunities,
@@ -621,6 +623,7 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                     onUpdateTopic={onUpdateTopic}
                     onRepairFoundationPages={onGenerateMissingFoundationPages}
                     isRepairingFoundation={isLoadingFoundationPages}
+                    onBulkGenerateSelectedBriefs={onBulkGenerateSelectedBriefs}
                 />
             </FeatureErrorBoundary>
 

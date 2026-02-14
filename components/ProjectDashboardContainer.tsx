@@ -248,6 +248,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
         handleStartAnalysis,
         onGenerateBrief,
         onGenerateAllBriefs,
+        onBulkGenerateSelectedBriefs,
         onCancelBriefGeneration,
         onGenerateDraft,
         onGenerateSchema,
@@ -353,6 +354,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                 onViewInternalLinking={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'internalLinking', visible: true } })}
                 onUploadGsc={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'gsc', visible: true } })}
                 onGenerateAllBriefs={onGenerateAllBriefs}
+                onBulkGenerateSelectedBriefs={onBulkGenerateSelectedBriefs}
                 onExportData={handleExportData}
                 onValidateMap={onValidateMap}
                 onFindMergeOpportunities={onFindMergeOpportunities}

@@ -147,6 +147,15 @@ export function useContentOperations({
         setShowBulkSummary(true);
     }, [dispatch, allTopics, stateRef, setShowBulkSummary]);
 
+    // --- BULK BRIEF GENERATION (selected topics only) ---
+    const onBulkGenerateSelectedBriefs = useCallback(async (topicIds: string[]) => {
+        const selectedTopics = allTopics.filter(t => topicIds.includes(t.id));
+        if (selectedTopics.length === 0) return;
+        const processor = new BatchProcessor(dispatch, () => stateRef.current);
+        await processor.generateAllBriefs(selectedTopics);
+        setShowBulkSummary(true);
+    }, [dispatch, allTopics, stateRef, setShowBulkSummary]);
+
     const onCancelBriefGeneration = useCallback(() => {
         dispatch({ type: 'CANCEL_BRIEF_GENERATION' });
     }, [dispatch]);
@@ -956,6 +965,7 @@ export function useContentOperations({
         // Content generation
         onGenerateBrief,
         onGenerateAllBriefs,
+        onBulkGenerateSelectedBriefs,
         onCancelBriefGeneration,
         onGenerateDraft,
         onGenerateSchema,
