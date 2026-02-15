@@ -182,6 +182,7 @@ export class UnifiedAuditOrchestrator {
       missingKnowledgeGraphTopics,
       cannibalizationRisks,
       contentFetchFailed,
+      fetchedContent,
       language: request.language,
       version: 1,
       createdAt: new Date().toISOString(),

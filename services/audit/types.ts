@@ -95,6 +95,7 @@ export interface UnifiedAuditReport {
   performanceCorrelation?: PerformanceCorrelation;
   relatedUrlScores?: { url: string; score: number; summary: string }[];
   contentFetchFailed?: boolean;
+  fetchedContent?: FetchedContent;
   language: string;
   version: number;
   createdAt: string;
