@@ -213,75 +213,94 @@ async function fetchGscData(
   propertyDbId: string,
   syncLogId: string
 ): Promise<{ rows: any[]; rowCount: number }> {
-  // Fetch last 7 days of search analytics
+  // Fetch up to 16 months of search analytics (GSC maximum retention)
   const endDate = new Date();
   const startDate = new Date();
-  startDate.setDate(startDate.getDate() - 7);
+  startDate.setMonth(startDate.getMonth() - 16);
 
   const formatDate = (d: Date) => d.toISOString().split('T')[0];
+  const GSC_PAGE_SIZE = 25000; // GSC API maximum rows per request
 
-  const response = await fetch(
-    `${GSC_API_BASE}/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        startDate: formatDate(startDate),
-        endDate: formatDate(endDate),
-        dimensions: ['query', 'page', 'date'],
-        rowLimit: 5000,
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`GSC API error (${response.status}): ${errorBody}`);
-  }
-
-  const data = await response.json();
-  const rows = data.rows || [];
+  let totalRows = 0;
+  let startRow = 0;
+  let hasMore = true;
 
   console.log(
-    `[analytics-sync-worker] GSC: fetched ${rows.length} rows for ${siteUrl}`
+    `[analytics-sync-worker] GSC: fetching ${formatDate(startDate)} to ${formatDate(endDate)} for ${siteUrl}`
   );
 
-  // Persist rows to gsc_search_analytics table
-  if (rows.length > 0) {
-    const BATCH_SIZE = 500;
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const batch = rows.slice(i, i + BATCH_SIZE).map((row: any) => ({
-        property_id: propertyDbId,
-        sync_log_id: syncLogId,
-        date: row.keys[2],          // date dimension
-        query: row.keys[0],         // query dimension
-        page: row.keys[1],          // page dimension
-        clicks: row.clicks || 0,
-        impressions: row.impressions || 0,
-        ctr: row.ctr || 0,
-        position: row.position || 0,
-      }));
+  while (hasMore) {
+    const response = await fetch(
+      `${GSC_API_BASE}/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          startDate: formatDate(startDate),
+          endDate: formatDate(endDate),
+          dimensions: ['query', 'page', 'date'],
+          rowLimit: GSC_PAGE_SIZE,
+          startRow,
+        }),
+      }
+    );
 
-      const { error: insertError } = await supabase
-        .from('gsc_search_analytics')
-        .upsert(batch, { onConflict: 'property_id,date,query,page' });
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`GSC API error (${response.status}): ${errorBody}`);
+    }
 
-      if (insertError) {
-        console.error(
-          `[analytics-sync-worker] GSC insert batch ${i / BATCH_SIZE + 1} failed:`,
-          insertError
-        );
+    const data = await response.json();
+    const rows = data.rows || [];
+
+    console.log(
+      `[analytics-sync-worker] GSC: page at startRow=${startRow}, got ${rows.length} rows`
+    );
+
+    // Persist rows to gsc_search_analytics table
+    if (rows.length > 0) {
+      const BATCH_SIZE = 500;
+      for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+        const batch = rows.slice(i, i + BATCH_SIZE).map((row: any) => ({
+          property_id: propertyDbId,
+          sync_log_id: syncLogId,
+          date: row.keys[2],          // date dimension
+          query: row.keys[0],         // query dimension
+          page: row.keys[1],          // page dimension
+          clicks: row.clicks || 0,
+          impressions: row.impressions || 0,
+          ctr: row.ctr || 0,
+          position: row.position || 0,
+        }));
+
+        const { error: insertError } = await supabase
+          .from('gsc_search_analytics')
+          .upsert(batch, { onConflict: 'property_id,date,query,page' });
+
+        if (insertError) {
+          console.error(
+            `[analytics-sync-worker] GSC insert batch failed at offset ${i}:`,
+            insertError
+          );
+        }
       }
     }
-    console.log(
-      `[analytics-sync-worker] GSC: persisted ${rows.length} rows for ${siteUrl}`
-    );
+
+    totalRows += rows.length;
+    startRow += rows.length;
+
+    // If we got fewer rows than the page size, we've reached the end
+    hasMore = rows.length === GSC_PAGE_SIZE;
   }
 
-  return { rows, rowCount: rows.length };
+  console.log(
+    `[analytics-sync-worker] GSC: persisted ${totalRows} total rows for ${siteUrl}`
+  );
+
+  return { rows: [], rowCount: totalRows };
 }
 
 // ---------------------------------------------------------------------------
