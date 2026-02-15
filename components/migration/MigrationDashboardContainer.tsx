@@ -11,6 +11,7 @@ import { StrategySelectionModal } from './StrategySelectionModal';
 import { MigrationWorkbenchModal } from './MigrationWorkbenchModal';
 import { ExportPanel } from './ExportPanel';
 import { TriageView } from './TriageView';
+import { AuthorityWizardContainer } from './AuthorityWizardContainer';
 import TopicalMapDisplay from '../TopicalMapDisplay';
 import { SiteInventoryItem, ActionType, EnrichedTopic } from '../../types';
 import { useInventoryOperations } from '../../hooks/useInventoryOperations';
@@ -35,7 +36,7 @@ const MigrationDashboardContainer: React.FC = () => {
     } = useInventoryOperations(activeProjectId, businessInfo, dispatch, activeMapId, state.user?.id);
 
     const [showWizard, setShowWizard] = useState(false);
-    const [viewType, setViewType] = useState<'MATRIX' | 'GRAPH' | 'KANBAN' | 'TRIAGE'>('MATRIX');
+    const [viewType, setViewType] = useState<'WIZARD' | 'MATRIX' | 'GRAPH' | 'KANBAN' | 'TRIAGE'>('WIZARD');
     
     // Strategy Modal State
     const [showStrategyModal, setShowStrategyModal] = useState(false);
@@ -126,7 +127,13 @@ const MigrationDashboardContainer: React.FC = () => {
                   <ExportPanel inventory={inventory} topics={allTopics} />
                   
                   <div className="bg-gray-800 p-1 rounded-lg flex text-xs">
-                      <button 
+                      <button
+                        onClick={() => setViewType('WIZARD')}
+                        className={`px-3 py-1.5 rounded ${viewType === 'WIZARD' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                      >
+                          Wizard
+                      </button>
+                      <button
                         onClick={() => setViewType('MATRIX')}
                         className={`px-3 py-1.5 rounded ${viewType === 'MATRIX' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
                       >
@@ -167,6 +174,19 @@ const MigrationDashboardContainer: React.FC = () => {
             </header>
 
             <div className="flex-grow flex gap-4 overflow-hidden px-4 pb-4">
+                {viewType === 'WIZARD' ? (
+                    <div className="w-full flex flex-col">
+                        <AuthorityWizardContainer
+                            projectId={activeProjectId || ''}
+                            mapId={activeMapId || ''}
+                            inventory={inventory}
+                            topics={allTopics}
+                            isLoadingInventory={isLoadingInventory}
+                            onRefreshInventory={refreshInventory}
+                        />
+                    </div>
+                ) : (
+                <>
                 <div className={`${(viewType === 'KANBAN' || viewType === 'TRIAGE') ? 'w-full' : 'w-1/2'} flex flex-col min-w-[400px]`}>
                     {isLoadingInventory ? (
                         <div className="flex-grow flex items-center justify-center bg-gray-800/30 border border-gray-700 rounded-lg">
@@ -212,7 +232,7 @@ const MigrationDashboardContainer: React.FC = () => {
                             <h3 className="text-lg font-bold text-blue-300">Target Strategy (Ideal Map)</h3>
                             {!activeMapId && <span className="text-xs text-red-400">No Map Selected</span>}
                         </div>
-                        
+
                         <div className="flex-grow overflow-y-auto pr-2 custom-scrollbar">
                             {activeMapId ? (
                                 <TopicalMapDisplay
@@ -236,6 +256,8 @@ const MigrationDashboardContainer: React.FC = () => {
                             )}
                         </div>
                     </div>
+                )}
+                </>
                 )}
             </div>
 
