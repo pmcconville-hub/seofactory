@@ -2453,6 +2453,8 @@ export interface SiteInventoryItem {
     // Auto-matching
     match_confidence?: number;    // 0.00-1.00
     match_source?: 'auto' | 'manual' | 'confirmed';
+    match_category?: 'matched' | 'orphan' | 'cannibalization';
+    content_cached_at?: string;   // ISO timestamp
 
     // Migration plan
     recommended_action?: ActionType;

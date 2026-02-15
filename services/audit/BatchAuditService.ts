@@ -230,5 +230,59 @@ export class BatchAuditService {
       .from('site_inventory')
       .update(updateData)
       .eq('id', item.id);
+
+    // Cache the fetched content in transition_snapshots to avoid re-scraping
+    if (fc) {
+      await this.cacheContent(item.id, fc);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Content caching — saves fetched content to transition_snapshots
+  // -------------------------------------------------------------------------
+
+  private async cacheContent(
+    inventoryId: string,
+    fc: { semanticText?: string; rawHtml?: string },
+  ): Promise<void> {
+    const markdown = fc.semanticText || '';
+    if (!markdown) return;
+
+    try {
+      // Upsert: update existing ORIGINAL_IMPORT snapshot or create one
+      const { data: existing } = await this.supabase
+        .from('transition_snapshots')
+        .select('id')
+        .eq('inventory_id', inventoryId)
+        .eq('snapshot_type', 'ORIGINAL_IMPORT')
+        .maybeSingle();
+
+      if (existing) {
+        await this.supabase
+          .from('transition_snapshots')
+          .update({
+            content_markdown: markdown,
+            created_at: new Date().toISOString(),
+          })
+          .eq('id', existing.id);
+      } else {
+        await this.supabase
+          .from('transition_snapshots')
+          .insert({
+            inventory_id: inventoryId,
+            content_markdown: markdown,
+            snapshot_type: 'ORIGINAL_IMPORT',
+          });
+      }
+
+      // Mark content as cached on the inventory item
+      await this.supabase
+        .from('site_inventory')
+        .update({ content_cached_at: new Date().toISOString() })
+        .eq('id', inventoryId);
+    } catch (err) {
+      // Content caching is non-fatal — don't break the audit flow
+      console.warn('[BatchAuditService] Failed to cache content:', err);
+    }
   }
 }

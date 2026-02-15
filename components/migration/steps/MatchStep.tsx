@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { SiteInventoryItem, EnrichedTopic } from '../../../types';
 import { useAutoMatch } from '../../../hooks/useAutoMatch';
 import type { MatchResult, GapTopic, MatchSignal } from '../../../services/migration/AutoMatchService';
@@ -96,8 +96,16 @@ export const MatchStep: React.FC<MatchStepProps> = ({
     confirmMatch,
     rejectMatch,
     confirmAll,
+    tryLoadFromDb,
     error,
   } = useAutoMatch(projectId, mapId);
+
+  // Try to load persisted match results from DB on mount
+  useEffect(() => {
+    if (inventory.length > 0 && topics.length > 0) {
+      tryLoadFromDb(inventory, topics);
+    }
+  }, [inventory.length, topics.length, tryLoadFromDb]);
 
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [confirmThreshold, setConfirmThreshold] = useState(70);
@@ -328,6 +336,13 @@ export const MatchStep: React.FC<MatchStepProps> = ({
       {error && (
         <div className="px-4 py-3 rounded-lg bg-red-900/30 border border-red-700 text-red-300 text-sm">
           {error}
+        </div>
+      )}
+
+      {/* Loaded from DB indicator */}
+      {result && result.matches.length > 0 && result.matches[0].matchSignals.length === 0 && (
+        <div className="text-center text-xs text-gray-500 bg-gray-800/30 rounded py-1.5 px-3">
+          Results loaded from previous run. Click &quot;Re-run Auto-Match&quot; for updated signal details.
         </div>
       )}
 

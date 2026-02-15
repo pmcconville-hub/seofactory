@@ -109,6 +109,11 @@ export class RedirectChainChecker {
   }
 
   private defaultFetcher: UrlFetcher = async (url) => {
+    // In browser context, cross-origin fetch with redirect: 'manual' is blocked
+    // by CORS policy. Skip entirely to avoid console error spam.
+    if (typeof window !== 'undefined') {
+      return { status: 200 };
+    }
     try {
       const response = await fetch(url, { redirect: 'manual' });
       return {
@@ -116,7 +121,6 @@ export class RedirectChainChecker {
         location: response.headers.get('location') || undefined,
       };
     } catch {
-      // CORS or network error — can't check redirects from browser
       return { status: 200 };
     }
   };

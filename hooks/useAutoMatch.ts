@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { AutoMatchService, AutoMatchResult, MatchResult } from '../services/migration/AutoMatchService';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { AutoMatchService, AutoMatchResult, MatchResult, GapTopic } from '../services/migration/AutoMatchService';
 import type { SiteInventoryItem, EnrichedTopic } from '../types';
 import { getSupabaseClient } from '../services/supabaseClient';
 import { useAppState } from '../state/appState';
@@ -9,6 +9,10 @@ import { useAppState } from '../state/appState';
  *
  * Uses AutoMatchService (Jaccard-based text similarity) with optional GSC query signals
  * to produce match results, then allows confirming/rejecting individual or batch matches.
+ *
+ * All match results are persisted to site_inventory immediately on run, so they
+ * survive page refresh. On mount, the hook reconstructs the AutoMatchResult from
+ * the persisted data if any items have match_category set.
  */
 export function useAutoMatch(projectId: string, mapId: string) {
   const { state } = useAppState();
@@ -17,6 +21,7 @@ export function useAutoMatch(projectId: string, mapId: string) {
   const [isMatching, setIsMatching] = useState(false);
   const [result, setResult] = useState<AutoMatchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const loadedFromDb = useRef(false);
 
   /**
    * Fetch top GSC queries per page from gsc_search_analytics.
@@ -60,15 +65,101 @@ export function useAutoMatch(projectId: string, mapId: string) {
       } else if (existing.length < 10) {
         existing.push(row.query);
       }
-      // Skip if already have 10 queries for this page (rows are ordered by clicks DESC)
     }
 
     return gscQueriesMap;
   }, [projectId, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
 
   /**
+   * Persist all match results to site_inventory immediately.
+   * Sets match_category, match_confidence, mapped_topic_id (tentative), and match_source='auto'.
+   */
+  const persistMatchResults = useCallback(async (
+    matchResult: AutoMatchResult,
+  ): Promise<void> => {
+    const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey) as any;
+
+    const updatePromises = matchResult.matches.map((match: MatchResult) => {
+      const updateData: Record<string, unknown> = {
+        match_category: match.category,
+        match_confidence: match.confidence,
+        match_source: 'auto',
+        updated_at: new Date().toISOString(),
+      };
+
+      // For matched items, set tentative mapped_topic_id
+      if (match.category === 'matched' && match.topicId) {
+        updateData.mapped_topic_id = match.topicId;
+      }
+      // For orphans, clear mapped_topic_id
+      if (match.category === 'orphan') {
+        updateData.mapped_topic_id = null;
+      }
+      // For cannibalization, set the best match topic
+      if (match.category === 'cannibalization' && match.topicId) {
+        updateData.mapped_topic_id = match.topicId;
+      }
+
+      return supabase
+        .from('site_inventory')
+        .update(updateData)
+        .eq('id', match.inventoryId);
+    });
+
+    const results = await Promise.all(updatePromises);
+    const failures = results.filter((r: { error: unknown }) => r.error);
+    if (failures.length > 0) {
+      console.warn(`[useAutoMatch] ${failures.length} match persistence updates failed`);
+    }
+  }, [businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
+
+  /**
+   * Reconstruct an AutoMatchResult from persisted site_inventory data.
+   * Called on mount to restore previous match results without re-running.
+   */
+  const loadPersistedResults = useCallback((
+    inventory: SiteInventoryItem[],
+    topics: EnrichedTopic[],
+  ): AutoMatchResult | null => {
+    // Check if any items have match data
+    const itemsWithMatchData = inventory.filter(item => item.match_category);
+    if (itemsWithMatchData.length === 0) return null;
+
+    const matches: MatchResult[] = itemsWithMatchData.map(item => ({
+      inventoryId: item.id,
+      topicId: item.mapped_topic_id ?? null,
+      confidence: item.match_confidence ?? 0,
+      matchSignals: [], // Signals are not persisted (diagnostic detail)
+      category: item.match_category as 'matched' | 'orphan' | 'cannibalization',
+    }));
+
+    // Reconstruct gaps: topics not mapped to any inventory item
+    const matchedTopicIds = new Set(
+      inventory.filter(i => i.mapped_topic_id).map(i => i.mapped_topic_id!)
+    );
+    const gaps: GapTopic[] = topics
+      .filter(t => !matchedTopicIds.has(t.id))
+      .map(t => ({
+        topicId: t.id,
+        topicTitle: t.title,
+        importance: (t.type === 'core' ? 'pillar' : 'supporting') as 'pillar' | 'supporting',
+      }));
+
+    // Compute stats
+    const stats = {
+      matched: matches.filter(m => m.category === 'matched').length,
+      orphans: matches.filter(m => m.category === 'orphan').length,
+      gaps: gaps.length,
+      cannibalization: matches.filter(m => m.category === 'cannibalization').length,
+    };
+
+    return { matches, gaps, stats };
+  }, []);
+
+  /**
    * Run the auto-match algorithm against the given inventory and topics.
    * Fetches GSC queries from the database to enrich match signals.
+   * Persists all results immediately so they survive page refresh.
    */
   const runMatch = useCallback(async (
     inventory: SiteInventoryItem[],
@@ -86,6 +177,9 @@ export function useAutoMatch(projectId: string, mapId: string) {
       const service = new AutoMatchService();
       const matchResult = service.match(inventory, topics, gscQueries);
 
+      // Persist ALL results to database immediately
+      await persistMatchResults(matchResult);
+
       setResult(matchResult);
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Auto-match failed';
@@ -94,7 +188,23 @@ export function useAutoMatch(projectId: string, mapId: string) {
     } finally {
       setIsMatching(false);
     }
-  }, [fetchGscQueries]);
+  }, [fetchGscQueries, persistMatchResults]);
+
+  /**
+   * Try to load persisted match results from inventory data.
+   * Called when inventory or topics change and we haven't loaded yet.
+   */
+  const tryLoadFromDb = useCallback((
+    inventory: SiteInventoryItem[],
+    topics: EnrichedTopic[],
+  ) => {
+    if (loadedFromDb.current || result) return;
+    const persisted = loadPersistedResults(inventory, topics);
+    if (persisted) {
+      setResult(persisted);
+      loadedFromDb.current = true;
+    }
+  }, [loadPersistedResults, result]);
 
   /**
    * Confirm a single auto-match: sets the inventory item's mapped_topic_id,
@@ -150,6 +260,7 @@ export function useAutoMatch(projectId: string, mapId: string) {
           mapped_topic_id: null,
           match_confidence: null,
           match_source: null,
+          match_category: null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', inventoryId);
@@ -226,6 +337,7 @@ export function useAutoMatch(projectId: string, mapId: string) {
     confirmMatch,
     rejectMatch,
     confirmAll,
+    tryLoadFromDb,
     error,
   };
 }
