@@ -633,14 +633,17 @@ export const MatchStep: React.FC<MatchStepProps> = ({
               </div>
             )}
 
-          {/* Finish / Complete Button */}
-          {hasConfirmedSome && (
+          {/* Finish / Complete Button — always visible once results exist */}
+          {result && (
             <div className="flex justify-center pt-4">
               <button
                 onClick={handleFinish}
                 className="px-6 py-2.5 rounded-lg text-sm font-medium bg-green-700 text-white hover:bg-green-600 transition-colors"
               >
-                Finish Matching ({confirmedCount} confirmed) &rarr;
+                {confirmedCount > 0
+                  ? `Finish Matching (${confirmedCount} confirmed)`
+                  : 'Accept Results & Continue'}
+                {' '}&rarr;
               </button>
             </div>
           )}
