@@ -436,8 +436,9 @@ export const sanitizeInventoryFromDb = (dbItem: any): SiteInventoryItem => {
     const status = validStatuses.includes(dbItem.status) ? dbItem.status : 'AUDIT_PENDING';
 
     // Validate action is a valid ActionType
-    const validActions: ActionType[] = ['KEEP', 'REWRITE', 'MERGE', 'REDIRECT_301', 'PRUNE_410', 'CANONICALIZE'];
+    const validActions: ActionType[] = ['KEEP', 'OPTIMIZE', 'REWRITE', 'MERGE', 'REDIRECT_301', 'PRUNE_410', 'CANONICALIZE', 'CREATE_NEW'];
     const action = dbItem.action && validActions.includes(dbItem.action) ? dbItem.action : undefined;
+    const recommendedAction = dbItem.recommended_action && validActions.includes(dbItem.recommended_action) ? dbItem.recommended_action : undefined;
 
     return {
         id: safeString(dbItem.id),
@@ -460,6 +461,47 @@ export const sanitizeInventoryFromDb = (dbItem: any): SiteInventoryItem => {
         section: dbItem.section || undefined,
         status: status,
         action: action,
+
+        // Audit integration
+        audit_score: typeof dbItem.audit_score === 'number' ? dbItem.audit_score : undefined,
+        audit_snapshot_id: dbItem.audit_snapshot_id ? safeString(dbItem.audit_snapshot_id) : undefined,
+        last_audited_at: dbItem.last_audited_at ? safeString(dbItem.last_audited_at) : undefined,
+
+        // Page metadata (extracted during audit)
+        page_title: dbItem.page_title ? safeString(dbItem.page_title) : undefined,
+        page_h1: dbItem.page_h1 ? safeString(dbItem.page_h1) : undefined,
+        meta_description: dbItem.meta_description ? safeString(dbItem.meta_description) : undefined,
+        headings: Array.isArray(dbItem.headings) ? dbItem.headings : undefined,
+        internal_link_count: typeof dbItem.internal_link_count === 'number' ? dbItem.internal_link_count : undefined,
+        external_link_count: typeof dbItem.external_link_count === 'number' ? dbItem.external_link_count : undefined,
+        schema_types: Array.isArray(dbItem.schema_types) ? dbItem.schema_types : undefined,
+        language: dbItem.language ? safeString(dbItem.language) : undefined,
+
+        // Auto-matching
+        match_confidence: typeof dbItem.match_confidence === 'number' ? dbItem.match_confidence : undefined,
+        match_source: dbItem.match_source ? safeString(dbItem.match_source) as 'auto' | 'manual' | 'confirmed' : undefined,
+        match_category: dbItem.match_category ? safeString(dbItem.match_category) as 'matched' | 'orphan' | 'cannibalization' : undefined,
+        content_cached_at: dbItem.content_cached_at ? safeString(dbItem.content_cached_at) : undefined,
+
+        // Migration plan
+        recommended_action: recommendedAction,
+        action_reasoning: dbItem.action_reasoning ? safeString(dbItem.action_reasoning) : undefined,
+        action_priority: dbItem.action_priority ? safeString(dbItem.action_priority) as 'critical' | 'high' | 'medium' | 'low' : undefined,
+        action_effort: dbItem.action_effort ? safeString(dbItem.action_effort) as 'none' | 'low' | 'medium' | 'high' : undefined,
+
+        // CrUX / Core Web Vitals
+        cwv_lcp: typeof dbItem.cwv_lcp === 'number' ? dbItem.cwv_lcp : undefined,
+        cwv_inp: typeof dbItem.cwv_inp === 'number' ? dbItem.cwv_inp : undefined,
+        cwv_cls: typeof dbItem.cwv_cls === 'number' ? dbItem.cwv_cls : undefined,
+        cwv_assessment: dbItem.cwv_assessment ? safeString(dbItem.cwv_assessment) as 'good' | 'needs-improvement' | 'poor' : undefined,
+
+        // URL Inspection data
+        google_index_verdict: dbItem.google_index_verdict ? safeString(dbItem.google_index_verdict) : undefined,
+        google_canonical: dbItem.google_canonical ? safeString(dbItem.google_canonical) : undefined,
+        last_crawled_at: dbItem.last_crawled_at ? safeString(dbItem.last_crawled_at) : undefined,
+        mobile_usability: dbItem.mobile_usability ? safeString(dbItem.mobile_usability) : undefined,
+        rich_results_status: dbItem.rich_results_status ? safeString(dbItem.rich_results_status) : undefined,
+
         created_at: safeString(dbItem.created_at || new Date().toISOString()),
         updated_at: safeString(dbItem.updated_at || new Date().toISOString()),
     };
