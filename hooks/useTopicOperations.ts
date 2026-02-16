@@ -80,6 +80,7 @@ export const useTopicOperations = (
             dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic: newTopic } });
             dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Added and verified topic "${newTopic.title}".` });
             dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'addTopic', visible: false } });
+            return newTopic;
 
         } catch (e) {
              dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : "Failed to add topic." });

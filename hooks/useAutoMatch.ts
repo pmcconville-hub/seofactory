@@ -330,6 +330,139 @@ export function useAutoMatch(projectId: string, mapId: string) {
     }
   }, [result, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
 
+  /**
+   * Manually assign an orphan page to a topic.
+   * Updates Supabase and moves the item from orphan to matched in local state.
+   */
+  const manualMatch = useCallback(async (
+    inventoryId: string,
+    topicId: string,
+  ): Promise<void> => {
+    setError(null);
+
+    try {
+      const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey) as any;
+      const { error: updateError } = await supabase
+        .from('site_inventory')
+        .update({
+          mapped_topic_id: topicId,
+          match_confidence: 1.0,
+          match_source: 'manual',
+          match_category: 'matched',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', inventoryId);
+
+      if (updateError) {
+        throw new Error(`Failed to manually assign topic: ${updateError.message}`);
+      }
+
+      // Update in-memory result: move item from orphan to matched
+      setResult((prev) => {
+        if (!prev) return prev;
+        const updatedMatches = prev.matches.map((m: MatchResult) => {
+          if (m.inventoryId === inventoryId) {
+            return { ...m, topicId, confidence: 1.0, category: 'matched' as const };
+          }
+          return m;
+        });
+
+        // Recalculate gaps: topic may no longer be a gap
+        const matchedTopicIds = new Set(
+          updatedMatches.filter((m: MatchResult) => m.category === 'matched' && m.topicId).map((m: MatchResult) => m.topicId!)
+        );
+        const updatedGaps = prev.gaps.filter((g: GapTopic) => !matchedTopicIds.has(g.topicId));
+
+        return {
+          matches: updatedMatches,
+          gaps: updatedGaps,
+          stats: {
+            matched: updatedMatches.filter((m: MatchResult) => m.category === 'matched').length,
+            orphans: updatedMatches.filter((m: MatchResult) => m.category === 'orphan').length,
+            gaps: updatedGaps.length,
+            cannibalization: updatedMatches.filter((m: MatchResult) => m.category === 'cannibalization').length,
+          },
+        };
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to manually assign topic';
+      setError(message);
+      console.error('[useAutoMatch] manualMatch error:', e);
+    }
+  }, [businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
+
+  /**
+   * Bulk-assign multiple orphan pages to topics.
+   * Batches all Supabase updates in parallel and does a single state update.
+   */
+  const bulkManualMatch = useCallback(async (
+    assignments: { inventoryId: string; topicId: string }[],
+  ): Promise<void> => {
+    setError(null);
+
+    if (assignments.length === 0) return;
+
+    try {
+      const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey) as any;
+
+      const updatePromises = assignments.map(({ inventoryId, topicId }) =>
+        supabase
+          .from('site_inventory')
+          .update({
+            mapped_topic_id: topicId,
+            match_confidence: 1.0,
+            match_source: 'manual',
+            match_category: 'matched',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', inventoryId)
+      );
+
+      const results = await Promise.all(updatePromises);
+      const failures = results.filter((r: { error: unknown }) => r.error);
+      if (failures.length > 0) {
+        console.warn(`[useAutoMatch] ${failures.length} of ${assignments.length} bulk manual assignments failed`);
+      }
+
+      // Single state update for all assignments
+      const assignmentMap = new Map(assignments.map(a => [a.inventoryId, a.topicId]));
+      setResult((prev) => {
+        if (!prev) return prev;
+        const updatedMatches = prev.matches.map((m: MatchResult) => {
+          const newTopicId = assignmentMap.get(m.inventoryId);
+          if (newTopicId) {
+            return { ...m, topicId: newTopicId, confidence: 1.0, category: 'matched' as const };
+          }
+          return m;
+        });
+
+        const matchedTopicIds = new Set(
+          updatedMatches.filter((m: MatchResult) => m.category === 'matched' && m.topicId).map((m: MatchResult) => m.topicId!)
+        );
+        const updatedGaps = prev.gaps.filter((g: GapTopic) => !matchedTopicIds.has(g.topicId));
+
+        return {
+          matches: updatedMatches,
+          gaps: updatedGaps,
+          stats: {
+            matched: updatedMatches.filter((m: MatchResult) => m.category === 'matched').length,
+            orphans: updatedMatches.filter((m: MatchResult) => m.category === 'orphan').length,
+            gaps: updatedGaps.length,
+            cannibalization: updatedMatches.filter((m: MatchResult) => m.category === 'cannibalization').length,
+          },
+        };
+      });
+
+      if (failures.length > 0) {
+        throw new Error(`${failures.length} of ${assignments.length} bulk assignments failed`);
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Bulk manual assignment failed';
+      setError(message);
+      console.error('[useAutoMatch] bulkManualMatch error:', e);
+    }
+  }, [businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
+
   return {
     isMatching,
     result,
@@ -338,6 +471,8 @@ export function useAutoMatch(projectId: string, mapId: string) {
     rejectMatch,
     confirmAll,
     tryLoadFromDb,
+    manualMatch,
+    bulkManualMatch,
     error,
   };
 }

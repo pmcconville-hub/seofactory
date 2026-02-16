@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SiteInventoryItem, EnrichedTopic } from '../../types';
 import { useAppState } from '../../state/appState';
 import { useBatchAudit } from '../../hooks/useBatchAudit';
+import { useTopicOperations } from '../../hooks/useTopicOperations';
 import { ImportStep } from './steps/ImportStep';
 import { AuditStep } from './steps/AuditStep';
 import { MatchStep } from './steps/MatchStep';
@@ -43,7 +44,10 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
   onOpenWorkbench,
   onCreateBrief,
 }) => {
-  const { dispatch } = useAppState();
+  const { state, dispatch } = useAppState();
+  const { user, businessInfo } = state;
+
+  const { handleAddTopic } = useTopicOperations(mapId, businessInfo, topics, dispatch, user);
 
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [importComplete, setImportComplete] = useState(false);
@@ -292,6 +296,7 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
             topics={topics}
             onComplete={() => setMatchComplete(true)}
             onRefreshInventory={onRefreshInventory}
+            onCreateTopic={handleAddTopic}
           />
         )}
 

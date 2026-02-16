@@ -10,6 +10,7 @@ import {
   type UrlCategory,
   type DetectedLanguage,
 } from '../../../utils/urlClassifier';
+import { TopicAssignmentModal } from '../TopicAssignmentModal';
 
 // ── Props ──────────────────────────────────────────────────────────────────
 
@@ -20,6 +21,7 @@ interface MatchStepProps {
   topics: EnrichedTopic[];
   onComplete: () => void;
   onRefreshInventory: () => void;
+  onCreateTopic?: (data: Omit<EnrichedTopic, 'id' | 'map_id' | 'slug'>, placement: string) => Promise<EnrichedTopic | undefined>;
 }
 
 // ── Filter tabs ────────────────────────────────────────────────────────────
@@ -63,8 +65,9 @@ const CATEGORY_GUIDANCE: Record<UrlCategory, string> = {
 const TAB_BANNERS: Record<string, { title: string; body: string; actions?: string[] }> = {
   orphans: {
     title: 'What are orphan pages?',
-    body: "Orphan pages have no matching topic in your topical map. This doesn't mean they're bad \u2014 they may be utility pages, legacy content, or topics you haven't planned for. In the Plan step, orphans with traffic get REDIRECT, decent quality orphans get KEEP, and low-quality no-traffic orphans get PRUNE.",
+    body: "Orphan pages have no matching topic in your topical map. Use the link icon to assign a topic or create a new one. Unassigned orphans with traffic get REDIRECT in the Plan step, decent quality gets KEEP, low-quality no-traffic gets PRUNE.",
     actions: [
+      'Assign (link icon): Assign an existing topic or create a new one.',
       'Keep (default): Leave in the dataset \u2014 the Plan step decides based on traffic/quality.',
       'Reject (X): Remove from migration planning entirely.',
     ],
@@ -165,6 +168,7 @@ export const MatchStep: React.FC<MatchStepProps> = ({
   topics,
   onComplete,
   onRefreshInventory,
+  onCreateTopic,
 }) => {
   const {
     isMatching,
@@ -174,6 +178,8 @@ export const MatchStep: React.FC<MatchStepProps> = ({
     rejectMatch,
     confirmAll,
     tryLoadFromDb,
+    manualMatch,
+    bulkManualMatch,
     error,
   } = useAutoMatch(projectId, mapId);
 
@@ -196,6 +202,9 @@ export const MatchStep: React.FC<MatchStepProps> = ({
   const [orphanGroupBy, setOrphanGroupBy] = useState<OrphanGroupBy>('category');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [collapsedBanners, setCollapsedBanners] = useState<Set<string>>(new Set());
+
+  // Topic assignment modal state
+  const [assignTarget, setAssignTarget] = useState<EnrichedMatch | null>(null);
 
   // Build lookups
   const inventoryMap = useMemo(() => {
@@ -369,6 +378,28 @@ export const MatchStep: React.FC<MatchStepProps> = ({
       .sort((a, b) => b[1].items.length - a[1].items.length)
       .map(([key, { label, items }]) => ({ key, label, items }));
   }, [enrichedMatches, orphanGroupBy, applyFilters]);
+
+  // All orphan matches (for similar-orphan detection)
+  const orphanMatches = useMemo(
+    () => enrichedMatches.filter((m) => m.category === 'orphan'),
+    [enrichedMatches],
+  );
+
+  // Find similar orphans by URL slug prefix (e.g., "sedumdak-breda" matches "sedumdak")
+  const findSimilarOrphans = useCallback(
+    (target: EnrichedMatch): EnrichedMatch[] => {
+      const slug = getPathname(target.inv?.url ?? '').split('/').filter(Boolean).pop() || '';
+      const parts = slug.split('-');
+      if (parts.length < 2) return [];
+      const baseSlug = parts[0];
+      return orphanMatches.filter((o) => {
+        if (o.inventoryId === target.inventoryId) return false;
+        const oSlug = getPathname(o.inv?.url ?? '').split('/').filter(Boolean).pop() || '';
+        return oSlug.startsWith(baseSlug + '-') || oSlug === baseSlug;
+      });
+    },
+    [orphanMatches],
+  );
 
   // ── Handlers ──────────────────────────────────────────────────────────
 
@@ -641,6 +672,7 @@ export const MatchStep: React.FC<MatchStepProps> = ({
                   confirmedIds={confirmedIds}
                   rejectedIds={rejectedIds}
                   onReject={handleReject}
+                  onAssign={setAssignTarget}
                 />
               ))}
             </div>
@@ -681,6 +713,7 @@ export const MatchStep: React.FC<MatchStepProps> = ({
                 rejectedIds={rejectedIds}
                 onConfirm={handleConfirm}
                 onReject={handleReject}
+                onAssign={setAssignTarget}
               />
             </>
           )}
@@ -697,6 +730,7 @@ export const MatchStep: React.FC<MatchStepProps> = ({
                 rejectedIds={rejectedIds}
                 onConfirm={handleConfirm}
                 onReject={handleReject}
+                onAssign={setAssignTarget}
               />
             </>
           )}
@@ -756,6 +790,18 @@ export const MatchStep: React.FC<MatchStepProps> = ({
           )}
         </>
       )}
+
+      {/* Topic Assignment Modal */}
+      <TopicAssignmentModal
+        isOpen={!!assignTarget}
+        onClose={() => setAssignTarget(null)}
+        orphan={assignTarget}
+        topics={topics}
+        similarOrphans={assignTarget ? findSimilarOrphans(assignTarget) : []}
+        onAssign={manualMatch}
+        onBulkAssign={bulkManualMatch}
+        onCreateTopic={onCreateTopic}
+      />
     </div>
   );
 };
@@ -916,12 +962,14 @@ function EnhancedMatchTable({
   rejectedIds,
   onConfirm,
   onReject,
+  onAssign,
 }: {
   matches: EnrichedMatch[];
   confirmedIds: Set<string>;
   rejectedIds: Set<string>;
   onConfirm: (inventoryId: string, topicId: string) => void;
   onReject: (inventoryId: string) => void;
+  onAssign: (match: EnrichedMatch) => void;
 }) {
   if (matches.length === 0) return null;
 
@@ -1000,9 +1048,16 @@ function EnhancedMatchTable({
                 {/* Topic */}
                 <td className="px-3 py-2.5 max-w-[200px]">
                   {match.topic ? (
-                    <span className="text-gray-200 text-xs truncate block" title={match.topic.title}>
-                      {truncateStr(match.topic.title, 40)}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-gray-200 text-xs truncate" title={match.topic.title}>
+                        {truncateStr(match.topic.title, 40)}
+                      </span>
+                      {match.inv?.match_source === 'manual' && (
+                        <span className="text-[9px] font-semibold px-1 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-700 flex-shrink-0">
+                          manual
+                        </span>
+                      )}
+                    </div>
                   ) : (
                     <span className="text-gray-600 italic text-xs">No match</span>
                   )}
@@ -1041,6 +1096,15 @@ function EnhancedMatchTable({
                 {/* Actions */}
                 <td className="px-3 py-2.5 text-center">
                   <div className="flex items-center justify-center gap-1">
+                    {!match.topicId && match.category === 'orphan' && !isRejected && (
+                      <button
+                        onClick={() => onAssign(match)}
+                        className="p-1.5 rounded hover:bg-blue-900/40 text-blue-400 hover:text-blue-300 transition-colors"
+                        title="Assign topic"
+                      >
+                        <LinkIcon />
+                      </button>
+                    )}
                     {match.topicId && !isConfirmed && !isRejected && (
                       <button
                         onClick={() => onConfirm(match.inventoryId, match.topicId!)}
@@ -1083,6 +1147,7 @@ function OrphanGroupSection({
   confirmedIds,
   rejectedIds,
   onReject,
+  onAssign,
 }: {
   groupKey: string;
   label: string;
@@ -1094,6 +1159,7 @@ function OrphanGroupSection({
   confirmedIds: Set<string>;
   rejectedIds: Set<string>;
   onReject: (id: string) => void;
+  onAssign: (match: EnrichedMatch) => void;
 }) {
   const totalClicks = items.reduce((sum, m) => sum + m.clicks, 0);
   const unrejectedCount = items.filter((m) => !rejectedIds.has(m.inventoryId)).length;
@@ -1196,15 +1262,24 @@ function OrphanGroupSection({
                     {match.auditScore !== null ? match.auditScore : '-'}
                   </span>
 
-                  {/* Reject button */}
+                  {/* Assign + Reject buttons */}
                   {!isRejected ? (
-                    <button
-                      onClick={() => onReject(match.inventoryId)}
-                      className="p-1 rounded hover:bg-red-900/40 text-red-400 hover:text-red-300 transition-colors flex-shrink-0"
-                      title="Reject"
-                    >
-                      <XIcon />
-                    </button>
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                      <button
+                        onClick={() => onAssign(match)}
+                        className="p-1 rounded hover:bg-blue-900/40 text-blue-400 hover:text-blue-300 transition-colors"
+                        title="Assign topic"
+                      >
+                        <LinkIcon />
+                      </button>
+                      <button
+                        onClick={() => onReject(match.inventoryId)}
+                        className="p-1 rounded hover:bg-red-900/40 text-red-400 hover:text-red-300 transition-colors"
+                        title="Reject"
+                      >
+                        <XIcon />
+                      </button>
+                    </div>
                   ) : (
                     <span className="text-red-500 text-[10px] font-medium flex-shrink-0 w-6 text-center">
                       Rej
@@ -1404,6 +1479,14 @@ function XIcon() {
   return (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  );
+}
+
+function LinkIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
     </svg>
   );
 }
