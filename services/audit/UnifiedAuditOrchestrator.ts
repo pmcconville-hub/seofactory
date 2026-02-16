@@ -14,6 +14,7 @@ import type {
 } from './types';
 import { DEFAULT_AUDIT_WEIGHTS } from './types';
 import { AuditSnapshotService } from './AuditSnapshotService';
+import { buildRuleInventory } from './ruleRegistry';
 
 export interface AuditProgressEvent {
   type: 'start' | 'fetching_content' | 'discovering_urls' | 'phase_start' | 'phase_complete' | 'complete';
@@ -47,6 +48,17 @@ export class UnifiedAuditOrchestrator {
     this.contentFetcher = contentFetcher;
     this.urlDiscoverer = urlDiscoverer;
     this.options = options;
+  }
+
+  /**
+   * Inject per-URL site context (robots.txt, sitemap, CWV, GSC) into the
+   * topical map context. Called by BatchAuditService before each URL audit.
+   */
+  injectSiteContext(ctx: Partial<TopicalMapContext>): void {
+    if (!this.options.topicalMapContext) {
+      this.options.topicalMapContext = {};
+    }
+    Object.assign(this.options.topicalMapContext, ctx);
   }
 
   /**
@@ -171,6 +183,9 @@ export class UnifiedAuditOrchestrator {
 
     onProgress?.({ type: 'complete', progress: 1 });
 
+    // Build complete rule inventory (passed/failed/skipped for every rule)
+    const ruleInventory = buildRuleInventory(phaseResults, enrichedContent);
+
     const report: UnifiedAuditReport = {
       id: crypto.randomUUID(),
       projectId: request.projectId,
@@ -183,6 +198,7 @@ export class UnifiedAuditOrchestrator {
       cannibalizationRisks,
       contentFetchFailed,
       fetchedContent,
+      ruleInventory,
       language: request.language,
       version: 1,
       createdAt: new Date().toISOString(),

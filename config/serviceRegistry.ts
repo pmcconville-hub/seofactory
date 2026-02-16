@@ -20,7 +20,7 @@
 // ============================================================================
 
 export type AIProvider = 'anthropic' | 'gemini' | 'openai' | 'perplexity' | 'openrouter';
-export type ServiceName = 'dataforseo' | 'spaceserp' | 'apify' | 'firecrawl' | 'jina' | 'cloudinary' | 'markupgo';
+export type ServiceName = 'dataforseo' | 'spaceserp' | 'apify' | 'firecrawl' | 'jina' | 'cloudinary' | 'markupgo' | 'google';
 
 export interface ProviderModels {
   /** All valid model IDs accepted by this provider */
@@ -334,6 +334,17 @@ const markupgo: ServiceConfig = {
   },
 };
 
+const google: ServiceConfig = {
+  endpoints: {
+    pageSpeedInsights: 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed',
+    cruxApi: 'https://chromeuxreport.googleapis.com/v1/records:queryRecord',
+  },
+  pricing: {
+    'pagespeed-insights': { in: 0, out: 0 },  // Free API (25K requests/day with key)
+    'crux-api': { in: 0, out: 0 },             // Free API
+  },
+};
+
 // ============================================================================
 // Shared Operational Limits
 // ============================================================================
@@ -396,6 +407,7 @@ export const SERVICE_REGISTRY = {
     jina,
     cloudinary,
     markupgo,
+    google,
   } as Record<ServiceName, ServiceConfig>,
 
   limits,

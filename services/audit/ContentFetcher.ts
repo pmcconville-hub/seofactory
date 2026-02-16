@@ -44,6 +44,9 @@ export class ContentFetcher {
           language: parsed.language,
           provider,
           fetchDurationMs: Date.now() - start,
+          statusCode: raw.statusCode,
+          responseTimeMs: raw.responseTimeMs,
+          httpHeaders: raw.httpHeaders,
         };
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
@@ -55,7 +58,7 @@ export class ContentFetcher {
   private async fetchWithProvider(
     url: string,
     provider: FetchOptions['preferredProvider']
-  ): Promise<{ text: string; html: string; title: string }> {
+  ): Promise<{ text: string; html: string; title: string; statusCode?: number; responseTimeMs?: number; httpHeaders?: Record<string, string> }> {
     switch (provider) {
       case 'jina':
         return this.fetchWithJina(url);
@@ -109,7 +112,35 @@ export class ContentFetcher {
 
   private async fetchDirect(
     url: string
-  ): Promise<{ text: string; html: string; title: string }> {
+  ): Promise<{ text: string; html: string; title: string; statusCode?: number; responseTimeMs?: number; httpHeaders?: Record<string, string> }> {
+    // Use proxy if available (browser environment needs CORS proxy)
+    if (this.config.proxyConfig?.supabaseUrl) {
+      const proxyUrl = `${this.config.proxyConfig.supabaseUrl}/functions/v1/fetch-proxy`;
+      const start = Date.now();
+      const response = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': this.config.proxyConfig.supabaseAnonKey,
+          'Authorization': `Bearer ${this.config.proxyConfig.supabaseAnonKey}`,
+        },
+        body: JSON.stringify({ url, method: 'GET' }),
+      });
+      const data = await response.json();
+      if (!data.ok) throw new Error(`HTTP ${data.status}`);
+      const html = data.body || '';
+      const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/is);
+      return {
+        text: html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+        html,
+        title: titleMatch?.[1]?.trim() || '',
+        statusCode: data.status,
+        responseTimeMs: data.responseTimeMs ?? (Date.now() - start),
+        httpHeaders: data.headers,
+      };
+    }
+
+    // Direct fetch fallback
     const response = await fetch(url);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const html = await response.text();
@@ -118,6 +149,7 @@ export class ContentFetcher {
       text: html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
       html,
       title: titleMatch?.[1]?.trim() || '',
+      statusCode: response.status,
     };
   }
 

@@ -4,6 +4,23 @@ import { BusinessInfo, SiteInventoryItem } from '../types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
+ * Normalizes a URL for consistent inventory matching.
+ * Strips trailing slashes (except root '/') so that sitemap URLs
+ * (e.g. https://example.com/page/) match GSC URLs (https://example.com/page).
+ */
+export function normalizeInventoryUrl(url: string): string {
+    try {
+        const u = new URL(url);
+        if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
+            u.pathname = u.pathname.slice(0, -1);
+        }
+        return u.toString();
+    } catch {
+        return url;
+    }
+}
+
+/**
  * Parses a CSV string from a Google Search Console Pages export.
  * @param csvText The raw CSV content as a string.
  * @returns A promise that resolves to an array of page row objects.
@@ -199,7 +216,7 @@ export const initializeInventory = async (
         
         const payload = chunk.map(url => ({
             project_id: projectId,
-            url: url,
+            url: normalizeInventoryUrl(url),
             status: 'AUDIT_PENDING',
             updated_at: new Date().toISOString()
         }));
@@ -241,7 +258,7 @@ export const processGscPages = async (
         
         const updates = chunk.map(row => ({
             project_id: projectId,
-            url: row.url,
+            url: normalizeInventoryUrl(row.url),
             gsc_clicks: row.clicks,
             gsc_impressions: row.impressions,
             gsc_position: row.position,
@@ -522,7 +539,8 @@ export const getLinkedGscProperty = async (
 
 /**
  * Imports GSC page-level data from gsc_search_analytics into site_inventory.
- * Aggregates per page URL: SUM(clicks), SUM(impressions), AVG(position).
+ * Uses the server-side get_gsc_page_metrics SQL function to aggregate all data
+ * without hitting Supabase's default 1000-row client limit.
  * If no synced data exists, triggers a manual sync via the analytics-sync-worker edge function.
  */
 export const importGscFromApi = async (
@@ -534,7 +552,6 @@ export const importGscFromApi = async (
 ): Promise<number> => {
     const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
 
-
     // 1. Get linked GSC property
     const property = await getLinkedGscProperty(projectId, supabaseUrl, supabaseAnonKey);
     if (!property) {
@@ -543,18 +560,22 @@ export const importGscFromApi = async (
 
     onStatus?.(`Found GSC property: ${property.property_id}`);
 
-    // 2. Query gsc_search_analytics aggregated by page
-    const { data: rawRows, error: queryError } = await (supabase as any)
-        .from('gsc_search_analytics')
-        .select('page, clicks, impressions, position')
-        .eq('property_id', property.id);
+    // 2. Use server-side aggregation via RPC (no row limit)
+    const endDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    if (queryError) {
-        throw new Error(`Failed to query GSC data: ${queryError.message}`);
+    const { data: pages, error: rpcError } = await (supabase as any).rpc('get_gsc_page_metrics', {
+        p_property_id: property.id,
+        p_start_date: startDate,
+        p_end_date: endDate,
+    });
+
+    if (rpcError) {
+        throw new Error(`Failed to query GSC data: ${rpcError.message}`);
     }
 
-    // 3. If no data, trigger a manual sync
-    if (!rawRows || rawRows.length === 0) {
+    // 3. If no data, trigger a manual sync then retry
+    if (!pages || pages.length === 0) {
         onStatus?.('No synced GSC data found. Triggering sync...');
 
         const { data: syncResult, error: syncError } = await supabase.functions.invoke(
@@ -578,59 +599,33 @@ export const importGscFromApi = async (
 
         onStatus?.(`Sync complete (${firstResult?.rowsSynced || 0} rows). Loading data...`);
 
-        // Re-query after sync
-        const { data: freshRows, error: freshError } = await (supabase as any)
-            .from('gsc_search_analytics')
-            .select('page, clicks, impressions, position')
-            .eq('property_id', property.id);
+        // Re-query via RPC after sync
+        const { data: freshPages, error: freshError } = await (supabase as any).rpc('get_gsc_page_metrics', {
+            p_property_id: property.id,
+            p_start_date: startDate,
+            p_end_date: endDate,
+        });
 
-        if (freshError || !freshRows || freshRows.length === 0) {
+        if (freshError || !freshPages || freshPages.length === 0) {
             throw new Error('No GSC data available after sync. Try uploading a CSV file instead.');
         }
 
-        return await aggregateAndUpsert(supabase, projectId, freshRows, onProgress, onStatus);
+        return await upsertGscPages(supabase, projectId, freshPages, onProgress, onStatus);
     }
 
-    return await aggregateAndUpsert(supabase, projectId, rawRows, onProgress, onStatus);
+    return await upsertGscPages(supabase, projectId, pages, onProgress, onStatus);
 };
 
-/** Aggregates raw GSC rows by page URL and upserts into site_inventory. */
-async function aggregateAndUpsert(
+/** Upserts server-aggregated GSC page metrics into site_inventory. */
+async function upsertGscPages(
     supabase: SupabaseClient,
     projectId: string,
-    rawRows: { page: string; clicks: number; impressions: number; position: number }[],
+    pages: { page: string; total_clicks: number; total_impressions: number; avg_position: number; top_queries?: unknown }[],
     onProgress?: (count: number, total: number) => void,
     onStatus?: (msg: string) => void
 ): Promise<number> {
-    // Aggregate by page URL
-    const pageMap = new Map<string, { clicks: number; impressions: number; positions: number[] }>();
-    for (const row of rawRows) {
-        const existing = pageMap.get(row.page);
-        if (existing) {
-            existing.clicks += row.clicks || 0;
-            existing.impressions += row.impressions || 0;
-            existing.positions.push(row.position || 0);
-        } else {
-            pageMap.set(row.page, {
-                clicks: row.clicks || 0,
-                impressions: row.impressions || 0,
-                positions: [row.position || 0],
-            });
-        }
-    }
-
-    const pages = Array.from(pageMap.entries()).map(([url, data]) => ({
-        url,
-        clicks: data.clicks,
-        impressions: data.impressions,
-        position: data.positions.length > 0
-            ? Math.round((data.positions.reduce((a, b) => a + b, 0) / data.positions.length) * 10) / 10
-            : 0,
-    }));
-
     onStatus?.(`Importing ${pages.length} pages into inventory...`);
 
-    // Upsert into site_inventory in chunks
     const CHUNK_SIZE = 100;
     let processed = 0;
 
@@ -638,11 +633,12 @@ async function aggregateAndUpsert(
         const chunk = pages.slice(i, i + CHUNK_SIZE);
         const payload = chunk.map(p => ({
             project_id: projectId,
-            url: p.url,
-            gsc_clicks: p.clicks,
-            gsc_impressions: p.impressions,
-            gsc_position: p.position,
-            index_status: p.impressions > 0 ? 'INDEXED' : undefined,
+            url: normalizeInventoryUrl(p.page),
+            gsc_clicks: p.total_clicks,
+            gsc_impressions: p.total_impressions,
+            gsc_position: p.avg_position,
+            gsc_top_queries: p.top_queries ?? null,
+            index_status: p.total_impressions > 0 ? 'INDEXED' : undefined,
             updated_at: new Date().toISOString(),
         }));
 

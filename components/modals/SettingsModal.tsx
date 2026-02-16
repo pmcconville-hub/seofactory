@@ -271,6 +271,11 @@ const ServiceSettings: React.FC<{ settings: Partial<BusinessInfo>, handleChange:
                 <Label htmlFor="markupGoApiKey">MarkupGo API Key</Label>
                 <Input id="markupGoApiKey" name="markupGoApiKey" value={settings.markupGoApiKey || ''} onChange={handleChange} type="password" placeholder="MarkupGo API Key for image generation" />
             </div>
+            <div>
+                <Label htmlFor="googleApiKey">Google API Key (PageSpeed / CrUX)</Label>
+                <Input id="googleApiKey" name="googleApiKey" value={settings.googleApiKey || ''} onChange={handleChange} type="password" placeholder="Google API Key for Core Web Vitals analysis" />
+                <p className="text-xs text-gray-500 mt-1">Optional. Enables Core Web Vitals analysis via PageSpeed Insights. Free tier: 25,000 requests/day.</p>
+            </div>
         </div>
     </div>
 );

@@ -79,8 +79,16 @@ Deno.serve(async (req: Request) => {
       fetchOptions.body = typeof requestBody === 'string' ? requestBody : JSON.stringify(requestBody);
     }
 
-    // Make the request
+    // Make the request (with timing)
+    const fetchStart = Date.now();
     const response = await fetch(url, fetchOptions);
+    const responseTimeMs = Date.now() - fetchStart;
+
+    // Collect response headers
+    const responseHeaders: Record<string, string> = {};
+    response.headers.forEach((value: string, key: string) => {
+      responseHeaders[key] = value;
+    });
 
     // Get response details
     const contentType = response.headers.get('content-type') || '';
@@ -103,6 +111,8 @@ Deno.serve(async (req: Request) => {
       status: response.status,
       statusText: response.statusText,
       contentType,
+      headers: responseHeaders,
+      responseTimeMs,
       body: responseBody,
       isBase64: !isText,
     }, 200, origin);

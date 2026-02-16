@@ -4,6 +4,7 @@ import { getSupabaseClient } from '../services/supabaseClient';
 import { UnifiedAuditOrchestrator } from '../services/audit/UnifiedAuditOrchestrator';
 import { ContentFetcher } from '../services/audit/ContentFetcher';
 import { BatchAuditService } from '../services/audit/BatchAuditService';
+import { SiteMetadataCollector } from '../services/audit/SiteMetadataCollector';
 import type { BatchAuditProgress, BatchAuditOptions } from '../services/audit/BatchAuditService';
 import type { TopicalMapContext } from '../services/audit/types';
 import type { SiteInventoryItem, SemanticTriple } from '../types';
@@ -155,13 +156,15 @@ export function useBatchAudit(projectId: string, mapId: string) {
     setProgress(null);
 
     try {
+      const proxyConfig = (businessInfo.supabaseUrl && businessInfo.supabaseAnonKey) ? {
+        supabaseUrl: businessInfo.supabaseUrl,
+        supabaseAnonKey: businessInfo.supabaseAnonKey,
+      } : undefined;
+
       const fetcher = new ContentFetcher({
         jinaApiKey: businessInfo.jinaApiKey,
         firecrawlApiKey: businessInfo.firecrawlApiKey,
-        proxyConfig: (businessInfo.supabaseUrl && businessInfo.supabaseAnonKey) ? {
-          supabaseUrl: businessInfo.supabaseUrl,
-          supabaseAnonKey: businessInfo.supabaseAnonKey,
-        } : undefined,
+        proxyConfig,
       });
 
       const phases = createAllPhases(businessInfo.perplexityApiKey);
@@ -173,10 +176,32 @@ export function useBatchAudit(projectId: string, mapId: string) {
 
       const service = new BatchAuditService(orchestrator, supabase, projectId, mapId);
 
+      // Collect site-level metadata (robots.txt, sitemap) before the batch starts
+      let siteMetadata;
+      try {
+        setProgress({
+          total: inventory.length,
+          completed: 0,
+          currentUrl: '',
+          currentPhase: 'Collecting site metadata (robots.txt, sitemap)...',
+          errors: [],
+        });
+        const domain = activeMap?.business_info?.domain || businessInfo.domain || '';
+        if (domain) {
+          const collector = new SiteMetadataCollector(proxyConfig);
+          siteMetadata = await collector.collect(domain);
+        }
+      } catch {
+        // Site metadata collection is non-fatal
+      }
+
       // Ensure per-map language is passed to the batch audit
       const auditLanguage = activeMap?.business_info?.language || businessInfo.language || 'en';
       const mergedOptions: BatchAuditOptions = {
         language: auditLanguage,
+        siteMetadata,
+        enablePageSpeed: options?.enablePageSpeed,
+        googleApiKey: options?.googleApiKey ?? businessInfo.googleApiKey,
         ...options,
       };
 

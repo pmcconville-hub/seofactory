@@ -81,6 +81,17 @@ export interface AuditFinding {
   language?: string;
 }
 
+export interface RuleInventoryItem {
+  ruleId: string;
+  phase: AuditPhaseName;
+  title: string;
+  category: string;
+  status: 'passed' | 'failed' | 'skipped' | 'error';
+  severity?: 'critical' | 'high' | 'medium' | 'low';
+  /** Why the rule was skipped (e.g., "PageSpeed API not enabled") */
+  skipReason?: string;
+}
+
 export interface UnifiedAuditReport {
   id: string;
   projectId: string;
@@ -96,6 +107,8 @@ export interface UnifiedAuditReport {
   relatedUrlScores?: { url: string; score: number; summary: string }[];
   contentFetchFailed?: boolean;
   fetchedContent?: FetchedContent;
+  /** Complete rule inventory — every rule with its status */
+  ruleInventory?: RuleInventoryItem[];
   language: string;
   version: number;
   createdAt: string;
@@ -121,6 +134,10 @@ export interface FetchedContent {
   language: string;
   provider: 'jina' | 'firecrawl' | 'apify' | 'direct';
   fetchDurationMs: number;
+  // HTTP metadata (from enhanced fetch-proxy)
+  statusCode?: number;
+  responseTimeMs?: number;
+  httpHeaders?: Record<string, string>;
 }
 
 export interface FetchOptions {
@@ -213,4 +230,25 @@ export interface TopicalMapContext {
   allPageTargetQueries?: string[];
   allPageCentralEntities?: string[];
   internalLinksToThisPage?: string[];
+
+  // Site-level metadata (populated before batch audit)
+  robotsTxt?: string;
+  sitemapUrls?: string[];
+  // CWV data (from PageSpeed Insights API)
+  cwvMetrics?: {
+    lcp?: number;
+    fcp?: number;
+    cls?: number;
+    tbt?: number;
+    speedIndex?: number;
+    inp?: number;
+    ttfb?: number;
+    domNodes?: number;
+    jsPayloadKb?: number;
+    totalJsKb?: number;
+    thirdPartyJsKb?: number;
+    renderBlockingCount?: number;
+  };
+  // GSC status (derived from site_inventory)
+  gscStatus?: { indexed: boolean; lastCrawled?: string; coverage?: string };
 }

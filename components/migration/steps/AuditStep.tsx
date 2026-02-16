@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import type { SiteInventoryItem } from '../../../types';
 import type { BatchAuditProgress, BatchAuditOptions } from '../../../services/audit/BatchAuditService';
+import { useAppState } from '../../../state/appState';
 import { InventoryTriagePanel } from './InventoryTriagePanel';
 import {
   classifyUrl,
@@ -139,9 +140,12 @@ export const AuditStep: React.FC<AuditStepProps> = ({
   auditError: error,
 }) => {
 
+  const { state } = useAppState();
+
   // Config state
   const [scrapingProvider, setScrapingProvider] = useState<ScrapingProvider>('jina');
   const [concurrency, setConcurrency] = useState(2);
+  const [enablePageSpeed, setEnablePageSpeed] = useState(false);
   const [hasFinished, setHasFinished] = useState(false);
 
   // Detect if audit was previously completed (inventory already has audit scores)
@@ -218,9 +222,11 @@ export const AuditStep: React.FC<AuditStepProps> = ({
       concurrency,
       scrapingProvider,
       skipAlreadyAudited: true,
+      enablePageSpeed,
+      googleApiKey: state.businessInfo.googleApiKey,
     };
     startBatch(filteredItems || inventory, options);
-  }, [concurrency, scrapingProvider, inventory, startBatch]);
+  }, [concurrency, scrapingProvider, enablePageSpeed, state.businessInfo.googleApiKey, inventory, startBatch]);
 
   const handleCancel = useCallback(() => {
     cancelBatch();
@@ -322,6 +328,22 @@ export const AuditStep: React.FC<AuditStepProps> = ({
                     disabled={isRunning}
                     className="w-32 accent-blue-600"
                   />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={enablePageSpeed}
+                      onChange={(e) => setEnablePageSpeed(e.target.checked)}
+                      disabled={isRunning}
+                      className="accent-blue-600"
+                    />
+                    Core Web Vitals (PageSpeed Insights)
+                  </label>
+                  <p className="text-[10px] text-gray-600 ml-5">
+                    Uses Google PageSpeed API. Adds ~5-10s per page.
+                    {!state.businessInfo.googleApiKey && ' No API key — rate limited.'}
+                  </p>
                 </div>
               </div>
             )}

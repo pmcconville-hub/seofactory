@@ -296,6 +296,7 @@ export interface BusinessInfo {
   cloudinaryApiKey?: string;
   cloudinaryUploadPreset?: string;
   markupGoApiKey?: string;
+  googleApiKey?: string;  // PageSpeed Insights / CrUX API
 
   // Content Fetching (Audit System)
   auditScrapingProvider?: 'jina' | 'firecrawl' | 'direct';

@@ -2,6 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SiteInventoryItem } from '../../types';
 import type { UnifiedAuditOrchestrator } from './UnifiedAuditOrchestrator';
 import type { AuditRequest, AuditPhaseName } from './types';
+import type { SiteMetadata } from './SiteMetadataCollector';
+import type { PageSpeedResult } from '../pageSpeedService';
 import { AuditSnapshotService } from './AuditSnapshotService';
 
 // ---------------------------------------------------------------------------
@@ -53,6 +55,12 @@ export interface BatchAuditOptions {
   scrapingProvider?: 'jina' | 'firecrawl' | 'apify' | 'direct';
   /** Content language hint. Default: 'en'. */
   language?: string;
+  /** Enable PageSpeed Insights API for Core Web Vitals data. */
+  enablePageSpeed?: boolean;
+  /** Google API key for PageSpeed/CrUX APIs. */
+  googleApiKey?: string;
+  /** Pre-collected site metadata (robots.txt, sitemap). */
+  siteMetadata?: SiteMetadata;
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +104,9 @@ export class BatchAuditService {
       priorityOrder = 'clicks',
       scrapingProvider = 'jina',
       language = 'en',
+      enablePageSpeed = false,
+      googleApiKey,
+      siteMetadata,
     } = options;
 
     // 1. Filter — optionally skip already-audited items
@@ -143,7 +154,11 @@ export class BatchAuditService {
         onProgress({ ...progress });
 
         try {
-          const targets = await this.auditSingleUrl(item, scrapingProvider, language, progress, onProgress);
+          const targets = await this.auditSingleUrl(item, scrapingProvider, language, progress, onProgress, {
+            enablePageSpeed,
+            googleApiKey,
+            siteMetadata,
+          });
           if (targets) {
             linkGraph.set(item.url, targets);
           }
@@ -193,7 +208,53 @@ export class BatchAuditService {
     language: string,
     progress: BatchAuditProgress,
     onProgress: (progress: BatchAuditProgress) => void,
+    extraOptions?: {
+      enablePageSpeed?: boolean;
+      googleApiKey?: string;
+      siteMetadata?: SiteMetadata;
+    },
   ): Promise<string[] | null> {
+    // Optionally fetch PageSpeed data before audit
+    let pageSpeedResult: PageSpeedResult | undefined;
+    if (extraOptions?.enablePageSpeed) {
+      try {
+        progress.currentPhase = 'Analyzing Core Web Vitals...';
+        onProgress({ ...progress });
+        const { PageSpeedService } = await import('../pageSpeedService');
+        const psi = new PageSpeedService({
+          apiKey: extraOptions.googleApiKey,
+        });
+        pageSpeedResult = await psi.analyze(item.url);
+      } catch {
+        // PageSpeed failure is non-fatal
+      }
+    }
+
+    // Inject site metadata + CWV data into orchestrator's topical map context
+    if (extraOptions?.siteMetadata || pageSpeedResult) {
+      this.orchestrator.injectSiteContext({
+        robotsTxt: extraOptions?.siteMetadata?.robotsTxt,
+        sitemapUrls: extraOptions?.siteMetadata?.sitemapUrls,
+        cwvMetrics: pageSpeedResult ? {
+          lcp: pageSpeedResult.lcp,
+          fcp: pageSpeedResult.fcp,
+          cls: pageSpeedResult.cls,
+          tbt: pageSpeedResult.tbt,
+          speedIndex: pageSpeedResult.speedIndex,
+          inp: pageSpeedResult.inp,
+          ttfb: pageSpeedResult.ttfb,
+          domNodes: pageSpeedResult.domNodes,
+          jsPayloadKb: pageSpeedResult.jsPayloadKb,
+          totalJsKb: pageSpeedResult.totalJsKb,
+          thirdPartyJsKb: pageSpeedResult.thirdPartyJsKb,
+          renderBlockingCount: pageSpeedResult.renderBlockingCount,
+        } : undefined,
+        gscStatus: (item.gsc_clicks != null || item.gsc_impressions != null)
+          ? { indexed: true }
+          : undefined,
+      });
+    }
+
     // Build the audit request
     const request: AuditRequest = {
       type: 'external',
