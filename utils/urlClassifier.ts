@@ -194,6 +194,55 @@ export function classifyInventory(
   return groups;
 }
 
+// ── Language Detection ────────────────────────────────────────────────────
+
+export interface DetectedLanguage {
+  code: string;   // 'en', 'nl', 'de'
+  label: string;  // 'English', 'Dutch', 'German'
+}
+
+const LANGUAGE_MAP: Record<string, string> = {
+  en: 'English', nl: 'Dutch', de: 'German', fr: 'French', es: 'Spanish',
+  it: 'Italian', pt: 'Portuguese', pl: 'Polish', da: 'Danish', sv: 'Swedish',
+  no: 'Norwegian', fi: 'Finnish', ja: 'Japanese', zh: 'Chinese', ko: 'Korean',
+  ru: 'Russian', ar: 'Arabic', tr: 'Turkish',
+};
+
+const LANGUAGE_PREFIX_RE = /^\/([a-z]{2})(\/|$)/i;
+
+/**
+ * Detect language from URL path prefix (e.g. /en/, /nl/) with fallback to
+ * an explicit language string (e.g. from SiteInventoryItem.language).
+ * Returns null when no language can be determined.
+ */
+export function detectLanguageFromUrl(url: string, existingLanguage?: string): DetectedLanguage | null {
+  // Try URL path prefix first
+  let pathname: string;
+  try {
+    pathname = new URL(url).pathname;
+  } catch {
+    pathname = url;
+  }
+
+  const match = LANGUAGE_PREFIX_RE.exec(pathname);
+  if (match) {
+    const code = match[1].toLowerCase();
+    if (LANGUAGE_MAP[code]) {
+      return { code, label: LANGUAGE_MAP[code] };
+    }
+  }
+
+  // Fallback to existingLanguage
+  if (existingLanguage) {
+    const code = existingLanguage.toLowerCase().slice(0, 2);
+    if (LANGUAGE_MAP[code]) {
+      return { code, label: LANGUAGE_MAP[code] };
+    }
+  }
+
+  return null;
+}
+
 // ── Display Helpers ───────────────────────────────────────────────────────────
 
 const CATEGORY_LABELS: Record<UrlCategory, string> = {

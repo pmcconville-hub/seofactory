@@ -5,6 +5,7 @@ import {
   getCategoryLabel,
   getCategoryColor,
   getCategoryBgColor,
+  detectLanguageFromUrl,
   type UrlCategory,
 } from '../urlClassifier';
 import type { SiteInventoryItem } from '../../types';
@@ -275,6 +276,55 @@ describe('classifyInventory', () => {
     for (const items of groups.values()) {
       expect(items.length).toBe(0);
     }
+  });
+});
+
+describe('detectLanguageFromUrl', () => {
+  it('detects /en/ prefix', () => {
+    const result = detectLanguageFromUrl('https://example.com/en/blog/post');
+    expect(result).toEqual({ code: 'en', label: 'English' });
+  });
+
+  it('detects /nl/ prefix', () => {
+    const result = detectLanguageFromUrl('https://example.com/nl/diensten/');
+    expect(result).toEqual({ code: 'nl', label: 'Dutch' });
+  });
+
+  it('detects /de/ prefix', () => {
+    const result = detectLanguageFromUrl('https://example.com/de/produkte/tool');
+    expect(result).toEqual({ code: 'de', label: 'German' });
+  });
+
+  it('detects language at root (/fr)', () => {
+    const result = detectLanguageFromUrl('https://example.com/fr');
+    expect(result).toEqual({ code: 'fr', label: 'French' });
+  });
+
+  it('returns null for URLs without language prefix', () => {
+    expect(detectLanguageFromUrl('https://example.com/blog/post')).toBeNull();
+  });
+
+  it('falls back to existingLanguage when no URL prefix', () => {
+    const result = detectLanguageFromUrl('https://example.com/blog/post', 'nl');
+    expect(result).toEqual({ code: 'nl', label: 'Dutch' });
+  });
+
+  it('prefers URL prefix over existingLanguage', () => {
+    const result = detectLanguageFromUrl('https://example.com/en/blog', 'nl');
+    expect(result).toEqual({ code: 'en', label: 'English' });
+  });
+
+  it('returns null when no prefix and no existingLanguage', () => {
+    expect(detectLanguageFromUrl('https://example.com/pricing')).toBeNull();
+  });
+
+  it('handles relative paths', () => {
+    const result = detectLanguageFromUrl('/nl/over-ons');
+    expect(result).toEqual({ code: 'nl', label: 'Dutch' });
+  });
+
+  it('ignores unknown two-letter prefixes', () => {
+    expect(detectLanguageFromUrl('https://example.com/xx/page')).toBeNull();
   });
 });
 
