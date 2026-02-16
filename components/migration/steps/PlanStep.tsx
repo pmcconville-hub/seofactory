@@ -3,6 +3,7 @@ import type { SiteInventoryItem, EnrichedTopic, ActionType } from '../../../type
 import { useMigrationPlan, PlanStats } from '../../../hooks/useMigrationPlan';
 import { AutoMatchService } from '../../../services/migration/AutoMatchService';
 import type { PlannedAction } from '../../../services/migration/MigrationPlanEngine';
+import { useAppState } from '../../../state/appState';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -152,8 +153,12 @@ export const PlanStep: React.FC<PlanStepProps> = ({
   onComplete,
   onRefreshInventory,
 }) => {
+  const { state } = useAppState();
+  const activeMap = state.topicalMaps.find(m => m.id === mapId);
+  const pillars = activeMap?.pillars;
+
   const { plan, isGenerating, generatePlan, applyPlan, savePlan, stats, error } =
-    useMigrationPlan(projectId, mapId);
+    useMigrationPlan(projectId, mapId, pillars);
 
   const [isApplying, setIsApplying] = useState(false);
   const [isSaving, setIsSaving] = useState(false);

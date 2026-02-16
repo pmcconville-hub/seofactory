@@ -648,7 +648,8 @@ export const generateSmartFix = async (
   action: SemanticActionItem,
   pageContent: string,
   businessInfo: BusinessInfo,
-  dispatch: React.Dispatch<AppAction>
+  dispatch: React.Dispatch<AppAction>,
+  pillars?: SEOPillars
 ): Promise<string> => {
   dispatch({
     type: 'LOG_EVENT',
@@ -676,7 +677,12 @@ ${businessContextParts.join('\n')}
       : '';
 
     const languageInstruction = businessInfo.language
-      ? `OUTPUT LANGUAGE: Write ALL text in ${getLanguageName(businessInfo.language)}. Do NOT write in English unless that is the configured language.`
+      ? getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)
+      : '';
+
+    const hasPillars = pillars?.centralEntity && pillars?.sourceContext;
+    const pillarsContext = hasPillars
+      ? `STRATEGIC ALIGNMENT:\n- Central Entity: "${pillars!.centralEntity}"\n- Source Context: "${pillars!.sourceContext}"\n- Central Search Intent: "${pillars!.centralSearchIntent}"\nThe fix MUST reinforce this semantic framework. Use vocabulary that matches the Source Context's authority.`
       : '';
 
     const prompt = SMART_FIX_PROMPT_TEMPLATE
@@ -684,6 +690,7 @@ ${businessContextParts.join('\n')}
       .replace('{description}', action.description)
       .replace('{ruleReference}', action.ruleReference || 'General semantic optimization')
       .replace('{businessContext}', businessContext)
+      .replace('{pillarsContext}', pillarsContext)
       .replace('{languageInstruction}', languageInstruction)
       .replace('{pageContent}', pageContent.substring(0, 4000)); // Limit content to avoid token limits
 
@@ -750,7 +757,8 @@ export const generateStructuredFix = async (
   action: SemanticActionItem,
   pageContent: string,
   businessInfo: BusinessInfo,
-  dispatch: React.Dispatch<AppAction>
+  dispatch: React.Dispatch<AppAction>,
+  pillars?: SEOPillars
 ): Promise<SmartFixResult> => {
   dispatch({
     type: 'LOG_EVENT',
@@ -774,7 +782,12 @@ export const generateStructuredFix = async (
       : '';
 
     const languageInstruction = businessInfo.language
-      ? `OUTPUT LANGUAGE: Write ALL text (searchText, replacementText, explanation) in ${getLanguageName(businessInfo.language)}. Do NOT write in English unless that is the configured language.`
+      ? getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)
+      : '';
+
+    const hasPillars = pillars?.centralEntity && pillars?.sourceContext;
+    const pillarsContext = hasPillars
+      ? `STRATEGIC ALIGNMENT:\n- Central Entity: "${pillars!.centralEntity}"\n- Source Context: "${pillars!.sourceContext}"\n- Central Search Intent: "${pillars!.centralSearchIntent}"\nThe fix MUST reinforce this semantic framework. Use vocabulary that matches the Source Context's authority.`
       : '';
 
     const prompt = STRUCTURED_FIX_PROMPT_TEMPLATE
@@ -782,6 +795,7 @@ export const generateStructuredFix = async (
       .replace('{description}', action.description)
       .replace('{ruleReference}', action.ruleReference || 'General semantic optimization')
       .replace('{businessContext}', businessContext)
+      .replace('{pillarsContext}', pillarsContext)
       .replace('{languageInstruction}', languageInstruction)
       .replace('{pageContent}', pageContent.substring(0, 6000));
 

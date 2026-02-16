@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SemanticActionItem, BusinessInfo, SmartFixResult } from '../../types';
+import { SemanticActionItem, BusinessInfo, SmartFixResult, SEOPillars } from '../../types';
 import { generateSmartFix, generateStructuredFix } from '../../services/ai/semanticAnalysis';
 import { SimpleMarkdown } from './SimpleMarkdown';
 import { AppAction } from '../../state/appState';
@@ -9,8 +9,9 @@ interface SmartFixButtonProps {
   pageContent: string;
   businessInfo: BusinessInfo;
   dispatch: React.Dispatch<AppAction>;
+  pillars?: SEOPillars;
   onFixGenerated?: (fix: string) => void;
-  onApplyFix?: (fix: SmartFixResult) => void;
+  onApplyFix?: (fix: SmartFixResult, actionId: string) => void;
   isAutoGenerating?: boolean;
 }
 
@@ -19,6 +20,7 @@ export const SmartFixButton: React.FC<SmartFixButtonProps> = ({
   pageContent,
   businessInfo,
   dispatch,
+  pillars,
   onFixGenerated,
   onApplyFix,
   isAutoGenerating
@@ -36,11 +38,11 @@ export const SmartFixButton: React.FC<SmartFixButtonProps> = ({
     setError(null);
 
     try {
-      const fix = await generateStructuredFix(action, pageContent, businessInfo, dispatch);
+      const fix = await generateStructuredFix(action, pageContent, businessInfo, dispatch, pillars);
 
       // Also generate legacy prose fix for backward compat
       if (onFixGenerated) {
-        const proseFix = await generateSmartFix(action, pageContent, businessInfo, dispatch);
+        const proseFix = await generateSmartFix(action, pageContent, businessInfo, dispatch, pillars);
         onFixGenerated(proseFix);
       }
 
@@ -60,7 +62,7 @@ export const SmartFixButton: React.FC<SmartFixButtonProps> = ({
 
   const handleApplyFix = () => {
     if (structuredFix && onApplyFix) {
-      onApplyFix(structuredFix);
+      onApplyFix(structuredFix, action.id);
     }
   };
 

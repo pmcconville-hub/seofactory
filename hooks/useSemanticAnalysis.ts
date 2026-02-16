@@ -37,7 +37,7 @@ export interface UseSemanticAnalysisReturn {
   updateActionStructuredFix: (actionId: string, fix: SmartFixResult) => void;
   isGeneratingFixes: boolean;
   fixProgress: FixProgress;
-  generateAllFixes: (pageContent: string) => Promise<void>;
+  generateAllFixes: (pageContent: string, pillars?: SEOPillars | null) => Promise<void>;
 }
 
 /**
@@ -220,40 +220,44 @@ export const useSemanticAnalysis = (
 
   /**
    * Updates the smartFix field for a specific action item
+   * Uses functional updater to allow safe batch calls
    */
   const updateActionFix = useCallback(
     (actionId: string, fix: string): void => {
-      if (!result) return;
-
-      setResult({
-        ...result,
-        actions: result.actions.map((action) =>
-          action.id === actionId
-            ? { ...action, smartFix: fix }
-            : action
-        )
+      setResult(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          actions: prev.actions.map((action) =>
+            action.id === actionId
+              ? { ...action, smartFix: fix }
+              : action
+          )
+        };
       });
     },
-    [result]
+    []
   );
 
   /**
    * Updates the structuredFix field for a specific action item
+   * Uses functional updater to allow safe batch calls (e.g. applyAllHighImpact)
    */
   const updateActionStructuredFix = useCallback(
     (actionId: string, fix: SmartFixResult): void => {
-      if (!result) return;
-
-      setResult({
-        ...result,
-        actions: result.actions.map((action) =>
-          action.id === actionId
-            ? { ...action, structuredFix: fix }
-            : action
-        )
+      setResult(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          actions: prev.actions.map((action) =>
+            action.id === actionId
+              ? { ...action, structuredFix: fix }
+              : action
+          )
+        };
       });
     },
-    [result]
+    []
   );
 
   /**
@@ -261,7 +265,7 @@ export const useSemanticAnalysis = (
    * Prioritizes High impact items and Low Hanging Fruit category
    */
   const generateAllFixes = useCallback(
-    async (pageContent: string): Promise<void> => {
+    async (pageContent: string, pillars?: SEOPillars | null): Promise<void> => {
       if (!result || result.actions.length === 0) return;
 
       setIsGeneratingFixes(true);
@@ -282,7 +286,7 @@ export const useSemanticAnalysis = (
       for (let i = 0; i < sortedActions.length; i++) {
         const action = sortedActions[i];
         try {
-          const fix = await generateStructuredFix(action, pageContent, businessInfo, dispatch);
+          const fix = await generateStructuredFix(action, pageContent, businessInfo, dispatch, pillars || undefined);
           // Update the result state with the new fix
           setResult(prev => {
             if (!prev) return prev;

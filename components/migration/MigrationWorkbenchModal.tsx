@@ -17,8 +17,38 @@ import { ChunkList } from './ChunkList';
 import { useSemanticAnalysis } from '../../hooks/useSemanticAnalysis';
 import { CoreEntityBoxes } from '../ui/CoreEntityBoxes';
 import { SmartFixButton } from '../ui/SmartFixButton';
-import { SemanticActionItem, BusinessInfo } from '../../types';
+import { SemanticActionItem, BusinessInfo, SEOPillars } from '../../types';
 import { AppAction } from '../../state/appState';
+
+/**
+ * Maps a position in a whitespace-normalized string back to the corresponding
+ * position in the original string. Used for fuzzy fix matching when prior fixes
+ * have shifted whitespace.
+ */
+function mapNormalizedPosToOriginal(original: string, normalizedPos: number): number {
+    let nPos = 0;
+    let oPos = 0;
+
+    // Skip leading whitespace (normalize trims leading spaces)
+    while (oPos < original.length && /\s/.test(original[oPos])) {
+        oPos++;
+    }
+
+    while (nPos < normalizedPos && oPos < original.length) {
+        if (/\s/.test(original[oPos])) {
+            // Consume all consecutive whitespace in original (= 1 space in normalized)
+            nPos++;
+            while (oPos < original.length && /\s/.test(original[oPos])) {
+                oPos++;
+            }
+        } else {
+            nPos++;
+            oPos++;
+        }
+    }
+
+    return oPos;
+}
 
 // Action Item Card Component with inline fix preview and apply button
 interface ActionItemCardProps {
@@ -26,11 +56,12 @@ interface ActionItemCardProps {
     pageContent: string;
     businessInfo: BusinessInfo;
     dispatch: React.Dispatch<AppAction>;
-    onApplyFix: (fix: SmartFixResult) => void;
+    pillars?: SEOPillars;
+    onApplyFix: (fix: SmartFixResult, actionId: string) => void;
     isAutoGenerating: boolean;
 }
 
-const ActionItemCard: React.FC<ActionItemCardProps> = ({ action, pageContent, businessInfo, dispatch, onApplyFix, isAutoGenerating }) => {
+const ActionItemCard: React.FC<ActionItemCardProps> = ({ action, pageContent, businessInfo, dispatch, pillars, onApplyFix, isAutoGenerating }) => {
     const hasFix = !!action.structuredFix;
     const isApplied = !!action.structuredFix?.applied;
     // Auto-expand items that have a ready fix
@@ -98,6 +129,7 @@ const ActionItemCard: React.FC<ActionItemCardProps> = ({ action, pageContent, bu
                         pageContent={pageContent}
                         businessInfo={businessInfo}
                         dispatch={dispatch}
+                        pillars={pillars}
                         onApplyFix={onApplyFix}
                         isAutoGenerating={isAutoGenerating}
                     />
@@ -157,10 +189,14 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
         loadCachedResult,
         reset: resetSemanticAnalysis,
         updateActionFix,
+        updateActionStructuredFix,
         isGeneratingFixes,
         fixProgress,
         generateAllFixes,
     } = useSemanticAnalysis(businessInfo, dispatch);
+
+    // Error state for fix application failures
+    const [fixError, setFixError] = useState<string | null>(null);
 
     // Count fixes ready and applied
     const fixStats = useMemo(() => {
@@ -219,6 +255,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
     useEffect(() => {
         if (isOpen && inventoryItem) {
             setLoadError(null);
+            setFixError(null);
             setManualInput('');
             setOriginalContent('');
             setDraftContent('');
@@ -251,7 +288,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
         if (semanticResult && semanticResult.actions.length > 0 && !isGeneratingFixes && originalContent) {
             const hasAnyFix = semanticResult.actions.some(a => a.structuredFix);
             if (!hasAnyFix) {
-                generateAllFixes(originalContent);
+                generateAllFixes(originalContent, pillars);
             }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -341,24 +378,49 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
         onClose();
     };
 
-    // Apply a single structured fix to the draft
-    const applyFix = useCallback((fix: SmartFixResult) => {
-        if (fix.searchText && fix.replacementText) {
-            const idx = draftContent.indexOf(fix.searchText);
-            if (idx !== -1) {
-                const newContent = draftContent.slice(0, idx) + fix.replacementText + draftContent.slice(idx + fix.searchText.length);
-                setDraftContent(newContent);
-                fix.applied = true;
-                setAppliedCount(prev => prev + 1);
-            }
-        }
-    }, [draftContent]);
+    // Apply a single structured fix to the draft with normalized whitespace fallback
+    const applyFix = useCallback((fix: SmartFixResult, actionId: string) => {
+        if (!fix.searchText || !fix.replacementText) return;
+        setFixError(null);
 
-    // Apply all high-impact fixes sequentially
+        // Try exact match first
+        const idx = draftContent.indexOf(fix.searchText);
+        if (idx !== -1) {
+            const newContent = draftContent.slice(0, idx) + fix.replacementText + draftContent.slice(idx + fix.searchText.length);
+            setDraftContent(newContent);
+            updateActionStructuredFix(actionId, { ...fix, applied: true });
+            setAppliedCount(prev => prev + 1);
+            return;
+        }
+
+        // Fallback: normalized whitespace matching (handles shifts from prior fixes)
+        const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
+        const normalizedDraft = normalize(draftContent);
+        const normalizedSearch = normalize(fix.searchText);
+        const normIdx = normalizedDraft.indexOf(normalizedSearch);
+
+        if (normIdx !== -1) {
+            const origStart = mapNormalizedPosToOriginal(draftContent, normIdx);
+            const origEnd = mapNormalizedPosToOriginal(draftContent, normIdx + normalizedSearch.length);
+            const newContent = draftContent.slice(0, origStart) + fix.replacementText + draftContent.slice(origEnd);
+            setDraftContent(newContent);
+            updateActionStructuredFix(actionId, { ...fix, applied: true });
+            setAppliedCount(prev => prev + 1);
+            return;
+        }
+
+        // Both strategies failed — show visible feedback
+        setFixError(`Could not apply fix: "${(fix.explanation || fix.searchText).substring(0, 80)}..." — the target text was modified by a previous fix. Try regenerating fixes.`);
+    }, [draftContent, updateActionStructuredFix]);
+
+    // Apply all high-impact fixes sequentially with normalized whitespace fallback
     const applyAllHighImpact = useCallback(() => {
         if (!semanticResult) return;
+        setFixError(null);
         let content = draftContent;
         let count = 0;
+        const appliedActions: { id: string; fix: SmartFixResult }[] = [];
+        let failedCount = 0;
 
         const highImpactActions = semanticResult.actions.filter(
             a => a.structuredFix && !a.structuredFix.applied && a.impact === 'High'
@@ -366,19 +428,47 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
 
         for (const action of highImpactActions) {
             const fix = action.structuredFix!;
+            if (!fix.searchText || !fix.replacementText) continue;
+
+            // Try exact match first
             const idx = content.indexOf(fix.searchText);
             if (idx !== -1) {
                 content = content.slice(0, idx) + fix.replacementText + content.slice(idx + fix.searchText.length);
-                fix.applied = true;
+                appliedActions.push({ id: action.id, fix });
                 count++;
+                continue;
+            }
+
+            // Fallback: normalized whitespace matching
+            const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
+            const normalizedContent = normalize(content);
+            const normalizedSearch = normalize(fix.searchText);
+            const normIdx = normalizedContent.indexOf(normalizedSearch);
+
+            if (normIdx !== -1) {
+                const origStart = mapNormalizedPosToOriginal(content, normIdx);
+                const origEnd = mapNormalizedPosToOriginal(content, normIdx + normalizedSearch.length);
+                content = content.slice(0, origStart) + fix.replacementText + content.slice(origEnd);
+                appliedActions.push({ id: action.id, fix });
+                count++;
+            } else {
+                failedCount++;
             }
         }
 
         if (count > 0) {
             setDraftContent(content);
+            // Immutable state updates via functional updater (safe for batch calls)
+            for (const { id, fix } of appliedActions) {
+                updateActionStructuredFix(id, { ...fix, applied: true });
+            }
             setAppliedCount(prev => prev + count);
         }
-    }, [draftContent, semanticResult]);
+
+        if (failedCount > 0) {
+            setFixError(`${failedCount} fix(es) could not be applied — their target text was modified by earlier fixes. Try regenerating.`);
+        }
+    }, [draftContent, semanticResult, updateActionStructuredFix]);
 
     // Drag & Drop Handlers
     const handleDragOver = (e: React.DragEvent) => {
@@ -597,6 +687,14 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                                             )}
                                         </div>
 
+                                        {/* Fix application error banner */}
+                                        {fixError && (
+                                            <div className="bg-red-900/20 border border-red-500/30 rounded p-3 flex items-center justify-between">
+                                                <span className="text-red-400 text-xs">{fixError}</span>
+                                                <button onClick={() => setFixError(null)} className="text-red-400 hover:text-red-300 ml-2 text-sm flex-shrink-0">&times;</button>
+                                            </div>
+                                        )}
+
                                         {/* Core Entities (collapsible) */}
                                         {semanticResult.coreEntities && (
                                             <CoreEntityBoxes entities={semanticResult.coreEntities} />
@@ -655,6 +753,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                                                                         pageContent={originalContent}
                                                                         businessInfo={businessInfo}
                                                                         dispatch={dispatch}
+                                                                        pillars={pillars || undefined}
                                                                         onApplyFix={applyFix}
                                                                         isAutoGenerating={isGeneratingFixes}
                                                                     />

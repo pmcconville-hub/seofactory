@@ -53,6 +53,7 @@ Action: "{title}"
 Description: "{description}"
 Rule Reference: "{ruleReference}"
 {businessContext}
+{pillarsContext}
 {languageInstruction}
 CONTEXT (The specific webpage content):
 """
@@ -66,6 +67,7 @@ Provide a CONCRETE, PRACTICAL example of how to fix this *specifically* for this
 - If it's fluff removal, show the sentence before and after.
 - Explain *why* this specific change helps the vector/semantics.
 - All suggestions must be appropriate for the target market/region and audience specified above.
+- CRITICAL: NEVER output English text if the content language is not English. Every word in your response must be in the content language.
 - Keep it concise but actionable (max 200 words).
 `;
 
@@ -77,6 +79,7 @@ Action: "{title}"
 Description: "{description}"
 Rule Reference: "{ruleReference}"
 {businessContext}
+{pillarsContext}
 {languageInstruction}
 
 CONTENT TO FIX:
@@ -89,6 +92,7 @@ INSTRUCTIONS:
 - Write the corrected replacement text
 - searchText MUST be a verbatim substring from the content above (exact match)
 - Write searchText, replacementText, and explanation in the SAME LANGUAGE as the content
+- CRITICAL: NEVER output English text if the content language is not English. Every word in searchText, replacementText, and explanation must be in the content language.
 - Keep replacementText roughly the same scope (sentence or paragraph level)
 - If the fix requires inserting new text, use fixType "insert" and put the insertion point text in searchText
 

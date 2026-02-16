@@ -7,6 +7,12 @@ export interface PlanInput {
   inventory: SiteInventoryItem[];
   topics: EnrichedTopic[];
   matchResult: AutoMatchResult;
+  context?: {
+    language?: string;
+    industry?: string;
+    centralEntity?: string;
+    sourceContext?: string;
+  };
 }
 
 export interface PlanDataPoint {
@@ -50,6 +56,163 @@ const PRIORITY_ORDER: Record<PlannedAction['priority'], number> = {
   low: 3,
 };
 
+// ── Signal weights ─────────────────────────────────────────────────────────
+
+const SIGNAL_WEIGHTS = {
+  contentHealth: 0.30,
+  trafficOpportunity: 0.25,
+  strategicAlignment: 0.20,
+  technicalHealth: 0.15,
+  linkingStrength: 0.10,
+} as const;
+
+// ── Site-wide averages ─────────────────────────────────────────────────────
+
+interface SiteAverages {
+  avgInternalLinks: number;
+  avgWordCount: number;
+}
+
+function computeSiteAverages(inventory: SiteInventoryItem[]): SiteAverages {
+  const items = inventory.filter(i => i.word_count || i.internal_link_count);
+  const totalLinks = items.reduce((sum, i) => sum + (i.internal_link_count ?? 0), 0);
+  const totalWords = items.reduce((sum, i) => sum + (i.word_count ?? 0), 0);
+  const count = items.length || 1;
+  return {
+    avgInternalLinks: Math.round(totalLinks / count),
+    avgWordCount: Math.round(totalWords / count),
+  };
+}
+
+// ── Signal scoring functions (pure, synchronous) ───────────────────────────
+
+/**
+ * Content Health (0-100): audit_score + word_count bonus + schema presence
+ */
+function computeContentHealth(item: SiteInventoryItem): number {
+  const auditScore = item.audit_score ?? 0;
+  // Word count bonus: thin content (<300 words) penalized, >1000 words gets bonus
+  let wordCountBonus = 0;
+  if (item.word_count != null) {
+    if (item.word_count < 300) wordCountBonus = -15;
+    else if (item.word_count < 600) wordCountBonus = -5;
+    else if (item.word_count >= 1000) wordCountBonus = 5;
+    else if (item.word_count >= 2000) wordCountBonus = 10;
+  }
+  // Schema presence bonus
+  const schemaBonus = (item.schema_types && item.schema_types.length > 0) ? 5 : 0;
+  return clamp(auditScore + wordCountBonus + schemaBonus, 0, 100);
+}
+
+/**
+ * Traffic Opportunity (0-100): clicks (log scale) + impressions + striking distance
+ */
+function computeTrafficOpportunity(item: SiteInventoryItem): number {
+  const clicks = item.gsc_clicks ?? 0;
+  const impressions = item.gsc_impressions ?? 0;
+  const position = item.gsc_position ?? 0;
+  const strikingDistance = item.striking_distance_keywords ?? [];
+
+  // Clicks score: logarithmic scale (1 click = 20, 10 = 40, 100 = 60, 1000 = 80)
+  const clickScore = clicks > 0 ? Math.min(20 * Math.log10(clicks + 1), 80) : 0;
+
+  // Impressions bonus: high impressions with low clicks = untapped opportunity
+  let impressionBonus = 0;
+  if (impressions > 100) impressionBonus = 5;
+  if (impressions > 1000) impressionBonus = 10;
+  if (impressions > 5000) impressionBonus = 15;
+
+  // Striking distance bonus: keywords at position 5-20 are quick wins
+  const strikingBonus = strikingDistance.length > 0
+    ? Math.min(strikingDistance.length * 5, 20)
+    : (position >= 5 && position <= 20 && impressions > 50 ? 15 : 0);
+
+  return clamp(Math.round(clickScore + impressionBonus + strikingBonus), 0, 100);
+}
+
+/**
+ * Technical Health (0-100): CWV assessment + COR score + DOM size + TTFB
+ */
+function computeTechnicalHealth(item: SiteInventoryItem): number {
+  let score = 70; // Default assumption (no data = assume okay)
+
+  // CWV assessment
+  if (item.cwv_assessment) {
+    if (item.cwv_assessment === 'good') score = 90;
+    else if (item.cwv_assessment === 'needs-improvement') score = 60;
+    else if (item.cwv_assessment === 'poor') score = 30;
+  }
+
+  // COR score penalty (0-100 scale, high = bad)
+  if (item.cor_score != null) {
+    if (item.cor_score > 70) score -= 20;
+    else if (item.cor_score > 50) score -= 10;
+  }
+
+  // DOM size penalty
+  if (item.dom_size != null) {
+    if (item.dom_size > 3000) score -= 15; // >3MB DOM
+    else if (item.dom_size > 1500) score -= 5;
+  }
+
+  // TTFB penalty
+  if (item.ttfb_ms != null) {
+    if (item.ttfb_ms > 2000) score -= 15;
+    else if (item.ttfb_ms > 800) score -= 5;
+  }
+
+  return clamp(score, 0, 100);
+}
+
+/**
+ * Strategic Alignment (0-100): match_confidence from auto-matching
+ */
+function computeStrategicAlignment(item: SiteInventoryItem): number {
+  const confidence = item.match_confidence ?? 0;
+  return clamp(Math.round(confidence * 100), 0, 100);
+}
+
+/**
+ * Linking Strength (0-100): internal links relative to site average + external links
+ */
+function computeLinkingStrength(item: SiteInventoryItem, siteAvg: SiteAverages): number {
+  const internalLinks = item.internal_link_count ?? 0;
+  const externalLinks = item.external_link_count ?? 0;
+  const avg = siteAvg.avgInternalLinks || 1;
+
+  // Ratio-based: at average = 60, double average = 80, half = 40
+  const ratio = internalLinks / avg;
+  let linkScore = Math.round(60 * ratio);
+
+  // External link bonus (up to 15)
+  if (externalLinks > 0) linkScore += Math.min(externalLinks * 3, 15);
+
+  return clamp(linkScore, 0, 100);
+}
+
+/**
+ * Compute weighted composite score from all signals
+ */
+function computeCompositeScore(
+  contentHealth: number,
+  trafficOpportunity: number,
+  technicalHealth: number,
+  strategicAlignment: number,
+  linkingStrength: number,
+): number {
+  return Math.round(
+    contentHealth * SIGNAL_WEIGHTS.contentHealth +
+    trafficOpportunity * SIGNAL_WEIGHTS.trafficOpportunity +
+    technicalHealth * SIGNAL_WEIGHTS.technicalHealth +
+    strategicAlignment * SIGNAL_WEIGHTS.strategicAlignment +
+    linkingStrength * SIGNAL_WEIGHTS.linkingStrength,
+  );
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function getClicks(item: SiteInventoryItem): number {
@@ -68,12 +231,143 @@ function buildInventoryLookup(inventory: SiteInventoryItem[]): Map<string, SiteI
   return map;
 }
 
+/**
+ * Detect if an item has striking distance keywords (position 5-20, meaningful impressions)
+ */
+function isStrikingDistance(item: SiteInventoryItem): boolean {
+  const pos = item.gsc_position ?? 0;
+  const impressions = item.gsc_impressions ?? 0;
+  const strikingKw = item.striking_distance_keywords ?? [];
+  return strikingKw.length > 0 || (pos >= 5 && pos <= 20 && impressions > 50);
+}
+
+/**
+ * Build a compact signal summary for reasoning strings
+ */
+function buildSignalSummary(
+  item: SiteInventoryItem,
+  scores: { contentHealth: number; trafficOpp: number; techHealth: number; alignment: number; linking: number; composite: number },
+  siteAvg: SiteAverages,
+): string {
+  const parts: string[] = [];
+  parts.push(`Composite score ${scores.composite}/100`);
+  parts.push(`content health ${scores.contentHealth}`);
+  parts.push(`traffic opportunity ${scores.trafficOpp}`);
+
+  const clicks = item.gsc_clicks ?? 0;
+  const impressions = item.gsc_impressions ?? 0;
+  const position = item.gsc_position ?? 0;
+  if (clicks > 0 || impressions > 0) {
+    let trafficDetail = `(${clicks} clicks`;
+    if (impressions > 0) trafficDetail += `, ${formatNumber(impressions)} impressions`;
+    if (position > 0) trafficDetail += `, position #${Math.round(position)}`;
+    trafficDetail += ')';
+    parts.push(trafficDetail);
+  }
+
+  const strikingKw = item.striking_distance_keywords ?? [];
+  if (strikingKw.length > 0) {
+    parts.push(`${strikingKw.length} striking distance keyword(s)`);
+  } else if (isStrikingDistance(item)) {
+    parts.push('striking distance opportunity');
+  }
+
+  parts.push(`technical health ${scores.techHealth}`);
+
+  if (item.cwv_assessment && item.cwv_assessment !== 'good') {
+    parts.push(`CWV: ${item.cwv_assessment}`);
+  }
+
+  const internalLinks = item.internal_link_count ?? 0;
+  const avg = siteAvg.avgInternalLinks;
+  if (avg > 0 && internalLinks < avg * 0.5) {
+    parts.push(`internal linking weak (${internalLinks} vs ${avg} avg)`);
+  } else if (avg > 0) {
+    parts.push(`internal links: ${internalLinks}`);
+  }
+
+  if (item.schema_types && item.schema_types.length > 0) {
+    parts.push(`schema: ${item.schema_types.join(', ')}`);
+  }
+
+  return parts.join('. ') + '.';
+}
+
+/**
+ * Build comprehensive data points from all signals
+ */
+function buildComprehensiveDataPoints(
+  item: SiteInventoryItem,
+  scores: { contentHealth: number; trafficOpp: number; techHealth: number; alignment: number; linking: number; composite: number },
+  siteAvg: SiteAverages,
+): PlanDataPoint[] {
+  const points: PlanDataPoint[] = [
+    { label: 'Composite Score', value: `${scores.composite}/100`, impact: scores.composite >= 70 ? 'Strong' : scores.composite >= 40 ? 'Moderate' : 'Weak' },
+    { label: 'Content Health', value: `${scores.contentHealth}/100`, impact: scores.contentHealth >= 70 ? 'Good' : scores.contentHealth >= 40 ? 'Needs work' : 'Poor' },
+    { label: 'Traffic Opportunity', value: `${scores.trafficOpp}/100`, impact: scores.trafficOpp >= 40 ? 'Active traffic' : scores.trafficOpp > 0 ? 'Some traffic' : 'No traffic' },
+  ];
+
+  const clicks = item.gsc_clicks ?? 0;
+  const impressions = item.gsc_impressions ?? 0;
+  if (clicks > 0 || impressions > 0) {
+    points.push({ label: 'Monthly Clicks', value: String(clicks), impact: clicks > 50 ? 'High traffic' : clicks > 0 ? 'Active traffic' : 'No clicks' });
+    if (impressions > 0) {
+      points.push({ label: 'Impressions', value: formatNumber(impressions), impact: impressions > 1000 ? 'High visibility' : 'Some visibility' });
+    }
+  }
+
+  if (item.gsc_position && item.gsc_position > 0) {
+    points.push({ label: 'Avg Position', value: `#${Math.round(item.gsc_position)}`, impact: item.gsc_position <= 10 ? 'Page 1' : item.gsc_position <= 20 ? 'Striking distance' : 'Deep' });
+  }
+
+  const strikingKw = item.striking_distance_keywords ?? [];
+  if (strikingKw.length > 0) {
+    points.push({ label: 'Striking Distance', value: `${strikingKw.length} keyword(s)`, impact: 'Quick-win optimization target' });
+  }
+
+  points.push({ label: 'Technical Health', value: `${scores.techHealth}/100`, impact: scores.techHealth >= 70 ? 'Good' : scores.techHealth >= 40 ? 'Issues detected' : 'Poor' });
+
+  if (item.cwv_assessment) {
+    points.push({ label: 'Core Web Vitals', value: item.cwv_assessment, impact: item.cwv_assessment === 'good' ? 'Passing' : 'Needs improvement' });
+  }
+
+  if (item.word_count != null) {
+    points.push({ label: 'Word Count', value: String(item.word_count), impact: item.word_count < 300 ? 'Thin content' : item.word_count >= 1000 ? 'Comprehensive' : 'Adequate' });
+  }
+
+  const internalLinks = item.internal_link_count ?? 0;
+  const avg = siteAvg.avgInternalLinks;
+  points.push({
+    label: 'Internal Links',
+    value: `${internalLinks}${avg > 0 ? ` (avg ${avg})` : ''}`,
+    impact: avg > 0 && internalLinks < avg * 0.5 ? 'Below site average' : 'Adequate',
+  });
+
+  if (item.schema_types && item.schema_types.length > 0) {
+    points.push({ label: 'Schema Types', value: item.schema_types.join(', '), impact: 'Structured data present' });
+  }
+
+  if (item.match_confidence != null) {
+    points.push({ label: 'Match Confidence', value: `${Math.round(item.match_confidence * 100)}%`, impact: item.match_confidence >= 0.7 ? 'Strong match' : item.match_confidence >= 0.4 ? 'Partial match' : 'Weak match' });
+  }
+
+  return points;
+}
+
+function formatNumber(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return String(n);
+}
+
 // ── Engine ─────────────────────────────────────────────────────────────────
 
 export class MigrationPlanEngine {
+  private siteAverages: SiteAverages = { avgInternalLinks: 0, avgWordCount: 0 };
+
   /**
-   * Generate a deterministic, prioritized migration plan based on audit scores,
-   * GSC performance, and auto-match results.
+   * Generate a deterministic, prioritized migration plan using multi-signal
+   * composite scoring across content health, traffic, technical performance,
+   * strategic alignment, and internal linking.
    *
    * Pure synchronous function -- no network calls, no AI, no side effects.
    */
@@ -81,6 +375,9 @@ export class MigrationPlanEngine {
     const { inventory, topics, matchResult } = input;
     const inventoryLookup = buildInventoryLookup(inventory);
     const actions: PlannedAction[] = [];
+
+    // Precompute site-wide averages for relative scoring
+    this.siteAverages = computeSiteAverages(inventory);
 
     // Index matches by inventoryId for fast lookup
     const matchByInventoryId = new Map<string, MatchResult>();
@@ -130,93 +427,116 @@ export class MigrationPlanEngine {
       actions.push(this.planGap(gap, topics));
     }
 
-    // ── Sort: priority tier first, then clicks descending ──────────────
+    // ── Sort: priority tier first, then composite score descending ─────
     actions.sort((a, b) => {
       const priorityDiff = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
       if (priorityDiff !== 0) return priorityDiff;
 
-      // Within same priority, sort by clicks descending
-      const aClicks = this.extractClicksFromDataPoints(a);
-      const bClicks = this.extractClicksFromDataPoints(b);
-      return bClicks - aClicks;
+      // Within same priority, sort by composite score descending (from data points)
+      const aScore = this.extractCompositeFromDataPoints(a);
+      const bScore = this.extractCompositeFromDataPoints(b);
+      return bScore - aScore;
     });
 
     return actions;
   }
 
+  // ── Compute all signals for an item ──────────────────────────────────
+
+  private computeSignals(item: SiteInventoryItem) {
+    const contentHealth = computeContentHealth(item);
+    const trafficOpp = computeTrafficOpportunity(item);
+    const techHealth = computeTechnicalHealth(item);
+    const alignment = computeStrategicAlignment(item);
+    const linking = computeLinkingStrength(item, this.siteAverages);
+    const composite = computeCompositeScore(contentHealth, trafficOpp, techHealth, alignment, linking);
+    return { contentHealth, trafficOpp, techHealth, alignment, linking, composite };
+  }
+
   // ── Matched URL rules ────────────────────────────────────────────────
 
   private planMatched(item: SiteInventoryItem, match: MatchResult): PlannedAction {
-    const score = getAuditScore(item);
+    const scores = this.computeSignals(item);
     const clicks = getClicks(item);
+    const impressions = item.gsc_impressions ?? 0;
+    const summary = buildSignalSummary(item, scores, this.siteAverages);
+    const dataPoints = buildComprehensiveDataPoints(item, scores, this.siteAverages);
 
-    // High quality + traffic
-    if (score >= 70 && clicks > 0) {
-      return this.buildAction(item, match, {
-        action: 'KEEP',
-        priority: 'low',
-        effort: 'none',
-        reasoning: `This page is performing well (quality ${score}/100, ${clicks} clicks/month). Keep it as-is — focus your effort on lower-scoring pages first.`,
-        dataPoints: [
-          { label: 'Audit Score', value: `${score}/100`, impact: 'Above quality threshold' },
-          { label: 'Monthly Clicks', value: String(clicks), impact: 'Active traffic' },
-        ],
-      });
-    }
-
-    // High quality + no traffic
-    if (score >= 70 && clicks === 0) {
-      return this.buildAction(item, match, {
-        action: 'KEEP',
-        priority: 'low',
-        effort: 'none',
-        reasoning: `Content quality is good (${score}/100) but not yet driving traffic. Keep it and monitor for indexing/ranking improvements.`,
-        dataPoints: [
-          { label: 'Audit Score', value: `${score}/100`, impact: 'Above quality threshold' },
-          { label: 'Monthly Clicks', value: '0', impact: 'No traffic yet' },
-        ],
-      });
-    }
-
-    // Medium quality + traffic
-    if (score >= 40 && score < 70 && clicks > 0) {
+    // Priority 1: Striking distance — quick win, highest ROI optimization
+    if (isStrikingDistance(item) && clicks > 0) {
+      const strikingKw = item.striking_distance_keywords ?? [];
       return this.buildAction(item, match, {
         action: 'OPTIMIZE',
-        priority: 'high',
+        priority: 'critical',
         effort: 'medium',
-        reasoning: `This page gets ${clicks} clicks/month but its quality is only ${score}/100. Improving the content will protect and grow this existing traffic.`,
-        dataPoints: [
-          { label: 'Monthly Clicks', value: String(clicks), impact: 'Traffic at risk without improvement' },
-          { label: 'Audit Score', value: `${score}/100`, impact: 'Below quality threshold' },
-        ],
+        reasoning: `Quick-win opportunity: ${strikingKw.length > 0 ? `${strikingKw.length} keyword(s) in striking distance` : `position #${Math.round(item.gsc_position ?? 0)} with ${formatNumber(impressions)} impressions`}. ${summary}`,
+        dataPoints,
       });
     }
 
-    // Low quality + traffic
-    if (score < 40 && clicks > 0) {
+    // Priority 2: Composite-based decision tree
+    if (scores.composite >= 70) {
+      return this.buildAction(item, match, {
+        action: 'KEEP',
+        priority: 'low',
+        effort: 'none',
+        reasoning: `Strong overall performance. ${summary}`,
+        dataPoints,
+      });
+    }
+
+    if (scores.composite >= 40) {
+      // Has traffic or potential — optimize
+      if (clicks > 0 || impressions > 100) {
+        // Identify weak areas for targeted callouts
+        const weakAreas: string[] = [];
+        if (scores.contentHealth < 50) weakAreas.push('content quality');
+        if (scores.techHealth < 50) weakAreas.push('technical performance');
+        if (scores.linking < 40) weakAreas.push('internal linking');
+
+        return this.buildAction(item, match, {
+          action: 'OPTIMIZE',
+          priority: 'high',
+          effort: 'medium',
+          reasoning: `Moderate score with active traffic — optimize to protect and grow. ${weakAreas.length > 0 ? `Focus areas: ${weakAreas.join(', ')}. ` : ''}${summary}`,
+          dataPoints,
+        });
+      }
+
+      // Moderate composite but no traffic — still optimize, not rewrite
+      return this.buildAction(item, match, {
+        action: 'OPTIMIZE',
+        priority: 'medium',
+        effort: 'medium',
+        reasoning: `Moderate score but no traffic yet — content has potential if optimized. ${summary}`,
+        dataPoints,
+      });
+    }
+
+    // Composite < 40
+    if (clicks > 0) {
+      // Low quality but has traffic — rewrite urgently
+      const failAreas: string[] = [];
+      if (scores.contentHealth < 40) failAreas.push('content health');
+      if (scores.techHealth < 40) failAreas.push('technical health');
+      if (scores.linking < 30) failAreas.push('internal linking');
+
       return this.buildAction(item, match, {
         action: 'REWRITE',
         priority: 'critical',
         effort: 'high',
-        reasoning: `This page gets ${clicks} clicks/month but its content quality is low (${score}/100). Without improvement, you risk losing these rankings to competitors. Rewrite the content to match the target topic.`,
-        dataPoints: [
-          { label: 'Monthly Clicks', value: String(clicks), impact: 'High traffic at risk' },
-          { label: 'Audit Score', value: `${score}/100`, impact: 'Below quality threshold' },
-        ],
+        reasoning: `Low composite score with active traffic at risk. ${failAreas.length > 0 ? `Critical failures: ${failAreas.join(', ')}. ` : ''}${summary}`,
+        dataPoints,
       });
     }
 
-    // Low quality + no traffic (score < 40 && clicks === 0)
-    // Also covers medium quality + no traffic (score 40-69 && clicks === 0) as fallback
+    // Low quality + no traffic
     return this.buildAction(item, match, {
       action: 'REWRITE',
       priority: 'medium',
       effort: 'high',
-      reasoning: `This page scores ${score}/100 and has no traffic. The content needs a fundamental rework to properly serve its target topic.`,
-      dataPoints: [
-        { label: 'Audit Score', value: `${score}/100`, impact: 'Below quality threshold' },
-        { label: 'Monthly Clicks', value: '0', impact: 'No traffic' },
-      ],
+      reasoning: `Weak across all signals with no traffic. Fundamental rework needed. ${summary}`,
+      dataPoints,
     });
   }
 
@@ -244,15 +564,25 @@ export class MigrationPlanEngine {
     const topic = topics.find((t) => t.id === topicId);
     const topicTitle = topic?.title ?? 'unknown topic';
 
-    // Sort by clicks descending -- the URL with the most clicks becomes the merge target
-    groupItems.sort((a, b) => getClicks(b.item) - getClicks(a.item));
+    // Sort by composite score descending — pick the strongest overall page as merge target
+    groupItems.sort((a, b) => {
+      const scoresA = this.computeSignals(a.item);
+      const scoresB = this.computeSignals(b.item);
+      return scoresB.composite - scoresA.composite;
+    });
 
     const mergeTarget = groupItems[0];
-    const competingUrlList = groupItems.map((g) => g.item.url);
+    const mergeTargetScores = this.computeSignals(mergeTarget.item);
 
     for (let i = 0; i < groupItems.length; i++) {
       const { item, match } = groupItems[i];
       const isMergeTarget = i === 0;
+      const scores = this.computeSignals(item);
+      const dataPoints = buildComprehensiveDataPoints(item, scores, this.siteAverages);
+      dataPoints.unshift(
+        { label: 'Competing URLs', value: `${groupItems.length} pages`, impact: 'Diluting ranking signals' },
+        { label: 'Topic', value: topicTitle, impact: 'Keyword cannibalization' },
+      );
 
       actions.push({
         inventoryId: item.id,
@@ -261,13 +591,9 @@ export class MigrationPlanEngine {
         priority: 'high',
         effort: 'medium',
         reasoning: isMergeTarget
-          ? `${groupItems.length} pages compete for "${topicTitle}". This page has the most traffic (${getClicks(item)} clicks) — merge the best content from the other pages here and redirect them to this URL.`
-          : `This page competes with ${groupItems.length - 1} other page(s) for "${topicTitle}". Merge its best content into the strongest page and redirect this URL there.`,
-        dataPoints: [
-          { label: 'Competing URLs', value: `${groupItems.length} pages`, impact: 'Diluting ranking signals' },
-          { label: 'Monthly Clicks', value: String(getClicks(item)), impact: isMergeTarget ? 'Strongest page' : 'Weaker page' },
-          { label: 'Topic', value: topicTitle, impact: 'Keyword cannibalization' },
-        ],
+          ? `${groupItems.length} pages compete for "${topicTitle}". This page has the strongest composite score (${mergeTargetScores.composite}/100) — merge the best content from the other pages here and redirect them.`
+          : `This page competes with ${groupItems.length - 1} other page(s) for "${topicTitle}" (composite ${scores.composite}/100). Merge its best content into the strongest page (${mergeTarget.item.url}) and redirect.`,
+        dataPoints,
         topicId,
         mergeTargetUrl: isMergeTarget ? undefined : mergeTarget.item.url,
         redirectTargetUrl: isMergeTarget ? undefined : mergeTarget.item.url,
@@ -280,61 +606,54 @@ export class MigrationPlanEngine {
   // ── Orphan URL rules ─────────────────────────────────────────────────
 
   private planOrphan(item: SiteInventoryItem, match: MatchResult): PlannedAction {
+    const scores = this.computeSignals(item);
     const clicks = getClicks(item);
-    const score = getAuditScore(item);
+    const summary = buildSignalSummary(item, scores, this.siteAverages);
+    const dataPoints = buildComprehensiveDataPoints(item, scores, this.siteAverages);
+    dataPoints.push({ label: 'Match Status', value: 'No matching topic', impact: 'Orphaned content' });
 
     // Check canonical mismatch first (highest specificity)
     if (item.google_canonical && item.google_canonical !== item.url) {
+      dataPoints.push({ label: 'Google Canonical', value: item.google_canonical, impact: 'Ranking signal dilution' });
       return this.buildAction(item, match, {
         action: 'CANONICALIZE',
         priority: 'high',
         effort: 'low',
-        reasoning: `Google chose a different canonical URL (${item.google_canonical}) instead of this page. Fix the canonical tag to consolidate ranking signals into one page.`,
-        dataPoints: [
-          { label: 'Google Canonical', value: item.google_canonical, impact: 'Ranking signal dilution' },
-          { label: 'Current URL', value: item.url, impact: 'Non-canonical' },
-        ],
+        reasoning: `Google chose a different canonical URL (${item.google_canonical}) instead of this page. Fix the canonical tag to consolidate ranking signals.`,
+        dataPoints,
       });
     }
 
-    // Orphan with significant traffic
-    if (clicks > 10) {
+    // Use traffic opportunity score instead of hard clicks > 10 threshold
+    if (scores.trafficOpp >= 30) {
       return this.buildAction(item, match, {
         action: 'REDIRECT_301',
         priority: 'high',
         effort: 'low',
-        reasoning: `This page gets ${clicks} clicks/month but doesn't match any topic in your strategy. Redirect it to a relevant page to preserve the link equity and traffic.`,
-        dataPoints: [
-          { label: 'Monthly Clicks', value: String(clicks), impact: 'Traffic to preserve' },
-          { label: 'Match Status', value: 'No matching topic', impact: 'Orphaned content' },
-        ],
+        reasoning: `Orphan page with meaningful traffic signal. Redirect to preserve link equity. ${summary}`,
+        dataPoints,
       });
     }
 
-    // Low traffic + low quality
-    if (clicks <= 10 && score < 30) {
+    // No traffic + low quality + not indexed = strong prune signal
+    const notIndexed = item.index_status && item.index_status !== 'indexed';
+    if (scores.composite < 30 && scores.trafficOpp === 0) {
       return this.buildAction(item, match, {
         action: 'PRUNE_410',
         priority: 'medium',
         effort: 'low',
-        reasoning: `This page has no traffic and low quality (${score}/100). Removing it helps search engines focus on your better content instead of wasting crawl budget here.`,
-        dataPoints: [
-          { label: 'Monthly Clicks', value: String(clicks), impact: 'Negligible traffic' },
-          { label: 'Audit Score', value: `${score}/100`, impact: 'Below quality threshold' },
-        ],
+        reasoning: `Orphan page with no traffic and weak composite score (${scores.composite}/100).${notIndexed ? ' Not indexed by Google.' : ''} Removing it helps search engines focus on better content. ${summary}`,
+        dataPoints,
       });
     }
 
-    // Low traffic + decent quality
+    // Decent quality orphan
     return this.buildAction(item, match, {
       action: 'KEEP',
       priority: 'low',
       effort: 'none',
-      reasoning: `Decent content (${score}/100) but no matching topic in your strategy. Consider adding a related topic to your map or redirecting this page.`,
-      dataPoints: [
-        { label: 'Monthly Clicks', value: String(clicks), impact: 'Low traffic' },
-        { label: 'Audit Score', value: `${score}/100`, impact: 'Acceptable quality' },
-      ],
+      reasoning: `Orphan with moderate quality (composite ${scores.composite}/100) but no matching topic. Consider adding a related topic to your map or redirecting. ${summary}`,
+      dataPoints,
     });
   }
 
@@ -390,13 +709,20 @@ export class MigrationPlanEngine {
   }
 
   /**
-   * Extract the clicks value from a PlannedAction's dataPoints for sorting.
-   * Returns 0 if no "Monthly Clicks" data point is found.
+   * Extract the composite score from a PlannedAction's dataPoints for sorting.
    */
-  private extractClicksFromDataPoints(action: PlannedAction): number {
+  private extractCompositeFromDataPoints(action: PlannedAction): number {
+    const compositePoint = action.dataPoints.find((dp) => dp.label === 'Composite Score');
+    if (compositePoint) {
+      const parsed = parseInt(compositePoint.value, 10);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    // Fallback: try Monthly Clicks for gap/merge actions without composite
     const clicksPoint = action.dataPoints.find((dp) => dp.label === 'Monthly Clicks');
-    if (!clicksPoint) return 0;
-    const parsed = parseInt(clicksPoint.value, 10);
-    return isNaN(parsed) ? 0 : parsed;
+    if (clicksPoint) {
+      const parsed = parseInt(clicksPoint.value, 10);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    return 0;
   }
 }

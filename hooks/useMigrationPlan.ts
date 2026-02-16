@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { MigrationPlanEngine, PlannedAction } from '../services/migration/MigrationPlanEngine';
 import type { AutoMatchResult } from '../services/migration/AutoMatchService';
-import type { SiteInventoryItem, EnrichedTopic } from '../types';
+import type { SiteInventoryItem, EnrichedTopic, SEOPillars } from '../types';
 import { getSupabaseClient } from '../services/supabaseClient';
 import { useAppState } from '../state/appState';
 
@@ -76,7 +76,7 @@ function computeStats(actions: PlannedAction[]): PlanStats {
  *   action_effort to each site_inventory row
  * - savePlan: persists a summary row to the migration_plans table
  */
-export function useMigrationPlan(projectId: string, mapId: string) {
+export function useMigrationPlan(projectId: string, mapId: string, pillars?: SEOPillars | null) {
   const { state } = useAppState();
   const { businessInfo } = state;
 
@@ -103,7 +103,15 @@ export function useMigrationPlan(projectId: string, mapId: string) {
 
       try {
         const engine = new MigrationPlanEngine();
-        const actions = engine.generatePlan({ inventory, topics, matchResult });
+        const actions = engine.generatePlan({
+          inventory, topics, matchResult,
+          context: {
+            language: businessInfo.language,
+            industry: businessInfo.industry,
+            centralEntity: pillars?.centralEntity,
+            sourceContext: pillars?.sourceContext,
+          },
+        });
 
         const computed = computeStats(actions);
         setPlan(actions);
@@ -118,7 +126,7 @@ export function useMigrationPlan(projectId: string, mapId: string) {
         setIsGenerating(false);
       }
     },
-    [],
+    [businessInfo.language, businessInfo.industry, pillars],
   );
 
   /**
