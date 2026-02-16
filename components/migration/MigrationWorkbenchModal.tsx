@@ -161,6 +161,21 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
     const activeMap = topicalMaps.find(m => m.id === activeMapId);
     const pillars = activeMap?.pillars;
 
+    // Merge per-map language/region into global businessInfo so AI prompts use the correct language
+    const effectiveBusinessInfo = useMemo(() => {
+        const mapBi = activeMap?.business_info;
+        if (!mapBi) return businessInfo;
+        return {
+            ...businessInfo,
+            language: mapBi.language || businessInfo.language,
+            region: mapBi.region || businessInfo.region,
+            targetMarket: mapBi.targetMarket || businessInfo.targetMarket,
+            industry: mapBi.industry || businessInfo.industry,
+            audience: mapBi.audience || businessInfo.audience,
+            projectName: mapBi.projectName || businessInfo.projectName,
+        };
+    }, [businessInfo, activeMap?.business_info]);
+
     const [originalContent, setOriginalContent] = useState<string>('');
     const [isLoadingOriginal, setIsLoadingOriginal] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -177,7 +192,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     // Chunking Hook
-    const { chunks, isChunking, error: chunkError, analyzeContent } = useChunking(businessInfo);
+    const { chunks, isChunking, error: chunkError, analyzeContent } = useChunking(effectiveBusinessInfo);
 
     // Semantic Analysis Hook (with persistence)
     const {
@@ -193,7 +208,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
         isGeneratingFixes,
         fixProgress,
         generateAllFixes,
-    } = useSemanticAnalysis(businessInfo, dispatch);
+    } = useSemanticAnalysis(effectiveBusinessInfo, dispatch);
 
     // Error state for fix application failures
     const [fixError, setFixError] = useState<string | null>(null);
@@ -751,7 +766,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                                                                         key={action.id}
                                                                         action={action}
                                                                         pageContent={originalContent}
-                                                                        businessInfo={businessInfo}
+                                                                        businessInfo={effectiveBusinessInfo}
                                                                         dispatch={dispatch}
                                                                         pillars={pillars || undefined}
                                                                         onApplyFix={applyFix}

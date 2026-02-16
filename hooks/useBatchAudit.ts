@@ -165,9 +165,16 @@ export function useBatchAudit(projectId: string, mapId: string) {
 
       const service = new BatchAuditService(orchestrator, supabase, projectId, mapId);
 
+      // Ensure per-map language is passed to the batch audit
+      const auditLanguage = activeMap?.business_info?.language || businessInfo.language || 'en';
+      const mergedOptions: BatchAuditOptions = {
+        language: auditLanguage,
+        ...options,
+      };
+
       await service.runBatch(
         inventory,
-        options ?? {},
+        mergedOptions,
         (p) => setProgress({ ...p }),
         controller.signal,
       );
@@ -180,7 +187,7 @@ export function useBatchAudit(projectId: string, mapId: string) {
       setIsRunning(false);
       abortControllerRef.current = null;
     }
-  }, [supabase, businessInfo, projectId, mapId, topicalMapContext]);
+  }, [supabase, businessInfo, projectId, mapId, topicalMapContext, activeMap]);
 
   const cancelBatch = useCallback(() => {
     abortControllerRef.current?.abort();

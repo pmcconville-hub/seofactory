@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAppState } from '../../../state/appState';
 import { getSupabaseClient } from '../../../services/supabaseClient';
 import { ExternalUrlInput } from '../../audit/ExternalUrlInput';
@@ -81,6 +81,7 @@ const PHASE_LABELS: Record<string, string> = {
 const AuditPage: React.FC = () => {
   const { projectId, mapId } = useParams<{ projectId: string; mapId: string }>();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const urlParam = searchParams.get('url');
 
   const { state } = useAppState();
@@ -155,6 +156,18 @@ const AuditPage: React.FC = () => {
     eavs: (topicalMapContext?.eavs?.length ?? 0) > 0,
   }), [topicalMapContext]);
 
+  const allPrerequisitesMet = prerequisites.businessInfo && prerequisites.pillars && prerequisites.eavs;
+
+  const handleNavigateToSetup = useCallback((step: 'businessInfo' | 'pillars' | 'eavs') => {
+    if (!projectId || !mapId) return;
+    const stepRoutes: Record<string, string> = {
+      businessInfo: 'setup/business',
+      pillars: 'setup/pillars',
+      eavs: 'setup/eavs',
+    };
+    navigate(`/p/${projectId}/m/${mapId}/${stepRoutes[step]}`);
+  }, [projectId, mapId, navigate]);
+
   const runAudit = useCallback(async (config: { url: string; provider: 'jina' | 'firecrawl' | 'apify' | 'direct'; discoverRelated: boolean }) => {
     if (!projectId) return;
 
@@ -187,6 +200,9 @@ const AuditPage: React.FC = () => {
         topicalMapContext,
       });
 
+      // Determine language from topical map business_info, falling back to global businessInfo
+      const auditLanguage = activeMap?.business_info?.language || businessInfo.language || 'en';
+
       const request: AuditRequest = {
         type: 'external',
         projectId,
@@ -195,7 +211,7 @@ const AuditPage: React.FC = () => {
         depth: 'deep',
         phases: ALL_PHASE_NAMES,
         scrapingProvider: config.provider,
-        language: 'en',
+        language: auditLanguage,
         includeFactValidation: true,
         includePerformanceData: false,
       };
@@ -217,13 +233,13 @@ const AuditPage: React.FC = () => {
     }
   }, [projectId, mapId, businessInfo.jinaApiKey, businessInfo.firecrawlApiKey, supabase, topicalMapContext]);
 
-  // Auto-trigger audit when ?url= param is present
+  // Auto-trigger audit when ?url= param is present — only if prerequisites are met or gate dismissed
   useEffect(() => {
-    if (urlParam && !hasAutoTriggered.current && !isRunning) {
+    if (urlParam && !hasAutoTriggered.current && !isRunning && (allPrerequisitesMet || gateDismissed)) {
       hasAutoTriggered.current = true;
       runAudit({ url: urlParam, provider: 'jina', discoverRelated: false });
     }
-  }, [urlParam, isRunning, runAudit]);
+  }, [urlParam, isRunning, runAudit, allPrerequisitesMet, gateDismissed]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
@@ -241,6 +257,7 @@ const AuditPage: React.FC = () => {
           prerequisites={prerequisites}
           isExternalUrl={true}
           onProceedAnyway={() => setGateDismissed(true)}
+          onNavigateToSetup={handleNavigateToSetup}
         />
       )}
 
