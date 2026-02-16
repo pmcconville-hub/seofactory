@@ -1,11 +1,11 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Loader } from '../ui/Loader';
 import { Textarea } from '../ui/Textarea';
 import { Label } from '../ui/Label';
-import { SiteInventoryItem, ContentBrief } from '../../types';
+import { SiteInventoryItem, ContentBrief, SmartFixResult } from '../../types';
 import { SimpleMarkdown } from '../ui/SimpleMarkdown';
 import { getOriginalContent } from '../../services/migrationService';
 import { useAppState } from '../../state/appState';
@@ -20,16 +20,28 @@ import { SmartFixButton } from '../ui/SmartFixButton';
 import { SemanticActionItem, BusinessInfo } from '../../types';
 import { AppAction } from '../../state/appState';
 
-// Action Item Card Component with expandable details and SmartFix button
+// Action Item Card Component with inline fix preview and apply button
 interface ActionItemCardProps {
     action: SemanticActionItem;
     pageContent: string;
     businessInfo: BusinessInfo;
     dispatch: React.Dispatch<AppAction>;
+    onApplyFix: (fix: SmartFixResult) => void;
+    isAutoGenerating: boolean;
 }
 
-const ActionItemCard: React.FC<ActionItemCardProps> = ({ action, pageContent, businessInfo, dispatch }) => {
+const ActionItemCard: React.FC<ActionItemCardProps> = ({ action, pageContent, businessInfo, dispatch, onApplyFix, isAutoGenerating }) => {
+    const hasFix = !!action.structuredFix;
+    const isApplied = !!action.structuredFix?.applied;
+    // Auto-expand items that have a ready fix
     const [isExpanded, setIsExpanded] = useState(false);
+
+    // Expand when fix becomes available
+    useEffect(() => {
+        if (hasFix && !isApplied) {
+            setIsExpanded(true);
+        }
+    }, [hasFix, isApplied]);
 
     const impactColors = {
         High: 'bg-red-500/20 text-red-400 border-red-500/30',
@@ -43,7 +55,7 @@ const ActionItemCard: React.FC<ActionItemCardProps> = ({ action, pageContent, bu
     };
 
     return (
-        <div className="bg-gray-800 rounded border border-gray-700 overflow-hidden">
+        <div className={`bg-gray-800 rounded border overflow-hidden ${isApplied ? 'border-green-700/30 opacity-70' : 'border-gray-700'}`}>
             {/* Header - Always visible */}
             <div
                 className="p-3 cursor-pointer hover:bg-gray-750 transition-colors"
@@ -52,14 +64,19 @@ const ActionItemCard: React.FC<ActionItemCardProps> = ({ action, pageContent, bu
                 <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                            <span className="text-gray-300 text-xs">{isExpanded ? '▼' : '▶'}</span>
+                            <span className="text-gray-300 text-xs">{isExpanded ? '\u25BC' : '\u25B6'}</span>
+                            {isApplied && (
+                                <svg className="w-3.5 h-3.5 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                            )}
                             <h5 className="text-sm font-medium text-white">{action.title}</h5>
                         </div>
                         <p className="text-xs text-gray-400 line-clamp-2">{action.description}</p>
                     </div>
                     <div className="flex flex-col gap-1 items-end shrink-0">
                         <span className={`text-[10px] px-2 py-0.5 rounded border ${impactColors[action.impact]}`}>
-                            {action.impact} Impact
+                            {action.impact}
                         </span>
                         <span className={`text-[10px] px-2 py-0.5 rounded ${typeColors[action.type]}`}>
                             {action.type}
@@ -71,20 +88,18 @@ const ActionItemCard: React.FC<ActionItemCardProps> = ({ action, pageContent, bu
             {/* Expanded Content */}
             {isExpanded && (
                 <div className="px-3 pb-3 border-t border-gray-700 pt-3">
-                    {/* Full Description */}
-                    <div className="mb-3">
-                        <p className="text-xs text-gray-300">{action.description}</p>
-                        {action.ruleReference && (
-                            <p className="text-[10px] text-gray-500 mt-1">Rule: {action.ruleReference}</p>
-                        )}
-                    </div>
+                    {action.ruleReference && (
+                        <p className="text-[10px] text-gray-500 mb-2">Rule: {action.ruleReference}</p>
+                    )}
 
-                    {/* Smart Fix Button */}
+                    {/* Smart Fix Button with apply capability */}
                     <SmartFixButton
                         action={action}
                         pageContent={pageContent}
                         businessInfo={businessInfo}
                         dispatch={dispatch}
+                        onApplyFix={onApplyFix}
+                        isAutoGenerating={isAutoGenerating}
                     />
                 </div>
             )}
@@ -100,10 +115,10 @@ interface MigrationWorkbenchModalProps {
     onMarkOptimized: (itemId: string) => void;
 }
 
-export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = ({ 
-    isOpen, 
-    onClose, 
-    inventoryItem, 
+export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = ({
+    isOpen,
+    onClose,
+    inventoryItem,
     linkedBrief,
     onMarkOptimized
 }) => {
@@ -118,11 +133,13 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
     const [isLoadingOriginal, setIsLoadingOriginal] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [manualInput, setManualInput] = useState('');
-    
+
     const [draftContent, setDraftContent] = useState<string>('');
     const [activeRightTab, setActiveRightTab] = useState<'edit' | 'preview'>('edit');
-    const [activeLeftTab, setActiveLeftTab] = useState<'raw' | 'chunks' | 'semantic'>('raw');
+    const [showOriginal, setShowOriginal] = useState(false);
+    const [showChunks, setShowChunks] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [appliedCount, setAppliedCount] = useState(0);
 
     // Ref for the textarea to handle cursor insertion
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -140,7 +157,19 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
         loadCachedResult,
         reset: resetSemanticAnalysis,
         updateActionFix,
+        isGeneratingFixes,
+        fixProgress,
+        generateAllFixes,
     } = useSemanticAnalysis(businessInfo, dispatch);
+
+    // Count fixes ready and applied
+    const fixStats = useMemo(() => {
+        if (!semanticResult) return { ready: 0, applied: 0, total: 0 };
+        const total = semanticResult.actions.length;
+        const ready = semanticResult.actions.filter(a => a.structuredFix && !a.structuredFix.applied).length;
+        const applied = semanticResult.actions.filter(a => a.structuredFix?.applied).length;
+        return { ready, applied, total };
+    }, [semanticResult]);
 
     // Helper function to run semantic analysis with persistence
     const runSemanticAnalysis = async (forceRefresh: boolean = false) => {
@@ -170,14 +199,12 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                 forceRefetch
             );
             setOriginalContent(content);
-            
+
             // Initialize Draft
-            // If we have a linked brief with an existing draft, use it.
-            // Otherwise, use the original content as the starting point.
             if (linkedBrief?.articleDraft) {
                 setDraftContent(linkedBrief.articleDraft);
-            } else if (!draftContent) { // Only set if draft is empty to avoid overwriting work
-                setDraftContent(content); 
+            } else if (!draftContent) {
+                setDraftContent(content);
             }
         } catch (e) {
             console.error("Failed to load workbench content:", e);
@@ -191,39 +218,59 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
     // Load Data on Open
     useEffect(() => {
         if (isOpen && inventoryItem) {
-            // Reset states
             setLoadError(null);
             setManualInput('');
             setOriginalContent('');
-            setDraftContent(''); // Will be populated by loadContent
-            resetSemanticAnalysis(); // Clear previous semantic analysis results
-            loadContent(false); // Don't force refetch on initial load
+            setDraftContent('');
+            setAppliedCount(0);
+            setShowOriginal(false);
+            setShowChunks(false);
+            resetSemanticAnalysis();
+            loadContent(false);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen, inventoryItem?.id]); // Use inventoryItem.id for more reliable change detection
+    }, [isOpen, inventoryItem?.id]);
 
-    // Lazy load chunks when tab is switched
+    // Auto-run semantic analysis when content loads successfully
     useEffect(() => {
-        if (activeLeftTab === 'chunks' && chunks.length === 0 && originalContent) {
+        if (originalContent && inventoryItem && !semanticResult && !isAnalyzingSemantic && !isLoadingCachedSemantic && !loadError) {
+            analyzeWithPersistence({
+                content: originalContent,
+                url: inventoryItem.url,
+                inventoryId: inventoryItem.id,
+                mapId: activeMapId || null,
+                pillars: pillars || null,
+                forceRefresh: false
+            });
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [originalContent, inventoryItem?.id, loadError]);
+
+    // Auto-generate fixes when semantic analysis completes
+    useEffect(() => {
+        if (semanticResult && semanticResult.actions.length > 0 && !isGeneratingFixes && originalContent) {
+            const hasAnyFix = semanticResult.actions.some(a => a.structuredFix);
+            if (!hasAnyFix) {
+                generateAllFixes(originalContent);
+            }
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [semanticResult?.actions.length, originalContent]);
+
+    // Lazy load chunks when toggled
+    useEffect(() => {
+        if (showChunks && chunks.length === 0 && originalContent) {
             analyzeContent(originalContent);
         }
-    }, [activeLeftTab, chunks.length, originalContent, analyzeContent]);
-
-    // Try to load cached semantic analysis when switching to semantic tab
-    useEffect(() => {
-        if (activeLeftTab === 'semantic' && !semanticResult && !isAnalyzingSemantic && originalContent && inventoryItem) {
-            loadCachedResult(inventoryItem.id, activeMapId || null, originalContent);
-        }
-    }, [activeLeftTab, semanticResult, isAnalyzingSemantic, originalContent, inventoryItem, activeMapId, loadCachedResult]);
+    }, [showChunks, chunks.length, originalContent, analyzeContent]);
 
     const handleManualContentSubmit = async () => {
         if (!manualInput.trim() || !inventoryItem) return;
-        
+
         setOriginalContent(manualInput);
         if (!draftContent) setDraftContent(manualInput);
         setLoadError(null);
-        
-        // Persist as snapshot so it loads next time
+
         try {
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
             const snapshotResult = await verifiedInsert(
@@ -232,7 +279,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                 {
                     inventory_id: inventoryItem.id,
                     content_markdown: manualInput,
-                    snapshot_type: 'ORIGINAL_IMPORT', // Treat manual paste as the source of truth
+                    snapshot_type: 'ORIGINAL_IMPORT',
                     created_at: new Date().toISOString()
                 },
                 'id'
@@ -243,11 +290,6 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
         } catch (e) {
             console.error("Failed to save manual snapshot", e);
         }
-        
-        // If user immediately switches to chunks tab, this ensures analysis works
-        if (activeLeftTab === 'chunks') {
-            analyzeContent(manualInput);
-        }
     };
 
     const handleSaveDraft = async () => {
@@ -256,7 +298,6 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
         try {
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
 
-            // If mapped to a topic/brief, save to content_briefs with verification
             if (linkedBrief) {
                 const result = await verifiedUpdate(
                     supabase,
@@ -270,7 +311,6 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                 }
             }
 
-            // Save a snapshot for history
             const historyResult = await verifiedInsert(
                 supabase,
                 { table: 'transition_snapshots', operationDescription: 'save in-progress snapshot' },
@@ -286,7 +326,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                 console.warn("Failed to save history snapshot:", historyResult.error);
             }
 
-            dispatch({ type: 'SET_NOTIFICATION', payload: "✓ Draft saved (verified)." });
+            dispatch({ type: 'SET_NOTIFICATION', payload: "Draft saved." });
         } catch (e) {
              dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : "Failed to save draft." });
         } finally {
@@ -296,10 +336,49 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
 
     const handleComplete = async () => {
         if (!inventoryItem) return;
-        await handleSaveDraft(); // Ensure saved
+        await handleSaveDraft();
         onMarkOptimized(inventoryItem.id);
         onClose();
     };
+
+    // Apply a single structured fix to the draft
+    const applyFix = useCallback((fix: SmartFixResult) => {
+        if (fix.searchText && fix.replacementText) {
+            const idx = draftContent.indexOf(fix.searchText);
+            if (idx !== -1) {
+                const newContent = draftContent.slice(0, idx) + fix.replacementText + draftContent.slice(idx + fix.searchText.length);
+                setDraftContent(newContent);
+                fix.applied = true;
+                setAppliedCount(prev => prev + 1);
+            }
+        }
+    }, [draftContent]);
+
+    // Apply all high-impact fixes sequentially
+    const applyAllHighImpact = useCallback(() => {
+        if (!semanticResult) return;
+        let content = draftContent;
+        let count = 0;
+
+        const highImpactActions = semanticResult.actions.filter(
+            a => a.structuredFix && !a.structuredFix.applied && a.impact === 'High'
+        );
+
+        for (const action of highImpactActions) {
+            const fix = action.structuredFix!;
+            const idx = content.indexOf(fix.searchText);
+            if (idx !== -1) {
+                content = content.slice(0, idx) + fix.replacementText + content.slice(idx + fix.searchText.length);
+                fix.applied = true;
+                count++;
+            }
+        }
+
+        if (count > 0) {
+            setDraftContent(content);
+            setAppliedCount(prev => prev + count);
+        }
+    }, [draftContent, semanticResult]);
 
     // Drag & Drop Handlers
     const handleDragOver = (e: React.DragEvent) => {
@@ -310,28 +389,29 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
         const text = e.dataTransfer.getData('text/plain');
-        
+
         if (text && textareaRef.current) {
             const textarea = textareaRef.current;
             const start = textarea.selectionStart;
             const end = textarea.selectionEnd;
-            
-            // Insert text at cursor position
+
             const newText = draftContent.substring(0, start) + text + "\n" + draftContent.substring(end);
             setDraftContent(newText);
-            
-            // Restore focus and update cursor position
+
             setTimeout(() => {
                 textarea.focus();
                 textarea.setSelectionRange(start + text.length + 1, start + text.length + 1);
             }, 0);
         } else if (text) {
-            // Fallback if ref is missing
             setDraftContent(prev => prev + "\n\n" + text);
         }
     };
 
     if (!isOpen || !inventoryItem) return null;
+
+    const highImpactReadyCount = semanticResult?.actions.filter(
+        a => a.structuredFix && !a.structuredFix.applied && a.impact === 'High'
+    ).length ?? 0;
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-90 z-[90] flex flex-col">
@@ -341,7 +421,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                     <h2 className="text-xl font-bold text-white">Migration Workbench</h2>
                     <p className="text-sm text-gray-400 flex items-center gap-2">
                         <span className="bg-gray-800 px-2 py-0.5 rounded">Source: {inventoryItem.url}</span>
-                        <span>→</span>
+                        <span>&rarr;</span>
                         <span className="text-green-400">{linkedBrief ? safeString(linkedBrief.title) : 'Unmapped (Standalone Optimization)'}</span>
                     </p>
                 </div>
@@ -358,34 +438,28 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
 
             {/* Main Workspace (Split View) */}
             <div className="flex-grow flex overflow-hidden">
-                
-                {/* LEFT: Original Content (Reference) */}
+
+                {/* LEFT: Guided Analysis & Fixes Panel */}
                 <div className="w-1/2 border-r border-gray-700 flex flex-col bg-gray-900">
+                    {/* Left panel header with view toggles */}
                     <div className="p-3 bg-gray-800/50 border-b border-gray-700 font-semibold text-gray-300 text-sm flex justify-between items-center">
-                        <div className="flex bg-gray-700 rounded p-0.5">
-                             <button
-                                onClick={() => setActiveLeftTab('raw')}
-                                className={`px-3 py-1 text-xs rounded ${activeLeftTab === 'raw' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}
-                                disabled={!!loadError}
-                             >
-                                Raw Content
-                             </button>
-                             <button
-                                onClick={() => setActiveLeftTab('chunks')}
-                                className={`px-3 py-1 text-xs rounded ${activeLeftTab === 'chunks' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}
-                                disabled={!!loadError}
-                             >
-                                Semantic Chunks
-                             </button>
-                             <button
-                                onClick={() => setActiveLeftTab('semantic')}
-                                className={`px-3 py-1 text-xs rounded ${activeLeftTab === 'semantic' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}
-                                disabled={!!loadError}
-                             >
-                                Semantic Audit
-                             </button>
-                         </div>
+                        <span>Analysis & Fixes</span>
                         <div className="flex items-center gap-2">
+                            {/* View Original toggle */}
+                            {!loadError && originalContent && (
+                                <button
+                                    onClick={() => { setShowOriginal(!showOriginal); setShowChunks(false); }}
+                                    className={`text-xs flex items-center gap-1 px-2 py-1 rounded ${showOriginal ? 'bg-gray-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                                    title="View Original Content"
+                                >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                    Original
+                                </button>
+                            )}
+                            {/* Re-fetch button */}
                             {!loadError && originalContent && !isLoadingOriginal && (
                                 <button
                                     onClick={() => loadContent(true)}
@@ -395,30 +469,30 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                     </svg>
-                                    Re-fetch
                                 </button>
                             )}
                             {isLoadingOriginal && <Loader className="w-4 h-4" />}
                         </div>
                     </div>
-                    <div className="flex-grow overflow-y-auto p-6 text-gray-400 bg-gray-900/50">
+
+                    <div className="flex-grow overflow-y-auto p-4 bg-gray-900/50 space-y-4">
+                        {/* Error / Manual Input state */}
                         {loadError ? (
-                            <div className="flex flex-col gap-4 h-full max-w-lg mx-auto mt-10">
+                            <div className="flex flex-col gap-4 max-w-lg mx-auto mt-6">
                                 <div className="bg-red-900/20 border border-red-700/50 p-4 rounded text-red-200 text-center">
                                     <p className="font-bold mb-1">Extraction Failed</p>
                                     <p className="text-sm mb-3">{loadError}</p>
                                     <Button variant="secondary" onClick={() => loadContent(true)} className="text-xs !py-1">Retry Scrape</Button>
                                 </div>
-                                
                                 <div className="flex-grow flex flex-col gap-2">
                                     <Label>Manual Content Fallback</Label>
                                     <p className="text-xs text-gray-500 mb-1">
-                                        If the automated scraper is blocked (e.g., Cloudflare), copy and paste the page text/markdown here manually to continue.
+                                        If the automated scraper is blocked, paste the page content here.
                                     </p>
-                                    <Textarea 
-                                        value={manualInput} 
-                                        onChange={e => setManualInput(e.target.value)} 
-                                        className="flex-grow font-mono text-xs bg-gray-800 border-gray-700 min-h-[200px]" 
+                                    <Textarea
+                                        value={manualInput}
+                                        onChange={e => setManualInput(e.target.value)}
+                                        className="flex-grow font-mono text-xs bg-gray-800 border-gray-700 min-h-[200px]"
                                         placeholder="# Paste content here..."
                                     />
                                     <Button onClick={handleManualContentSubmit} disabled={!manualInput.trim()} className="w-full">
@@ -426,339 +500,186 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                                     </Button>
                                 </div>
                             </div>
+                        ) : showOriginal ? (
+                            /* Original Content View */
+                            originalContent ? (
+                                <SimpleMarkdown content={originalContent} />
+                            ) : (
+                                !isLoadingOriginal && <p className="text-center mt-20 text-gray-500">No content found.</p>
+                            )
+                        ) : showChunks ? (
+                            /* Semantic Chunks View */
+                            <div className="h-full">
+                                {isChunking ? (
+                                    <div className="flex flex-col items-center justify-center h-64">
+                                        <Loader />
+                                        <p className="text-xs text-gray-500 mt-2">Analyzing semantic structure...</p>
+                                    </div>
+                                ) : chunkError ? (
+                                    <div className="text-red-400 p-4 text-center">{chunkError}</div>
+                                ) : (
+                                    <ChunkList chunks={chunks} />
+                                )}
+                            </div>
                         ) : (
-                             activeLeftTab === 'raw' ? (
-                                 originalContent ? (
-                                     <SimpleMarkdown content={originalContent} />
-                                 ) : (
-                                     !isLoadingOriginal && <p className="text-center mt-20">No content found.</p>
-                                 )
-                             ) : activeLeftTab === 'chunks' ? (
-                                 <div className="h-full">
-                                     {isChunking ? (
-                                         <div className="flex flex-col items-center justify-center h-full">
-                                             <Loader />
-                                             <p className="text-xs text-gray-500 mt-2">Analyzing semantic structure...</p>
-                                         </div>
-                                     ) : chunkError ? (
-                                         <div className="text-red-400 p-4 text-center">{chunkError}</div>
-                                     ) : (
-                                         <ChunkList chunks={chunks} />
-                                     )}
-                                 </div>
-                             ) : (
-                                 <div className="h-full flex flex-col">
-                                     {isAnalyzingSemantic ? (
-                                         <div className="flex flex-col items-center justify-center h-full">
-                                             <Loader />
-                                             <p className="text-xs text-gray-500 mt-2">Running semantic analysis...</p>
-                                         </div>
-                                     ) : semanticError ? (
-                                         <div className="text-red-400 p-4 text-center">{semanticError}</div>
-                                     ) : !semanticResult ? (
-                                         <div className="flex flex-col items-center justify-center h-full gap-4">
-                                             {pillars ? (
-                                                 <div className="text-center">
-                                                     <p className="text-green-400 text-sm font-medium mb-2">Alignment Check Available</p>
-                                                     <p className="text-gray-500 text-xs mb-1">Comparing against your defined framework:</p>
-                                                     <p className="text-gray-400 text-xs">CE: {pillars.centralEntity}</p>
-                                                     <p className="text-gray-400 text-xs">SC: {pillars.sourceContext}</p>
-                                                     <p className="text-gray-400 text-xs">CSI: {pillars.centralSearchIntent}</p>
-                                                 </div>
-                                             ) : (
-                                                 <p className="text-yellow-400 text-sm">No pillars defined - running detection mode</p>
-                                             )}
-                                             <Button
-                                                 onClick={() => runSemanticAnalysis(false)}
-                                                 disabled={!originalContent || isLoadingCachedSemantic}
-                                             >
-                                                 {isLoadingCachedSemantic ? 'Loading cached...' : pillars ? 'Check Alignment' : 'Detect Semantics'}
-                                             </Button>
-                                         </div>
-                                     ) : (
-                                         <div className="flex-grow overflow-y-auto p-4 space-y-4">
-                                             {/* Re-analyze button */}
-                                             <div className="flex justify-end">
-                                                 <button
-                                                     onClick={() => runSemanticAnalysis(true)}
-                                                     disabled={isAnalyzingSemantic}
-                                                     className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1"
-                                                     title="Force re-analysis (ignore cache)"
-                                                 >
-                                                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                                     </svg>
-                                                     Re-analyze
-                                                 </button>
-                                             </div>
+                            /* Main guided view: Summary Bar + Analysis + Fixes */
+                            <>
+                                {/* Summary Bar */}
+                                {(isAnalyzingSemantic || isLoadingCachedSemantic) && (
+                                    <div className="bg-gray-800 rounded-lg p-4 flex items-center gap-3">
+                                        <Loader className="w-5 h-5" />
+                                        <span className="text-sm text-gray-300">Analyzing content...</span>
+                                    </div>
+                                )}
 
-                                             {/* Core Entities */}
-                                             {semanticResult.coreEntities && (
-                                                 <div>
-                                                     <h3 className="text-sm font-semibold text-white mb-2">Detected CE/SC/CSI</h3>
-                                                     <CoreEntityBoxes entities={semanticResult.coreEntities} />
-                                                 </div>
-                                             )}
+                                {semanticError && (
+                                    <div className="bg-red-900/20 border border-red-700/50 rounded p-3 text-red-300 text-sm">
+                                        Analysis error: {semanticError}
+                                        <button onClick={() => runSemanticAnalysis(true)} className="ml-2 underline text-red-400">Retry</button>
+                                    </div>
+                                )}
 
-                                             {/* Alignment Scores (only shown when pillars were provided) */}
-                                             {semanticResult.alignmentScores && (
-                                                 <div className="bg-gray-800 p-3 rounded border-l-4 border-green-500">
-                                                     <h3 className="text-sm font-semibold text-white mb-3">Pillar Alignment Scores</h3>
-                                                     <div className="space-y-3">
-                                                         {/* CE Alignment */}
-                                                         <div>
-                                                             <div className="flex justify-between text-xs mb-1">
-                                                                 <span className="text-gray-400">Central Entity</span>
-                                                                 <span className={`font-bold ${semanticResult.alignmentScores.ceAlignment >= 70 ? 'text-green-400' : semanticResult.alignmentScores.ceAlignment >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
-                                                                     {semanticResult.alignmentScores.ceAlignment}%
-                                                                 </span>
-                                                             </div>
-                                                             <div className="bg-gray-700 h-2 rounded-full overflow-hidden">
-                                                                 <div
-                                                                     className={`h-full transition-all duration-300 ${semanticResult.alignmentScores.ceAlignment >= 70 ? 'bg-green-500' : semanticResult.alignmentScores.ceAlignment >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                                                                     style={{ width: `${semanticResult.alignmentScores.ceAlignment}%` }}
-                                                                 />
-                                                             </div>
-                                                             {semanticResult.alignmentScores.ceGap !== 'Aligned' && (
-                                                                 <p className="text-xs text-gray-500 mt-1">{semanticResult.alignmentScores.ceGap}</p>
-                                                             )}
-                                                         </div>
+                                {semanticResult && (
+                                    <>
+                                        {/* Score & Fix Summary Bar */}
+                                        <div className="bg-gray-800 rounded-lg p-4 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`text-2xl font-bold ${semanticResult.overallScore >= 70 ? 'text-green-400' : semanticResult.overallScore >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+                                                        {semanticResult.overallScore}/100
+                                                    </div>
+                                                    <div className="text-sm text-gray-400">
+                                                        {isGeneratingFixes ? (
+                                                            <span className="flex items-center gap-1.5">
+                                                                <span className="animate-spin inline-block text-xs">&#9881;</span>
+                                                                Generating fixes ({fixProgress.completed}/{fixProgress.total})
+                                                            </span>
+                                                        ) : fixStats.ready > 0 ? (
+                                                            <span className="text-green-400">{fixStats.ready} fixes ready</span>
+                                                        ) : fixStats.applied > 0 ? (
+                                                            <span className="text-green-400">{fixStats.applied} fixes applied</span>
+                                                        ) : null}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    {highImpactReadyCount > 0 && (
+                                                        <button
+                                                            onClick={applyAllHighImpact}
+                                                            className="bg-green-600/20 text-green-400 border border-green-500/30 px-3 py-1.5 rounded text-xs font-medium hover:bg-green-600/30 transition-colors"
+                                                        >
+                                                            Apply All High-Impact ({highImpactReadyCount})
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => runSemanticAnalysis(true)}
+                                                        disabled={isAnalyzingSemantic}
+                                                        className="text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1"
+                                                        title="Re-analyze"
+                                                    >
+                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            </div>
 
-                                                         {/* SC Alignment */}
-                                                         <div>
-                                                             <div className="flex justify-between text-xs mb-1">
-                                                                 <span className="text-gray-400">Source Context</span>
-                                                                 <span className={`font-bold ${semanticResult.alignmentScores.scAlignment >= 70 ? 'text-green-400' : semanticResult.alignmentScores.scAlignment >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
-                                                                     {semanticResult.alignmentScores.scAlignment}%
-                                                                 </span>
-                                                             </div>
-                                                             <div className="bg-gray-700 h-2 rounded-full overflow-hidden">
-                                                                 <div
-                                                                     className={`h-full transition-all duration-300 ${semanticResult.alignmentScores.scAlignment >= 70 ? 'bg-green-500' : semanticResult.alignmentScores.scAlignment >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                                                                     style={{ width: `${semanticResult.alignmentScores.scAlignment}%` }}
-                                                                 />
-                                                             </div>
-                                                             {semanticResult.alignmentScores.scGap !== 'Aligned' && (
-                                                                 <p className="text-xs text-gray-500 mt-1">{semanticResult.alignmentScores.scGap}</p>
-                                                             )}
-                                                         </div>
+                                            {/* Progress bar */}
+                                            <div className="bg-gray-700 h-1.5 rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full transition-all duration-300 ${semanticResult.overallScore >= 70 ? 'bg-green-500' : semanticResult.overallScore >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                                    style={{ width: `${semanticResult.overallScore}%` }}
+                                                />
+                                            </div>
 
-                                                         {/* CSI Alignment */}
-                                                         <div>
-                                                             <div className="flex justify-between text-xs mb-1">
-                                                                 <span className="text-gray-400">Central Search Intent</span>
-                                                                 <span className={`font-bold ${semanticResult.alignmentScores.csiAlignment >= 70 ? 'text-green-400' : semanticResult.alignmentScores.csiAlignment >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
-                                                                     {semanticResult.alignmentScores.csiAlignment}%
-                                                                 </span>
-                                                             </div>
-                                                             <div className="bg-gray-700 h-2 rounded-full overflow-hidden">
-                                                                 <div
-                                                                     className={`h-full transition-all duration-300 ${semanticResult.alignmentScores.csiAlignment >= 70 ? 'bg-green-500' : semanticResult.alignmentScores.csiAlignment >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                                                                     style={{ width: `${semanticResult.alignmentScores.csiAlignment}%` }}
-                                                                 />
-                                                             </div>
-                                                             {semanticResult.alignmentScores.csiGap !== 'Aligned' && (
-                                                                 <p className="text-xs text-gray-500 mt-1">{semanticResult.alignmentScores.csiGap}</p>
-                                                             )}
-                                                         </div>
-                                                     </div>
-                                                 </div>
-                                             )}
+                                            {/* Summary text */}
+                                            {semanticResult.summary && (
+                                                <p className="text-xs text-gray-400">{semanticResult.summary}</p>
+                                            )}
+                                        </div>
 
-                                             {/* Semantic Score */}
-                                             {semanticResult.overallScore !== undefined && (
-                                                 <div className="bg-gray-800 p-3 rounded">
-                                                     <h3 className="text-sm font-semibold text-white mb-1">Overall Score</h3>
-                                                     <div className="flex items-center gap-2">
-                                                         <div className={`text-2xl font-bold ${semanticResult.overallScore >= 70 ? 'text-green-400' : semanticResult.overallScore >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
-                                                             {semanticResult.overallScore}/100
-                                                         </div>
-                                                         <div className="flex-grow bg-gray-700 h-2 rounded-full overflow-hidden">
-                                                             <div
-                                                                 className={`h-full transition-all duration-300 ${semanticResult.overallScore >= 70 ? 'bg-green-500' : semanticResult.overallScore >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                                                                 style={{ width: `${semanticResult.overallScore}%` }}
-                                                             />
-                                                         </div>
-                                                     </div>
-                                                 </div>
-                                             )}
+                                        {/* Core Entities (collapsible) */}
+                                        {semanticResult.coreEntities && (
+                                            <CoreEntityBoxes entities={semanticResult.coreEntities} />
+                                        )}
 
-                                             {/* Summary */}
-                                             {semanticResult.summary && (
-                                                 <div className="bg-gray-800 p-3 rounded">
-                                                     <h3 className="text-sm font-semibold text-white mb-1">Summary</h3>
-                                                     <p className="text-sm text-gray-300">{semanticResult.summary}</p>
-                                                 </div>
-                                             )}
+                                        {/* Alignment Scores (compact) */}
+                                        {semanticResult.alignmentScores && (
+                                            <div className="bg-gray-800 p-3 rounded border-l-4 border-green-500">
+                                                <div className="space-y-2">
+                                                    {[
+                                                        { label: 'CE', value: semanticResult.alignmentScores.ceAlignment, gap: semanticResult.alignmentScores.ceGap },
+                                                        { label: 'SC', value: semanticResult.alignmentScores.scAlignment, gap: semanticResult.alignmentScores.scGap },
+                                                        { label: 'CSI', value: semanticResult.alignmentScores.csiAlignment, gap: semanticResult.alignmentScores.csiGap },
+                                                    ].map(({ label, value, gap }) => (
+                                                        <div key={label} className="flex items-center gap-2">
+                                                            <span className="text-xs text-gray-400 w-8">{label}</span>
+                                                            <div className="flex-grow bg-gray-700 h-1.5 rounded-full overflow-hidden">
+                                                                <div
+                                                                    className={`h-full transition-all ${value >= 70 ? 'bg-green-500' : value >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                                                    style={{ width: `${value}%` }}
+                                                                />
+                                                            </div>
+                                                            <span className={`text-xs font-bold w-10 text-right ${value >= 70 ? 'text-green-400' : value >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+                                                                {value}%
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
 
-                                             {/* Macro & Micro Analysis Summaries */}
-                                             {(semanticResult.macroAnalysis || semanticResult.microAnalysis) && (
-                                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                                     {/* Macro Semantics */}
-                                                     {semanticResult.macroAnalysis && (
-                                                         <div className="bg-gradient-to-br from-blue-900/20 to-gray-800/50 p-4 rounded-lg border border-blue-500/30 shadow-lg">
-                                                             <h4 className="text-sm font-bold text-blue-300 mb-4 flex items-center gap-2 pb-2 border-b border-blue-500/20">
-                                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                                                                 </svg>
-                                                                 Macro Semantics
-                                                                 <span className="text-[10px] font-normal text-blue-400/70 ml-auto">Structure & Hierarchy</span>
-                                                             </h4>
-                                                             <div className="space-y-4">
-                                                                 {semanticResult.macroAnalysis.contextualVector && (
-                                                                     <div className="bg-gray-900/50 rounded-md p-3">
-                                                                         <div className="flex items-center gap-2 mb-2">
-                                                                             <span className="text-blue-400 text-[10px] font-semibold uppercase tracking-wider">H-Tag Flow</span>
-                                                                             <span className="flex-1 h-px bg-blue-500/20"></span>
-                                                                         </div>
-                                                                         <div className="text-sm text-gray-200 leading-relaxed [&_strong]:text-blue-300 [&_p]:mb-2 [&_p:last-child]:mb-0">
-                                                                             <SimpleMarkdown content={semanticResult.macroAnalysis.contextualVector} />
-                                                                         </div>
-                                                                     </div>
-                                                                 )}
-                                                                 {semanticResult.macroAnalysis.hierarchy && (
-                                                                     <div className="bg-gray-900/50 rounded-md p-3">
-                                                                         <div className="flex items-center gap-2 mb-2">
-                                                                             <span className="text-blue-400 text-[10px] font-semibold uppercase tracking-wider">Hierarchy</span>
-                                                                             <span className="flex-1 h-px bg-blue-500/20"></span>
-                                                                         </div>
-                                                                         <div className="text-sm text-gray-200 leading-relaxed [&_strong]:text-blue-300 [&_p]:mb-2 [&_p:last-child]:mb-0">
-                                                                             <SimpleMarkdown content={semanticResult.macroAnalysis.hierarchy} />
-                                                                         </div>
-                                                                     </div>
-                                                                 )}
-                                                                 {semanticResult.macroAnalysis.sourceContext && (
-                                                                     <div className="bg-gray-900/50 rounded-md p-3">
-                                                                         <div className="flex items-center gap-2 mb-2">
-                                                                             <span className="text-blue-400 text-[10px] font-semibold uppercase tracking-wider">Source Context</span>
-                                                                             <span className="flex-1 h-px bg-blue-500/20"></span>
-                                                                         </div>
-                                                                         <div className="text-sm text-gray-200 leading-relaxed [&_strong]:text-blue-300 [&_p]:mb-2 [&_p:last-child]:mb-0">
-                                                                             <SimpleMarkdown content={semanticResult.macroAnalysis.sourceContext} />
-                                                                         </div>
-                                                                     </div>
-                                                                 )}
-                                                             </div>
-                                                         </div>
-                                                     )}
-                                                     {/* Micro Semantics */}
-                                                     {semanticResult.microAnalysis && (
-                                                         <div className="bg-gradient-to-br from-purple-900/20 to-gray-800/50 p-4 rounded-lg border border-purple-500/30 shadow-lg">
-                                                             <h4 className="text-sm font-bold text-purple-300 mb-4 flex items-center gap-2 pb-2 border-b border-purple-500/20">
-                                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                                                 </svg>
-                                                                 Micro Semantics
-                                                                 <span className="text-[10px] font-normal text-purple-400/70 ml-auto">Linguistics & Density</span>
-                                                             </h4>
-                                                             <div className="space-y-4">
-                                                                 {semanticResult.microAnalysis.sentenceStructure && (
-                                                                     <div className="bg-gray-900/50 rounded-md p-3">
-                                                                         <div className="flex items-center gap-2 mb-2">
-                                                                             <span className="text-purple-400 text-[10px] font-semibold uppercase tracking-wider">Sentence Structure</span>
-                                                                             <span className="flex-1 h-px bg-purple-500/20"></span>
-                                                                         </div>
-                                                                         <div className="text-sm text-gray-200 leading-relaxed [&_strong]:text-purple-300 [&_p]:mb-2 [&_p:last-child]:mb-0">
-                                                                             <SimpleMarkdown content={semanticResult.microAnalysis.sentenceStructure} />
-                                                                         </div>
-                                                                     </div>
-                                                                 )}
-                                                                 {semanticResult.microAnalysis.informationDensity && (
-                                                                     <div className="bg-gray-900/50 rounded-md p-3">
-                                                                         <div className="flex items-center gap-2 mb-2">
-                                                                             <span className="text-purple-400 text-[10px] font-semibold uppercase tracking-wider">Information Density</span>
-                                                                             <span className="flex-1 h-px bg-purple-500/20"></span>
-                                                                         </div>
-                                                                         <div className="text-sm text-gray-200 leading-relaxed [&_strong]:text-purple-300 [&_p]:mb-2 [&_p:last-child]:mb-0">
-                                                                             <SimpleMarkdown content={semanticResult.microAnalysis.informationDensity} />
-                                                                         </div>
-                                                                     </div>
-                                                                 )}
-                                                                 {semanticResult.microAnalysis.htmlSemantics && (
-                                                                     <div className="bg-gray-900/50 rounded-md p-3">
-                                                                         <div className="flex items-center gap-2 mb-2">
-                                                                             <span className="text-purple-400 text-[10px] font-semibold uppercase tracking-wider">HTML Semantics</span>
-                                                                             <span className="flex-1 h-px bg-purple-500/20"></span>
-                                                                         </div>
-                                                                         <div className="text-sm text-gray-200 leading-relaxed [&_strong]:text-purple-300 [&_p]:mb-2 [&_p:last-child]:mb-0">
-                                                                             <SimpleMarkdown content={semanticResult.microAnalysis.htmlSemantics} />
-                                                                         </div>
-                                                                     </div>
-                                                                 )}
-                                                             </div>
-                                                         </div>
-                                                     )}
-                                                 </div>
-                                             )}
+                                        {/* Action Items with Inline Fixes */}
+                                        {semanticResult.actions && semanticResult.actions.length > 0 && (
+                                            <div className="space-y-2">
+                                                <h3 className="text-sm font-semibold text-white">Fixes ({semanticResult.actions.length})</h3>
 
-                                             {/* Action Plan & Roadmap */}
-                                             {semanticResult.actions && semanticResult.actions.length > 0 && (
-                                                 <div className="bg-gray-800/30 p-4 rounded border border-gray-700">
-                                                     <h3 className="text-sm font-semibold text-white mb-1">Action Plan & Roadmap</h3>
-                                                     <p className="text-xs text-gray-500 mb-4">Organized by impact. Click "Get Smart Fix" for AI-generated solutions.</p>
+                                                {/* Group by category */}
+                                                {(['Low Hanging Fruit', 'Mid Term', 'Long Term'] as const).map(category => {
+                                                    const items = semanticResult.actions.filter(a => a.category === category);
+                                                    if (items.length === 0) return null;
+                                                    const categoryColors = {
+                                                        'Low Hanging Fruit': 'text-green-400',
+                                                        'Mid Term': 'text-yellow-400',
+                                                        'Long Term': 'text-orange-400'
+                                                    };
+                                                    return (
+                                                        <div key={category}>
+                                                            <h4 className={`text-xs font-bold ${categoryColors[category]} mb-2`}>
+                                                                {category}
+                                                            </h4>
+                                                            <div className="space-y-2">
+                                                                {items.map(action => (
+                                                                    <ActionItemCard
+                                                                        key={action.id}
+                                                                        action={action}
+                                                                        pageContent={originalContent}
+                                                                        businessInfo={businessInfo}
+                                                                        dispatch={dispatch}
+                                                                        onApplyFix={applyFix}
+                                                                        isAutoGenerating={isGeneratingFixes}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </>
+                                )}
 
-                                                     {/* Phase 1: Low Hanging Fruit */}
-                                                     {(() => {
-                                                         const lowHangingFruit = semanticResult.actions.filter(a => a.category === 'Low Hanging Fruit');
-                                                         if (lowHangingFruit.length === 0) return null;
-                                                         return (
-                                                             <div className="mb-6">
-                                                                 <h4 className="text-xs font-bold text-green-400 mb-3 flex items-center gap-2">
-                                                                     <span className="bg-green-500/20 px-2 py-0.5 rounded">Phase 1</span>
-                                                                     Low Hanging Fruit (Immediate)
-                                                                 </h4>
-                                                                 <div className="grid grid-cols-1 gap-3">
-                                                                     {lowHangingFruit.map((action) => (
-                                                                         <ActionItemCard key={action.id} action={action} pageContent={originalContent} businessInfo={businessInfo} dispatch={dispatch} />
-                                                                     ))}
-                                                                 </div>
-                                                             </div>
-                                                         );
-                                                     })()}
-
-                                                     {/* Phase 2: Mid Term */}
-                                                     {(() => {
-                                                         const midTerm = semanticResult.actions.filter(a => a.category === 'Mid Term');
-                                                         if (midTerm.length === 0) return null;
-                                                         return (
-                                                             <div className="mb-6">
-                                                                 <h4 className="text-xs font-bold text-yellow-400 mb-3 flex items-center gap-2">
-                                                                     <span className="bg-yellow-500/20 px-2 py-0.5 rounded">Phase 2</span>
-                                                                     Mid Term
-                                                                 </h4>
-                                                                 <div className="grid grid-cols-1 gap-3">
-                                                                     {midTerm.map((action) => (
-                                                                         <ActionItemCard key={action.id} action={action} pageContent={originalContent} businessInfo={businessInfo} dispatch={dispatch} />
-                                                                     ))}
-                                                                 </div>
-                                                             </div>
-                                                         );
-                                                     })()}
-
-                                                     {/* Phase 3: Long Term */}
-                                                     {(() => {
-                                                         const longTerm = semanticResult.actions.filter(a => a.category === 'Long Term');
-                                                         if (longTerm.length === 0) return null;
-                                                         return (
-                                                             <div className="mb-2">
-                                                                 <h4 className="text-xs font-bold text-orange-400 mb-3 flex items-center gap-2">
-                                                                     <span className="bg-orange-500/20 px-2 py-0.5 rounded">Phase 3</span>
-                                                                     Long Term
-                                                                 </h4>
-                                                                 <div className="grid grid-cols-1 gap-3">
-                                                                     {longTerm.map((action) => (
-                                                                         <ActionItemCard key={action.id} action={action} pageContent={originalContent} businessInfo={businessInfo} dispatch={dispatch} />
-                                                                     ))}
-                                                                 </div>
-                                                             </div>
-                                                         );
-                                                     })()}
-                                                 </div>
-                                             )}
-                                         </div>
-                                     )}
-                                 </div>
-                             )
+                                {/* Advanced: Chunks link at bottom */}
+                                {originalContent && !isAnalyzingSemantic && (
+                                    <div className="pt-2 border-t border-gray-800">
+                                        <button
+                                            onClick={() => { setShowChunks(true); setShowOriginal(false); }}
+                                            className="text-xs text-gray-600 hover:text-gray-400 underline"
+                                        >
+                                            Advanced: View Semantic Chunks
+                                        </button>
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
                 </div>
@@ -766,15 +687,22 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                 {/* RIGHT: New Draft (Editor) */}
                 <div className="w-1/2 flex flex-col bg-gray-900">
                     <div className="p-3 bg-gray-800/50 border-b border-gray-700 flex justify-between items-center">
-                         <span className="font-semibold text-white text-sm">New Content (Editor)</span>
+                         <div className="flex items-center gap-3">
+                             <span className="font-semibold text-white text-sm">New Content (Editor)</span>
+                             {appliedCount > 0 && (
+                                 <span className="text-xs text-green-400 bg-green-900/30 px-2 py-0.5 rounded">
+                                     {appliedCount} {appliedCount === 1 ? 'change' : 'changes'} applied
+                                 </span>
+                             )}
+                         </div>
                          <div className="flex bg-gray-700 rounded p-0.5">
-                             <button 
+                             <button
                                 onClick={() => setActiveRightTab('edit')}
                                 className={`px-3 py-1 text-xs rounded ${activeRightTab === 'edit' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}
                              >
                                 Edit
                              </button>
-                             <button 
+                             <button
                                 onClick={() => setActiveRightTab('preview')}
                                 className={`px-3 py-1 text-xs rounded ${activeRightTab === 'preview' ? 'bg-gray-600 text-white' : 'text-gray-400'}`}
                              >
@@ -782,12 +710,11 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                              </button>
                          </div>
                     </div>
-                    
+
                     <div className="flex-grow overflow-y-auto relative">
                         {activeRightTab === 'edit' ? (
                             <div className="relative w-full h-full">
-                                {/* Add explicit id for easier targeting if needed */}
-                                <textarea 
+                                <textarea
                                     ref={textareaRef as any}
                                     value={draftContent}
                                     onChange={(e) => setDraftContent(e.target.value)}
@@ -796,13 +723,6 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                                     className="w-full h-full min-h-full resize-none bg-gray-900 text-gray-200 border-none p-6 focus:ring-0 font-mono text-sm leading-relaxed absolute inset-0"
                                     placeholder="Start rewriting here... Drag & Drop chunks from the left to assemble content."
                                 />
-                                {activeLeftTab === 'chunks' && chunks.length > 0 && !draftContent && (
-                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                        <p className="text-gray-600 bg-gray-900/80 p-2 rounded border border-gray-700 border-dashed">
-                                            Drag semantic chunks here to start
-                                        </p>
-                                    </div>
-                                )}
                             </div>
                         ) : (
                             <div className="p-6 text-gray-200">

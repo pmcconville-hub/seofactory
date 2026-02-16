@@ -53,6 +53,7 @@ Action: "{title}"
 Description: "{description}"
 Rule Reference: "{ruleReference}"
 {businessContext}
+{languageInstruction}
 CONTEXT (The specific webpage content):
 """
 {pageContent}
@@ -66,4 +67,36 @@ Provide a CONCRETE, PRACTICAL example of how to fix this *specifically* for this
 - Explain *why* this specific change helps the vector/semantics.
 - All suggestions must be appropriate for the target market/region and audience specified above.
 - Keep it concise but actionable (max 200 words).
+`;
+
+export const STRUCTURED_FIX_PROMPT_TEMPLATE = `
+You are a Semantic SEO Fix Generator.
+
+TASK: Generate a concrete, directly-applicable fix for the following issue on a webpage:
+Action: "{title}"
+Description: "{description}"
+Rule Reference: "{ruleReference}"
+{businessContext}
+{languageInstruction}
+
+CONTENT TO FIX:
+"""
+{pageContent}
+"""
+
+INSTRUCTIONS:
+- Find the EXACT text in the content that needs changing
+- Write the corrected replacement text
+- searchText MUST be a verbatim substring from the content above (exact match)
+- Write searchText, replacementText, and explanation in the SAME LANGUAGE as the content
+- Keep replacementText roughly the same scope (sentence or paragraph level)
+- If the fix requires inserting new text, use fixType "insert" and put the insertion point text in searchText
+
+Return ONLY valid JSON, no markdown:
+{
+  "fixType": "replace",
+  "searchText": "<exact substring from the content>",
+  "replacementText": "<the improved version>",
+  "explanation": "<1-2 sentences: why this change improves semantic quality>"
+}
 `;

@@ -238,13 +238,51 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
     );
   }
 
+  // Find the first uncompleted item for "Start Next" button
+  const nextItem = useMemo(() => {
+    // Prioritize critical > high > medium > low, then todo > in_progress
+    return actionQueue.find(a => a.execStatus !== 'done');
+  }, [actionQueue]);
+
+  // Remaining work stats
+  const remainingStats = useMemo(() => {
+    const remaining = actionQueue.filter(a => a.execStatus !== 'done');
+    const critical = remaining.filter(a => a.priority === 'critical').length;
+    const high = remaining.filter(a => a.priority === 'high').length;
+    const medium = remaining.filter(a => a.priority === 'medium').length;
+    const low = remaining.filter(a => a.priority === 'low').length;
+    return { total: remaining.length, critical, high, medium, low };
+  }, [actionQueue]);
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-5">
       {/* Header */}
       <div>
         <h2 className="text-xl font-bold text-white">Execute your migration</h2>
-        <p className="text-sm text-gray-400 mt-1">Work through each URL action to complete your migration.</p>
+        <p className="text-sm text-gray-400 mt-1">
+          Work through each URL below. Open the workbench to review and apply AI-suggested improvements.
+        </p>
       </div>
+
+      {/* Start Next Item button + remaining work */}
+      {nextItem && (
+        <div className="bg-blue-900/20 border border-blue-700/40 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm text-gray-300">
+              <span className="font-semibold text-white">{remainingStats.total}</span> items remaining
+              {remainingStats.critical > 0 && <span className="text-red-400 ml-2">{remainingStats.critical} critical</span>}
+              {remainingStats.high > 0 && <span className="text-orange-400 ml-2">{remainingStats.high} high</span>}
+              {remainingStats.medium > 0 && <span className="text-yellow-400 ml-2">{remainingStats.medium} medium</span>}
+            </p>
+          </div>
+          <button
+            onClick={() => handleActionClick(nextItem)}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+          >
+            Start Next Item
+          </button>
+        </div>
+      )}
 
       {/* Progress Bar */}
       <div className="border border-gray-700 rounded-lg p-4 bg-gray-800/30">

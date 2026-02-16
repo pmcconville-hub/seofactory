@@ -47,21 +47,36 @@ function formatConfidence(confidence: number): string {
   return `${Math.round(confidence * 100)}%`;
 }
 
-/** Format signal types into a short comma-separated label. */
-function formatSignals(signals: MatchSignal[]): string {
-  const labels: Record<MatchSignal['type'], string> = {
-    h1: 'H1',
-    title: 'Title',
-    url_slug: 'URL',
-    gsc_query: 'GSC',
-    content_body: 'Body',
-    heading_keywords: 'Headings',
-  };
-  // Only show signals with score > 0
-  return signals
-    .filter((s) => s.score > 0)
-    .map((s) => labels[s.type])
-    .join(', ');
+/** Signal icons and tooltips for user-friendly display. */
+const SIGNAL_DISPLAY: Record<MatchSignal['type'], { icon: string; label: string; tooltip: string }> = {
+  title: { icon: '\uD83D\uDCC4', label: 'Title', tooltip: 'Page title match' },
+  h1: { icon: '\uD83C\uDFF7\uFE0F', label: 'H1', tooltip: 'Main heading (H1) match' },
+  url_slug: { icon: '\uD83D\uDD17', label: 'URL', tooltip: 'URL slug keyword match' },
+  gsc_query: { icon: '\uD83D\uDCCA', label: 'GSC', tooltip: 'Google Search Console query match' },
+  content_body: { icon: '\uD83D\uDCDD', label: 'Body', tooltip: 'Body content keyword match' },
+  heading_keywords: { icon: '\uD83D\uDCCB', label: 'Headings', tooltip: 'Sub-heading keyword match' },
+};
+
+/** Format signal types into icons with tooltips. */
+function formatSignals(signals: MatchSignal[]): React.ReactNode {
+  const activeSignals = signals.filter((s) => s.score > 0);
+  if (activeSignals.length === 0) return '-';
+  return (
+    <span className="flex items-center gap-1.5">
+      {activeSignals.map((s) => {
+        const display = SIGNAL_DISPLAY[s.type];
+        return (
+          <span
+            key={s.type}
+            title={display.tooltip}
+            className="cursor-help text-xs"
+          >
+            {display.icon}
+          </span>
+        );
+      })}
+    </span>
+  );
 }
 
 /** Truncate a URL to a reasonable display length. */
@@ -296,20 +311,17 @@ export const MatchStep: React.FC<MatchStepProps> = ({
 
         {result && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">Confirm all above</span>
-            <input
-              type="number"
-              min={0}
-              max={100}
+            <span className="text-xs text-gray-400">Auto-confirm above</span>
+            <select
               value={confirmThreshold}
-              onChange={(e) =>
-                setConfirmThreshold(
-                  Math.max(0, Math.min(100, parseInt(e.target.value) || 0)),
-                )
-              }
-              className="w-16 px-2 py-1 rounded bg-gray-800 border border-gray-600 text-gray-200 text-sm text-center focus:outline-none focus:border-blue-500"
-            />
-            <span className="text-xs text-gray-400">%</span>
+              onChange={(e) => setConfirmThreshold(parseInt(e.target.value))}
+              className="px-2 py-1.5 rounded bg-gray-800 border border-gray-600 text-gray-200 text-sm focus:outline-none focus:border-blue-500"
+            >
+              <option value={60}>60%</option>
+              <option value={70}>70%</option>
+              <option value={80}>80%</option>
+              <option value={90}>90%</option>
+            </select>
             <button
               onClick={handleConfirmAll}
               disabled={isBatchConfirming}
@@ -401,7 +413,14 @@ export const MatchStep: React.FC<MatchStepProps> = ({
                     <th className="px-4 py-3 font-medium">URL</th>
                     <th className="px-4 py-3 font-medium text-center">Match</th>
                     <th className="px-4 py-3 font-medium">Topic</th>
-                    <th className="px-4 py-3 font-medium text-center">Confidence</th>
+                    <th className="px-4 py-3 font-medium text-center">
+                      <span className="inline-flex items-center gap-1" title="How similar this URL's content is to the topic. Based on title, headings, URL slug, and page content.">
+                        Confidence
+                        <svg className="w-3 h-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </span>
+                    </th>
                     <th className="px-4 py-3 font-medium">Signals</th>
                     <th className="px-4 py-3 font-medium text-center">Action</th>
                   </tr>
@@ -608,6 +627,9 @@ export const MatchStep: React.FC<MatchStepProps> = ({
                         <div className="text-sm">
                           <p className="text-amber-300 font-medium">
                             &quot;{group.topicTitle}&quot; has {group.matches.length} competing URLs:
+                          </p>
+                          <p className="text-xs text-amber-400/60 mt-0.5">
+                            Consider merging these pages or differentiating their focus to avoid competing for the same rankings.
                           </p>
                           <ul className="mt-1 space-y-0.5">
                             {group.matches.map((m) => {

@@ -140,12 +140,21 @@ export const PlanStep: React.FC<PlanStepProps> = ({
     [plan],
   );
 
-  // Handle plan generation: run AutoMatchService inline then generate plan
-  const handleGenerate = useCallback(() => {
+  // Handle plan generation: run AutoMatchService inline then generate plan, then auto-save
+  const handleGenerate = useCallback(async () => {
     const matcher = new AutoMatchService();
     const matchResult = matcher.match(inventory, topics);
     generatePlan(inventory, topics, matchResult);
-  }, [inventory, topics, generatePlan]);
+    // Auto-save after a brief delay to let plan state settle
+    setTimeout(async () => {
+      try {
+        await savePlan();
+        setSaved(true);
+      } catch {
+        // Ignore auto-save failure
+      }
+    }, 500);
+  }, [inventory, topics, generatePlan, savePlan]);
 
   // Handle applying plan to inventory
   const handleApply = useCallback(async () => {
@@ -183,43 +192,44 @@ export const PlanStep: React.FC<PlanStepProps> = ({
         </div>
       </div>
 
-      {/* Action buttons */}
+      {/* Primary action — single guided flow */}
       <div className="flex items-center gap-3">
-        <button
-          onClick={handleGenerate}
-          disabled={isGenerating || inventory.length === 0}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            isGenerating || inventory.length === 0
-              ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
-              : 'bg-blue-600 text-white hover:bg-blue-500 cursor-pointer'
-          }`}
-        >
-          {isGenerating ? 'Generating...' : plan ? 'Regenerate Plan' : 'Generate Plan'}
-        </button>
-
-        <button
-          onClick={handleApply}
-          disabled={!plan || isApplying || applied}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            !plan || isApplying || applied
-              ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
-              : 'bg-green-700 text-white hover:bg-green-600 cursor-pointer'
-          }`}
-        >
-          {isApplying ? 'Applying...' : applied ? 'Applied' : 'Apply to Inventory'}
-        </button>
-
-        <button
-          onClick={handleSave}
-          disabled={!stats || isSaving || saved}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            !stats || isSaving || saved
-              ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
-              : 'bg-purple-700 text-white hover:bg-purple-600 cursor-pointer'
-          }`}
-        >
-          {isSaving ? 'Saving...' : saved ? 'Saved' : 'Save Plan'}
-        </button>
+        {!plan ? (
+          /* Before plan: single generate button */
+          <button
+            onClick={handleGenerate}
+            disabled={isGenerating || inventory.length === 0}
+            className={`px-5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              isGenerating || inventory.length === 0
+                ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                : 'bg-blue-600 text-white hover:bg-blue-500 cursor-pointer'
+            }`}
+          >
+            {isGenerating ? 'Generating...' : 'Generate Migration Plan'}
+          </button>
+        ) : (
+          /* After plan: apply as primary CTA + regenerate as secondary */
+          <>
+            <button
+              onClick={handleApply}
+              disabled={isApplying || applied}
+              className={`px-5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isApplying || applied
+                  ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                  : 'bg-green-700 text-white hover:bg-green-600 cursor-pointer'
+              }`}
+            >
+              {isApplying ? 'Applying...' : applied ? 'Plan Applied' : 'Apply Plan to Inventory'}
+            </button>
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 bg-gray-800 hover:bg-gray-700 hover:text-gray-200 transition-colors"
+            >
+              Regenerate
+            </button>
+          </>
+        )}
       </div>
 
       {/* Error */}

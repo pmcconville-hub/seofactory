@@ -10,9 +10,11 @@ import {
   SemanticActionCategory,
   SemanticActionType,
   SemanticActionImpact,
-  AlignmentScores
+  AlignmentScores,
+  SmartFixResult
 } from '../../types';
-import { SEMANTIC_FRAMEWORK, SMART_FIX_PROMPT_TEMPLATE } from '../../config/semanticFramework';
+import { SEMANTIC_FRAMEWORK, SMART_FIX_PROMPT_TEMPLATE, STRUCTURED_FIX_PROMPT_TEMPLATE } from '../../config/semanticFramework';
+import { getLanguageAndRegionInstruction, getLanguageName } from '../../utils/languageUtils';
 import { AppAction } from '../../state/appState';
 import * as geminiService from '../geminiService';
 import * as openAiService from '../openAiService';
@@ -135,6 +137,12 @@ KORAY TUGBERK GUBUR'S HOLISTIC SEO FRAMEWORK - KEY DEFINITIONS:
 - The content must SATISFY this intent completely
 `;
 
+  const languageInstruction = businessInfo.language
+    ? getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region)
+    : '';
+
+  const outputLanguageName = getLanguageName(businessInfo.language || 'en');
+
   if (hasPillars) {
     // ALIGNMENT CHECKING MODE - compare detected vs defined
     return `
@@ -142,6 +150,7 @@ You are an elite Semantic SEO Auditor using Koray Tugberk GUBUR's Holistic SEO f
 
 YOUR TASK: Analyze this page and determine how well it ALIGNS with the user's defined semantic framework.
 ${businessContext}
+${languageInstruction}
 ${frameworkDefinitions}
 
 USER'S DEFINED SEMANTIC FRAMEWORK (what the content SHOULD align to):
@@ -208,6 +217,8 @@ REQUIRED OUTPUT FORMAT (JSON):
   ]
 }
 
+OUTPUT LANGUAGE: ALL text values in the JSON response (summary, action titles, action descriptions, gap explanations, analysis text) MUST be written in ${outputLanguageName}. Only JSON keys remain in English.
+
 IMPORTANT:
 - Return ONLY valid JSON, no markdown code blocks
 - Generate 5-15 specific, actionable items to improve alignment
@@ -220,6 +231,7 @@ You are an elite Semantic SEO Auditor using Koray Tugberk GUBUR's Holistic SEO f
 
 YOUR TASK: Analyze this page and DETECT its semantic properties.
 ${businessContext}
+${languageInstruction}
 ${frameworkDefinitions}
 
 FRAMEWORK RULES:
@@ -266,6 +278,8 @@ REQUIRED OUTPUT FORMAT (JSON):
     }
   ]
 }
+
+OUTPUT LANGUAGE: ALL text values in the JSON response (summary, action titles, action descriptions, analysis text) MUST be written in ${outputLanguageName}. Only JSON keys remain in English.
 
 IMPORTANT: Return ONLY valid JSON, no markdown code blocks. Generate 5-10 specific action items.
 `;
@@ -661,11 +675,16 @@ ${businessContextParts.join('\n')}
 `
       : '';
 
+    const languageInstruction = businessInfo.language
+      ? `OUTPUT LANGUAGE: Write ALL text in ${getLanguageName(businessInfo.language)}. Do NOT write in English unless that is the configured language.`
+      : '';
+
     const prompt = SMART_FIX_PROMPT_TEMPLATE
       .replace('{title}', action.title)
       .replace('{description}', action.description)
       .replace('{ruleReference}', action.ruleReference || 'General semantic optimization')
       .replace('{businessContext}', businessContext)
+      .replace('{languageInstruction}', languageInstruction)
       .replace('{pageContent}', pageContent.substring(0, 4000)); // Limit content to avoid token limits
 
     let smartFix: string;
@@ -714,6 +733,157 @@ ${businessContextParts.join('\n')}
       payload: {
         service: 'SmartFix',
         message: `Smart fix generation failed: ${message}`,
+        status: 'failure',
+        timestamp: Date.now(),
+        data: error
+      }
+    });
+    throw error;
+  }
+};
+
+/**
+ * Generates a structured fix (search/replace JSON) for a specific action item
+ * Returns a SmartFixResult that can be directly applied to the draft content
+ */
+export const generateStructuredFix = async (
+  action: SemanticActionItem,
+  pageContent: string,
+  businessInfo: BusinessInfo,
+  dispatch: React.Dispatch<AppAction>
+): Promise<SmartFixResult> => {
+  dispatch({
+    type: 'LOG_EVENT',
+    payload: {
+      service: 'StructuredFix',
+      message: `Generating structured fix for: ${action.title}`,
+      status: 'info',
+      timestamp: Date.now()
+    }
+  });
+
+  try {
+    const businessContextParts: string[] = [];
+    if (businessInfo.targetMarket) businessContextParts.push(`- Target Market/Region: ${businessInfo.targetMarket}`);
+    if (businessInfo.language) businessContextParts.push(`- Content Language: ${businessInfo.language}`);
+    if (businessInfo.audience) businessContextParts.push(`- Target Audience: ${businessInfo.audience}`);
+    if (businessInfo.industry) businessContextParts.push(`- Industry: ${businessInfo.industry}`);
+
+    const businessContext = businessContextParts.length > 0
+      ? `BUSINESS CONTEXT:\n${businessContextParts.join('\n')}`
+      : '';
+
+    const languageInstruction = businessInfo.language
+      ? `OUTPUT LANGUAGE: Write ALL text (searchText, replacementText, explanation) in ${getLanguageName(businessInfo.language)}. Do NOT write in English unless that is the configured language.`
+      : '';
+
+    const prompt = STRUCTURED_FIX_PROMPT_TEMPLATE
+      .replace('{title}', action.title)
+      .replace('{description}', action.description)
+      .replace('{ruleReference}', action.ruleReference || 'General semantic optimization')
+      .replace('{businessContext}', businessContext)
+      .replace('{languageInstruction}', languageInstruction)
+      .replace('{pageContent}', pageContent.substring(0, 6000));
+
+    let rawResponse: string;
+
+    switch (businessInfo.aiProvider) {
+      case 'gemini':
+        rawResponse = await geminiService.generateText(prompt, businessInfo, dispatch);
+        break;
+      case 'openai':
+        rawResponse = await openAiService.generateText(prompt, businessInfo, dispatch);
+        break;
+      case 'anthropic':
+        rawResponse = await anthropicService.generateText(prompt, businessInfo, dispatch);
+        break;
+      case 'perplexity':
+        rawResponse = await perplexityService.generateText(prompt, businessInfo, dispatch);
+        break;
+      case 'openrouter':
+        rawResponse = await openRouterService.generateText(prompt, businessInfo, dispatch);
+        break;
+      default:
+        throw new Error(`Unsupported AI provider: ${businessInfo.aiProvider}`);
+    }
+
+    // Parse JSON from response (strip markdown code blocks if present)
+    const jsonStr = rawResponse
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      // Try to extract JSON from response text
+      const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('Could not parse structured fix JSON from AI response');
+      }
+    }
+
+    const fix: SmartFixResult = {
+      fixType: parsed.fixType || 'replace',
+      searchText: parsed.searchText || '',
+      replacementText: parsed.replacementText || '',
+      explanation: parsed.explanation || '',
+      applied: false
+    };
+
+    // Validate that searchText exists in the page content
+    if (fix.searchText && !pageContent.includes(fix.searchText)) {
+      // Try normalized match: trim whitespace, collapse spaces
+      const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
+      const normalizedContent = normalize(pageContent);
+      const normalizedSearch = normalize(fix.searchText);
+
+      if (normalizedContent.includes(normalizedSearch)) {
+        // Find the original text that matches when normalized
+        const contentWords = pageContent.split(/(\s+)/);
+        let rebuiltNormalized = '';
+        let startIdx = -1;
+        let endIdx = -1;
+
+        for (let i = 0; i < contentWords.length; i++) {
+          rebuiltNormalized += contentWords[i];
+          const trimmedRebuilt = rebuiltNormalized.replace(/\s+/g, ' ').trim();
+          if (startIdx === -1 && trimmedRebuilt.includes(normalizedSearch.substring(0, 20))) {
+            // Approximate start found - use simpler approach
+            break;
+          }
+        }
+
+        // Simpler fallback: just note the mismatch in explanation
+        if (startIdx === -1) {
+          fix.explanation += ' (Note: searchText was whitespace-normalized; verify match before applying.)';
+        }
+      } else {
+        fix.explanation += ' (Warning: searchText not found verbatim in content. Review before applying.)';
+      }
+    }
+
+    dispatch({
+      type: 'LOG_EVENT',
+      payload: {
+        service: 'StructuredFix',
+        message: `Structured fix generated for: ${action.title}`,
+        status: 'success',
+        timestamp: Date.now()
+      }
+    });
+
+    return fix;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    dispatch({
+      type: 'LOG_EVENT',
+      payload: {
+        service: 'StructuredFix',
+        message: `Structured fix generation failed: ${message}`,
         status: 'failure',
         timestamp: Date.now(),
         data: error

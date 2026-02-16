@@ -137,85 +137,96 @@ export const AuditStep: React.FC<AuditStepProps> = ({
 
   const pendingCount = inventory.length - alreadyAuditedCount;
 
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
         <h2 className="text-xl font-semibold text-white">Analyzing every page</h2>
         <p className="text-sm text-gray-400 mt-1">
-          Run the Unified Audit on each inventory URL to measure content quality, EAV coverage, and
-          technical health.
+          We'll analyze each page's content quality and technical health. This takes about 10 seconds per page.
         </p>
       </div>
 
-      {/* Config Section */}
+      {/* Main action area */}
       <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-        <h3 className="text-sm font-medium text-gray-300 mb-3">Batch Audit Controls</h3>
-        <div className="flex flex-wrap items-end gap-4">
-          {/* Scraping Provider */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-400">Provider</label>
-            <select
-              value={scrapingProvider}
-              onChange={(e) => setScrapingProvider(e.target.value as ScrapingProvider)}
-              disabled={isRunning}
-              className="bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
-            >
-              <option value="jina">Jina</option>
-              <option value="firecrawl">Firecrawl</option>
-              <option value="apify">Apify</option>
-              <option value="direct">Direct</option>
-            </select>
-          </div>
-
-          {/* Concurrency */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-400">Concurrency: {concurrency}</label>
-            <input
-              type="range"
-              min={1}
-              max={4}
-              value={concurrency}
-              onChange={(e) => setConcurrency(Number(e.target.value))}
-              disabled={isRunning}
-              className="w-32 accent-blue-600"
-            />
-          </div>
-
+        <div className="flex flex-wrap items-center gap-4">
           {/* Action buttons */}
-          <div className="flex gap-2 ml-auto">
+          <div className="flex gap-2">
             {!isRunning ? (
               <button
                 onClick={handleStart}
                 disabled={inventory.length === 0}
-                className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
+                className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
                   inventory.length === 0
                     ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
                     : 'bg-blue-600 hover:bg-blue-500 text-white cursor-pointer'
                 }`}
               >
-                {pendingCount < inventory.length ? 'Resume Audit' : 'Start Audit'}
-                {pendingCount > 0 && (
-                  <span className="ml-1.5 text-xs opacity-75">({pendingCount} pending)</span>
-                )}
+                {pendingCount < inventory.length ? 'Resume Audit' : `Analyze ${pendingCount} pages`}
               </button>
             ) : (
               <button
                 onClick={handleCancel}
-                className="px-4 py-1.5 rounded text-sm font-medium bg-red-700 hover:bg-red-600 text-white transition-colors cursor-pointer"
+                className="px-5 py-2 rounded-lg text-sm font-medium bg-red-700 hover:bg-red-600 text-white transition-colors cursor-pointer"
               >
                 Cancel
               </button>
             )}
           </div>
+
+          {/* Status info */}
+          {alreadyAuditedCount > 0 && !isRunning && !hasFinished && (
+            <p className="text-xs text-gray-500">
+              {alreadyAuditedCount} of {inventory.length} already audited.
+              {pendingCount > 0 && ` ${pendingCount} remaining.`}
+            </p>
+          )}
+
+          {/* Advanced Settings Toggle */}
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="ml-auto text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            {showAdvanced ? 'Hide Settings' : 'Settings'}
+          </button>
         </div>
 
-        {/* Status info */}
-        {alreadyAuditedCount > 0 && !isRunning && !hasFinished && (
-          <p className="mt-3 text-xs text-gray-500">
-            {alreadyAuditedCount} of {inventory.length} URLs already audited.
-            {pendingCount > 0 && ` ${pendingCount} remaining.`}
-          </p>
+        {/* Advanced Settings (collapsed by default) */}
+        {showAdvanced && (
+          <div className="mt-4 pt-4 border-t border-gray-700 flex flex-wrap items-end gap-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-400">Scraping Provider</label>
+              <select
+                value={scrapingProvider}
+                onChange={(e) => setScrapingProvider(e.target.value as ScrapingProvider)}
+                disabled={isRunning}
+                className="bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+              >
+                <option value="jina">Jina</option>
+                <option value="firecrawl">Firecrawl</option>
+                <option value="apify">Apify</option>
+                <option value="direct">Direct</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-400">Concurrency: {concurrency}</label>
+              <input
+                type="range"
+                min={1}
+                max={4}
+                value={concurrency}
+                onChange={(e) => setConcurrency(Number(e.target.value))}
+                disabled={isRunning}
+                className="w-32 accent-blue-600"
+              />
+            </div>
+          </div>
         )}
       </div>
 

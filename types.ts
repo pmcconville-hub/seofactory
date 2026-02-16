@@ -3465,6 +3465,14 @@ export type SemanticActionCategory = 'Low Hanging Fruit' | 'Mid Term' | 'Long Te
 export type SemanticActionType = 'Micro-Semantics' | 'Macro-Semantics';
 export type SemanticActionImpact = 'High' | 'Medium' | 'Low';
 
+export interface SmartFixResult {
+  fixType: 'replace' | 'insert' | 'rewrite_section';
+  searchText: string;        // Exact text to find in the draft
+  replacementText: string;   // Text to replace with
+  explanation: string;       // Why this change helps (in user's language)
+  applied?: boolean;         // Whether fix has been applied
+}
+
 export interface SemanticActionItem {
   id: string;
   title: string;
@@ -3473,7 +3481,8 @@ export interface SemanticActionItem {
   impact: SemanticActionImpact;
   type: SemanticActionType;
   ruleReference?: string;
-  smartFix?: string;  // AI-generated fix suggestion
+  smartFix?: string;  // AI-generated fix suggestion (legacy prose)
+  structuredFix?: SmartFixResult;  // Structured fix with search/replace
 }
 
 // Alignment scores when checking content against user-defined CE/SC/CSI pillars

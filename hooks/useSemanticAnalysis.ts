@@ -2,8 +2,8 @@
 // React hook for managing semantic analysis state with database persistence
 
 import { useState, useCallback } from 'react';
-import { SemanticAuditResult, BusinessInfo, SEOPillars } from '../types';
-import { analyzePageSemantics } from '../services/ai/semanticAnalysis';
+import { SemanticAuditResult, BusinessInfo, SEOPillars, SmartFixResult } from '../types';
+import { analyzePageSemantics, generateStructuredFix } from '../services/ai/semanticAnalysis';
 import { AppAction } from '../state/appState';
 import {
   getExistingSemanticAnalysis,
@@ -19,6 +19,11 @@ export interface AnalyzeOptions {
   forceRefresh?: boolean;  // Skip cache check and re-analyze
 }
 
+export interface FixProgress {
+  completed: number;
+  total: number;
+}
+
 export interface UseSemanticAnalysisReturn {
   result: SemanticAuditResult | null;
   isAnalyzing: boolean;
@@ -29,6 +34,10 @@ export interface UseSemanticAnalysisReturn {
   loadCachedResult: (inventoryId: string, mapId: string | null, content: string) => Promise<boolean>;
   reset: () => void;
   updateActionFix: (actionId: string, fix: string) => void;
+  updateActionStructuredFix: (actionId: string, fix: SmartFixResult) => void;
+  isGeneratingFixes: boolean;
+  fixProgress: FixProgress;
+  generateAllFixes: (pageContent: string) => Promise<void>;
 }
 
 /**
@@ -46,6 +55,8 @@ export const useSemanticAnalysis = (
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isLoadingCached, setIsLoadingCached] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isGeneratingFixes, setIsGeneratingFixes] = useState(false);
+  const [fixProgress, setFixProgress] = useState<FixProgress>({ completed: 0, total: 0 });
 
   /**
    * Loads cached semantic analysis result if available
@@ -226,6 +237,73 @@ export const useSemanticAnalysis = (
     [result]
   );
 
+  /**
+   * Updates the structuredFix field for a specific action item
+   */
+  const updateActionStructuredFix = useCallback(
+    (actionId: string, fix: SmartFixResult): void => {
+      if (!result) return;
+
+      setResult({
+        ...result,
+        actions: result.actions.map((action) =>
+          action.id === actionId
+            ? { ...action, structuredFix: fix }
+            : action
+        )
+      });
+    },
+    [result]
+  );
+
+  /**
+   * Generates structured fixes for all action items sequentially
+   * Prioritizes High impact items and Low Hanging Fruit category
+   */
+  const generateAllFixes = useCallback(
+    async (pageContent: string): Promise<void> => {
+      if (!result || result.actions.length === 0) return;
+
+      setIsGeneratingFixes(true);
+
+      // Sort: High impact first, then Low Hanging Fruit first within same impact
+      const sortedActions = [...result.actions]
+        .filter(a => !a.structuredFix) // Skip items that already have a fix
+        .sort((a, b) => {
+          const impactOrder = { High: 0, Medium: 1, Low: 2 };
+          const catOrder = { 'Low Hanging Fruit': 0, 'Mid Term': 1, 'Long Term': 2 };
+          const impactDiff = impactOrder[a.impact] - impactOrder[b.impact];
+          if (impactDiff !== 0) return impactDiff;
+          return catOrder[a.category] - catOrder[b.category];
+        });
+
+      setFixProgress({ completed: 0, total: sortedActions.length });
+
+      for (let i = 0; i < sortedActions.length; i++) {
+        const action = sortedActions[i];
+        try {
+          const fix = await generateStructuredFix(action, pageContent, businessInfo, dispatch);
+          // Update the result state with the new fix
+          setResult(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              actions: prev.actions.map(a =>
+                a.id === action.id ? { ...a, structuredFix: fix } : a
+              )
+            };
+          });
+        } catch (err) {
+          console.warn(`[useSemanticAnalysis] Failed to generate fix for "${action.title}":`, err);
+        }
+        setFixProgress({ completed: i + 1, total: sortedActions.length });
+      }
+
+      setIsGeneratingFixes(false);
+    },
+    [result, businessInfo, dispatch]
+  );
+
   return {
     result,
     isAnalyzing,
@@ -235,6 +313,10 @@ export const useSemanticAnalysis = (
     analyzeWithPersistence,
     loadCachedResult,
     reset,
-    updateActionFix
+    updateActionFix,
+    updateActionStructuredFix,
+    isGeneratingFixes,
+    fixProgress,
+    generateAllFixes
   };
 };
