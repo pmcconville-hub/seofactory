@@ -1,3 +1,12 @@
+import type { BusinessInfo } from '../../types';
+import type { AppAction } from '../../state/appState';
+import * as geminiService from '../geminiService';
+import * as openAiService from '../openAiService';
+import * as anthropicService from '../anthropicService';
+import * as perplexityService from '../perplexityService';
+import * as openRouterService from '../openRouterService';
+import { dispatchToProvider } from './providerDispatcher';
+
 export interface DetectedPageResult {
   inventoryId: string;
   url: string;
@@ -71,6 +80,67 @@ export class PillarDetectionService {
       detectedLanguage: primaryLang,
       detectedRegion,
     };
+  }
+
+  /**
+   * Use AI to refine the aggregated pillar suggestion into canonical, well-formed pillars.
+   */
+  async suggestPillarsWithAI(
+    aggregation: PillarSuggestion,
+    businessInfo: BusinessInfo,
+    dispatch: React.Dispatch<AppAction>
+  ): Promise<PillarSuggestion> {
+    const prompt = `You are a Holistic SEO strategist. Given the detected semantic signals from analyzing an existing website, suggest the optimal SEO Pillars.
+
+DETECTED FROM WEBSITE ANALYSIS:
+- Most common Central Entity: "${aggregation.centralEntity}" (${aggregation.centralEntityConfidence}% of pages)
+- Alternative CEs: ${aggregation.alternativeSuggestions.centralEntity.join(', ') || 'none'}
+- Most common Source Context: "${aggregation.sourceContext}" (${aggregation.sourceContextConfidence}% of pages)
+- Most common Search Intent: "${aggregation.centralSearchIntent}" (${aggregation.centralSearchIntentConfidence}% of pages)
+- Detected language: ${aggregation.detectedLanguage}
+- Detected region: ${aggregation.detectedRegion}
+
+BUSINESS CONTEXT:
+- Domain: ${businessInfo.domain}
+- Industry: ${businessInfo.industry}
+- Audience: ${businessInfo.audience}
+
+TASK: Suggest the OPTIMAL pillars for this website. The CE must be a single unambiguous entity (not a keyword). The SC must describe the authority type. The CSI must be in [VERB] + [OBJECT] format.
+
+Return JSON:
+{
+  "centralEntity": "string",
+  "sourceContext": "string",
+  "centralSearchIntent": "string",
+  "reasoning": "string explaining why these are optimal"
+}`;
+
+    const fallback = {
+      centralEntity: aggregation.centralEntity,
+      sourceContext: aggregation.sourceContext,
+      centralSearchIntent: aggregation.centralSearchIntent,
+      reasoning: 'Used detected values as-is (AI refinement failed)',
+    };
+
+    try {
+      const result = await dispatchToProvider<typeof fallback>(businessInfo, {
+        gemini: () => geminiService.generateJson(prompt, businessInfo, dispatch, fallback),
+        openai: () => openAiService.generateJson(prompt, businessInfo, dispatch, fallback),
+        anthropic: () => anthropicService.generateJson(prompt, businessInfo, dispatch, fallback),
+        perplexity: () => perplexityService.generateJson(prompt, businessInfo, dispatch, fallback),
+        openrouter: () => openRouterService.generateJson(prompt, businessInfo, dispatch, fallback),
+      });
+
+      return {
+        ...aggregation,
+        centralEntity: result.centralEntity || aggregation.centralEntity,
+        sourceContext: result.sourceContext || aggregation.sourceContext,
+        centralSearchIntent: result.centralSearchIntent || aggregation.centralSearchIntent,
+      };
+    } catch (err) {
+      console.warn('[PillarDetectionService] AI refinement failed, using detected values:', err);
+      return aggregation;
+    }
   }
 
   private countFrequencies(
