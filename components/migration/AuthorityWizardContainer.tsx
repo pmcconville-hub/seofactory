@@ -2,9 +2,12 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { SiteInventoryItem, EnrichedTopic, ActionType, TransitionStatus, BusinessInfo } from '../../types';
 import { useAppState } from '../../state/appState';
 import { useBatchAudit } from '../../hooks/useBatchAudit';
+import { useBatchSemanticAnalysis } from '../../hooks/useBatchSemanticAnalysis';
 import { useTopicOperations } from '../../hooks/useTopicOperations';
 import { usePillarDetection } from '../../hooks/usePillarDetection';
 import { useAugmentedMap } from '../../hooks/useAugmentedMap';
+import { validateBusinessInfoForAnalysis } from '../../utils/businessInfoValidator';
+import { extractSinglePage } from '../../services/pageExtractionService';
 import { ImportStep } from './steps/ImportStep';
 import { AuditStep } from './steps/AuditStep';
 import { MatchStep } from './steps/MatchStep';
@@ -80,6 +83,53 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
 
   // Lifted batch audit state — persists across step navigation
   const batchAudit = useBatchAudit(projectId, mapId);
+
+  // ── Semantic analysis state ────────────────────────────────────────────
+  const batchSemanticAnalysis = useBatchSemanticAnalysis(businessInfo, dispatch, mapId);
+  const [isFetchingContent, setIsFetchingContent] = useState(false);
+  const [fetchProgress, setFetchProgress] = useState<{ current: number; total: number } | null>(null);
+  const contentMapRef = useRef<Map<string, string>>(new Map());
+  const [semanticValidationError, setSemanticValidationError] = useState<string | null>(null);
+
+  const handleRunSemanticAnalysis = useCallback(async () => {
+    const validation = validateBusinessInfoForAnalysis(businessInfo);
+    if (!validation.valid) {
+      setSemanticValidationError(validation.errors.join(' '));
+      return;
+    }
+    setSemanticValidationError(null);
+
+    // Fetch content for pages without cached content
+    const pagesWithoutContent = inventory.filter(item => !contentMapRef.current.has(item.id));
+    if (pagesWithoutContent.length > 0) {
+      setIsFetchingContent(true);
+      setFetchProgress({ current: 0, total: pagesWithoutContent.length });
+
+      for (let i = 0; i < pagesWithoutContent.length; i++) {
+        const item = pagesWithoutContent[i];
+        try {
+          const extracted = await extractSinglePage(item.url, {
+            jinaApiKey: businessInfo.jinaApiKey,
+            apifyToken: businessInfo.apifyToken,
+            firecrawlApiKey: businessInfo.firecrawlApiKey,
+            extractionType: 'semantic_only',
+            enableFallback: true,
+          });
+          if (extracted.semantic?.content) {
+            contentMapRef.current.set(item.id, extracted.semantic.content);
+          }
+        } catch {
+          // Skip pages that fail to fetch
+        }
+        setFetchProgress({ current: i + 1, total: pagesWithoutContent.length });
+      }
+      setIsFetchingContent(false);
+      setFetchProgress(null);
+    }
+
+    await batchSemanticAnalysis.startBatch(inventory, contentMapRef.current);
+    onRefreshInventory();
+  }, [inventory, businessInfo, batchSemanticAnalysis, onRefreshInventory]);
 
   // ── Map step state ──────────────────────────────────────────────────────
   const pillarDetection = usePillarDetection();
@@ -392,6 +442,108 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
               cancelBatch={batchAudit.cancelBatch}
               auditError={batchAudit.error}
             />
+
+            {/* Semantic Analysis — required before Map step can detect pillars */}
+            {auditComplete && (
+              <div className="mx-4 mt-4 bg-gray-800/50 border border-gray-700 rounded-lg p-4 space-y-3">
+                <div>
+                  <h3 className="text-sm font-bold text-white">Semantic Analysis</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Detect Central Entities, Source Context, and Search Intent across all pages. Required for Map generation.
+                  </p>
+                </div>
+
+                {/* Validation error */}
+                {semanticValidationError && (
+                  <div className="bg-red-900/30 border border-red-700 rounded-lg px-3 py-2 text-xs text-red-300">
+                    {semanticValidationError}
+                  </div>
+                )}
+
+                {/* Already-analyzed count */}
+                {(() => {
+                  const analyzedCount = inventory.filter(i => i.detected_ce).length;
+                  return analyzedCount > 0 && !batchSemanticAnalysis.isRunning && (
+                    <div className="bg-green-900/20 border border-green-700/50 rounded-lg px-3 py-2 text-xs text-green-300">
+                      {analyzedCount} of {inventory.length} pages already have semantic data.
+                    </div>
+                  );
+                })()}
+
+                {/* Content fetching progress */}
+                {isFetchingContent && fetchProgress && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-xs text-blue-300">
+                      <span className="animate-spin">&#9881;</span>
+                      Fetching page content... {fetchProgress.current}/{fetchProgress.total}
+                    </div>
+                    <div className="w-full bg-gray-700 h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-blue-500 h-full transition-all" style={{ width: `${(fetchProgress.current / fetchProgress.total) * 100}%` }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Batch analysis progress */}
+                {batchSemanticAnalysis.isRunning && batchSemanticAnalysis.progress && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-xs text-blue-300">
+                      <span className="animate-spin">&#9881;</span>
+                      Analyzing pages... {batchSemanticAnalysis.progress.completed}/{batchSemanticAnalysis.progress.total}
+                      {batchSemanticAnalysis.progress.failed > 0 && (
+                        <span className="text-gray-500 ml-2">({batchSemanticAnalysis.progress.failed} failed)</span>
+                      )}
+                    </div>
+                    <div className="w-full bg-gray-700 h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-blue-500 h-full transition-all" style={{ width: `${(batchSemanticAnalysis.progress.completed / batchSemanticAnalysis.progress.total) * 100}%` }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Results */}
+                {batchSemanticAnalysis.results && !batchSemanticAnalysis.isRunning && (
+                  <div className="space-y-1">
+                    <div className="text-xs text-green-400">
+                      Analysis complete: {batchSemanticAnalysis.results.filter(r => r.success).length} pages analyzed.
+                    </div>
+                    {batchSemanticAnalysis.results.filter(r => r.detectedCE).length > 0 && (
+                      <div className="text-xs text-gray-400">
+                        Top entities: {
+                          [...new Set(batchSemanticAnalysis.results.filter(r => r.detectedCE).map(r => r.detectedCE))]
+                            .slice(0, 5)
+                            .join(', ')
+                        }
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Error */}
+                {batchSemanticAnalysis.error && (
+                  <div className="bg-red-900/30 border border-red-700 rounded-lg px-3 py-2 text-xs text-red-300">
+                    {batchSemanticAnalysis.error}
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleRunSemanticAnalysis}
+                    disabled={batchSemanticAnalysis.isRunning || isFetchingContent || inventory.length === 0}
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-500 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {batchSemanticAnalysis.isRunning || isFetchingContent ? 'Analyzing...' : 'Run Semantic Analysis'}
+                  </button>
+                  {batchSemanticAnalysis.isRunning && (
+                    <button
+                      onClick={batchSemanticAnalysis.cancel}
+                      className="px-3 py-1.5 bg-red-700 text-white rounded hover:bg-red-600 text-xs"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </>
         )}
 
