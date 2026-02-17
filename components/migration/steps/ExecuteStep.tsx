@@ -9,6 +9,8 @@ interface ExecuteStepProps {
   topics: EnrichedTopic[];
   onOpenWorkbench?: (item: SiteInventoryItem) => void;
   onCreateBrief?: (topicId: string) => void;
+  onMarkOptimized?: (itemId: string) => Promise<void>;
+  onUpdateStatus?: (itemId: string, status: TransitionStatus) => Promise<void>;
 }
 
 type PriorityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low';
@@ -111,11 +113,15 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
   topics,
   onOpenWorkbench,
   onCreateBrief,
+  onMarkOptimized,
+  onUpdateStatus: _onUpdateStatus,
 }) => {
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
   const [actionFilter, setActionFilter] = useState<ActionFilter>('all');
 
   const [createNewExpanded, setCreateNewExpanded] = useState(false);
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   // Shared action item type
   type ActionItem = {
@@ -235,19 +241,76 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
   const completedActions = actionQueue.filter(a => a.execStatus === 'done').length;
   const progressPercent = totalActions > 0 ? Math.round((completedActions / totalActions) * 100) : 0;
 
+  const handleConfirmAction = useCallback(async (item: typeof actionQueue[0]) => {
+    if (!onMarkOptimized || !item.inventoryItem) return;
+    setConfirmingId(item.id);
+    try {
+      await onMarkOptimized(item.inventoryItem.id);
+    } finally {
+      setConfirmingId(null);
+      setExpandedItemId(null);
+    }
+  }, [onMarkOptimized]);
+
   const handleActionClick = useCallback((item: typeof actionQueue[0]) => {
+    if (item.execStatus === 'done') {
+      // View mode — open workbench for completed items
+      if (item.inventoryItem && onOpenWorkbench) onOpenWorkbench(item.inventoryItem);
+      return;
+    }
+
     if (item.isCreateNew && item.topicId && onCreateBrief) {
       onCreateBrief(item.topicId);
-    } else if (item.inventoryItem && onOpenWorkbench) {
-      onOpenWorkbench(item.inventoryItem);
+      return;
     }
-  }, [onOpenWorkbench, onCreateBrief]);
+
+    switch (item.action) {
+      case 'KEEP':
+        // One-click acknowledge
+        if (onMarkOptimized && item.inventoryItem) {
+          handleConfirmAction(item);
+        }
+        break;
+      case 'PRUNE_410':
+      case 'REDIRECT_301':
+        // Toggle inline confirmation panel
+        setExpandedItemId(prev => prev === item.id ? null : item.id);
+        break;
+      case 'OPTIMIZE':
+      case 'REWRITE':
+      case 'MERGE':
+      default:
+        if (item.inventoryItem && onOpenWorkbench) {
+          onOpenWorkbench(item.inventoryItem);
+        }
+        break;
+    }
+  }, [onOpenWorkbench, onCreateBrief, onMarkOptimized, handleConfirmAction]);
 
   const getButtonLabel = (item: typeof actionQueue[0]): string => {
     if (item.execStatus === 'done') return 'View';
     if (item.isCreateNew && !item.inventoryItem) return 'Create Brief';
-    if (item.execStatus === 'in_progress') return 'Continue';
-    return 'Open Workbench';
+    switch (item.action) {
+      case 'KEEP': return 'Acknowledge';
+      case 'PRUNE_410': return 'Review';
+      case 'REDIRECT_301': return 'Review';
+      case 'OPTIMIZE':
+      case 'REWRITE':
+      case 'MERGE':
+        return item.execStatus === 'in_progress' ? 'Continue' : 'Open Workbench';
+      default:
+        return item.execStatus === 'in_progress' ? 'Continue' : 'Open Workbench';
+    }
+  };
+
+  const getButtonClasses = (item: typeof actionQueue[0]): string => {
+    if (item.execStatus === 'done') return 'bg-gray-700 text-gray-300 hover:bg-gray-600';
+    switch (item.action) {
+      case 'KEEP': return 'bg-green-700 text-white hover:bg-green-600';
+      case 'PRUNE_410': return 'bg-red-700 text-white hover:bg-red-600';
+      case 'REDIRECT_301': return 'bg-amber-700 text-white hover:bg-amber-600';
+      default: return 'bg-blue-600 text-white hover:bg-blue-500';
+    }
   };
 
   // Count per priority for filter badges
@@ -457,8 +520,8 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
                     </thead>
                     <tbody className="divide-y divide-gray-700/50">
                       {filteredPages.map((item, index) => (
+                        <React.Fragment key={item.id}>
                         <tr
-                          key={item.id}
                           className={`transition-colors ${
                             item.execStatus === 'done'
                               ? 'bg-green-900/5 hover:bg-green-900/10'
@@ -529,17 +592,71 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
                           <td className="px-4 py-3 text-right">
                             <button
                               onClick={() => handleActionClick(item)}
-                              disabled={!onOpenWorkbench && !onCreateBrief}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                                item.execStatus === 'done'
-                                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                                  : 'bg-blue-600 text-white hover:bg-blue-500'
-                              } disabled:opacity-40 disabled:cursor-not-allowed`}
+                              disabled={confirmingId === item.id || (!onOpenWorkbench && !onCreateBrief && !onMarkOptimized)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${getButtonClasses(item)} disabled:opacity-40 disabled:cursor-not-allowed`}
                             >
-                              {getButtonLabel(item)}
+                              {confirmingId === item.id ? 'Saving...' : getButtonLabel(item)}
                             </button>
                           </td>
                         </tr>
+                        {/* Inline confirmation panel for PRUNE/REDIRECT */}
+                        {expandedItemId === item.id && (item.action === 'PRUNE_410' || item.action === 'REDIRECT_301') && (
+                          <tr>
+                            <td colSpan={8}>
+                              <div className={`px-6 py-4 border-t ${
+                                item.action === 'PRUNE_410'
+                                  ? 'bg-red-950/30 border-red-800/30'
+                                  : 'bg-amber-950/30 border-amber-800/30'
+                              }`}>
+                                <div className="flex items-start gap-4">
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`text-sm font-medium mb-1 ${
+                                      item.action === 'PRUNE_410' ? 'text-red-300' : 'text-amber-300'
+                                    }`}>
+                                      {item.action === 'PRUNE_410' ? 'Confirm Page Removal (410 Gone)' : 'Confirm 301 Redirect'}
+                                    </p>
+                                    {item.inventoryItem?.action_reasoning && (
+                                      <p className="text-xs text-gray-400 mb-2">{item.inventoryItem.action_reasoning}</p>
+                                    )}
+                                    {item.action === 'REDIRECT_301' && (() => {
+                                      const redirectTarget = item.inventoryItem?.action_data_points?.find(dp => dp.label === 'Redirect Target');
+                                      return redirectTarget ? (
+                                        <p className="text-xs text-amber-200/80">
+                                          Redirect to: <span className="font-mono">{redirectTarget.value}</span>
+                                        </p>
+                                      ) : null;
+                                    })()}
+                                    {item.action === 'PRUNE_410' && item.url && (
+                                      <p className="text-xs text-red-200/80">
+                                        This will mark <span className="font-mono">{(() => { try { return new URL(item.url).pathname; } catch { return item.url; } })()}</span> for removal.
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="flex gap-2 flex-shrink-0">
+                                    <button
+                                      onClick={() => setExpandedItemId(null)}
+                                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      onClick={() => handleConfirmAction(item)}
+                                      disabled={confirmingId === item.id}
+                                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 ${
+                                        item.action === 'PRUNE_410'
+                                          ? 'bg-red-600 text-white hover:bg-red-500'
+                                          : 'bg-amber-600 text-white hover:bg-amber-500'
+                                      }`}
+                                    >
+                                      {confirmingId === item.id ? 'Saving...' : item.action === 'PRUNE_410' ? 'Confirm Prune' : 'Confirm Redirect'}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        </React.Fragment>
                       ))}
                     </tbody>
                   </table>

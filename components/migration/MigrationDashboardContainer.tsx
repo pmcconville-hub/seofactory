@@ -278,6 +278,8 @@ const MigrationDashboardContainer: React.FC = () => {
                                 onRefreshInventory={refreshInventory}
                                 onOpenWorkbench={handleOpenWorkbench}
                                 onCreateBrief={handleCreateBrief}
+                                onMarkOptimized={markOptimized}
+                                onUpdateStatus={updateStatus}
                             />
                         ) : (
                             <ExistingSiteWizardContainer
@@ -289,6 +291,8 @@ const MigrationDashboardContainer: React.FC = () => {
                                 onRefreshInventory={refreshInventory}
                                 onOpenWorkbench={handleOpenWorkbench}
                                 onCreateBrief={handleCreateBrief}
+                                onMarkOptimized={markOptimized}
+                                onUpdateStatus={updateStatus}
                             />
                         )}
                     </div>

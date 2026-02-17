@@ -1,13 +1,16 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { SiteInventoryItem, EnrichedTopic } from '../../types';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { SiteInventoryItem, EnrichedTopic, TransitionStatus } from '../../types';
 import { useAppState } from '../../state/appState';
 import { useBatchAudit } from '../../hooks/useBatchAudit';
 import { useTopicOperations } from '../../hooks/useTopicOperations';
+import { usePillarDetection } from '../../hooks/usePillarDetection';
+import { useAugmentedMap } from '../../hooks/useAugmentedMap';
 import { ImportStep } from './steps/ImportStep';
 import { AuditStep } from './steps/AuditStep';
 import { MatchStep } from './steps/MatchStep';
 import { PlanStep } from './steps/PlanStep';
 import { ExecuteStep } from './steps/ExecuteStep';
+import type { AugmentedTopic } from '../../services/ai/augmentedMapGeneration';
 
 interface AuthorityWizardContainerProps {
   projectId: string;
@@ -18,10 +21,12 @@ interface AuthorityWizardContainerProps {
   onRefreshInventory: () => void;
   onOpenWorkbench?: (item: SiteInventoryItem) => void;
   onCreateBrief?: (topicId: string) => void;
+  onMarkOptimized?: (itemId: string) => Promise<void>;
+  onUpdateStatus?: (itemId: string, status: TransitionStatus) => Promise<void>;
 }
 
 interface StepConfig {
-  number: 1 | 2 | 3 | 4 | 5;
+  number: 1 | 2 | 3 | 4 | 5 | 6;
   label: string;
   description: string;
 }
@@ -29,10 +34,13 @@ interface StepConfig {
 const STEPS: StepConfig[] = [
   { number: 1, label: 'Import', description: 'Add your website pages' },
   { number: 2, label: 'Analyze', description: 'Check content quality' },
-  { number: 3, label: 'Match', description: 'Connect pages to topics' },
-  { number: 4, label: 'Plan', description: 'Get AI recommendations' },
-  { number: 5, label: 'Improve', description: 'Apply changes' },
+  { number: 3, label: 'Map', description: 'Generate topical map' },
+  { number: 4, label: 'Match', description: 'Connect pages to topics' },
+  { number: 5, label: 'Plan', description: 'Get AI recommendations' },
+  { number: 6, label: 'Improve', description: 'Apply changes' },
 ];
+
+type StepNumber = 1 | 2 | 3 | 4 | 5 | 6;
 
 export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> = ({
   projectId,
@@ -43,6 +51,8 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
   onRefreshInventory,
   onOpenWorkbench,
   onCreateBrief,
+  onMarkOptimized,
+  onUpdateStatus,
 }) => {
   const { state, dispatch } = useAppState();
   const { user, businessInfo } = state;
@@ -55,14 +65,20 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
     businessInfo?.industry
   );
 
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [currentStep, setCurrentStep] = useState<StepNumber>(1);
   const [importComplete, setImportComplete] = useState(false);
   const [auditComplete, setAuditComplete] = useState(false);
+  const [mapComplete, setMapComplete] = useState(false);
   const [matchComplete, setMatchComplete] = useState(false);
   const [planComplete, setPlanComplete] = useState(false);
 
   // Lifted batch audit state — persists across step navigation
   const batchAudit = useBatchAudit(projectId, mapId);
+
+  // ── Map step state ──────────────────────────────────────────────────────
+  const pillarDetection = usePillarDetection();
+  const augmentedMap = useAugmentedMap();
+  const [editableTopics, setEditableTopics] = useState<AugmentedTopic[]>([]);
 
   // Track audit completion: running → done triggers notification + refresh
   const prevAuditRunning = useRef(batchAudit.isRunning);
@@ -92,6 +108,9 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
     const hasAuditData = inventory.some(i => i.audit_score != null);
     if (hasAuditData) setAuditComplete(true);
 
+    // If topics already exist, mark map as complete
+    if (topics.length > 0) setMapComplete(true);
+
     const hasMatchData = inventory.some(i => i.match_category != null);
     if (hasMatchData) setMatchComplete(true);
 
@@ -102,8 +121,10 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
     if (!hasAutoAdvanced.current) {
       hasAutoAdvanced.current = true;
       if (hasPlanData) {
-        setCurrentStep(5);
+        setCurrentStep(6);
       } else if (hasMatchData) {
+        setCurrentStep(5);
+      } else if (topics.length > 0) {
         setCurrentStep(4);
       } else if (hasAuditData) {
         setCurrentStep(3);
@@ -111,20 +132,76 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
         setCurrentStep(2);
       }
     }
-  }, [inventory]);
+  }, [inventory, topics.length]);
 
-  const canNavigateToStep = useCallback((step: 1 | 2 | 3 | 4 | 5): boolean => {
+  // ── Map step: auto-detect pillars on step entry ──────────────────────
+  useEffect(() => {
+    if (currentStep === 3 && !pillarDetection.suggestion && !pillarDetection.isLoading) {
+      pillarDetection.detect(inventory);
+    }
+  }, [currentStep, inventory, pillarDetection]);
+
+  // Sync editable topics when augmented map generates
+  useEffect(() => {
+    if (augmentedMap.topics.length > 0) {
+      setEditableTopics([...augmentedMap.topics]);
+      setMapComplete(true);
+    }
+  }, [augmentedMap.topics]);
+
+  const handleGenerateMap = useCallback(async () => {
+    if (!pillarDetection.suggestion || !businessInfo) return;
+
+    const pillars = {
+      centralEntity: pillarDetection.suggestion.centralEntity,
+      sourceContext: pillarDetection.suggestion.sourceContext,
+      centralSearchIntent: pillarDetection.suggestion.centralSearchIntent,
+    };
+
+    await augmentedMap.generate(inventory, pillars, businessInfo, dispatch);
+  }, [pillarDetection.suggestion, inventory, businessInfo, dispatch, augmentedMap]);
+
+  const handleRemoveTopic = useCallback((topicId: string) => {
+    setEditableTopics(prev => prev.filter(t => t.id !== topicId));
+  }, []);
+
+  const handleEditTopicTitle = useCallback((topicId: string, newTitle: string) => {
+    setEditableTopics(prev => prev.map(t =>
+      t.id === topicId ? { ...t, title: newTitle } : t
+    ));
+  }, []);
+
+  // Convert editable topics to EnrichedTopic[] for downstream steps
+  const generatedTopics: EnrichedTopic[] = useMemo(() => {
+    if (editableTopics.length === 0) return [];
+    return editableTopics.map(t => ({
+      id: t.id,
+      map_id: mapId,
+      title: t.title,
+      slug: t.slug,
+      description: t.description,
+      type: t.type,
+      freshness: t.freshness,
+      parent_topic_id: t.parent_topic_id,
+    }));
+  }, [editableTopics, mapId]);
+
+  // Use generated topics if available, otherwise fall back to prop topics
+  const effectiveTopics = generatedTopics.length > 0 ? generatedTopics : topics;
+
+  const canNavigateToStep = useCallback((step: StepNumber): boolean => {
     switch (step) {
       case 1: return true;
       case 2: return importComplete;
       case 3: return importComplete && auditComplete && hasBusinessInfo;
-      case 4: return importComplete && auditComplete && matchComplete && hasBusinessInfo;
-      case 5: return importComplete && auditComplete && matchComplete && planComplete && hasBusinessInfo;
+      case 4: return importComplete && auditComplete && mapComplete && hasBusinessInfo;
+      case 5: return importComplete && auditComplete && mapComplete && matchComplete && hasBusinessInfo;
+      case 6: return importComplete && auditComplete && mapComplete && matchComplete && planComplete && hasBusinessInfo;
       default: return false;
     }
-  }, [importComplete, auditComplete, matchComplete, planComplete, hasBusinessInfo]);
+  }, [importComplete, auditComplete, mapComplete, matchComplete, planComplete, hasBusinessInfo]);
 
-  const handleStepClick = (step: 1 | 2 | 3 | 4 | 5) => {
+  const handleStepClick = (step: StepNumber) => {
     if (canNavigateToStep(step)) {
       setCurrentStep(step);
     }
@@ -132,13 +209,13 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
 
   const handleBack = () => {
     if (currentStep > 1) {
-      setCurrentStep((currentStep - 1) as 1 | 2 | 3 | 4 | 5);
+      setCurrentStep((currentStep - 1) as StepNumber);
     }
   };
 
   const handleContinue = () => {
-    if (currentStep < 5) {
-      const nextStep = (currentStep + 1) as 1 | 2 | 3 | 4 | 5;
+    if (currentStep < 6) {
+      const nextStep = (currentStep + 1) as StepNumber;
       if (canNavigateToStep(nextStep)) {
         setCurrentStep(nextStep);
       }
@@ -154,9 +231,12 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
         setAuditComplete(true);
         break;
       case 3:
-        setMatchComplete(true);
+        setMapComplete(true);
         break;
       case 4:
+        setMatchComplete(true);
+        break;
+      case 5:
         setPlanComplete(true);
         break;
     }
@@ -166,29 +246,30 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
     switch (step) {
       case 1: return importComplete;
       case 2: return auditComplete;
-      case 3: return matchComplete;
-      case 4: return planComplete;
-      case 5: return false; // Final step has no "complete" state in the wizard
+      case 3: return mapComplete;
+      case 4: return matchComplete;
+      case 5: return planComplete;
+      case 6: return false; // Final step has no "complete" state in the wizard
       default: return false;
     }
   };
 
   const canContinue = (): boolean => {
-    if (currentStep >= 5) return false;
-    return canNavigateToStep((currentStep + 1) as 1 | 2 | 3 | 4 | 5);
+    if (currentStep >= 6) return false;
+    return canNavigateToStep((currentStep + 1) as StepNumber);
   };
 
   return (
     <div className="flex flex-col h-full bg-gray-900 rounded-lg border border-gray-700 overflow-hidden">
       {/* Step Indicator */}
       <div className="flex-shrink-0 px-6 pt-3 pb-2">
-        <div className="relative flex items-center justify-between max-w-2xl mx-auto">
+        <div className="relative flex items-center justify-between max-w-3xl mx-auto">
           {/* Connecting line behind circles */}
           <div className="absolute top-5 left-5 right-5 h-0.5 bg-gray-700" />
           <div
             className="absolute top-5 left-5 h-0.5 bg-green-600 transition-all duration-300"
             style={{
-              width: `${((Math.max(0, currentStep - 1)) / 4) * 100}%`,
+              width: `${((Math.max(0, currentStep - 1)) / 5) * 100}%`,
               maxWidth: 'calc(100% - 40px)',
             }}
           />
@@ -306,36 +387,176 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
         )}
 
         {currentStep === 3 && (
+          <div className="px-4 py-3 space-y-4">
+            <div>
+              <h2 className="text-xl font-bold text-white">Generate Topical Map</h2>
+              <p className="text-sm text-gray-400 mt-1">
+                Auto-detect your SEO pillars from the imported pages, then generate a topical map with AI gap analysis.
+              </p>
+            </div>
+
+            {/* Pillar Detection Summary */}
+            {pillarDetection.isLoading && (
+              <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg px-4 py-3 text-sm text-blue-300 flex items-center gap-2">
+                <span className="animate-spin">&#9881;</span>
+                Detecting SEO pillars from your pages...
+              </div>
+            )}
+
+            {pillarDetection.error && (
+              <div className="bg-red-900/30 border border-red-700 rounded-lg px-4 py-3 text-sm text-red-300">
+                {pillarDetection.error}
+              </div>
+            )}
+
+            {pillarDetection.suggestion && !pillarDetection.isLoading && (
+              <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 space-y-3">
+                <h3 className="text-sm font-medium text-gray-300">Detected Pillars</h3>
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <span className="text-gray-500 text-xs uppercase tracking-wider">Central Entity</span>
+                    <p className="text-white font-medium mt-0.5">{pillarDetection.suggestion.centralEntity}</p>
+                    <span className="text-[10px] text-gray-500">{Math.round(pillarDetection.suggestion.centralEntityConfidence * 100)}% confidence</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 text-xs uppercase tracking-wider">Source Context</span>
+                    <p className="text-white font-medium mt-0.5">{pillarDetection.suggestion.sourceContext}</p>
+                    <span className="text-[10px] text-gray-500">{Math.round(pillarDetection.suggestion.sourceContextConfidence * 100)}% confidence</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 text-xs uppercase tracking-wider">Search Intent</span>
+                    <p className="text-white font-medium mt-0.5">{pillarDetection.suggestion.centralSearchIntent}</p>
+                    <span className="text-[10px] text-gray-500">{Math.round(pillarDetection.suggestion.centralSearchIntentConfidence * 100)}% confidence</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Generate Map Button */}
+            {editableTopics.length === 0 && !augmentedMap.isGenerating && pillarDetection.suggestion && (
+              <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 text-center space-y-4">
+                <p className="text-gray-400 text-sm">
+                  Click below to discover your site's structure and generate a topical map with AI gap analysis.
+                </p>
+                <button
+                  onClick={handleGenerateMap}
+                  disabled={augmentedMap.isGenerating || !pillarDetection.suggestion}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm font-medium disabled:opacity-50"
+                >
+                  Generate Map
+                </button>
+              </div>
+            )}
+
+            {/* Generating indicator */}
+            {augmentedMap.isGenerating && (
+              <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg px-4 py-3 text-sm text-blue-300 flex items-center gap-2">
+                <span className="animate-spin">&#9881;</span>
+                Discovering site structure and generating gap analysis...
+              </div>
+            )}
+
+            {/* Error */}
+            {augmentedMap.error && (
+              <div className="bg-red-900/30 border border-red-700 rounded-lg px-4 py-3 text-sm text-red-300">
+                {augmentedMap.error}
+              </div>
+            )}
+
+            {/* Editable Topic list */}
+            {editableTopics.length > 0 && (
+              <>
+                <div className="bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-3 text-sm flex items-center gap-4">
+                  <span className="text-green-400 font-semibold">
+                    {editableTopics.filter(t => t.source === 'discovered').length} discovered
+                  </span>
+                  <span className="text-cyan-400 font-semibold">
+                    {editableTopics.filter(t => t.source === 'generated').length} gap topics
+                  </span>
+                  <span className="text-gray-500 ml-auto">
+                    {editableTopics.length} total topics
+                  </span>
+                </div>
+
+                <div className="max-h-[40vh] overflow-y-auto space-y-1.5">
+                  {editableTopics.map(topic => (
+                    <div
+                      key={topic.id}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border ${
+                        topic.source === 'discovered'
+                          ? 'bg-gray-800/40 border-gray-700'
+                          : 'bg-cyan-900/10 border-cyan-800/30'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        topic.source === 'discovered' ? 'bg-green-500' : 'bg-cyan-500'
+                      }`} />
+                      <input
+                        type="text"
+                        value={topic.title}
+                        onChange={(e) => handleEditTopicTitle(topic.id, e.target.value)}
+                        className="flex-1 bg-transparent text-sm text-gray-200 border-none focus:outline-none focus:ring-1 focus:ring-blue-600 rounded px-1"
+                      />
+                      <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded ${
+                        topic.type === 'core' ? 'bg-blue-900/40 text-blue-300' : 'bg-gray-700 text-gray-400'
+                      }`}>
+                        {topic.type}
+                      </span>
+                      {topic.coveredByInventoryIds.length > 0 && (
+                        <span className="text-[10px] text-gray-500 font-mono">
+                          {topic.coveredByInventoryIds.length} pg
+                        </span>
+                      )}
+                      {topic.source === 'generated' && (
+                        <button
+                          onClick={() => handleRemoveTopic(topic.id)}
+                          className="text-gray-500 hover:text-red-400 transition-colors text-xs px-1"
+                          title="Remove topic"
+                        >
+                          &#x2715;
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {currentStep === 4 && (
           <MatchStep
             projectId={projectId}
             mapId={mapId}
             inventory={inventory}
-            topics={topics}
+            topics={effectiveTopics}
             onComplete={() => setMatchComplete(true)}
             onRefreshInventory={onRefreshInventory}
             onCreateTopic={handleAddTopic}
           />
         )}
 
-        {currentStep === 4 && (
+        {currentStep === 5 && (
           <PlanStep
             projectId={projectId}
             mapId={mapId}
             inventory={inventory}
-            topics={topics}
+            topics={effectiveTopics}
             onComplete={() => setPlanComplete(true)}
             onRefreshInventory={onRefreshInventory}
           />
         )}
 
-        {currentStep === 5 && (
+        {currentStep === 6 && (
           <ExecuteStep
             projectId={projectId}
             mapId={mapId}
             inventory={inventory}
-            topics={topics}
+            topics={effectiveTopics}
             onOpenWorkbench={onOpenWorkbench}
             onCreateBrief={onCreateBrief}
+            onMarkOptimized={onMarkOptimized}
+            onUpdateStatus={onUpdateStatus}
           />
         )}
       </div>
@@ -355,7 +576,7 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
         </button>
 
         <div className="flex gap-3">
-          {currentStep < 5 && !isStepComplete(currentStep) && currentStep !== 1 && (
+          {currentStep < 6 && !isStepComplete(currentStep) && currentStep !== 1 && (
             <button
               onClick={() => {
                 handleMarkComplete();
