@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { SiteInventoryItem, EnrichedTopic, ActionType, TransitionStatus } from '../../../types';
 import { ACTION_EXPLANATIONS } from '../../../services/migration/MigrationPlanEngine';
+import { classifyPageType } from '../../../services/migration/pageTypeClassifier';
 
 interface ExecuteStepProps {
   projectId: string;
@@ -11,6 +12,7 @@ interface ExecuteStepProps {
   onCreateBrief?: (topicId: string) => void;
   onMarkOptimized?: (itemId: string) => Promise<void>;
   onUpdateStatus?: (itemId: string, status: TransitionStatus) => Promise<void>;
+  onUpdateAction?: (itemId: string, action: ActionType) => Promise<void>;
 }
 
 type PriorityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low';
@@ -115,6 +117,7 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
   onCreateBrief,
   onMarkOptimized,
   onUpdateStatus: _onUpdateStatus,
+  onUpdateAction,
 }) => {
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
   const [actionFilter, setActionFilter] = useState<ActionFilter>('all');
@@ -122,6 +125,8 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
   const [createNewExpanded, setCreateNewExpanded] = useState(false);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [batchProcessing, setBatchProcessing] = useState<ActionType | null>(null);
+  const [batchConfirming, setBatchConfirming] = useState<ActionType | null>(null);
 
   // Shared action item type
   type ActionItem = {
@@ -236,10 +241,58 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
     });
   }, [actionQueue, priorityFilter, actionFilter]);
 
+  // Page type classifications
+  const pageClassifications = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof classifyPageType>>();
+    for (const item of actionQueue) {
+      if (item.url) map.set(item.id, classifyPageType(item.url));
+    }
+    return map;
+  }, [actionQueue]);
+
+  // Batch-eligible groups
+  const batchGroups = useMemo(() => {
+    const groups: { action: ActionType; count: number; items: typeof actionQueue }[] = [];
+    for (const actionType of ['KEEP', 'PRUNE_410', 'REDIRECT_301'] as ActionType[]) {
+      const eligible = actionQueue.filter(
+        a => a.action === actionType && a.execStatus !== 'done' && a.inventoryItem
+      );
+      if (eligible.length >= 2) {
+        groups.push({ action: actionType, count: eligible.length, items: eligible });
+      }
+    }
+    return groups;
+  }, [actionQueue]);
+
   // Stats
   const totalActions = actionQueue.length;
   const completedActions = actionQueue.filter(a => a.execStatus === 'done').length;
   const progressPercent = totalActions > 0 ? Math.round((completedActions / totalActions) * 100) : 0;
+
+  const handleBatchAction = useCallback(async (actionType: ActionType) => {
+    if (!onMarkOptimized) return;
+    const eligible = actionQueue.filter(
+      a => a.action === actionType && a.execStatus !== 'done' && a.inventoryItem
+    );
+    if (eligible.length === 0) return;
+
+    // Destructive actions require confirmation first
+    if ((actionType === 'PRUNE_410' || actionType === 'REDIRECT_301') && batchConfirming !== actionType) {
+      setBatchConfirming(actionType);
+      return;
+    }
+    setBatchConfirming(null);
+    setBatchProcessing(actionType);
+    try {
+      for (const item of eligible) {
+        if (item.inventoryItem) {
+          await onMarkOptimized(item.inventoryItem.id);
+        }
+      }
+    } finally {
+      setBatchProcessing(null);
+    }
+  }, [onMarkOptimized, actionQueue, batchConfirming]);
 
   const handleConfirmAction = useCallback(async (item: typeof actionQueue[0]) => {
     if (!onMarkOptimized || !item.inventoryItem) return;
@@ -310,6 +363,21 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
       case 'PRUNE_410': return 'bg-red-700 text-white hover:bg-red-600';
       case 'REDIRECT_301': return 'bg-amber-700 text-white hover:bg-amber-600';
       default: return 'bg-blue-600 text-white hover:bg-blue-500';
+    }
+  };
+
+  const getPageTypeClasses = (type: string): string => {
+    switch (type) {
+      case 'homepage': return 'bg-purple-900/40 text-purple-300';
+      case 'conversion': return 'bg-pink-900/40 text-pink-300';
+      case 'utility': return 'bg-sky-900/40 text-sky-300';
+      case 'location': return 'bg-teal-900/40 text-teal-300';
+      case 'gallery': return 'bg-orange-900/40 text-orange-300';
+      case 'blog': return 'bg-lime-900/40 text-lime-300';
+      case 'category': return 'bg-violet-900/40 text-violet-300';
+      case 'product': return 'bg-amber-900/40 text-amber-300';
+      case 'document': return 'bg-rose-900/40 text-rose-300';
+      default: return 'bg-gray-700/40 text-gray-400';
     }
   };
 
@@ -482,6 +550,60 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
         </div>
       </div>
 
+      {/* Batch Actions */}
+      {batchGroups.length > 0 && onMarkOptimized && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-gray-500 uppercase tracking-wider mr-1">Batch:</span>
+          {batchGroups.map(group => {
+            const isProcessing = batchProcessing === group.action;
+            const isConfirming = batchConfirming === group.action;
+            const isDangerous = group.action === 'PRUNE_410' || group.action === 'REDIRECT_301';
+            return (
+              <React.Fragment key={group.action}>
+                <button
+                  onClick={() => handleBatchAction(group.action)}
+                  disabled={batchProcessing !== null}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 ${
+                    group.action === 'KEEP'
+                      ? 'bg-green-800 text-green-200 hover:bg-green-700'
+                      : group.action === 'PRUNE_410'
+                        ? 'bg-red-800 text-red-200 hover:bg-red-700'
+                        : 'bg-amber-800 text-amber-200 hover:bg-amber-700'
+                  }`}
+                >
+                  {isProcessing
+                    ? 'Processing...'
+                    : `${group.action === 'KEEP' ? 'Acknowledge' : 'Confirm'} All ${formatAction(group.action)} (${group.count})`}
+                </button>
+                {isConfirming && isDangerous && (
+                  <span className="flex items-center gap-1.5">
+                    <span className={`text-xs ${group.action === 'PRUNE_410' ? 'text-red-400' : 'text-amber-400'}`}>
+                      Are you sure?
+                    </span>
+                    <button
+                      onClick={() => handleBatchAction(group.action)}
+                      className={`px-2 py-1 rounded text-xs font-medium ${
+                        group.action === 'PRUNE_410'
+                          ? 'bg-red-600 text-white hover:bg-red-500'
+                          : 'bg-amber-600 text-white hover:bg-amber-500'
+                      }`}
+                    >
+                      Yes, confirm all
+                    </button>
+                    <button
+                      onClick={() => setBatchConfirming(null)}
+                      className="px-2 py-1 rounded text-xs font-medium bg-gray-700 text-gray-300 hover:bg-gray-600"
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      )}
+
       {/* Your Pages Section */}
       {(() => {
         const filteredPages = filteredQueue.filter(i => !i.isCreateNew);
@@ -510,6 +632,7 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
                       <tr className="text-left text-xs text-gray-400 uppercase tracking-wider">
                         <th className="px-4 py-3 font-medium w-10">#</th>
                         <th className="px-4 py-3 font-medium">URL / Topic</th>
+                        <th className="px-4 py-3 font-medium">Type</th>
                         <th className="px-4 py-3 font-medium">Target Topic</th>
                         <th className="px-4 py-3 font-medium">Action</th>
                         <th className="px-4 py-3 font-medium">Why</th>
@@ -519,7 +642,9 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-700/50">
-                      {filteredPages.map((item, index) => (
+                      {filteredPages.map((item, index) => {
+                        const classification = pageClassifications.get(item.id);
+                        return (
                         <React.Fragment key={item.id}>
                         <tr
                           className={`transition-colors ${
@@ -544,6 +669,18 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
                             )}
                           </td>
                           <td className="px-4 py-3">
+                            {classification ? (
+                              <span
+                                className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${getPageTypeClasses(classification.type)}`}
+                                title={classification.reason}
+                              >
+                                {classification.type}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-600">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
                             {item.topicTitle ? (
                               <span className="text-xs text-blue-300 line-clamp-1" title={item.topicTitle}>{item.topicTitle}</span>
                             ) : (
@@ -551,9 +688,26 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${getActionClasses(item.action)}`}>
-                              {formatAction(item.action)}
-                            </span>
+                            {onUpdateAction && item.inventoryItem ? (
+                              <select
+                                value={item.action || ''}
+                                onChange={(e) => {
+                                  const newAction = e.target.value as ActionType;
+                                  if (newAction && newAction !== item.action) {
+                                    onUpdateAction(item.inventoryItem!.id, newAction);
+                                  }
+                                }}
+                                className={`text-xs font-medium rounded px-2 py-1 border-0 cursor-pointer appearance-none ${getActionClasses(item.action)} bg-gray-800 focus:ring-1 focus:ring-blue-500 focus:outline-none`}
+                              >
+                                {ACTION_TYPES.map(a => (
+                                  <option key={a} value={a}>{formatAction(a)}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${getActionClasses(item.action)}`}>
+                                {formatAction(item.action)}
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3 max-w-[200px]">
                             <span className="text-xs text-gray-400 line-clamp-2" title={item.inventoryItem?.action_reasoning}>
@@ -602,7 +756,7 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
                         {/* Inline confirmation panel for PRUNE/REDIRECT */}
                         {expandedItemId === item.id && (item.action === 'PRUNE_410' || item.action === 'REDIRECT_301') && (
                           <tr>
-                            <td colSpan={8}>
+                            <td colSpan={9}>
                               <div className={`px-6 py-4 border-t ${
                                 item.action === 'PRUNE_410'
                                   ? 'bg-red-950/30 border-red-800/30'
@@ -657,7 +811,8 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
                           </tr>
                         )}
                         </React.Fragment>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

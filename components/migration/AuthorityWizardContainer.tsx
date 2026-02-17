@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { SiteInventoryItem, EnrichedTopic, TransitionStatus } from '../../types';
+import { SiteInventoryItem, EnrichedTopic, ActionType, TransitionStatus } from '../../types';
 import { useAppState } from '../../state/appState';
 import { useBatchAudit } from '../../hooks/useBatchAudit';
 import { useTopicOperations } from '../../hooks/useTopicOperations';
@@ -23,6 +23,7 @@ interface AuthorityWizardContainerProps {
   onCreateBrief?: (topicId: string) => void;
   onMarkOptimized?: (itemId: string) => Promise<void>;
   onUpdateStatus?: (itemId: string, status: TransitionStatus) => Promise<void>;
+  onUpdateAction?: (itemId: string, action: ActionType) => Promise<void>;
 }
 
 interface StepConfig {
@@ -53,6 +54,7 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
   onCreateBrief,
   onMarkOptimized,
   onUpdateStatus,
+  onUpdateAction,
 }) => {
   const { state, dispatch } = useAppState();
   const { user, businessInfo } = state;
@@ -118,13 +120,14 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
     if (hasPlanData) setPlanComplete(true);
 
     // Auto-advance to the furthest actionable step on first load
+    // Guard each branch with prerequisite checks to avoid skipping incomplete steps
     if (!hasAutoAdvanced.current) {
       hasAutoAdvanced.current = true;
-      if (hasPlanData) {
+      if (hasPlanData && topics.length > 0 && hasMatchData && hasAuditData) {
         setCurrentStep(6);
-      } else if (hasMatchData) {
+      } else if (hasMatchData && topics.length > 0 && hasAuditData) {
         setCurrentStep(5);
-      } else if (topics.length > 0) {
+      } else if (topics.length > 0 && hasAuditData) {
         setCurrentStep(4);
       } else if (hasAuditData) {
         setCurrentStep(3);
@@ -557,6 +560,7 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
             onCreateBrief={onCreateBrief}
             onMarkOptimized={onMarkOptimized}
             onUpdateStatus={onUpdateStatus}
+            onUpdateAction={onUpdateAction}
           />
         )}
       </div>

@@ -280,6 +280,7 @@ const MigrationDashboardContainer: React.FC = () => {
                                 onCreateBrief={handleCreateBrief}
                                 onMarkOptimized={markOptimized}
                                 onUpdateStatus={updateStatus}
+                                onUpdateAction={updateAction}
                             />
                         ) : (
                             <ExistingSiteWizardContainer
@@ -293,6 +294,7 @@ const MigrationDashboardContainer: React.FC = () => {
                                 onCreateBrief={handleCreateBrief}
                                 onMarkOptimized={markOptimized}
                                 onUpdateStatus={updateStatus}
+                                onUpdateAction={updateAction}
                             />
                         )}
                     </div>

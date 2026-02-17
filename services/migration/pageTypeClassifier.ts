@@ -13,6 +13,7 @@ export type PageType =
   | 'category'     // Category/tag archive pages
   | 'product'      // Product pages
   | 'homepage'     // Root path /
+  | 'document'     // PDFs, docs, spreadsheets, file assets
   | 'content';     // Default: general content pages
 
 export interface PageClassification {
@@ -128,6 +129,18 @@ const CLASSIFICATION_RULES: ClassificationRule[] = [
     protectedFromPrune: false,
     reason: 'Product page',
     confidence: 0.7,
+  },
+
+  // Document / file assets (PDFs, docs, spreadsheets)
+  {
+    type: 'document',
+    patterns: [
+      /\.(pdf|doc|docx|xls|xlsx|ppt|pptx)$/i,
+      /\/wp-content\/uploads\//i,
+    ],
+    protectedFromPrune: false,
+    reason: 'Document/file asset',
+    confidence: 0.85,
   },
 ];
 

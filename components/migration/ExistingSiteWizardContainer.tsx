@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { SiteInventoryItem, EnrichedTopic, SEOPillars, TransitionStatus } from '../../types';
+import { SiteInventoryItem, EnrichedTopic, ActionType, SEOPillars, TransitionStatus } from '../../types';
 import { useAppState } from '../../state/appState';
 import { ImportStep } from './steps/ImportStep';
 import { PillarValidationStep } from './steps/PillarValidationStep';
@@ -24,6 +24,7 @@ interface ExistingSiteWizardContainerProps {
   onCreateBrief?: (topicId: string) => void;
   onMarkOptimized?: (itemId: string) => Promise<void>;
   onUpdateStatus?: (itemId: string, status: TransitionStatus) => Promise<void>;
+  onUpdateAction?: (itemId: string, action: ActionType) => Promise<void>;
 }
 
 interface StepConfig {
@@ -55,6 +56,7 @@ export const ExistingSiteWizardContainer: React.FC<ExistingSiteWizardContainerPr
   onCreateBrief,
   onMarkOptimized,
   onUpdateStatus,
+  onUpdateAction,
 }) => {
   const { state, dispatch } = useAppState();
   const { businessInfo } = state;
@@ -650,6 +652,7 @@ export const ExistingSiteWizardContainer: React.FC<ExistingSiteWizardContainerPr
               onCreateBrief={onCreateBrief}
               onMarkOptimized={onMarkOptimized}
               onUpdateStatus={onUpdateStatus}
+              onUpdateAction={onUpdateAction}
             />
             <div className="flex gap-3 justify-center mt-4">
               <button
