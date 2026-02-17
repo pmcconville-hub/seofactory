@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { MigrationPlanEngine, PlannedAction } from '../services/migration/MigrationPlanEngine';
 import type { AutoMatchResult } from '../services/migration/AutoMatchService';
-import type { SiteInventoryItem, EnrichedTopic, SEOPillars } from '../types';
+import type { SiteInventoryItem, EnrichedTopic, SEOPillars, BusinessInfo } from '../types';
 import { getSupabaseClient } from '../services/supabaseClient';
 import { useAppState } from '../state/appState';
 
@@ -73,10 +73,15 @@ function computeStats(actions: PlannedAction[]): PlanStats {
  *
  * - generatePlan: runs MigrationPlanEngine synchronously, stores result in state
  * - applyPlan: writes recommended_action, action_reasoning, action_priority,
- *   action_effort to each site_inventory row
+ *   action_effort to each map_page_strategy row
  * - savePlan: persists a summary row to the migration_plans table
  */
-export function useMigrationPlan(projectId: string, mapId: string, pillars?: SEOPillars | null) {
+export function useMigrationPlan(
+  projectId: string,
+  mapId: string,
+  pillars?: SEOPillars | null,
+  mapBusinessInfo?: Partial<BusinessInfo>,
+) {
   const { state } = useAppState();
   const { businessInfo } = state;
 
@@ -106,8 +111,8 @@ export function useMigrationPlan(projectId: string, mapId: string, pillars?: SEO
         const actions = engine.generatePlan({
           inventory, topics, matchResult,
           context: {
-            language: businessInfo.language,
-            industry: businessInfo.industry,
+            language: mapBusinessInfo?.language || businessInfo.language,
+            industry: mapBusinessInfo?.industry || businessInfo.industry,
             centralEntity: pillars?.centralEntity,
             sourceContext: pillars?.sourceContext,
           },
@@ -126,13 +131,13 @@ export function useMigrationPlan(projectId: string, mapId: string, pillars?: SEO
         setIsGenerating(false);
       }
     },
-    [businessInfo.language, businessInfo.industry, pillars],
+    [mapBusinessInfo?.language, mapBusinessInfo?.industry, businessInfo.language, businessInfo.industry, pillars],
   );
 
   /**
    * Apply the current plan to the database: writes recommended_action,
    * action_reasoning, action_priority, and action_effort to each
-   * site_inventory row that has an inventoryId.
+   * map_page_strategy row that has an inventoryId.
    */
   const applyPlan = useCallback(async (): Promise<void> => {
     setError(null);
@@ -150,8 +155,10 @@ export function useMigrationPlan(projectId: string, mapId: string, pillars?: SEO
 
       const updatePromises = applicableActions.map((action) =>
         supabase
-          .from('site_inventory')
-          .update({
+          .from('map_page_strategy')
+          .upsert({
+            map_id: mapId,
+            inventory_id: action.inventoryId,
             action: action.action,
             recommended_action: action.action,
             action_reasoning: action.reasoning,
@@ -160,8 +167,7 @@ export function useMigrationPlan(projectId: string, mapId: string, pillars?: SEO
             action_effort: action.effort,
             status: 'ACTION_REQUIRED',
             updated_at: new Date().toISOString(),
-          })
-          .eq('id', action.inventoryId),
+          }, { onConflict: 'map_id,inventory_id' }),
       );
 
       const results = await Promise.all(updatePromises);
@@ -178,7 +184,7 @@ export function useMigrationPlan(projectId: string, mapId: string, pillars?: SEO
       setError(message);
       console.error('[useMigrationPlan] applyPlan error:', e);
     }
-  }, [plan, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
+  }, [plan, mapId, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
 
   /**
    * Save a summary of the current plan to the migration_plans table.

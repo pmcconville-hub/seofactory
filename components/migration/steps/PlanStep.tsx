@@ -173,9 +173,10 @@ export const PlanStep: React.FC<PlanStepProps> = ({
   const { state } = useAppState();
   const activeMap = state.topicalMaps.find(m => m.id === mapId);
   const pillars = activeMap?.pillars;
+  const mapBusinessInfo = activeMap?.business_info;
 
   const { plan, isGenerating, generatePlan, applyPlan, savePlan, stats, error } =
-    useMigrationPlan(projectId, mapId, pillars);
+    useMigrationPlan(projectId, mapId, pillars, mapBusinessInfo);
 
   const [isApplying, setIsApplying] = useState(false);
   const [isSaving, setIsSaving] = useState(false);

@@ -7,7 +7,7 @@ import { AppAction } from '../state/appState';
 import { v4 as uuidv4 } from 'uuid';
 import { slugify } from '../utils/helpers';
 import type { Json } from '../database.types';
-import { verifiedUpdate, verifiedInsert } from '../services/verifiedDatabaseService';
+import { verifiedInsert } from '../services/verifiedDatabaseService';
 
 export const useInventoryOperations = (
     activeProjectId: string | null,
@@ -19,21 +19,86 @@ export const useInventoryOperations = (
     const [inventory, setInventory] = useState<SiteInventoryItem[]>([]);
     const [isLoadingInventory, setIsLoadingInventory] = useState(false);
 
+    // Upsert strategy fields to map_page_strategy table
+    const upsertStrategy = useCallback(async (
+        inventoryId: string,
+        fields: Record<string, unknown>
+    ): Promise<{ success: boolean; error?: string }> => {
+        if (!activeMapId) return { success: false, error: 'No active map' };
+        try {
+            const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+            const { error } = await (supabase as any)
+                .from('map_page_strategy')
+                .upsert({
+                    map_id: activeMapId,
+                    inventory_id: inventoryId,
+                    ...fields,
+                    updated_at: new Date().toISOString(),
+                }, { onConflict: 'map_id,inventory_id' });
+            if (error) throw error;
+            return { success: true };
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : 'Strategy upsert failed';
+            console.error('[useInventoryOperations] upsertStrategy failed:', msg);
+            return { success: false, error: msg };
+        }
+    }, [activeMapId, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
+
     const refreshInventory = useCallback(async () => {
         if (!activeProjectId) return;
-        
+
         setIsLoadingInventory(true);
         try {
             const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-            const { data, error } = await supabase
+
+            // Query 1: Page-level facts
+            const { data: pages, error: pageError } = await supabase
                 .from('site_inventory')
                 .select('*')
                 .eq('project_id', activeProjectId)
                 .order('gsc_clicks', { ascending: false });
-            
-            if (error) throw error;
-            
-            const sanitized = (data || []).map(sanitizeInventoryFromDb);
+            if (pageError) throw pageError;
+
+            // Query 2: Strategy overlay for current map
+            let strategyMap = new Map<string, Record<string, unknown>>();
+            if (activeMapId) {
+                const { data: strategies, error: stratError } = await (supabase as any)
+                    .from('map_page_strategy')
+                    .select('*')
+                    .eq('map_id', activeMapId);
+                if (stratError) console.warn('[useInventoryOperations] Strategy fetch failed:', stratError);
+                if (strategies) {
+                    strategyMap = new Map(strategies.map((s: any) => [s.inventory_id, s]));
+                }
+            }
+
+            // Merge: strategy fields override page defaults
+            const merged = (pages || []).map((page: any) => {
+                const strategy = strategyMap.get(page.id);
+                if (!strategy) return page;
+                return {
+                    ...page,
+                    mapped_topic_id: strategy.mapped_topic_id ?? page.mapped_topic_id,
+                    match_category: strategy.match_category,
+                    match_confidence: strategy.match_confidence,
+                    match_source: strategy.match_source,
+                    action: strategy.action ?? page.action,
+                    recommended_action: strategy.recommended_action,
+                    action_reasoning: strategy.action_reasoning,
+                    action_priority: strategy.action_priority,
+                    action_effort: strategy.action_effort,
+                    action_data_points: strategy.action_data_points,
+                    status: strategy.status ?? page.status,
+                    section: strategy.section ?? page.section,
+                    ce_alignment: strategy.ce_alignment,
+                    sc_alignment: strategy.sc_alignment,
+                    csi_alignment: strategy.csi_alignment,
+                    semantic_overall_score: strategy.semantic_overall_score,
+                    overlay_status: strategy.overlay_status,
+                };
+            });
+
+            const sanitized = merged.map(sanitizeInventoryFromDb);
             setInventory(sanitized);
         } catch (e) {
             console.error("Failed to fetch inventory:", e);
@@ -41,7 +106,7 @@ export const useInventoryOperations = (
         } finally {
             setIsLoadingInventory(false);
         }
-    }, [activeProjectId, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey, dispatch]);
+    }, [activeProjectId, activeMapId, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey, dispatch]);
 
     // Initial fetch
     useEffect(() => {
@@ -49,89 +114,50 @@ export const useInventoryOperations = (
     }, [refreshInventory]);
 
     const updateAction = async (itemId: string, action: ActionType) => {
-        try {
-            const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-
-            // Use verified update with read-back verification
-            const result = await verifiedUpdate(
-                supabase,
-                { table: 'site_inventory', operationDescription: `update action to ${action}` },
-                itemId,
-                {
-                    action: action,
-                    status: 'GAP_ANALYSIS',
-                    updated_at: new Date().toISOString()
-                }
-            );
-
-            if (!result.success) {
-                throw new Error(result.error || 'Action update verification failed');
-            }
-
-            dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Updated action to: ${action}` });
-            refreshInventory();
-        } catch (e) {
-             dispatch({ type: 'SET_ERROR', payload: `❌ ${e instanceof Error ? e.message : "Failed to update action."}` });
+        const result = await upsertStrategy(itemId, {
+            action: action,
+            status: 'GAP_ANALYSIS',
+        });
+        if (!result.success) {
+            dispatch({ type: 'SET_ERROR', payload: `Failed to update action: ${result.error}` });
+            return;
         }
+        dispatch({ type: 'SET_NOTIFICATION', payload: `Updated action to: ${action}` });
+        refreshInventory();
     };
 
     const updateStatus = async (itemId: string, newStatus: TransitionStatus) => {
         // Optimistic update
         setInventory(prev => prev.map(i => i.id === itemId ? { ...i, status: newStatus } : i));
-        try {
-            const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-
-            // Use verified update with read-back verification
-            const result = await verifiedUpdate(
-                supabase,
-                { table: 'site_inventory', operationDescription: `update status to ${newStatus}` },
-                itemId,
-                { status: newStatus }
-            );
-
-            if (!result.success) {
-                throw new Error(result.error || 'Status update verification failed');
-            }
-        } catch (e) {
-            console.error("Status update failed:", e);
-            dispatch({ type: 'SET_ERROR', payload: `❌ ${e instanceof Error ? e.message : "Failed to update status."}` });
+        const result = await upsertStrategy(itemId, { status: newStatus });
+        if (!result.success) {
+            dispatch({ type: 'SET_ERROR', payload: `Failed to update status: ${result.error}` });
             refreshInventory(); // Revert on error
         }
     };
 
     const markOptimized = async (itemId: string) => {
-        await updateStatus(itemId, 'OPTIMIZED');
+        const result = await upsertStrategy(itemId, { status: 'OPTIMIZED' });
+        if (!result.success) {
+            dispatch({ type: 'SET_ERROR', payload: `Failed to mark optimized: ${result.error}` });
+            return;
+        }
         dispatch({ type: 'SET_NOTIFICATION', payload: "Marked as Optimized." });
+        refreshInventory();
     };
 
     const mapInventoryItem = async (inventoryId: string, topicId: string, action: ActionType) => {
-        try {
-            const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-
-            // Use verified update with read-back verification
-            const result = await verifiedUpdate(
-                supabase,
-                { table: 'site_inventory', operationDescription: `map inventory to topic with ${action}` },
-                inventoryId,
-                {
-                    mapped_topic_id: topicId,
-                    action: action,
-                    status: 'GAP_ANALYSIS', // Move to next stage
-                    updated_at: new Date().toISOString()
-                }
-            );
-
-            if (!result.success) {
-                throw new Error(result.error || 'Inventory mapping verification failed');
-            }
-
-            dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Mapped inventory to topic with strategy: ${action}` });
-            refreshInventory();
-
-        } catch (e) {
-            console.error("Mapping failed:", e);
-            dispatch({ type: 'SET_ERROR', payload: `❌ ${e instanceof Error ? e.message : "Failed to map inventory item."}` });
+        const result = await upsertStrategy(inventoryId, {
+            mapped_topic_id: topicId,
+            action: action,
+            status: 'GAP_ANALYSIS',
+        });
+        if (!result.success) {
+            dispatch({ type: 'SET_ERROR', payload: `Failed to map inventory: ${result.error}` });
+            return;
         }
+        dispatch({ type: 'SET_NOTIFICATION', payload: `Mapped inventory to topic with strategy: ${action}` });
+        refreshInventory();
     };
 
     const promoteToCore = async (inventoryId: string) => {
@@ -144,9 +170,7 @@ export const useInventoryOperations = (
         if (!item) return;
 
         // Derive a clean title from the URL or Title
-        // e.g. "https://site.com/blog/ultimate-guide-seo" -> "Ultimate Guide Seo"
         let cleanTitle = item.title || item.url.split('/').pop()?.replace(/-/g, ' ') || 'New Topic';
-        // Capitalize first letter
         cleanTitle = cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1);
 
         const newTopic: EnrichedTopic = {
@@ -189,30 +213,25 @@ export const useInventoryOperations = (
                 throw new Error(topicResult.error || 'Topic creation verification failed');
             }
 
-            // 2. Map Inventory to new Topic with verification
-            const mapResult = await verifiedUpdate(
-                supabase,
-                { table: 'site_inventory', operationDescription: 'link inventory to promoted topic' },
-                inventoryId,
-                {
-                    mapped_topic_id: newTopic.id,
-                    action: 'REWRITE', // Default strategy for promoted content is usually to rewrite/optimize it
-                    status: 'GAP_ANALYSIS'
-                }
-            );
+            // 2. Map Inventory to new Topic via strategy table
+            const stratResult = await upsertStrategy(inventoryId, {
+                mapped_topic_id: newTopic.id,
+                action: 'REWRITE',
+                status: 'GAP_ANALYSIS',
+            });
 
-            if (!mapResult.success) {
-                throw new Error(mapResult.error || 'Inventory link verification failed');
+            if (!stratResult.success) {
+                throw new Error(stratResult.error || 'Inventory link to strategy failed');
             }
 
             // 3. Update State
             dispatch({ type: 'ADD_TOPIC', payload: { mapId: activeMapId, topic: sanitizeTopicFromDb(topicResult.data) } });
-            dispatch({ type: 'SET_NOTIFICATION', payload: `✓ Promoted "${cleanTitle}" to Core Topic (verified).` });
+            dispatch({ type: 'SET_NOTIFICATION', payload: `Promoted "${cleanTitle}" to Core Topic.` });
             refreshInventory();
 
         } catch (e) {
             console.error("Promotion failed:", e);
-            dispatch({ type: 'SET_ERROR', payload: `❌ ${e instanceof Error ? e.message : "Failed to promote topic."}` });
+            dispatch({ type: 'SET_ERROR', payload: `${e instanceof Error ? e.message : "Failed to promote topic."}` });
         }
     };
 
@@ -224,6 +243,7 @@ export const useInventoryOperations = (
         updateStatus,
         markOptimized,
         mapInventoryItem,
-        promoteToCore
+        promoteToCore,
+        upsertStrategy,
     };
 };

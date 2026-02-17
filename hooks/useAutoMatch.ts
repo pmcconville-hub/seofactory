@@ -10,7 +10,7 @@ import { useAppState } from '../state/appState';
  * Uses AutoMatchService (Jaccard-based text similarity) with optional GSC query signals
  * to produce match results, then allows confirming/rejecting individual or batch matches.
  *
- * All match results are persisted to site_inventory immediately on run, so they
+ * All match results are persisted to map_page_strategy immediately on run, so they
  * survive page refresh. On mount, the hook reconstructs the AutoMatchResult from
  * the persisted data if any items have match_category set.
  */
@@ -71,7 +71,7 @@ export function useAutoMatch(projectId: string, mapId: string) {
   }, [projectId, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
 
   /**
-   * Persist all match results to site_inventory immediately.
+   * Persist all match results to map_page_strategy immediately.
    * Sets match_category, match_confidence, mapped_topic_id (tentative), and match_source='auto'.
    */
   const persistMatchResults = useCallback(async (
@@ -80,7 +80,9 @@ export function useAutoMatch(projectId: string, mapId: string) {
     const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey) as any;
 
     const updatePromises = matchResult.matches.map((match: MatchResult) => {
-      const updateData: Record<string, unknown> = {
+      const upsertData: Record<string, unknown> = {
+        map_id: mapId,
+        inventory_id: match.inventoryId,
         match_category: match.category,
         match_confidence: match.confidence,
         match_source: 'auto',
@@ -89,21 +91,20 @@ export function useAutoMatch(projectId: string, mapId: string) {
 
       // For matched items, set tentative mapped_topic_id
       if (match.category === 'matched' && match.topicId) {
-        updateData.mapped_topic_id = match.topicId;
+        upsertData.mapped_topic_id = match.topicId;
       }
       // For orphans, clear mapped_topic_id
       if (match.category === 'orphan') {
-        updateData.mapped_topic_id = null;
+        upsertData.mapped_topic_id = null;
       }
       // For cannibalization, set the best match topic
       if (match.category === 'cannibalization' && match.topicId) {
-        updateData.mapped_topic_id = match.topicId;
+        upsertData.mapped_topic_id = match.topicId;
       }
 
       return supabase
-        .from('site_inventory')
-        .update(updateData)
-        .eq('id', match.inventoryId);
+        .from('map_page_strategy')
+        .upsert(upsertData, { onConflict: 'map_id,inventory_id' });
     });
 
     const results = await Promise.all(updatePromises);
@@ -111,7 +112,7 @@ export function useAutoMatch(projectId: string, mapId: string) {
     if (failures.length > 0) {
       console.warn(`[useAutoMatch] ${failures.length} match persistence updates failed`);
     }
-  }, [businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
+  }, [mapId, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
 
   /**
    * Reconstruct an AutoMatchResult from persisted site_inventory data.
@@ -208,7 +209,7 @@ export function useAutoMatch(projectId: string, mapId: string) {
 
   /**
    * Confirm a single auto-match: sets the inventory item's mapped_topic_id,
-   * match_confidence, and match_source in the database.
+   * match_confidence, and match_source in the strategy table.
    */
   const confirmMatch = useCallback(async (
     inventoryId: string,
@@ -225,14 +226,15 @@ export function useAutoMatch(projectId: string, mapId: string) {
 
       const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey) as any;
       const { error: updateError } = await supabase
-        .from('site_inventory')
-        .update({
+        .from('map_page_strategy')
+        .upsert({
+          map_id: mapId,
+          inventory_id: inventoryId,
           mapped_topic_id: topicId,
           match_confidence: confidence,
           match_source: 'confirmed',
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', inventoryId);
+        }, { onConflict: 'map_id,inventory_id' });
 
       if (updateError) {
         throw new Error(`Failed to confirm match: ${updateError.message}`);
@@ -242,7 +244,7 @@ export function useAutoMatch(projectId: string, mapId: string) {
       setError(message);
       console.error('[useAutoMatch] confirmMatch error:', e);
     }
-  }, [result, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
+  }, [result, mapId, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
 
   /**
    * Reject a match: clears match_confidence and match_source, keeps mapped_topic_id null.
@@ -255,15 +257,16 @@ export function useAutoMatch(projectId: string, mapId: string) {
     try {
       const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey) as any;
       const { error: updateError } = await supabase
-        .from('site_inventory')
-        .update({
+        .from('map_page_strategy')
+        .upsert({
+          map_id: mapId,
+          inventory_id: inventoryId,
           mapped_topic_id: null,
           match_confidence: null,
           match_source: null,
           match_category: null,
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', inventoryId);
+        }, { onConflict: 'map_id,inventory_id' });
 
       if (updateError) {
         throw new Error(`Failed to reject match: ${updateError.message}`);
@@ -273,7 +276,7 @@ export function useAutoMatch(projectId: string, mapId: string) {
       setError(message);
       console.error('[useAutoMatch] rejectMatch error:', e);
     }
-  }, [businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
+  }, [mapId, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
 
   /**
    * Batch-confirm all matches from the current result where confidence >= minConfidence
@@ -303,17 +306,18 @@ export function useAutoMatch(projectId: string, mapId: string) {
     try {
       const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey) as any;
 
-      // Batch update all eligible matches
+      // Batch upsert all eligible matches
       const updatePromises = eligibleMatches.map((match: MatchResult) =>
         supabase
-          .from('site_inventory')
-          .update({
+          .from('map_page_strategy')
+          .upsert({
+            map_id: mapId,
+            inventory_id: match.inventoryId,
             mapped_topic_id: match.topicId,
             match_confidence: match.confidence,
             match_source: 'confirmed',
             updated_at: new Date().toISOString(),
-          })
-          .eq('id', match.inventoryId)
+          }, { onConflict: 'map_id,inventory_id' })
       );
 
       const results = await Promise.all(updatePromises);
@@ -328,11 +332,11 @@ export function useAutoMatch(projectId: string, mapId: string) {
       setError(message);
       console.error('[useAutoMatch] confirmAll error:', e);
     }
-  }, [result, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
+  }, [result, mapId, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
 
   /**
    * Manually assign an orphan page to a topic.
-   * Updates Supabase and moves the item from orphan to matched in local state.
+   * Updates map_page_strategy and moves the item from orphan to matched in local state.
    */
   const manualMatch = useCallback(async (
     inventoryId: string,
@@ -343,15 +347,16 @@ export function useAutoMatch(projectId: string, mapId: string) {
     try {
       const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey) as any;
       const { error: updateError } = await supabase
-        .from('site_inventory')
-        .update({
+        .from('map_page_strategy')
+        .upsert({
+          map_id: mapId,
+          inventory_id: inventoryId,
           mapped_topic_id: topicId,
           match_confidence: 1.0,
           match_source: 'manual',
           match_category: 'matched',
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', inventoryId);
+        }, { onConflict: 'map_id,inventory_id' });
 
       if (updateError) {
         throw new Error(`Failed to manually assign topic: ${updateError.message}`);
@@ -389,11 +394,11 @@ export function useAutoMatch(projectId: string, mapId: string) {
       setError(message);
       console.error('[useAutoMatch] manualMatch error:', e);
     }
-  }, [businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
+  }, [mapId, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
 
   /**
    * Bulk-assign multiple orphan pages to topics.
-   * Batches all Supabase updates in parallel and does a single state update.
+   * Batches all Supabase upserts in parallel and does a single state update.
    */
   const bulkManualMatch = useCallback(async (
     assignments: { inventoryId: string; topicId: string }[],
@@ -407,15 +412,16 @@ export function useAutoMatch(projectId: string, mapId: string) {
 
       const updatePromises = assignments.map(({ inventoryId, topicId }) =>
         supabase
-          .from('site_inventory')
-          .update({
+          .from('map_page_strategy')
+          .upsert({
+            map_id: mapId,
+            inventory_id: inventoryId,
             mapped_topic_id: topicId,
             match_confidence: 1.0,
             match_source: 'manual',
             match_category: 'matched',
             updated_at: new Date().toISOString(),
-          })
-          .eq('id', inventoryId)
+          }, { onConflict: 'map_id,inventory_id' })
       );
 
       const results = await Promise.all(updatePromises);
@@ -461,7 +467,7 @@ export function useAutoMatch(projectId: string, mapId: string) {
       setError(message);
       console.error('[useAutoMatch] bulkManualMatch error:', e);
     }
-  }, [businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
+  }, [mapId, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey]);
 
   return {
     isMatching,

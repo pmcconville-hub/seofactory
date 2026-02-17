@@ -81,7 +81,13 @@ const MigrationDashboardContainer: React.FC = () => {
     const targetTopics = useMemo(() => activeMap?.topics || [], [activeMap?.topics]);
     const targetBriefs = useMemo(() => activeMap?.briefs || {}, [activeMap?.briefs]);
 
-    // Report generation hook
+    // Items with strategy mappings for the current map (inventory is already map-scoped via map_page_strategy)
+    const mappedInventory = useMemo(
+        () => inventory.filter(i => i.mapped_topic_id),
+        [inventory]
+    );
+
+    // Report generation hook (uses full inventory — already map-scoped)
     const reportHook = useMigrationReport(
         inventory,
         targetTopics,
@@ -167,7 +173,7 @@ const MigrationDashboardContainer: React.FC = () => {
         }));
     }, [overlay.nodes]);
 
-    // Compute overlay when we have both topics and inventory with mappings
+    // Compute overlay using inventory (already map-scoped via map_page_strategy)
     useEffect(() => {
         if (allTopics.length > 0 && inventory.length > 0) {
             const hasMappings = inventory.some(i => i.mapped_topic_id);
@@ -222,9 +228,9 @@ const MigrationDashboardContainer: React.FC = () => {
               </div>
             </header>
 
-            {inventory.length > 0 && (
+            {viewType !== 'WIZARD' && mappedInventory.length > 0 && (
                 <div className="flex-shrink-0 px-4">
-                    <SiteHealthSummary inventory={inventory} />
+                    <SiteHealthSummary inventory={mappedInventory} />
                 </div>
             )}
 
