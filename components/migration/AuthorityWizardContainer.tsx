@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { SiteInventoryItem, EnrichedTopic, ActionType, TransitionStatus } from '../../types';
+import { SiteInventoryItem, EnrichedTopic, ActionType, TransitionStatus, BusinessInfo } from '../../types';
 import { useAppState } from '../../state/appState';
 import { useBatchAudit } from '../../hooks/useBatchAudit';
 import { useTopicOperations } from '../../hooks/useTopicOperations';
@@ -58,16 +57,19 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
   onUpdateAction,
 }) => {
   const { state, dispatch } = useAppState();
-  const navigate = useNavigate();
   const { user, businessInfo } = state;
+
+  // Merge map-level business_info with global (map overrides global for language/industry/domain)
+  const activeMap = state.topicalMaps.find(m => m.id === mapId);
+  const mapBizInfo = activeMap?.business_info as Partial<BusinessInfo> | undefined;
+  const effectiveLanguage = mapBizInfo?.language || businessInfo?.language;
+  const effectiveIndustry = mapBizInfo?.industry || businessInfo?.industry;
+  const effectiveDomain = mapBizInfo?.domain || businessInfo?.domain;
 
   const { handleAddTopic } = useTopicOperations(mapId, businessInfo, topics, dispatch, user);
 
-  // Business context validation
-  const hasBusinessInfo = !!(
-    businessInfo?.language &&
-    businessInfo?.industry
-  );
+  // Business context validation — check both map-level and global
+  const hasBusinessInfo = !!(effectiveLanguage && effectiveIndustry);
 
   const [currentStep, setCurrentStep] = useState<StepNumber>(1);
   const [importComplete, setImportComplete] = useState(false);
@@ -368,18 +370,15 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
         {currentStep === 2 && (
           <>
             {!hasBusinessInfo && (
-              <div className="mx-4 mt-3 bg-amber-900/20 border border-amber-700 rounded-lg px-4 py-3 flex items-center justify-between gap-4">
-                <p className="text-sm text-amber-300">
-                  <strong>Business context required.</strong> Set your language and industry
-                  before proceeding to the Match step.
-                </p>
-                <button
-                  onClick={() => navigate(`/p/${projectId}/m/${mapId}/setup/business?from=migration`)}
-                  className="flex-shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium rounded transition-colors"
-                >
-                  Set up Business Info
-                </button>
-              </div>
+              <InlineBusinessInfoForm
+                mapId={mapId}
+                inventory={inventory}
+                initialLanguage={effectiveLanguage}
+                initialIndustry={effectiveIndustry}
+                initialDomain={effectiveDomain}
+                currentBusinessInfo={businessInfo}
+                dispatch={dispatch}
+              />
             )}
             <AuditStep
               projectId={projectId}
@@ -609,6 +608,132 @@ export const AuthorityWizardContainer: React.FC<AuthorityWizardContainerProps> =
             Continue
           </button>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Inline Business Info Form ─────────────────────────────────────────────────
+// Lightweight form embedded in the wizard so the user doesn't need to navigate away.
+
+interface InlineBusinessInfoFormProps {
+  mapId: string;
+  inventory: SiteInventoryItem[];
+  initialLanguage?: string;
+  initialIndustry?: string;
+  initialDomain?: string;
+  currentBusinessInfo: BusinessInfo;
+  dispatch: React.Dispatch<any>;
+}
+
+const InlineBusinessInfoForm: React.FC<InlineBusinessInfoFormProps> = ({
+  mapId, inventory, initialLanguage, initialIndustry, initialDomain, currentBusinessInfo, dispatch,
+}) => {
+  // Auto-detect domain from inventory URLs
+  const detectedDomain = useMemo(() => {
+    if (initialDomain) return initialDomain;
+    for (const item of inventory) {
+      if (item.url) {
+        try {
+          return new URL(item.url).hostname;
+        } catch { /* skip */ }
+      }
+    }
+    return '';
+  }, [inventory, initialDomain]);
+
+  // Auto-detect language from TLD
+  const detectedLanguage = useMemo(() => {
+    if (initialLanguage) return initialLanguage;
+    const tldMap: Record<string, string> = {
+      nl: 'nl', de: 'de', fr: 'fr', es: 'es', it: 'it', pt: 'pt',
+      be: 'nl', at: 'de', ch: 'de', uk: 'en', au: 'en', ca: 'en',
+    };
+    const tld = detectedDomain.split('.').pop()?.toLowerCase() || '';
+    return tldMap[tld] || '';
+  }, [detectedDomain, initialLanguage]);
+
+  const [language, setLanguage] = useState(detectedLanguage);
+  const [industry, setIndustry] = useState(initialIndustry || '');
+  const [domain, setDomain] = useState(detectedDomain);
+
+  const handleSave = () => {
+    if (!language.trim() || !industry.trim()) return;
+
+    // Save to map-level business_info
+    dispatch({
+      type: 'UPDATE_MAP_DATA',
+      payload: {
+        mapId,
+        data: {
+          business_info: {
+            language: language.trim(),
+            industry: industry.trim(),
+            domain: domain.trim(),
+          },
+        },
+      },
+    });
+
+    // Also update global state so downstream hooks see it immediately
+    dispatch({
+      type: 'SET_BUSINESS_INFO',
+      payload: {
+        ...currentBusinessInfo,
+        language: language.trim(),
+        industry: industry.trim(),
+        domain: domain.trim(),
+      },
+    });
+  };
+
+  return (
+    <div className="mx-4 mt-3 bg-amber-900/20 border border-amber-700 rounded-lg px-4 py-3">
+      <p className="text-sm text-amber-300 mb-3">
+        <strong>Business context required.</strong> Set your language and industry to enable AI analysis.
+      </p>
+      <div className="flex items-end gap-3 flex-wrap">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-400">Language</label>
+          <input
+            type="text"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            placeholder="e.g. nl, en, de"
+            className="w-24 px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-400">Industry</label>
+          <input
+            type="text"
+            value={industry}
+            onChange={(e) => setIndustry(e.target.value)}
+            placeholder="e.g. roofing, dental"
+            className="w-40 px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-400">Domain</label>
+          <input
+            type="text"
+            value={domain}
+            onChange={(e) => setDomain(e.target.value)}
+            placeholder="e.g. example.nl"
+            className="w-48 px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={!language.trim() || !industry.trim()}
+          className={`px-4 py-1.5 text-sm font-medium rounded transition-colors ${
+            language.trim() && industry.trim()
+              ? 'bg-amber-600 hover:bg-amber-500 text-white'
+              : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+          }`}
+        >
+          Save
+        </button>
       </div>
     </div>
   );

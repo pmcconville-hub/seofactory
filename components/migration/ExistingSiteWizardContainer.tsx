@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { SiteInventoryItem, EnrichedTopic, ActionType, SEOPillars, TransitionStatus } from '../../types';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { SiteInventoryItem, EnrichedTopic, ActionType, SEOPillars, TransitionStatus, BusinessInfo } from '../../types';
 import { useAppState } from '../../state/appState';
 import { ImportStep } from './steps/ImportStep';
 import { PillarValidationStep } from './steps/PillarValidationStep';
@@ -60,8 +59,15 @@ export const ExistingSiteWizardContainer: React.FC<ExistingSiteWizardContainerPr
   onUpdateAction,
 }) => {
   const { state, dispatch } = useAppState();
-  const navigate = useNavigate();
   const { businessInfo } = state;
+
+  // Merge map-level business_info with global (map overrides global for language/industry/domain)
+  const activeMap = state.topicalMaps.find(m => m.id === mapId);
+  const mapBizInfo = activeMap?.business_info as Partial<BusinessInfo> | undefined;
+  const effectiveLanguage = mapBizInfo?.language || businessInfo?.language;
+  const effectiveIndustry = mapBizInfo?.industry || businessInfo?.industry;
+  const effectiveDomain = mapBizInfo?.domain || businessInfo?.domain;
+
   const [currentStep, setCurrentStep] = useState<StepNumber>(1);
 
   // ── Step 3: Semantic Analysis state ──────────────────────────────────────
@@ -256,16 +262,16 @@ export const ExistingSiteWizardContainer: React.FC<ExistingSiteWizardContainerPr
               Define your business information before proceeding. This context is used by all AI-driven analysis.
             </p>
             <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-              {businessInfo?.language && businessInfo?.industry ? (
+              {effectiveLanguage && effectiveIndustry ? (
                 <>
                   <div className="space-y-2 text-sm">
                     <div className="flex gap-2">
                       <span className="text-gray-500">Language:</span>
-                      <span className="text-white">{businessInfo.language}</span>
+                      <span className="text-white">{effectiveLanguage}</span>
                     </div>
                     <div className="flex gap-2">
                       <span className="text-gray-500">Industry:</span>
-                      <span className="text-white">{businessInfo.industry}</span>
+                      <span className="text-white">{effectiveIndustry}</span>
                     </div>
                     {businessInfo.audience && (
                       <div className="flex gap-2">
@@ -273,39 +279,31 @@ export const ExistingSiteWizardContainer: React.FC<ExistingSiteWizardContainerPr
                         <span className="text-white">{businessInfo.audience}</span>
                       </div>
                     )}
-                    {businessInfo.domain && (
+                    {effectiveDomain && (
                       <div className="flex gap-2">
                         <span className="text-gray-500">Domain:</span>
-                        <span className="text-white">{businessInfo.domain}</span>
+                        <span className="text-white">{effectiveDomain}</span>
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-3 mt-4">
-                    <button
-                      onClick={() => goToStep(2)}
-                      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm font-medium"
-                    >
-                      Continue to Import
-                    </button>
-                    <button
-                      onClick={() => navigate(`/p/${projectId}/m/${mapId}/setup/business?from=migration`)}
-                      className="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 text-sm font-medium"
-                    >
-                      Edit Business Info
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => goToStep(2)}
+                    className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm font-medium"
+                  >
+                    Continue to Import
+                  </button>
                 </>
               ) : (
                 <>
-                  <p className="text-sm text-amber-300">
-                    <strong>Business context required.</strong> Set your language and industry to enable AI-driven analysis.
-                  </p>
-                  <button
-                    onClick={() => navigate(`/p/${projectId}/m/${mapId}/setup/business?from=migration`)}
-                    className="mt-4 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded text-sm font-medium transition-colors"
-                  >
-                    Set up Business Info
-                  </button>
+                  <ExistingSiteInlineBusinessInfoForm
+                    mapId={mapId}
+                    inventory={inventory}
+                    initialLanguage={effectiveLanguage}
+                    initialIndustry={effectiveIndustry}
+                    initialDomain={effectiveDomain}
+                    currentBusinessInfo={businessInfo}
+                    dispatch={dispatch}
+                  />
                 </>
               )}
             </div>
@@ -689,6 +687,89 @@ export const ExistingSiteWizardContainer: React.FC<ExistingSiteWizardContainerPr
         )}
       </div>
     </div>
+  );
+};
+
+// ── Inline Business Info Form ─────────────────────────────────────────────────
+
+interface ExistingSiteInlineBusinessInfoFormProps {
+  mapId: string;
+  inventory: SiteInventoryItem[];
+  initialLanguage?: string;
+  initialIndustry?: string;
+  initialDomain?: string;
+  currentBusinessInfo: BusinessInfo;
+  dispatch: React.Dispatch<any>;
+}
+
+const ExistingSiteInlineBusinessInfoForm: React.FC<ExistingSiteInlineBusinessInfoFormProps> = ({
+  mapId, inventory, initialLanguage, initialIndustry, initialDomain, currentBusinessInfo, dispatch,
+}) => {
+  const detectedDomain = useMemo(() => {
+    if (initialDomain) return initialDomain;
+    for (const item of inventory) {
+      if (item.url) {
+        try { return new URL(item.url).hostname; } catch { /* skip */ }
+      }
+    }
+    return '';
+  }, [inventory, initialDomain]);
+
+  const detectedLanguage = useMemo(() => {
+    if (initialLanguage) return initialLanguage;
+    const tldMap: Record<string, string> = {
+      nl: 'nl', de: 'de', fr: 'fr', es: 'es', it: 'it', pt: 'pt',
+      be: 'nl', at: 'de', ch: 'de', uk: 'en', au: 'en', ca: 'en',
+    };
+    const tld = detectedDomain.split('.').pop()?.toLowerCase() || '';
+    return tldMap[tld] || '';
+  }, [detectedDomain, initialLanguage]);
+
+  const [language, setLanguage] = useState(detectedLanguage);
+  const [industry, setIndustry] = useState(initialIndustry || '');
+  const [domain, setDomain] = useState(detectedDomain);
+
+  const handleSave = () => {
+    if (!language.trim() || !industry.trim()) return;
+    dispatch({
+      type: 'UPDATE_MAP_DATA',
+      payload: { mapId, data: { business_info: { language: language.trim(), industry: industry.trim(), domain: domain.trim() } } },
+    });
+    dispatch({
+      type: 'SET_BUSINESS_INFO',
+      payload: { ...currentBusinessInfo, language: language.trim(), industry: industry.trim(), domain: domain.trim() },
+    });
+  };
+
+  return (
+    <>
+      <p className="text-sm text-amber-300 mb-3">
+        <strong>Business context required.</strong> Set your language and industry to enable AI-driven analysis.
+      </p>
+      <div className="flex items-end gap-3 flex-wrap">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-400">Language</label>
+          <input type="text" value={language} onChange={(e) => setLanguage(e.target.value)}
+            placeholder="e.g. nl, en" className="w-24 px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-400">Industry</label>
+          <input type="text" value={industry} onChange={(e) => setIndustry(e.target.value)}
+            placeholder="e.g. roofing, dental" className="w-40 px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-400">Domain</label>
+          <input type="text" value={domain} onChange={(e) => setDomain(e.target.value)}
+            placeholder="e.g. example.nl" className="w-48 px-2 py-1.5 text-sm bg-gray-800 border border-gray-600 rounded text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none" />
+        </div>
+        <button onClick={handleSave} disabled={!language.trim() || !industry.trim()}
+          className={`px-4 py-1.5 text-sm font-medium rounded transition-colors ${
+            language.trim() && industry.trim() ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+          }`}>
+          Save
+        </button>
+      </div>
+    </>
   );
 };
 
