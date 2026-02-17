@@ -3,6 +3,7 @@ import type { SiteInventoryItem, EnrichedTopic, ActionType } from '../../../type
 import { useMigrationPlan, PlanStats } from '../../../hooks/useMigrationPlan';
 import { AutoMatchService } from '../../../services/migration/AutoMatchService';
 import type { PlannedAction } from '../../../services/migration/MigrationPlanEngine';
+import { OpportunityScorer, OpportunityResult } from '../../../services/migration/opportunityScorer';
 import { useAppState } from '../../../state/appState';
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -63,6 +64,22 @@ const EFFORT_CLASSES: Record<PlannedAction['effort'], string> = {
   low: 'text-green-400',
   medium: 'text-yellow-400',
   high: 'text-red-400',
+};
+
+// ── Opportunity quadrant styling ────────────────────────────────────────────
+
+const QUADRANT_CLASSES: Record<OpportunityResult['quadrant'], string> = {
+  quick_win: 'bg-green-900/40 text-green-300 border-green-700',
+  strategic_investment: 'bg-blue-900/40 text-blue-300 border-blue-700',
+  fill_in: 'bg-gray-700/40 text-gray-300 border-gray-600',
+  deprioritize: 'bg-gray-800/40 text-gray-500 border-gray-700',
+};
+
+const QUADRANT_LABELS: Record<OpportunityResult['quadrant'], string> = {
+  quick_win: 'Quick Win',
+  strategic_investment: 'Strategic',
+  fill_in: 'Fill-in',
+  deprioritize: 'Deprioritize',
 };
 
 // ── Stat badge component ─────────────────────────────────────────────────────
@@ -181,6 +198,35 @@ export const PlanStep: React.FC<PlanStepProps> = ({
     () => (plan ? computePriorityBreakdown(plan) : null),
     [plan],
   );
+
+  // Compute opportunity scores for each action
+  const opportunityScores = useMemo<Map<string, OpportunityResult>>(() => {
+    const scores = new Map<string, OpportunityResult>();
+    if (!plan) return scores;
+
+    const scorer = new OpportunityScorer();
+    for (const action of plan) {
+      if (!action.inventoryId) continue;
+      const item = inventory.find(i => i.id === action.inventoryId);
+      if (!item) continue;
+
+      const result = scorer.score({
+        id: action.inventoryId,
+        gscImpressions: item.gsc_impressions ?? 0,
+        gscClicks: item.gsc_clicks ?? 0,
+        auditScore: item.audit_score ?? 50,
+        ceAlignment: item.ce_alignment ?? undefined,
+        matchConfidence: item.match_confidence ?? 0,
+        topicType: item.mapped_topic_id
+          ? (topics.find(t => t.id === item.mapped_topic_id)?.type as 'core' | 'outer') || 'outer'
+          : 'outer',
+        wordCount: item.word_count ?? 500,
+        hasStrikingDistance: (item.gsc_position ?? 100) <= 20 && (item.gsc_position ?? 100) >= 5,
+      });
+      scores.set(action.inventoryId, result);
+    }
+    return scores;
+  }, [plan, inventory, topics]);
 
   // Handle plan generation: run AutoMatchService inline then generate plan, then save immediately
   const handleGenerate = useCallback(async () => {
@@ -346,6 +392,7 @@ export const PlanStep: React.FC<PlanStepProps> = ({
                   <th className="text-left text-gray-400 font-medium px-4 py-2.5 w-28">Action</th>
                   <th className="text-left text-gray-400 font-medium px-4 py-2.5 w-24">Priority</th>
                   <th className="text-left text-gray-400 font-medium px-4 py-2.5 w-20">Effort</th>
+                  <th className="text-left text-gray-400 font-medium px-4 py-2.5 w-24">Quadrant</th>
                   <th className="text-left text-gray-400 font-medium px-4 py-2.5">Reasoning</th>
                 </tr>
               </thead>
@@ -397,6 +444,21 @@ export const PlanStep: React.FC<PlanStepProps> = ({
                       >
                         {action.effort}
                       </span>
+                    </td>
+
+                    {/* Quadrant */}
+                    <td className="px-4 py-2.5">
+                      {action.inventoryId && opportunityScores.has(action.inventoryId) ? (
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded border text-[10px] font-medium ${
+                            QUADRANT_CLASSES[opportunityScores.get(action.inventoryId)!.quadrant]
+                          }`}
+                        >
+                          {QUADRANT_LABELS[opportunityScores.get(action.inventoryId)!.quadrant]}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-600">&mdash;</span>
+                      )}
                     </td>
 
                     {/* Reasoning */}

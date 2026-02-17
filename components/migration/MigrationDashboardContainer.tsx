@@ -6,30 +6,34 @@ import { Loader } from '../ui/Loader';
 import { SiteIngestionWizard } from './SiteIngestionWizard';
 import { InventoryMatrix } from './InventoryMatrix';
 import { TransitionKanban } from './TransitionKanban';
-import { InventoryGraphView } from './InventoryGraphView'; 
+import { InventoryGraphView } from './InventoryGraphView';
 import { StrategySelectionModal } from './StrategySelectionModal';
 import { MigrationWorkbenchModal } from './MigrationWorkbenchModal';
-import { ExportPanel } from './ExportPanel';
+import { ExportPanel, OverlayExportNode } from './ExportPanel';
 import { AuthorityWizardContainer } from './AuthorityWizardContainer';
+import { ExistingSiteWizardContainer } from './ExistingSiteWizardContainer';
 import { SiteHealthSummary } from './SiteHealthSummary';
 import TopicalMapDisplay from '../TopicalMapDisplay';
 import { SiteInventoryItem, ActionType, EnrichedTopic } from '../../types';
 import { useInventoryOperations } from '../../hooks/useInventoryOperations';
 import { useTopicOperations } from '../../hooks/useTopicOperations';
 import { useMapData } from '../../hooks/useMapData';
+import { useOverlay } from '../../hooks/useOverlay';
 import { ReportExportButton, ReportModal } from '../reports';
 import { useMigrationReport } from '../../hooks/useReportGeneration';
+
+type WizardPath = 'authority' | 'existing';
 
 const MigrationDashboardContainer: React.FC = () => {
     const { state, dispatch } = useAppState();
     const { activeProjectId, businessInfo, activeMapId } = state;
-    
-    const { 
-        inventory, 
-        isLoadingInventory, 
-        refreshInventory, 
-        updateAction, 
-        updateStatus, 
+
+    const {
+        inventory,
+        isLoadingInventory,
+        refreshInventory,
+        updateAction,
+        updateStatus,
         markOptimized,
         mapInventoryItem,
         promoteToCore
@@ -38,13 +42,17 @@ const MigrationDashboardContainer: React.FC = () => {
     const [showWizard, setShowWizard] = useState(false);
     const [viewType, setViewType] = useState<'WIZARD' | 'MATRIX' | 'KANBAN'>('WIZARD');
     const [showGraph, setShowGraph] = useState(false);
-    
+    const [wizardPath, setWizardPath] = useState<WizardPath>('authority');
+
     // Strategy Modal State
     const [showStrategyModal, setShowStrategyModal] = useState(false);
     const [pendingSource, setPendingSource] = useState<SiteInventoryItem | null>(null);
     const [pendingTarget, setPendingTarget] = useState<EnrichedTopic | null>(null);
-    
+
     const [workbenchItem, setWorkbenchItem] = useState<SiteInventoryItem | null>(null);
+
+    // Overlay for export
+    const overlay = useOverlay();
 
     // Check wizard
     useEffect(() => {
@@ -57,7 +65,7 @@ const MigrationDashboardContainer: React.FC = () => {
 
     // Fetch Target Map - Use unified hook
     const activeMap = state.topicalMaps.find(m => m.id === activeMapId);
-    
+
     // Reusing the centralized data fetching logic
     useMapData(activeMapId, activeMap, businessInfo, dispatch);
 
@@ -74,10 +82,10 @@ const MigrationDashboardContainer: React.FC = () => {
 
     // Topic Operations Hook for Editing/Deleting in Migration View
     const { handleUpdateTopic, handleDeleteTopic } = useTopicOperations(
-        activeMapId, 
-        businessInfo, 
-        targetTopics, 
-        dispatch, 
+        activeMapId,
+        businessInfo,
+        targetTopics,
+        dispatch,
         state.user
     );
 
@@ -90,14 +98,14 @@ const MigrationDashboardContainer: React.FC = () => {
     const handleInventoryDrop = (inventoryId: string, topicId: string) => {
         const source = inventory.find(i => i.id === inventoryId);
         const target = targetTopics.find(t => t.id === topicId);
-        
+
         if (source && target) {
             setPendingSource(source);
             setPendingTarget(target);
             setShowStrategyModal(true);
         }
     };
-    
+
     const handleConfirmStrategy = async (action: ActionType) => {
         if (pendingSource && pendingTarget) {
             await mapInventoryItem(pendingSource.id, pendingTarget.id, action);
@@ -106,7 +114,7 @@ const MigrationDashboardContainer: React.FC = () => {
             setPendingTarget(null);
         }
     };
-    
+
     const handleOpenWorkbench = (item: SiteInventoryItem) => {
         setWorkbenchItem(item);
     };
@@ -114,8 +122,43 @@ const MigrationDashboardContainer: React.FC = () => {
     const coreTopics = targetTopics.filter(t => t.type === 'core');
     const outerTopics = targetTopics.filter(t => t.type === 'outer');
     const allTopics = [...coreTopics, ...outerTopics];
-    
+
     const linkedBrief = workbenchItem?.mapped_topic_id ? targetBriefs[workbenchItem.mapped_topic_id] : null;
+
+    // Task 11: Pass strategic context to MigrationWorkbenchModal
+    const mappedTopic = workbenchItem?.mapped_topic_id
+        ? allTopics.find(t => t.id === workbenchItem.mapped_topic_id) ?? null
+        : null;
+
+    const competingPages = workbenchItem?.mapped_topic_id
+        ? inventory.filter(i => i.mapped_topic_id === workbenchItem.mapped_topic_id && i.id !== workbenchItem.id)
+        : [];
+
+    // Task 14: Convert overlay nodes to export format
+    const overlayExportNodes: OverlayExportNode[] | undefined = useMemo(() => {
+        if (overlay.nodes.length === 0) return undefined;
+        return overlay.nodes.map(node => ({
+            topicTitle: node.title,
+            status: node.status,
+            statusColor: node.statusColor,
+            matchedPages: node.matchedPages.map(p => ({
+                url: p.url,
+                alignmentScore: p.alignmentScore,
+                gscClicks: p.gscClicks,
+                auditScore: p.auditScore,
+            })),
+        }));
+    }, [overlay.nodes]);
+
+    // Compute overlay when we have both topics and inventory with mappings
+    useEffect(() => {
+        if (allTopics.length > 0 && inventory.length > 0) {
+            const hasMappings = inventory.some(i => i.mapped_topic_id);
+            if (hasMappings) {
+                overlay.compute(allTopics, inventory);
+            }
+        }
+    }, [allTopics, inventory, overlay]);
 
     return (
         <div className="h-[calc(100vh-100px)] flex flex-col space-y-4 max-w-full w-full">
@@ -125,8 +168,8 @@ const MigrationDashboardContainer: React.FC = () => {
                 <p className="text-sm text-gray-400">Map your existing inventory to the target strategy.</p>
               </div>
               <div className="flex gap-3">
-                  <ExportPanel inventory={inventory} topics={allTopics} />
-                  
+                  <ExportPanel inventory={inventory} topics={allTopics} overlayNodes={overlayExportNodes} />
+
                   <div className="bg-gray-800 p-1 rounded-lg flex text-xs">
                       <button
                         onClick={() => setViewType('WIZARD')}
@@ -171,18 +214,61 @@ const MigrationDashboardContainer: React.FC = () => {
             <div className="flex-grow flex gap-4 overflow-hidden px-4 pb-4">
                 {viewType === 'WIZARD' ? (
                     <div className="w-full flex flex-col">
-                        <AuthorityWizardContainer
-                            projectId={activeProjectId || ''}
-                            mapId={activeMapId || ''}
-                            inventory={inventory}
-                            topics={allTopics}
-                            isLoadingInventory={isLoadingInventory}
-                            onRefreshInventory={refreshInventory}
-                            onOpenWorkbench={handleOpenWorkbench}
-                            onCreateBrief={(topicId) => {
-                                dispatch({ type: 'SET_VIEW_MODE', payload: 'CREATION' });
-                            }}
-                        />
+                        {/* Wizard path selector */}
+                        <div className="flex-shrink-0 flex items-center gap-2 mb-3">
+                            <div className="bg-gray-800 p-1 rounded-lg flex text-xs">
+                                <button
+                                    onClick={() => setWizardPath('authority')}
+                                    className={`px-3 py-1.5 rounded transition-colors ${
+                                        wizardPath === 'authority'
+                                            ? 'bg-blue-600 text-white'
+                                            : 'text-gray-400 hover:text-white'
+                                    }`}
+                                >
+                                    New Strategy
+                                </button>
+                                <button
+                                    onClick={() => setWizardPath('existing')}
+                                    className={`px-3 py-1.5 rounded transition-colors ${
+                                        wizardPath === 'existing'
+                                            ? 'bg-green-600 text-white'
+                                            : 'text-gray-400 hover:text-white'
+                                    }`}
+                                >
+                                    Optimize Existing Site
+                                </button>
+                            </div>
+                            <span className="text-xs text-gray-500">
+                                {wizardPath === 'authority'
+                                    ? 'Build a new topical map from scratch'
+                                    : 'Analyze and optimize your existing website'}
+                            </span>
+                        </div>
+
+                        {wizardPath === 'authority' ? (
+                            <AuthorityWizardContainer
+                                projectId={activeProjectId || ''}
+                                mapId={activeMapId || ''}
+                                inventory={inventory}
+                                topics={allTopics}
+                                isLoadingInventory={isLoadingInventory}
+                                onRefreshInventory={refreshInventory}
+                                onOpenWorkbench={handleOpenWorkbench}
+                                onCreateBrief={(topicId) => {
+                                    dispatch({ type: 'SET_VIEW_MODE', payload: 'CREATION' });
+                                }}
+                            />
+                        ) : (
+                            <ExistingSiteWizardContainer
+                                projectId={activeProjectId || ''}
+                                mapId={activeMapId || ''}
+                                inventory={inventory}
+                                topics={allTopics}
+                                isLoadingInventory={isLoadingInventory}
+                                onRefreshInventory={refreshInventory}
+                                onOpenWorkbench={handleOpenWorkbench}
+                            />
+                        )}
                     </div>
                 ) : (
                 <>
@@ -262,14 +348,14 @@ const MigrationDashboardContainer: React.FC = () => {
                 )}
             </div>
 
-            <SiteIngestionWizard 
-                isOpen={showWizard} 
-                onClose={() => setShowWizard(false)} 
+            <SiteIngestionWizard
+                isOpen={showWizard}
+                onClose={() => setShowWizard(false)}
                 onComplete={handleWizardComplete}
-                inventoryCount={inventory.length} 
+                inventoryCount={inventory.length}
             />
-            
-            <StrategySelectionModal 
+
+            <StrategySelectionModal
                 isOpen={showStrategyModal}
                 onClose={() => setShowStrategyModal(false)}
                 onConfirm={handleConfirmStrategy}
@@ -284,6 +370,8 @@ const MigrationDashboardContainer: React.FC = () => {
                 inventoryItem={workbenchItem}
                 linkedBrief={linkedBrief}
                 onMarkOptimized={markOptimized}
+                mappedTopic={mappedTopic}
+                competingPages={competingPages}
             />
 
             {/* Report Modal */}
