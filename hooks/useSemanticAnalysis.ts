@@ -37,7 +37,7 @@ export interface UseSemanticAnalysisReturn {
   updateActionStructuredFix: (actionId: string, fix: SmartFixResult) => void;
   isGeneratingFixes: boolean;
   fixProgress: FixProgress;
-  generateAllFixes: (pageContent: string, pillars?: SEOPillars | null) => Promise<void>;
+  generateAllFixes: (getLatestContent: (() => string) | string, pillars?: SEOPillars | null) => Promise<void>;
 }
 
 /**
@@ -265,8 +265,13 @@ export const useSemanticAnalysis = (
    * Prioritizes High impact items and Low Hanging Fruit category
    */
   const generateAllFixes = useCallback(
-    async (pageContent: string, pillars?: SEOPillars | null): Promise<void> => {
+    async (getLatestContent: (() => string) | string, pillars?: SEOPillars | null): Promise<void> => {
       if (!result || result.actions.length === 0) return;
+
+      // Support both string (backward compat) and getter function
+      const getContent = typeof getLatestContent === 'function'
+        ? getLatestContent
+        : () => getLatestContent;
 
       setIsGeneratingFixes(true);
 
@@ -286,7 +291,9 @@ export const useSemanticAnalysis = (
       for (let i = 0; i < sortedActions.length; i++) {
         const action = sortedActions[i];
         try {
-          const fix = await generateStructuredFix(action, pageContent, businessInfo, dispatch, pillars || undefined);
+          // Use current draft content for each fix generation
+          const currentContent = getContent();
+          const fix = await generateStructuredFix(action, currentContent, businessInfo, dispatch, pillars || undefined);
           // Update the result state with the new fix
           setResult(prev => {
             if (!prev) return prev;

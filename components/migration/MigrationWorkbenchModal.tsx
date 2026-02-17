@@ -19,6 +19,7 @@ import { CoreEntityBoxes } from '../ui/CoreEntityBoxes';
 import { SmartFixButton } from '../ui/SmartFixButton';
 import { SemanticActionItem, BusinessInfo, SEOPillars } from '../../types';
 import { AppAction } from '../../state/appState';
+import { generateStructuredFix } from '../../services/ai/semanticAnalysis';
 
 /**
  * Maps a position in a whitespace-normalized string back to the corresponding
@@ -219,6 +220,8 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
 
     // Error state for fix application failures
     const [fixError, setFixError] = useState<string | null>(null);
+    // Loading state for "Apply All" operation
+    const [isApplyingAll, setIsApplyingAll] = useState(false);
 
     // Count fixes ready and applied
     const fixStats = useMemo(() => {
@@ -310,7 +313,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
         if (semanticResult && semanticResult.actions.length > 0 && !isGeneratingFixes && originalContent) {
             const hasAnyFix = semanticResult.actions.some(a => a.structuredFix);
             if (!hasAnyFix) {
-                generateAllFixes(originalContent, pillars);
+                generateAllFixes(() => draftContentRef.current, pillars);
             }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -439,20 +442,27 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
         return false;
     }, [updateActionStructuredFix]);
 
-    // Apply all high-impact fixes sequentially with normalized whitespace fallback
-    const applyAllHighImpact = useCallback(() => {
+    // Apply all fixes (all impact levels) sequentially with normalized whitespace fallback and auto-retry
+    const applyAllFixes = useCallback(async () => {
         if (!semanticResult) return;
         setFixError(null);
+        setIsApplyingAll(true);
+
         let content = draftContentRef.current;
-        let count = 0;
-        const appliedActions: { id: string; fix: SmartFixResult }[] = [];
-        let failedCount = 0;
+        let appliedCount = 0;
+        const failedActions: SemanticActionItem[] = [];
 
-        const highImpactActions = semanticResult.actions.filter(
-            a => a.structuredFix && !a.structuredFix.applied && a.impact === 'High'
+        // All fixable actions, sorted by impact (High first)
+        const allFixableActions = semanticResult.actions.filter(
+            a => a.structuredFix && !a.structuredFix.applied
         );
+        allFixableActions.sort((a, b) => {
+            const impactOrder: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
+            return (impactOrder[a.impact] ?? 2) - (impactOrder[b.impact] ?? 2);
+        });
 
-        for (const action of highImpactActions) {
+        // Pass 1: Apply all fixes that match
+        for (const action of allFixableActions) {
             const fix = action.structuredFix!;
             if (!fix.searchText || !fix.replacementText) continue;
 
@@ -460,41 +470,68 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
             const idx = content.indexOf(fix.searchText);
             if (idx !== -1) {
                 content = content.slice(0, idx) + fix.replacementText + content.slice(idx + fix.searchText.length);
-                appliedActions.push({ id: action.id, fix });
-                count++;
+                updateActionStructuredFix(action.id, { ...fix, applied: true });
+                appliedCount++;
                 continue;
             }
 
             // Fallback: normalized whitespace matching
             const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
-            const normalizedContent = normalize(content);
-            const normalizedSearch = normalize(fix.searchText);
-            const normIdx = normalizedContent.indexOf(normalizedSearch);
+            const normContent = normalize(content);
+            const normSearch = normalize(fix.searchText);
+            const normIdx = normContent.indexOf(normSearch);
 
             if (normIdx !== -1) {
                 const origStart = mapNormalizedPosToOriginal(content, normIdx);
-                const origEnd = mapNormalizedPosToOriginal(content, normIdx + normalizedSearch.length);
+                const origEnd = mapNormalizedPosToOriginal(content, normIdx + normSearch.length);
                 content = content.slice(0, origStart) + fix.replacementText + content.slice(origEnd);
-                appliedActions.push({ id: action.id, fix });
-                count++;
+                updateActionStructuredFix(action.id, { ...fix, applied: true });
+                appliedCount++;
             } else {
-                failedCount++;
+                failedActions.push(action);
             }
         }
 
-        if (count > 0) {
+        // Commit Pass 1 results
+        if (appliedCount > 0) {
             setDraftContent(content);
-            // Immutable state updates via functional updater (safe for batch calls)
-            for (const { id, fix } of appliedActions) {
-                updateActionStructuredFix(id, { ...fix, applied: true });
-            }
-            setAppliedCount(prev => prev + count);
+            setAppliedCount(prev => prev + appliedCount);
         }
 
-        if (failedCount > 0) {
-            setFixError(`${failedCount} fix(es) could not be applied — their target text was modified by earlier fixes. Try regenerating.`);
+        // Pass 2: Regenerate failed fixes against updated content and retry
+        if (failedActions.length > 0) {
+            let retryApplied = 0;
+            for (const action of failedActions) {
+                try {
+                    const newFix = await generateStructuredFix(
+                        action, content, effectiveBusinessInfo, dispatch, pillars || undefined
+                    );
+                    // Try applying the regenerated fix
+                    const idx = content.indexOf(newFix.searchText);
+                    if (idx !== -1) {
+                        content = content.slice(0, idx) + newFix.replacementText + content.slice(idx + newFix.searchText.length);
+                        updateActionStructuredFix(action.id, { ...newFix, applied: true });
+                        retryApplied++;
+                    } else {
+                        // Store the new fix so user can try manually
+                        updateActionStructuredFix(action.id, newFix);
+                    }
+                } catch (err) {
+                    console.warn(`[ApplyAll] Retry failed for "${action.title}":`, err);
+                }
+            }
+            if (retryApplied > 0) {
+                setDraftContent(content);
+                setAppliedCount(prev => prev + retryApplied);
+            }
+            const stillFailed = failedActions.length - retryApplied;
+            if (stillFailed > 0) {
+                setFixError(`${stillFailed} fix(es) could not be applied after retry. Their fixes have been regenerated — try applying them individually.`);
+            }
         }
-    }, [semanticResult, updateActionStructuredFix]);
+
+        setIsApplyingAll(false);
+    }, [semanticResult, updateActionStructuredFix, effectiveBusinessInfo, dispatch, pillars]);
 
     // Drag & Drop Handlers
     const handleDragOver = (e: React.DragEvent) => {
@@ -525,8 +562,8 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
 
     if (!isOpen || !inventoryItem) return null;
 
-    const highImpactReadyCount = semanticResult?.actions.filter(
-        a => a.structuredFix && !a.structuredFix.applied && a.impact === 'High'
+    const allReadyCount = semanticResult?.actions.filter(
+        a => a.structuredFix && !a.structuredFix.applied
     ).length ?? 0;
 
     return (
@@ -678,12 +715,17 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    {highImpactReadyCount > 0 && (
+                                                    {allReadyCount > 0 && (
                                                         <button
-                                                            onClick={applyAllHighImpact}
-                                                            className="bg-green-600/20 text-green-400 border border-green-500/30 px-3 py-1.5 rounded text-xs font-medium hover:bg-green-600/30 transition-colors"
+                                                            onClick={applyAllFixes}
+                                                            disabled={isApplyingAll}
+                                                            className="bg-green-600/20 text-green-400 border border-green-500/30 px-3 py-1.5 rounded text-xs font-medium hover:bg-green-600/30 transition-colors disabled:opacity-50"
                                                         >
-                                                            Apply All High-Impact ({highImpactReadyCount})
+                                                            {isApplyingAll ? (
+                                                                <><span className="animate-spin inline-block mr-1">&#9881;</span> Applying...</>
+                                                            ) : (
+                                                                <>Apply All Fixes ({allReadyCount})</>
+                                                            )}
                                                         </button>
                                                     )}
                                                     <button
@@ -776,7 +818,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                                                                     <ActionItemCard
                                                                         key={action.id}
                                                                         action={action}
-                                                                        pageContent={originalContent}
+                                                                        pageContent={draftContent}
                                                                         businessInfo={effectiveBusinessInfo}
                                                                         dispatch={dispatch}
                                                                         pillars={pillars || undefined}

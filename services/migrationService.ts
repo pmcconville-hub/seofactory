@@ -2,6 +2,7 @@ import { getSupabaseClient } from './supabaseClient';
 import { extractSinglePage, getExtractionTypeForUseCase } from './pageExtractionService';
 import { BusinessInfo, SiteInventoryItem } from '../types';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { cleanScrapedContent } from '../utils/contentCleaner';
 
 /**
  * Normalizes a URL for consistent inventory matching.
@@ -382,12 +383,12 @@ export const getOriginalContent = async (
                 .eq('snapshot_type', 'ORIGINAL_IMPORT')
                 .single();
 
-            // If we got data, return it
+            // If we got data, return it (cleaned)
             if (existing?.content_markdown) {
-                console.log('[MigrationService] Found cached snapshot, returning cached content:', {
+                console.log('[MigrationService] Found cached snapshot, returning cleaned cached content:', {
                     contentLength: existing.content_markdown.length
                 });
-                return existing.content_markdown;
+                return cleanScrapedContent(existing.content_markdown);
             }
 
             // Log error for debugging but continue to scrape
@@ -442,7 +443,7 @@ export const getOriginalContent = async (
         errors: result.errors
     });
 
-    const markdown = result.semantic?.content || '';
+    const markdown = cleanScrapedContent(result.semantic?.content || '');
 
     if (!markdown) {
         console.warn('[MigrationService] No markdown content extracted');

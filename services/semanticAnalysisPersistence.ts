@@ -149,11 +149,41 @@ export const saveSemanticAnalysis = async (
             updated_at: new Date().toISOString()
         };
 
-        // Using 'as any' because generated types don't include this table yet
-        // Try insert directly since upsert requires unique constraint
-        const { error } = await (supabase as any)
+        // Check for existing record with same inventory_id + content_hash
+        let existingQuery = (supabase as any)
             .from('semantic_analysis_results')
-            .insert(record);
+            .select('id')
+            .eq('inventory_id', record.inventory_id)
+            .eq('content_hash', record.content_hash);
+        if (record.map_id) {
+            existingQuery = existingQuery.eq('map_id', record.map_id);
+        } else {
+            existingQuery = existingQuery.is('map_id', null);
+        }
+        const { data: existingRecord } = await existingQuery.maybeSingle();
+
+        let error;
+        if (existingRecord) {
+            // Update existing record to avoid 409 conflict
+            ({ error } = await (supabase as any)
+                .from('semantic_analysis_results')
+                .update({
+                    result: record.result,
+                    overall_score: record.overall_score,
+                    ce_alignment: record.ce_alignment,
+                    sc_alignment: record.sc_alignment,
+                    csi_alignment: record.csi_alignment,
+                    detected_ce: record.detected_ce,
+                    detected_sc: record.detected_sc,
+                    detected_csi: record.detected_csi,
+                    updated_at: record.updated_at
+                })
+                .eq('id', existingRecord.id));
+        } else {
+            ({ error } = await (supabase as any)
+                .from('semantic_analysis_results')
+                .insert(record));
+        }
 
         if (error) {
             console.error('[SemanticPersistence] Error saving semantic analysis:', error);
