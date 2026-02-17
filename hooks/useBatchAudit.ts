@@ -5,6 +5,8 @@ import { UnifiedAuditOrchestrator } from '../services/audit/UnifiedAuditOrchestr
 import { ContentFetcher } from '../services/audit/ContentFetcher';
 import { BatchAuditService } from '../services/audit/BatchAuditService';
 import { SiteMetadataCollector } from '../services/audit/SiteMetadataCollector';
+import { analyzePageSemantics } from '../services/ai/semanticAnalysis';
+import { saveSemanticAnalysis } from '../services/semanticAnalysisPersistence';
 import type { BatchAuditProgress, BatchAuditOptions } from '../services/audit/BatchAuditService';
 import type { TopicalMapContext } from '../services/audit/types';
 import type { SiteInventoryItem, SemanticTriple } from '../types';
@@ -55,7 +57,7 @@ function createAllPhases(perplexityApiKey?: string) {
  * and exposes a simple API for starting, cancelling, and tracking batch audits.
  */
 export function useBatchAudit(projectId: string, mapId: string) {
-  const { state } = useAppState();
+  const { state, dispatch } = useAppState();
   const { businessInfo } = state;
 
   const [isRunning, setIsRunning] = useState(false);
@@ -211,6 +213,73 @@ export function useBatchAudit(projectId: string, mapId: string) {
         (p) => setProgress({ ...p }),
         controller.signal,
       );
+
+      // ── Semantic analysis pass (detection mode) ──────────────────────
+      // Run after audit completes. Non-fatal: audit results are preserved even if this fails.
+      if (!controller.signal.aborted) {
+        try {
+          const semanticItems = inventory.filter(i => i.last_audited_at || mergedOptions.skipAlreadyAudited === false);
+          let semanticCompleted = 0;
+
+          for (const item of semanticItems) {
+            if (controller.signal.aborted) break;
+
+            setProgress(prev => prev ? {
+              ...prev,
+              currentUrl: item.url,
+              currentPhase: `Semantic analysis (${semanticCompleted + 1}/${semanticItems.length})`,
+            } : prev);
+
+            try {
+              // Fetch cached content — skip if no content available
+              const { data: contentRow } = await supabase
+                .from('transition_snapshots')
+                .select('content_markdown')
+                .eq('inventory_id', item.id)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              const content = (contentRow as any)?.content_markdown;
+              if (!content || content.length < 100) {
+                semanticCompleted++;
+                continue;
+              }
+
+              // Run detection-mode semantic analysis (no pillars)
+              const semanticResult = await analyzePageSemantics(
+                content, item.url, businessInfo, dispatch
+              );
+
+              // Save to semantic_analysis_results
+              await saveSemanticAnalysis(
+                item.id, mapId, content, semanticResult,
+                businessInfo.supabaseUrl, businessInfo.supabaseAnonKey
+              );
+
+              // Write detected entities to site_inventory
+              await (supabase as any)
+                .from('site_inventory')
+                .update({
+                  detected_ce: semanticResult.coreEntities?.centralEntity || null,
+                  detected_sc: semanticResult.coreEntities?.detectedSourceContext || null,
+                  detected_csi: semanticResult.coreEntities?.searchIntent || null,
+                  semantic_overall_score: semanticResult.overallScore,
+                })
+                .eq('id', item.id);
+
+            } catch (err) {
+              console.warn(`[useBatchAudit] Semantic analysis failed for ${item.url}:`, err);
+              // Non-fatal: continue with next page
+            }
+
+            semanticCompleted++;
+          }
+        } catch (err) {
+          console.warn('[useBatchAudit] Semantic analysis pass failed:', err);
+          // Non-fatal: audit results already saved
+        }
+      }
     } catch (err) {
       if ((err as Error)?.name !== 'AbortError') {
         const message = err instanceof Error ? err.message : String(err);

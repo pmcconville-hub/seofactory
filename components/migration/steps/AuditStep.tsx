@@ -197,6 +197,27 @@ export const AuditStep: React.FC<AuditStepProps> = ({
     [auditedItems],
   );
 
+  // Detected central entities from semantic analysis
+  const detectedEntities = useMemo(() => {
+    const withCE = inventory.filter(i => i.detected_ce);
+    if (withCE.length === 0) return null;
+
+    const ceCount = new Map<string, number>();
+    for (const item of withCE) {
+      const ce = item.detected_ce!;
+      ceCount.set(ce, (ceCount.get(ce) || 0) + 1);
+    }
+
+    const sorted = Array.from(ceCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    return {
+      total: withCE.length,
+      topEntities: sorted,
+    };
+  }, [inventory]);
+
   // Auto-complete: if all items are already audited, mark step as done
   useEffect(() => {
     if (inventory.length > 0 && alreadyAuditedCount === inventory.length && !isRunning) {
@@ -573,6 +594,22 @@ export const AuditStep: React.FC<AuditStepProps> = ({
               {priorityInsights.good} looking good
               <span className="text-gray-500 text-xs">(score &ge;70)</span>
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Post-Analysis: Detected Central Entities ──────────────────── */}
+      {detectedEntities && (
+        <div className="mt-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
+          <h4 className="text-sm font-medium text-gray-300 mb-2">
+            Detected Central Entities ({detectedEntities.total} pages analyzed)
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            {detectedEntities.topEntities.map(([ce, count]) => (
+              <span key={ce} className="px-2 py-1 bg-blue-900/30 text-blue-300 border border-blue-700 rounded text-xs">
+                {ce} ({count})
+              </span>
+            ))}
           </div>
         </div>
       )}
