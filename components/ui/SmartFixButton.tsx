@@ -11,7 +11,8 @@ interface SmartFixButtonProps {
   dispatch: React.Dispatch<AppAction>;
   pillars?: SEOPillars;
   onFixGenerated?: (fix: string) => void;
-  onApplyFix?: (fix: SmartFixResult, actionId: string) => void;
+  onApplyFix?: (fix: SmartFixResult, actionId: string) => boolean | void;
+  onStoreGeneratedFix?: (actionId: string, fix: SmartFixResult) => void;
   isAutoGenerating?: boolean;
 }
 
@@ -23,11 +24,13 @@ export const SmartFixButton: React.FC<SmartFixButtonProps> = ({
   pillars,
   onFixGenerated,
   onApplyFix,
+  onStoreGeneratedFix,
   isAutoGenerating
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   const structuredFix = action.structuredFix;
   const hasReadyFix = !!structuredFix && !structuredFix.applied;
@@ -36,6 +39,7 @@ export const SmartFixButton: React.FC<SmartFixButtonProps> = ({
   const handleGenerateFix = async () => {
     setIsGenerating(true);
     setError(null);
+    setApplyError(null);
 
     try {
       const fix = await generateStructuredFix(action, pageContent, businessInfo, dispatch, pillars);
@@ -46,9 +50,11 @@ export const SmartFixButton: React.FC<SmartFixButtonProps> = ({
         onFixGenerated(proseFix);
       }
 
-      // Update the action's structuredFix (the parent should wire this)
-      if (onApplyFix) {
-        // Store the fix on the action - don't apply yet
+      // Store fix via state update (not direct prop mutation)
+      if (onStoreGeneratedFix) {
+        onStoreGeneratedFix(action.id, fix);
+      } else {
+        // Fallback: direct mutation for backward compat
         action.structuredFix = fix;
       }
       setIsExpanded(true);
@@ -62,7 +68,12 @@ export const SmartFixButton: React.FC<SmartFixButtonProps> = ({
 
   const handleApplyFix = () => {
     if (structuredFix && onApplyFix) {
-      onApplyFix(structuredFix, action.id);
+      setApplyError(null);
+      const result = onApplyFix(structuredFix, action.id);
+      // If applyFix returns false, the fix could not be applied (text not found)
+      if (result === false) {
+        setApplyError('Could not find target text in content. A previous fix may have modified it. Try regenerating this fix.');
+      }
     }
   };
 
@@ -152,9 +163,9 @@ export const SmartFixButton: React.FC<SmartFixButtonProps> = ({
           </div>
         )}
 
-        {error && (
+        {(error || applyError) && (
           <div className="p-2 bg-red-900/20 border border-red-500/30 rounded text-red-400 text-xs">
-            {error}
+            {applyError || error}
           </div>
         )}
       </div>

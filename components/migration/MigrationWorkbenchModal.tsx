@@ -57,11 +57,12 @@ interface ActionItemCardProps {
     businessInfo: BusinessInfo;
     dispatch: React.Dispatch<AppAction>;
     pillars?: SEOPillars;
-    onApplyFix: (fix: SmartFixResult, actionId: string) => void;
+    onApplyFix: (fix: SmartFixResult, actionId: string) => boolean | void;
+    onStoreGeneratedFix: (actionId: string, fix: SmartFixResult) => void;
     isAutoGenerating: boolean;
 }
 
-const ActionItemCard: React.FC<ActionItemCardProps> = ({ action, pageContent, businessInfo, dispatch, pillars, onApplyFix, isAutoGenerating }) => {
+const ActionItemCard: React.FC<ActionItemCardProps> = ({ action, pageContent, businessInfo, dispatch, pillars, onApplyFix, onStoreGeneratedFix, isAutoGenerating }) => {
     const hasFix = !!action.structuredFix;
     const isApplied = !!action.structuredFix?.applied;
     // Auto-expand items that have a ready fix
@@ -131,6 +132,7 @@ const ActionItemCard: React.FC<ActionItemCardProps> = ({ action, pageContent, bu
                         dispatch={dispatch}
                         pillars={pillars}
                         onApplyFix={onApplyFix}
+                        onStoreGeneratedFix={onStoreGeneratedFix}
                         isAutoGenerating={isAutoGenerating}
                     />
                 </div>
@@ -190,6 +192,11 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
 
     // Ref for the textarea to handle cursor insertion
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Ref that always mirrors the latest draftContent — used in applyFix
+    // to avoid stale closure issues when multiple fixes are applied in sequence.
+    const draftContentRef = useRef(draftContent);
+    draftContentRef.current = draftContent;
 
     // Chunking Hook
     const { chunks, isChunking, error: chunkError, analyzeContent } = useChunking(effectiveBusinessInfo);
@@ -393,46 +400,50 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
         onClose();
     };
 
-    // Apply a single structured fix to the draft with normalized whitespace fallback
-    const applyFix = useCallback((fix: SmartFixResult, actionId: string) => {
-        if (!fix.searchText || !fix.replacementText) return;
+    // Apply a single structured fix to the draft with normalized whitespace fallback.
+    // Uses draftContentRef to always read the latest content (avoids stale closure).
+    // Returns false if the fix could not be applied (text not found).
+    const applyFix = useCallback((fix: SmartFixResult, actionId: string): boolean => {
+        if (!fix.searchText) return false;
         setFixError(null);
+        const content = draftContentRef.current;
 
         // Try exact match first
-        const idx = draftContent.indexOf(fix.searchText);
+        const idx = content.indexOf(fix.searchText);
         if (idx !== -1) {
-            const newContent = draftContent.slice(0, idx) + fix.replacementText + draftContent.slice(idx + fix.searchText.length);
+            const newContent = content.slice(0, idx) + fix.replacementText + content.slice(idx + fix.searchText.length);
             setDraftContent(newContent);
             updateActionStructuredFix(actionId, { ...fix, applied: true });
             setAppliedCount(prev => prev + 1);
-            return;
+            return true;
         }
 
         // Fallback: normalized whitespace matching (handles shifts from prior fixes)
         const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
-        const normalizedDraft = normalize(draftContent);
+        const normalizedDraft = normalize(content);
         const normalizedSearch = normalize(fix.searchText);
         const normIdx = normalizedDraft.indexOf(normalizedSearch);
 
         if (normIdx !== -1) {
-            const origStart = mapNormalizedPosToOriginal(draftContent, normIdx);
-            const origEnd = mapNormalizedPosToOriginal(draftContent, normIdx + normalizedSearch.length);
-            const newContent = draftContent.slice(0, origStart) + fix.replacementText + draftContent.slice(origEnd);
+            const origStart = mapNormalizedPosToOriginal(content, normIdx);
+            const origEnd = mapNormalizedPosToOriginal(content, normIdx + normalizedSearch.length);
+            const newContent = content.slice(0, origStart) + fix.replacementText + content.slice(origEnd);
             setDraftContent(newContent);
             updateActionStructuredFix(actionId, { ...fix, applied: true });
             setAppliedCount(prev => prev + 1);
-            return;
+            return true;
         }
 
-        // Both strategies failed — show visible feedback
+        // Both strategies failed — show visible feedback (global banner + inline return)
         setFixError(`Could not apply fix: "${(fix.explanation || fix.searchText).substring(0, 80)}..." — the target text was modified by a previous fix. Try regenerating fixes.`);
-    }, [draftContent, updateActionStructuredFix]);
+        return false;
+    }, [updateActionStructuredFix]);
 
     // Apply all high-impact fixes sequentially with normalized whitespace fallback
     const applyAllHighImpact = useCallback(() => {
         if (!semanticResult) return;
         setFixError(null);
-        let content = draftContent;
+        let content = draftContentRef.current;
         let count = 0;
         const appliedActions: { id: string; fix: SmartFixResult }[] = [];
         let failedCount = 0;
@@ -483,7 +494,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
         if (failedCount > 0) {
             setFixError(`${failedCount} fix(es) could not be applied — their target text was modified by earlier fixes. Try regenerating.`);
         }
-    }, [draftContent, semanticResult, updateActionStructuredFix]);
+    }, [semanticResult, updateActionStructuredFix]);
 
     // Drag & Drop Handlers
     const handleDragOver = (e: React.DragEvent) => {
@@ -770,6 +781,7 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
                                                                         dispatch={dispatch}
                                                                         pillars={pillars || undefined}
                                                                         onApplyFix={applyFix}
+                                                                        onStoreGeneratedFix={updateActionStructuredFix}
                                                                         isAutoGenerating={isGeneratingFixes}
                                                                     />
                                                                 ))}
