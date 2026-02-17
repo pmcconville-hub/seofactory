@@ -1,7 +1,6 @@
 // components/screens/MapSelectionScreen.tsx
 import React, { useState } from 'react';
 import { TopicalMap } from '../../types';
-import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SmartLoader } from '../ui/FunLoaders';
 import MergeMapWizard from '../merge/MergeMapWizard';
@@ -29,7 +28,7 @@ const MapSelectionScreen: React.FC<MapSelectionScreenProps> = ({
     const [isMergeWizardOpen, setIsMergeWizardOpen] = useState(false);
     
     return (
-        <div className="w-full space-y-8">
+        <div className="max-w-5xl mx-auto w-full space-y-8">
             <header className="flex justify-between items-start">
                 <div>
                     <h1 className="text-4xl font-bold text-white">{projectName}</h1>
@@ -38,60 +37,88 @@ const MapSelectionScreen: React.FC<MapSelectionScreenProps> = ({
                 <Button onClick={onBackToProjects} variant="secondary">Back to Projects</Button>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Actions */}
-                <div className="lg:col-span-1 flex flex-col gap-8">
-                    <Card className="p-8 flex flex-col items-center justify-center text-center">
-                        <h2 className="text-2xl font-bold text-white">Create New Topical Map</h2>
-                        <p className="text-gray-400 mt-2 flex-grow">Start from scratch with our guided wizard to build a content strategy based on your business goals.</p>
-                        <Button onClick={onCreateNewMap} className="mt-6 w-full">Start Wizard</Button>
-                    </Card>
-                    {/* TODO: Re-add when edge function pipeline is complete (start-website-analysis → gap-analysis-worker) */}
-                    <Card className="p-8 flex flex-col items-center justify-center text-center">
-                        <h2 className="text-2xl font-bold text-white">Merge Topical Maps</h2>
-                        <p className="text-gray-400 mt-2 flex-grow">Combine two or more maps into one, with AI-assisted topic matching and full control over the merge.</p>
-                        <Button
-                            onClick={() => setIsMergeWizardOpen(true)}
-                            variant="secondary"
-                            className="mt-6 w-full"
-                            disabled={topicalMaps.length < 2}
-                        >
-                            Merge Maps
-                        </Button>
-                        {topicalMaps.length < 2 && (
-                            <p className="text-xs text-gray-500 mt-2">Requires at least 2 maps</p>
-                        )}
-                    </Card>
+            {/* Dual-Path Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Path A: New Strategy */}
+                <div
+                    className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 hover:border-blue-600 transition-colors cursor-pointer group"
+                    onClick={onCreateNewMap}
+                >
+                    <div className="w-12 h-12 rounded-lg bg-blue-900/30 border border-blue-700/50 flex items-center justify-center mb-4">
+                        <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+                        </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">New Strategy</h3>
+                    <p className="text-gray-400 text-sm mb-4">
+                        Build your content strategy from the ground up. Define your business context,
+                        SEO pillars, and generate an ideal topical map.
+                    </p>
+                    <p className="text-xs text-gray-500 mb-4">Best for: New websites, major pivots, greenfield content</p>
+                    <Button variant="primary" className="w-full group-hover:bg-blue-500">
+                        Start Fresh
+                    </Button>
                 </div>
 
-                {/* Existing Maps */}
-                <div className="lg:col-span-2">
-                    <Card className="p-8 h-full">
-                        <h2 className="text-2xl font-bold text-white mb-6">Existing Topical Maps</h2>
-                        {state.isLoading.map ? <div className="flex justify-center"><SmartLoader context="loading" size="lg" /></div> :
-                         topicalMaps.length === 0 ? (
-                            <p className="text-gray-400 text-center">No topical maps have been created for this project yet.</p>
-                        ) : (
-                            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-                                {topicalMaps.map(map => (
-                                    <Card key={map.id} className="p-4 flex justify-between items-center hover:bg-gray-700/50 transition-colors">
-                                        <div>
-                                            <p className="font-semibold text-white">{map.name}</p>
-                                            <p className="text-xs text-gray-500">Created: {new Date(map.created_at).toLocaleDateString()}</p>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <Button onClick={() => onInitiateDeleteMap(map)} variant="secondary" className="!p-2 !bg-red-900/50 hover:!bg-red-800/50" title="Delete Map">
-                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-300" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
-                                            </Button>
-                                            <Button onClick={() => onSelectMap(map.id)} variant="secondary">Load Map</Button>
-                                        </div>
-                                    </Card>
-                                ))}
-                            </div>
-                        )}
-                    </Card>
+                {/* Path B: Optimize Existing Site */}
+                <div
+                    className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 hover:border-green-600 transition-colors cursor-pointer group"
+                    onClick={onStartAnalysis}
+                >
+                    <div className="w-12 h-12 rounded-lg bg-green-900/30 border border-green-700/50 flex items-center justify-center mb-4">
+                        <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">Optimize Existing Site</h3>
+                    <p className="text-gray-400 text-sm mb-4">
+                        Import your site, analyze what you have, discover your SEO pillars from
+                        existing content, and build an optimized strategy around your reality.
+                    </p>
+                    <p className="text-xs text-gray-500 mb-4">Best for: Existing websites, site optimization, content audits</p>
+                    <Button variant="secondary" className="w-full border-green-700 text-green-400 hover:bg-green-900/30">
+                        Import Site
+                    </Button>
                 </div>
             </div>
+
+            {/* Existing Maps & Tools */}
+            {(topicalMaps.length > 0) && (
+                <div className="bg-gray-800/30 border border-gray-700/50 rounded-xl p-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-white">Your Maps</h3>
+                        {topicalMaps.length >= 2 && (
+                            <Button
+                                onClick={() => setIsMergeWizardOpen(true)}
+                                variant="secondary"
+                                size="sm"
+                            >
+                                Merge Maps
+                            </Button>
+                        )}
+                    </div>
+                    {state.isLoading.map ? (
+                        <div className="flex justify-center py-8"><SmartLoader context="loading" size="lg" /></div>
+                    ) : (
+                        <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2">
+                            {topicalMaps.map(map => (
+                                <div key={map.id} className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 flex justify-between items-center hover:border-gray-600 transition-colors">
+                                    <div>
+                                        <p className="font-semibold text-white">{map.name}</p>
+                                        <p className="text-xs text-gray-500">Created: {new Date(map.created_at).toLocaleDateString()}</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button onClick={() => onInitiateDeleteMap(map)} variant="secondary" className="!p-2 !bg-red-900/50 hover:!bg-red-800/50" title="Delete Map">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-300" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
+                                        </Button>
+                                        <Button onClick={() => onSelectMap(map.id)} variant="secondary">Load Map</Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Merge Wizard Modal */}
             <MergeMapWizard
