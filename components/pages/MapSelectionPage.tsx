@@ -51,6 +51,20 @@ const MapSelectionPage: React.FC = () => {
 
     const handleStartAnalysis = async () => {
         if (!projectId) return;
+
+        // Reuse an existing empty import map if one exists (prevents duplicates)
+        const existingImportMap = projectMaps.find(m =>
+            m.name.endsWith('- Import') && (!m.topics || m.topics.length === 0)
+        );
+
+        if (existingImportMap) {
+            dispatch({ type: 'SET_ACTIVE_MAP', payload: existingImportMap.id });
+            dispatch({ type: 'SET_MIGRATION_WIZARD_PATH', payload: 'existing' });
+            dispatch({ type: 'SET_VIEW_MODE', payload: 'MIGRATION' });
+            navigate(`/p/${projectId}/m/${existingImportMap.id}`);
+            return;
+        }
+
         const mapName = `${activeProject?.project_name || 'Site'} - Import`;
         try {
             const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
@@ -74,6 +88,20 @@ const MapSelectionPage: React.FC = () => {
     const handleBackToProjects = () => {
         dispatch({ type: 'SET_ACTIVE_PROJECT', payload: null });
         navigate('/projects');
+    };
+
+    const handleRenameMap = async (mapId: string, newName: string) => {
+        try {
+            const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+            const { error } = await supabase
+                .from('topical_maps')
+                .update({ name: newName })
+                .eq('id', mapId);
+            if (error) throw error;
+            dispatch({ type: 'UPDATE_MAP_DATA', payload: { mapId, data: { name: newName } } });
+        } catch (e) {
+            dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to rename map.' });
+        }
     };
 
     const handleInitiateDeleteMap = (map: TopicalMap) => {
@@ -122,6 +150,7 @@ const MapSelectionPage: React.FC = () => {
                 onStartAnalysis={handleStartAnalysis}
                 onBackToProjects={handleBackToProjects}
                 onInitiateDeleteMap={handleInitiateDeleteMap}
+                onRenameMap={handleRenameMap}
             />
             <NewMapModal
                 isOpen={!!state.modals.newMap}

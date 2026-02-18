@@ -1,10 +1,43 @@
 // components/screens/MapSelectionScreen.tsx
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { TopicalMap } from '../../types';
 import { Button } from '../ui/Button';
 import { SmartLoader } from '../ui/FunLoaders';
 import MergeMapWizard from '../merge/MergeMapWizard';
 import { useAppState } from '../../state/appState';
+
+function getMapCompleteness(map: TopicalMap): { label: string; color: string; percent: number } {
+    let steps = 0;
+    let completed = 0;
+
+    // 1. Has business info (language + industry)
+    steps++;
+    const biz = map.business_info as Record<string, unknown> | undefined;
+    if (biz?.language && biz?.industry) completed++;
+
+    // 2. Has pillars (CE + SC + CSI)
+    steps++;
+    const p = map.pillars as any;
+    if (p?.centralEntity && p?.sourceContext && p?.centralSearchIntent) completed++;
+
+    // 3. Has topics
+    steps++;
+    const topicCount = map.topics?.length || map.topicCounts?.total || 0;
+    if (topicCount > 0) completed++;
+
+    // 4. Has briefs (at least 1)
+    steps++;
+    const briefCount = map.briefs ? Object.keys(map.briefs).length : 0;
+    if (briefCount > 0) completed++;
+
+    const percent = Math.round((completed / steps) * 100);
+
+    if (percent === 0) return { label: 'Empty', color: 'text-gray-500 bg-gray-800', percent };
+    if (percent <= 25) return { label: 'Setup', color: 'text-yellow-400 bg-yellow-900/30', percent };
+    if (percent <= 50) return { label: 'Building', color: 'text-blue-400 bg-blue-900/30', percent };
+    if (percent <= 75) return { label: 'Active', color: 'text-green-400 bg-green-900/30', percent };
+    return { label: 'Complete', color: 'text-emerald-400 bg-emerald-900/30', percent };
+}
 
 interface MapSelectionScreenProps {
   projectName: string;
@@ -14,6 +47,7 @@ interface MapSelectionScreenProps {
   onStartAnalysis: () => void;
   onBackToProjects: () => void;
   onInitiateDeleteMap: (map: TopicalMap) => void;
+  onRenameMap: (mapId: string, newName: string) => void;
 }
 
 const MapSelectionScreen: React.FC<MapSelectionScreenProps> = ({
@@ -23,11 +57,39 @@ const MapSelectionScreen: React.FC<MapSelectionScreenProps> = ({
     onCreateNewMap,
     onStartAnalysis,
     onBackToProjects,
-    onInitiateDeleteMap
+    onInitiateDeleteMap,
+    onRenameMap
 }) => {
-    const { state } = useAppState(); // Get state for loading status
+    const { state } = useAppState();
     const [isMergeWizardOpen, setIsMergeWizardOpen] = useState(false);
-    
+    const [editingMapId, setEditingMapId] = useState<string | null>(null);
+    const [editName, setEditName] = useState('');
+    const editInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (editingMapId && editInputRef.current) {
+            editInputRef.current.focus();
+            editInputRef.current.select();
+        }
+    }, [editingMapId]);
+
+    const handleStartRename = (map: TopicalMap) => {
+        setEditingMapId(map.id);
+        setEditName(map.name);
+    };
+
+    const handleConfirmRename = (mapId: string) => {
+        const trimmed = editName.trim();
+        if (trimmed && trimmed !== topicalMaps.find(m => m.id === mapId)?.name) {
+            onRenameMap(mapId, trimmed);
+        }
+        setEditingMapId(null);
+    };
+
+    const handleCancelRename = () => {
+        setEditingMapId(null);
+    };
+
     return (
         <div className="max-w-5xl mx-auto w-full space-y-8">
             <header className="flex justify-between items-start">
@@ -102,20 +164,66 @@ const MapSelectionScreen: React.FC<MapSelectionScreenProps> = ({
                         <div className="flex justify-center py-8"><SmartLoader context="loading" size="lg" /></div>
                     ) : (
                         <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2">
-                            {topicalMaps.map(map => (
-                                <div key={map.id} className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 flex justify-between items-center hover:border-gray-600 transition-colors">
-                                    <div>
-                                        <p className="font-semibold text-white">{map.name}</p>
-                                        <p className="text-xs text-gray-500">Created: {new Date(map.created_at).toLocaleDateString()}</p>
+                            {topicalMaps.map(map => {
+                                const status = getMapCompleteness(map);
+                                return (
+                                    <div key={map.id} className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 flex justify-between items-center hover:border-gray-600 transition-colors">
+                                        <div className="min-w-0 flex-1 mr-3">
+                                            <div className="flex items-center gap-2">
+                                                {editingMapId === map.id ? (
+                                                    <input
+                                                        ref={editInputRef}
+                                                        type="text"
+                                                        value={editName}
+                                                        onChange={e => setEditName(e.target.value)}
+                                                        onKeyDown={e => {
+                                                            if (e.key === 'Enter') handleConfirmRename(map.id);
+                                                            if (e.key === 'Escape') handleCancelRename();
+                                                        }}
+                                                        onBlur={() => handleConfirmRename(map.id)}
+                                                        className="bg-gray-700 text-white font-semibold px-2 py-0.5 rounded border border-blue-500 outline-none text-sm w-full max-w-xs"
+                                                    />
+                                                ) : (
+                                                    <p
+                                                        className="font-semibold text-white truncate cursor-pointer group/name flex items-center gap-1.5"
+                                                        onDoubleClick={() => handleStartRename(map)}
+                                                        title="Double-click to rename"
+                                                    >
+                                                        <span className="truncate">{map.name}</span>
+                                                        <button
+                                                            onClick={e => { e.stopPropagation(); handleStartRename(map); }}
+                                                            className="opacity-0 group-hover/name:opacity-100 text-gray-500 hover:text-gray-300 transition-opacity flex-shrink-0"
+                                                            title="Rename map"
+                                                        >
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                            </svg>
+                                                        </button>
+                                                    </p>
+                                                )}
+                                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium whitespace-nowrap ${status.color}`}>
+                                                    {status.label}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-gray-500 mt-0.5">
+                                                Created: {new Date(map.created_at).toLocaleDateString()} {new Date(map.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </p>
+                                            <div className="w-24 h-1 bg-gray-700 rounded-full mt-1">
+                                                <div
+                                                    className={`h-1 rounded-full ${status.percent === 0 ? 'bg-gray-600' : status.percent <= 25 ? 'bg-yellow-400' : status.percent <= 50 ? 'bg-blue-400' : status.percent <= 75 ? 'bg-green-400' : 'bg-emerald-400'}`}
+                                                    style={{ width: `${status.percent}%` }}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2 flex-shrink-0">
+                                            <Button onClick={() => onInitiateDeleteMap(map)} variant="secondary" className="!p-2 !bg-red-900/50 hover:!bg-red-800/50" title="Delete Map">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-300" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
+                                            </Button>
+                                            <Button onClick={() => onSelectMap(map.id)} variant="secondary">Load Map</Button>
+                                        </div>
                                     </div>
-                                    <div className="flex gap-2">
-                                        <Button onClick={() => onInitiateDeleteMap(map)} variant="secondary" className="!p-2 !bg-red-900/50 hover:!bg-red-800/50" title="Delete Map">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-300" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
-                                        </Button>
-                                        <Button onClick={() => onSelectMap(map.id)} variant="secondary">Load Map</Button>
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
