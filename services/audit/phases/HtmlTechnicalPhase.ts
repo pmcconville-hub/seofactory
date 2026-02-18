@@ -13,6 +13,7 @@ import { HtmlNestingValidator } from '../rules/HtmlNestingValidator';
 import { HtmlTechnicalValidator } from '../rules/HtmlTechnicalValidator';
 import { HtmlStructureExtendedValidator } from '../rules/HtmlStructureExtendedValidator';
 import { ImageMetadataValidator } from '../rules/ImageMetadataValidator';
+import { ImageProcessingService } from '../../imageProcessingService';
 
 export class HtmlTechnicalPhase extends AuditPhase {
   readonly phaseName: AuditPhaseName = 'htmlTechnical';
@@ -75,6 +76,37 @@ export class HtmlTechnicalPhase extends AuditPhase {
           affectedElement: issue.affectedElement,
           exampleFix: issue.exampleFix,
           whyItMatters: 'Clean HTML structure ensures correct rendering and accessibility compliance.',
+          category: 'HTML Technical',
+        }));
+      }
+
+      // Image SEO validation via ImageProcessingService
+      totalChecks++;
+      const imgSrcRegex = /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
+      let imgMatch;
+      const imageSeoIssues: string[] = [];
+      while ((imgMatch = imgSrcRegex.exec(html)) !== null) {
+        const altM = imgMatch[0].match(/\balt=["']([^"']*)["']/i);
+        const widthM = imgMatch[0].match(/\bwidth=["']?(\d+)/i);
+        const heightM = imgMatch[0].match(/\bheight=["']?(\d+)/i);
+        const validation = ImageProcessingService.validateForSeo({
+          width: widthM ? parseInt(widthM[1]) : undefined,
+          height: heightM ? parseInt(heightM[1]) : undefined,
+          format: imgMatch[1].split('.').pop(),
+          exif: {},
+          iptc: altM ? { description: altM[1] } : {},
+        });
+        if (validation.issues.length > 0) {
+          imageSeoIssues.push(...validation.issues.map(i => `${imgMatch![1]}: ${i}`));
+        }
+      }
+      if (imageSeoIssues.length > 0) {
+        findings.push(this.createFinding({
+          ruleId: 'rule-img-seo',
+          severity: 'medium',
+          title: 'Image SEO issues detected',
+          description: `${imageSeoIssues.length} image SEO issue(s): ${imageSeoIssues.slice(0, 3).join('; ')}${imageSeoIssues.length > 3 ? '...' : ''}`,
+          whyItMatters: 'Optimized images improve page speed, accessibility, and image search visibility.',
           category: 'HTML Technical',
         }));
       }

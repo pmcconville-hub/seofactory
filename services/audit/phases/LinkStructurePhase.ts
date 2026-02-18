@@ -12,6 +12,7 @@ import { AuditPhase } from './AuditPhase';
 import type { AuditPhaseName, AuditRequest, AuditPhaseResult, AuditFinding } from '../types';
 import { InternalLinkingValidator } from '../rules/InternalLinkingValidator';
 import { ExternalDataRuleEngine } from '../rules/ExternalDataRuleEngine';
+import { BoilerplateDetector } from '../rules/BoilerplateDetector';
 
 export class LinkStructurePhase extends AuditPhase {
   readonly phaseName: AuditPhaseName = 'internalLinking';
@@ -62,6 +63,25 @@ export class LinkStructurePhase extends AuditPhase {
           affectedElement: issue.affectedElement,
           exampleFix: issue.exampleFix,
           whyItMatters: 'Navigation structure and link accessibility affect crawlability and user experience.',
+          category: 'Internal Linking',
+        }));
+      }
+    }
+
+    // Rules BP-1, BP-2: Boilerplate detection (main content vs chrome ratio)
+    if (contentData?.html) {
+      totalChecks += 3;
+      const boilerplateDetector = new BoilerplateDetector();
+      const bpIssues = boilerplateDetector.validate(contentData.html);
+      for (const issue of bpIssues) {
+        findings.push(this.createFinding({
+          ruleId: issue.ruleId,
+          severity: issue.severity,
+          title: issue.title,
+          description: issue.description,
+          affectedElement: issue.affectedElement,
+          exampleFix: issue.exampleFix,
+          whyItMatters: 'High boilerplate ratio dilutes topical relevance signals and increases Cost of Retrieval.',
           category: 'Internal Linking',
         }));
       }

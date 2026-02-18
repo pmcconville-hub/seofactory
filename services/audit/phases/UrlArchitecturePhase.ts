@@ -15,6 +15,8 @@ import type { AuditPhaseName, AuditRequest, AuditPhaseResult, AuditFinding } fro
 import { RedirectChainChecker, type UrlFetcher } from '../rules/RedirectChainChecker';
 import { UrlArchitectureAuditor } from '../rules/UrlArchitectureAuditor';
 import { UrlStructureValidator } from '../rules/UrlStructureValidator';
+import { HreflangValidator } from '../rules/HreflangValidator';
+import { ImageSitemapGenerator } from '../rules/ImageSitemapGenerator';
 
 export class UrlArchitecturePhase extends AuditPhase {
   readonly phaseName: AuditPhaseName = 'urlArchitecture';
@@ -100,7 +102,52 @@ export class UrlArchitecturePhase extends AuditPhase {
       }
     }
 
+    // Hreflang and Image Sitemap rules (need HTML from content)
+    const htmlContent = this.extractHtml(content);
+    if (htmlContent && request.url) {
+      // Rules hreflang-2 to hreflang-7: Hreflang validation
+      totalChecks += 6;
+      const hreflangReport = HreflangValidator.validate(htmlContent, request.url);
+      for (const issue of hreflangReport.issues) {
+        findings.push(this.createFinding({
+          ruleId: issue.ruleId,
+          severity: issue.severity,
+          title: issue.title,
+          description: issue.description,
+          exampleFix: issue.exampleFix,
+          whyItMatters: 'Correct hreflang annotations ensure search engines serve the right language version to users.',
+          category: 'URL Architecture',
+        }));
+      }
+
+      // Rules img-sitemap-*: Image sitemap validation
+      totalChecks += 4;
+      const imageEntries = ImageSitemapGenerator.extractImages(htmlContent, request.url);
+      const imageSitemapIssues = ImageSitemapGenerator.validate(imageEntries);
+      for (const issue of imageSitemapIssues) {
+        findings.push(this.createFinding({
+          ruleId: issue.ruleId,
+          severity: issue.severity,
+          title: issue.title,
+          description: issue.description,
+          affectedElement: issue.affectedElement,
+          exampleFix: issue.exampleFix,
+          whyItMatters: 'Image sitemap completeness improves image indexing and visibility in image search results.',
+          category: 'URL Architecture',
+        }));
+      }
+    }
+
     return this.buildResult(findings, totalChecks);
+  }
+
+  private extractHtml(content: unknown): string | null {
+    if (!content) return null;
+    if (typeof content === 'string') return content;
+    if (typeof content === 'object' && 'html' in (content as Record<string, unknown>)) {
+      return (content as Record<string, unknown>).html as string;
+    }
+    return null;
   }
 
   private extractContent(content: unknown): {

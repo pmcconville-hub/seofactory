@@ -16,6 +16,8 @@ import { auditEavs } from '../../ai/eavAudit';
 import type { EavInconsistency, InconsistencySeverity } from '../../ai/eavAudit';
 import type { SemanticTriple, AttributeCategory } from '../../../types';
 import { EavTextValidator } from '../rules/EavTextValidator';
+import { CrossPageEavAuditor } from '../rules/CrossPageEavAuditor';
+import type { PageEavData } from '../rules/CrossPageEavAuditor';
 
 /**
  * Map eavAudit severity to AuditFinding severity.
@@ -74,7 +76,35 @@ export class EavSystemPhase extends AuditPhase {
       findings.push(...eavFindings);
     }
 
+    // Rules 48-49: Cross-page EAV consistency (only when cross-page data available)
+    const crossPageData = this.extractCrossPageEavData(content);
+    if (crossPageData && crossPageData.length >= 2) {
+      totalChecks += 3;
+      const crossPageIssues = CrossPageEavAuditor.audit(crossPageData);
+      for (const issue of crossPageIssues) {
+        findings.push(this.createFinding({
+          ruleId: issue.ruleId,
+          severity: issue.severity,
+          title: issue.title,
+          description: issue.description,
+          affectedElement: `${issue.affectedEntity} / ${issue.affectedAttribute}`,
+          exampleFix: issue.exampleFix,
+          whyItMatters: 'Contradictory EAV values across pages confuse search engines and erode topical authority.',
+          category: 'EAV System',
+        }));
+      }
+    }
+
     return this.buildResult(findings, totalChecks);
+  }
+
+  private extractCrossPageEavData(content: unknown): PageEavData[] | null {
+    if (!content || typeof content !== 'object') return null;
+    const c = content as Record<string, unknown>;
+    if (Array.isArray(c.crossPageEavData)) {
+      return c.crossPageEavData as PageEavData[];
+    }
+    return null;
   }
 
   private extractContent(content: unknown): {

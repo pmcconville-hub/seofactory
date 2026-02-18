@@ -14,6 +14,7 @@ import { ContextualFlowValidator } from '../rules/ContextualFlowValidator';
 import { HeadingAndDiscourseValidator } from '../rules/HeadingAndDiscourseValidator';
 import { ContextualBridgeDetector } from '../rules/ContextualBridgeDetector';
 import type { BridgeContext } from '../rules/ContextualBridgeDetector';
+import { AnchorSegmentChainValidator } from '../rules/AnchorSegmentChainValidator';
 
 export class ContextualFlowPhase extends AuditPhase {
   readonly phaseName: AuditPhaseName = 'contextualFlow';
@@ -115,6 +116,25 @@ export class ContextualFlowPhase extends AuditPhase {
           affectedElement: issue.affectedElement,
           exampleFix: issue.exampleFix,
           whyItMatters: 'Contextual bridges create natural linking opportunities and strengthen topical authority.',
+          category: 'Contextual Flow',
+        }));
+      }
+    }
+
+    // Rules ASC-1 to ASC-5: Anchor segment chain validation (LIFT model)
+    if (htmlContent) {
+      totalChecks += 3;
+      const chainValidator = new AnchorSegmentChainValidator();
+      const chainIssues = chainValidator.validate(htmlContent, request.url);
+      for (const issue of chainIssues) {
+        findings.push(this.createFinding({
+          ruleId: issue.ruleId,
+          severity: issue.severity,
+          title: issue.title,
+          description: issue.description,
+          affectedElement: issue.affectedElement,
+          exampleFix: issue.exampleFix,
+          whyItMatters: 'Anchor segment chains and LIFT model compliance affect link equity flow and topical coherence.',
           category: 'Contextual Flow',
         }));
       }

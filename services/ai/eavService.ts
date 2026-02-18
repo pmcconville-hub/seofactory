@@ -6,6 +6,10 @@
  */
 
 import { SemanticTriple, AttributeCategory, AttributeClass, BusinessInfo } from '../../types';
+import { EavCompositeResolver } from './eavCompositeResolver';
+import type { ValidationMetadata } from './eavCompositeResolver';
+import { EavTraversal } from './eavTraversal';
+import type { TraversalPath, EntityCluster } from './eavTraversal';
 
 /**
  * Industry/vertical types for EAV suggestions
@@ -320,11 +324,45 @@ export const calculateIndustryCoverage = (
   };
 };
 
+// --- Wired EAV Intelligence Services ---
+
+/**
+ * Expand composite attributes into their component triples.
+ */
+export const expandCompositeAttributes = (triples: SemanticTriple[]): { expanded: SemanticTriple[]; additions: SemanticTriple[] } => {
+  return EavCompositeResolver.expandComposites(triples);
+};
+
+/**
+ * Identify derivable attributes from existing triples.
+ */
+export const identifyDerivableAttributes = (triples: SemanticTriple[]): { derivable: any[]; suggestions: string[] } => {
+  return EavCompositeResolver.identifyDerivable(triples);
+};
+
+/**
+ * Validate an attribute value against known validation rules.
+ */
+export const validateAttributeValue = (attribute: string, value: string): { valid: boolean; issues: string[] } => {
+  return EavCompositeResolver.validateValue(attribute, value);
+};
+
+/**
+ * Create an EAV traversal instance for cross-entity analysis.
+ */
+export const getEavTraversal = (triples: SemanticTriple[]): EavTraversal => {
+  return new EavTraversal(triples);
+};
+
 export default {
   detectIndustryType,
   getPredicateSuggestions,
   getMissingPredicates,
   getHighPriorityMissing,
   generateEavTemplate,
-  calculateIndustryCoverage
+  calculateIndustryCoverage,
+  expandCompositeAttributes,
+  identifyDerivableAttributes,
+  validateAttributeValue,
+  getEavTraversal,
 };

@@ -10,7 +10,7 @@ import { ValidationViolation, SectionGenerationContext, BriefSection } from '../
  * the "most important information first" principle and optimizes for
  * user engagement and IR zone positioning.
  *
- * Uses search_volume from brief data when available, falling back to
+ * Uses query_priority from brief data when available, falling back to
  * attribute_category ordering (UNIQUE > ROOT > RARE > COMMON).
  */
 
@@ -32,13 +32,13 @@ export class QueryOrderingValidator {
 
     if (!sections || sections.length < 3) return violations;
 
-    // Check if sections have search volume data
-    const hasSearchVolume = sections.some(s =>
-      (s as any).search_volume != null && (s as any).search_volume > 0
+    // Check if sections have query priority data
+    const hasQueryPriority = sections.some(s =>
+      s.query_priority != null && s.query_priority > 0
     );
 
-    if (hasSearchVolume) {
-      return this.validateBySearchVolume(sections);
+    if (hasQueryPriority) {
+      return this.validateByQueryPriority(sections);
     }
 
     // Fallback: validate by attribute category ordering
@@ -46,12 +46,12 @@ export class QueryOrderingValidator {
   }
 
   /**
-   * Validate sections are ordered by search volume (descending).
+   * Validate sections are ordered by query priority (descending).
    */
-  private static validateBySearchVolume(sections: BriefSection[]): ValidationViolation[] {
+  private static validateByQueryPriority(sections: BriefSection[]): ValidationViolation[] {
     const violations: ValidationViolation[] = [];
     const sectionsWithVolume = sections
-      .map((s, i) => ({ section: s, index: i, volume: (s as any).search_volume || 0 }))
+      .map((s, i) => ({ section: s, index: i, volume: s.query_priority || 0 }))
       .filter(s => s.volume > 0);
 
     if (sectionsWithVolume.length < 2) return violations;

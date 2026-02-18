@@ -6,6 +6,20 @@ import * as anthropicService from '../anthropicService';
 import * as perplexityService from '../perplexityService';
 import * as openRouterService from '../openRouterService';
 import { dispatchToProvider } from './providerDispatcher';
+import { TopicalBorderValidator } from './topicalBorderValidator';
+import type { TopicalBorderReport } from './topicalBorderValidator';
+import { TMDDetector } from './tmdDetector';
+import type { TMDReport, TopicNode } from './tmdDetector';
+import { FrameSemanticsAnalyzer } from './frameSemanticsAnalyzer';
+import type { FrameAnalysisReport } from './frameSemanticsAnalyzer';
+import { KnowledgePanelBuilder } from './knowledgePanelBuilder';
+import type { KnowledgePanelReadiness, EntityPresenceData } from './knowledgePanelBuilder';
+import { ContentRefreshTracker } from '../contentRefreshTracker';
+import type { RefreshReport, ContentItem } from '../contentRefreshTracker';
+import { MomentumTracker } from '../momentumTracker';
+import type { MomentumMetrics, PublicationEvent } from '../momentumTracker';
+import { ContentPruningAdvisor } from '../contentPruningAdvisor';
+import type { PruningReport, PageMetrics } from '../contentPruningAdvisor';
 import React from 'react';
 
 // --- Local Algorithmic Checks (The "Quality Engine") ---
@@ -566,6 +580,57 @@ export const validateTopicalMap = async (
         });
     });
 
+    // Topical Border Validation: check if topics stay within semantic borders of CE
+    if (pillars.centralEntity && topics.length > 0) {
+        try {
+            const borderReport = TopicalBorderValidator.validateMap(
+                pillars.centralEntity,
+                topics.map(t => t.title),
+                () => 0.5 // Default distance when no real distance function available synchronously
+            );
+            if (borderReport.outsideBorders > 0) {
+                algorithmicIssues.push({
+                    rule: 'Topical Border Enforcement',
+                    message: `${borderReport.outsideBorders} topic(s) fall outside the semantic border of "${pillars.centralEntity}". Border health: ${borderReport.borderHealthScore}/100.`,
+                    severity: 'WARNING',
+                });
+            }
+        } catch { /* non-fatal */ }
+    }
+
+    // TMD (Topical Map Depth) skew detection
+    if (topics.length > 5) {
+        try {
+            const topicNodes: TopicNode[] = topics.map(t => ({
+                name: t.title,
+                parent: topics.find(p => p.id === t.parent_topic_id)?.title || null,
+                cluster: topics.find(p => p.id === t.parent_topic_id)?.title || t.title,
+            }));
+            const tmdReport = TMDDetector.analyze(topicNodes);
+            if (tmdReport.tmdRatio > 2.0) {
+                algorithmicIssues.push({
+                    rule: 'Topical Map Depth Balance',
+                    message: `TMD ratio is ${tmdReport.tmdRatio.toFixed(1)} (target: <2.0). ${tmdReport.shallowClusters.length} shallow and ${tmdReport.deepClusters.length} deep cluster(s) detected.`,
+                    severity: 'WARNING',
+                });
+            }
+        } catch { /* non-fatal */ }
+    }
+
+    // Frame Semantics coverage
+    if (topics.length > 3) {
+        try {
+            const frameReport = FrameSemanticsAnalyzer.analyze(topics.map(t => t.title));
+            if (frameReport.uncovered > 0 && frameReport.overallCoverage < 60) {
+                algorithmicIssues.push({
+                    rule: 'Frame Semantics Coverage',
+                    message: `Only ${frameReport.overallCoverage}% of semantic frames are covered. ${frameReport.uncovered} frame(s) have no matching topics.`,
+                    severity: 'SUGGESTION',
+                });
+            }
+        } catch { /* non-fatal */ }
+    }
+
     // Add foundation page issues
     if (foundationValidation) {
         algorithmicIssues.push(...foundationValidation.issues);
@@ -718,4 +783,41 @@ export const classifyTopicSections = async (
         dispatch
     );
     return result;
+};
+
+// --- Wired Intelligence Services ---
+
+/**
+ * Analyze frame semantics coverage for a set of topics.
+ */
+export const analyzeFrameCoverage = (topics: string[]): FrameAnalysisReport => {
+    return FrameSemanticsAnalyzer.analyze(topics);
+};
+
+/**
+ * Evaluate Knowledge Panel readiness for an entity.
+ */
+export const evaluateKnowledgePanelReadiness = (data: EntityPresenceData): KnowledgePanelReadiness => {
+    return KnowledgePanelBuilder.evaluate(data);
+};
+
+/**
+ * Analyze content freshness using the 30% Refresh Rule.
+ */
+export const analyzeContentFreshness = (items: ContentItem[], staleDaysOverride?: number): RefreshReport => {
+    return ContentRefreshTracker.analyze(items, staleDaysOverride);
+};
+
+/**
+ * Analyze publication momentum and velocity.
+ */
+export const analyzePublicationMomentum = (events: PublicationEvent[]): MomentumMetrics => {
+    return MomentumTracker.analyze(events);
+};
+
+/**
+ * Analyze content for pruning recommendations (410 vs 301 vs keep).
+ */
+export const analyzeContentPruning = (pages: PageMetrics[]): PruningReport => {
+    return ContentPruningAdvisor.analyze(pages);
 };

@@ -24,6 +24,8 @@ import { validateEntityAuthority } from '../googleKnowledgeGraphService';
 import { sanitizeTextInput, validateUrl } from '../../utils/inputValidation';
 import { API_ENDPOINTS } from '../../config/apiEndpoints';
 import { getDefaultModel } from '../../config/serviceRegistry';
+import { CompetitorTracker } from '../competitorTracker';
+export type { CompetitorSnapshot, CompetitorComparisonReport } from '../competitorTracker';
 
 // Progress callback type
 type ProgressCallback = (progress: QueryNetworkAuditProgress) => void;
@@ -1073,3 +1075,18 @@ export function generateTechnicalReport(result: QueryNetworkAnalysisResult): str
 
   return report;
 }
+
+// --- Wired Intelligence Services ---
+
+/**
+ * Compare your topics against competitor topics for longitudinal tracking.
+ */
+export function compareCompetitorTopics(
+  yourTopics: string[],
+  competitorTopicsMap: Map<string, string[]>
+) {
+  return CompetitorTracker.compare(yourTopics, competitorTopicsMap);
+}
+
+// Re-export CompetitorTracker for direct use by hooks/UI
+export { CompetitorTracker };

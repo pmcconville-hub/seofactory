@@ -561,3 +561,23 @@ export class CoreWebVitalsChecker {
     }
   }
 }
+
+/**
+ * Fetch PageSpeed Insights data via the pagespeed-integration edge function.
+ * Routes through Supabase to avoid CORS issues with direct Google API calls.
+ */
+export async function fetchPageSpeedData(
+  url: string,
+  supabaseClient: { functions: { invoke: (name: string, options: { body: Record<string, unknown> }) => Promise<{ data: any; error: any }> } },
+  strategy: 'mobile' | 'desktop' = 'mobile'
+): Promise<CoreWebVitalsInput | null> {
+  try {
+    const { data, error } = await supabaseClient.functions.invoke('pagespeed-integration', {
+      body: { url, strategy },
+    });
+    if (error) return null;
+    return data as CoreWebVitalsInput;
+  } catch {
+    return null;
+  }
+}

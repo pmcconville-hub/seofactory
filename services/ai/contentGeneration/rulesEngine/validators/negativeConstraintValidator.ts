@@ -96,9 +96,12 @@ export class NegativeConstraintValidator {
     const { negativePatterns, definitionPatterns } = getNegativePatterns(language);
 
     // Only check for sections that likely contain definitions
+    const isFirstSection = context.allSections?.length > 0 &&
+      (context.allSections[0].key === context.section.key ||
+       context.allSections[0].heading === context.section.heading);
     const isDefinitional = context.section.format_code === 'FS' ||
       context.section.format_code === 'DEFINITIVE' ||
-      (context.allSections?.length > 0 && context.allSections[0] === context.section);
+      isFirstSection;
 
     if (!isDefinitional) return violations;
 

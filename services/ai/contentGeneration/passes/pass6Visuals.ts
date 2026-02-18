@@ -11,6 +11,7 @@ import { ContentGenerationOrchestrator } from '../orchestrator';
 import { executeSectionPass } from './baseSectionPass';
 import { buildPass4Prompt, buildPass4BatchPrompt } from '../rulesEngine/prompts/sectionOptimizationPromptBuilder';
 import { BriefChangeTracker } from '../briefChangeTracker';
+import { ImageProcessingService } from '../../../imageProcessingService';
 
 /**
  * Pass 6: Visual Semantics
@@ -106,4 +107,13 @@ export async function executePass6(
     onSectionProgress,
     shouldAbort
   );
+}
+
+/**
+ * Get hybrid category strategy for image recommendations.
+ * Uses ImageProcessingService to determine optimal image category
+ * based on content type and entity type.
+ */
+export function getImageCategoryRecommendation(contentType: string, entityType?: string) {
+  return ImageProcessingService.getHybridCategoryStrategy(contentType, entityType);
 }

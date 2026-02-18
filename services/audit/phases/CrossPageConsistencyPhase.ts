@@ -16,6 +16,7 @@ import type { AuditPhaseName, AuditRequest, AuditPhaseResult, AuditFinding } fro
 import { SignalConflictChecker } from '../rules/SignalConflictChecker';
 import { RobotsTxtParser } from '../rules/RobotsTxtParser';
 import { CrossPageConsistencyAuditor } from '../rules/CrossPageConsistencyAuditor';
+import { NgramConsistencyChecker } from '../rules/NgramConsistencyChecker';
 
 export class CrossPageConsistencyPhase extends AuditPhase {
   readonly phaseName: AuditPhaseName = 'crossPageConsistency';
@@ -103,7 +104,43 @@ export class CrossPageConsistencyPhase extends AuditPhase {
       }
     }
 
+    // N-gram consistency (cross-page validator, only when cross-page content available)
+    const crossPageContent = this.extractCrossPageContent(content);
+    if (crossPageContent && crossPageContent.size >= 2) {
+      totalChecks += 3;
+      const ngramReport = NgramConsistencyChecker.analyze(
+        crossPageContent,
+        contentData?.siteCentralEntity,
+      );
+      for (const issue of ngramReport.issues) {
+        findings.push(this.createFinding({
+          ruleId: issue.ruleId,
+          severity: issue.severity,
+          title: issue.title,
+          description: issue.description,
+          whyItMatters: 'Inconsistent terminology across pages increases Cost of Retrieval and confuses search engine entity disambiguation.',
+          category: 'Cross-Page Consistency',
+        }));
+      }
+    }
+
     return this.buildResult(findings, totalChecks);
+  }
+
+  private extractCrossPageContent(content: unknown): Map<string, string> | null {
+    if (!content || typeof content !== 'object') return null;
+    const c = content as Record<string, unknown>;
+    if (c.crossPageContent instanceof Map) {
+      return c.crossPageContent as Map<string, string>;
+    }
+    if (c.crossPageContent && typeof c.crossPageContent === 'object') {
+      const map = new Map<string, string>();
+      for (const [url, text] of Object.entries(c.crossPageContent as Record<string, string>)) {
+        map.set(url, text);
+      }
+      return map.size > 0 ? map : null;
+    }
+    return null;
   }
 
   private extractContent(content: unknown): {

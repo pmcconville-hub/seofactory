@@ -1,4 +1,7 @@
-import { KnowledgeNode, KnowledgeEdge, AttributeCategory } from '../types';
+import { KnowledgeNode, KnowledgeEdge, AttributeCategory, SemanticTriple } from '../types';
+import { EavTraversal } from '../services/ai/eavTraversal';
+import { PageRankSimulator } from './pageRankSimulator';
+import type { LinkEdge, PageRankReport } from './pageRankSimulator';
 
 export interface KnowledgeGap {
     entityId: string;
@@ -1531,5 +1534,26 @@ export class KnowledgeGraph {
             entityContextCount: this.entityContexts.size,
             cannibalizationRisks
         };
+    }
+
+    /**
+     * Get EAV-based link suggestions using cross-entity traversal.
+     * Finds entities connected through shared attributes.
+     */
+    getEavLinkSuggestions(triples: SemanticTriple[]): { from: string; to: string; reason: string; strength: number }[] {
+        const traversal = new EavTraversal(triples);
+        return traversal.suggestLinks();
+    }
+
+    /**
+     * Simulate PageRank flow across the internal link structure.
+     * Converts knowledge graph edges to link edges and runs the simulation.
+     */
+    simulatePageRank(): PageRankReport {
+        const linkEdges: LinkEdge[] = Array.from(this.edges.values()).map(edge => ({
+            from: edge.source,
+            to: edge.target,
+        }));
+        return PageRankSimulator.simulate(linkEdges);
     }
 }

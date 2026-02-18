@@ -62,13 +62,21 @@ export interface FactVerificationReport {
   results: FactVerificationResult[];
 }
 
+export interface SupabaseClientLike {
+  functions: {
+    invoke: (name: string, options: { body: Record<string, unknown> }) => Promise<{ data: any; error: any }>;
+  };
+}
+
 export class PerplexityFactVerifier {
   private apiKey: string;
   private model: string;
+  private supabaseClient: SupabaseClientLike | null;
 
-  constructor(apiKey: string, model?: string) {
+  constructor(apiKey: string, model?: string, supabaseClient?: SupabaseClientLike) {
     this.apiKey = apiKey;
     this.model = model || SERVICE_REGISTRY.providers.perplexity?.models?.default || 'sonar';
+    this.supabaseClient = supabaseClient || null;
   }
 
   /**
@@ -76,15 +84,22 @@ export class PerplexityFactVerifier {
    */
   async verifyClaim(claim: FactClaim): Promise<FactVerificationResult> {
     try {
+      // CORS guard: direct fetch to external APIs is blocked from browser code.
+      // Route through Supabase Edge Function (ai-proxy) instead.
+      if (!this.supabaseClient) {
+        return {
+          claim,
+          status: 'unverifiable',
+          confidence: 0,
+          explanation: 'No server-side proxy available for Perplexity API calls. Configure a Supabase client to enable fact verification.',
+        };
+      }
+
       const query = `Is it true that ${claim.entity} ${claim.attribute} is ${claim.value}? Provide a brief factual answer with sources.`;
 
-      const response = await fetch(getProviderEndpoint('perplexity', 'chat'), {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const { data: responseData, error } = await this.supabaseClient.functions.invoke('ai-proxy', {
+        body: {
+          provider: 'perplexity',
           model: this.model,
           messages: [
             {
@@ -97,21 +112,20 @@ export class PerplexityFactVerifier {
             },
           ],
           max_tokens: 300,
-        }),
+        },
       });
 
-      if (!response.ok) {
+      if (error) {
         return {
           claim,
           status: 'unverifiable',
           confidence: 0,
-          explanation: `API error: ${response.status}`,
+          explanation: `API error: ${error.message}`,
         };
       }
 
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content || '';
-      const citations = data.citations || [];
+      const content = responseData?.choices?.[0]?.message?.content || '';
+      const citations = responseData?.citations || [];
 
       return this.parseVerificationResponse(claim, content, citations);
     } catch (error) {

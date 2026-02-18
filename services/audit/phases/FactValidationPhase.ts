@@ -12,14 +12,41 @@ import { AuditPhase } from './AuditPhase';
 import type { AuditPhaseName, AuditRequest, AuditPhaseResult, AuditFinding, FetchedContent, FactClaim } from '../types';
 import { FactValidator } from '../FactValidator';
 import type { ClaimVerifier } from '../FactValidator';
+import { PerplexityFactVerifier } from '../verifiers/PerplexityFactVerifier';
 
 export class FactValidationPhase extends AuditPhase {
   readonly phaseName: AuditPhaseName = 'factValidation';
   private readonly factValidator: FactValidator;
 
-  constructor(verifier?: ClaimVerifier) {
+  constructor(verifier?: ClaimVerifier, perplexityApiKey?: string, supabaseClient?: any) {
     super();
-    this.factValidator = new FactValidator(verifier);
+    // If no custom verifier is provided but a Perplexity API key is available,
+    // use the PerplexityFactVerifier as the claim verifier
+    if (!verifier && perplexityApiKey) {
+      const pfv = new PerplexityFactVerifier(perplexityApiKey, undefined, supabaseClient);
+      this.factValidator = new FactValidator(async (claimText: string) => {
+        const result = await pfv.verifyClaim({
+          entity: '',
+          attribute: '',
+          value: claimText,
+          sourceText: claimText,
+        });
+        const mappedSources: import('../types').VerificationSource[] = (result.sources || []).map(s => ({
+          url: s,
+          title: s,
+          snippet: result.explanation || '',
+          agreesWithClaim: result.status === 'verified',
+          retrievedAt: new Date().toISOString(),
+        }));
+        return {
+          status: result.status === 'verified' ? 'verified' : result.status === 'contradicted' ? 'disputed' : 'unable_to_verify',
+          sources: mappedSources,
+          suggestion: result.foundValue,
+        };
+      });
+    } else {
+      this.factValidator = new FactValidator(verifier);
+    }
   }
 
   async execute(request: AuditRequest, content?: unknown): Promise<AuditPhaseResult> {

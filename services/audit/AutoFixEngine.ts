@@ -109,18 +109,22 @@ export class AutoFixEngine {
       switch (fix.action.type) {
         case 'replace_text': {
           const { oldValue, newValue } = fix.action;
-          result = result.replace(oldValue, newValue);
+          result = result.replaceAll(oldValue, newValue);
           break;
         }
         case 'add_meta': {
           const { name, content } = fix.action;
           const metaTag = `<meta name="${name}" content="${this.escapeHtml(content)}" />`;
-          result = result.replace('</head>', `  ${metaTag}\n</head>`);
+          if (result.includes('</head>')) {
+            result = result.replace('</head>', `  ${metaTag}\n</head>`);
+          }
           break;
         }
         case 'add_schema': {
           const script = `<script type="application/ld+json">\n${JSON.stringify(fix.action.jsonLd, null, 2)}\n</script>`;
-          result = result.replace('</head>', `  ${script}\n</head>`);
+          if (result.includes('</head>')) {
+            result = result.replace('</head>', `  ${script}\n</head>`);
+          }
           break;
         }
         // Other action types would need DOM manipulation (cheerio/jsdom)

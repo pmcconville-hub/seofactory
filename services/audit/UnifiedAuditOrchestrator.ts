@@ -15,6 +15,10 @@ import type {
 import { DEFAULT_AUDIT_WEIGHTS } from './types';
 import { AuditSnapshotService } from './AuditSnapshotService';
 import { buildRuleInventory } from './ruleRegistry';
+import { SiteAuditAggregator } from './SiteAuditAggregator';
+import type { SiteAuditResult } from './SiteAuditAggregator';
+import { AutoFixEngine } from './AutoFixEngine';
+import type { AutoFixReport } from './AutoFixEngine';
 
 export interface AuditProgressEvent {
   type: 'start' | 'fetching_content' | 'discovering_urls' | 'phase_start' | 'phase_complete' | 'complete';
@@ -224,7 +228,39 @@ export class UnifiedAuditOrchestrator {
       }
     }
 
+    // Generate auto-fix suggestions for actionable findings
+    const allFindings = phaseResults.flatMap(pr => pr.findings || []);
+    if (allFindings.length > 0) {
+      const autoFixReport = AutoFixEngine.generateFixes(allFindings);
+      (report as any).availableFixes = autoFixReport;
+    }
+
     return report;
+  }
+
+  /**
+   * Run audits for multiple URLs and aggregate into a site-level report.
+   */
+  async auditSite(
+    urls: string[],
+    request: AuditRequest,
+    onProgress?: AuditProgressCallback
+  ): Promise<SiteAuditResult> {
+    const pageReports = new Map<string, UnifiedAuditReport>();
+
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+      const pageRequest = { ...request, url };
+      const report = await this.runAudit(pageRequest, onProgress ? (event) => {
+        onProgress({
+          ...event,
+          progress: (i + (event.progress || 0)) / urls.length,
+        });
+      } : undefined);
+      pageReports.set(url, report);
+    }
+
+    return SiteAuditAggregator.aggregate(pageReports);
   }
 
   private calculateWeightedScore(phaseResults: AuditPhaseResult[]): number {

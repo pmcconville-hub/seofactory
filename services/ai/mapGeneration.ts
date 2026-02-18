@@ -7,6 +7,10 @@ import * as anthropicService from '../anthropicService';
 import * as perplexityService from '../perplexityService';
 import * as openRouterService from '../openRouterService';
 import { dispatchToProvider } from './providerDispatcher';
+import { IndexConstructionRule } from './indexConstructionRule';
+import type { TopicSignals, IndexConstructionResult } from './indexConstructionRule';
+import { QueryDeservesPage } from './queryDeservesPage';
+import type { QDPSignals, QDPResult } from './queryDeservesPage';
 import { AppAction } from '../../state/appState';
 import { getWebsiteTypeConfig, validateHubSpokeRatio } from '../../config/websiteTypeTemplates';
 import { validateLanguageSettings } from '../../utils/languageUtils';
@@ -637,4 +641,26 @@ export const generateTopicBlueprints = (
         perplexity: () => perplexityService.generateTopicBlueprints(topics, businessInfo, pillars, dispatch),
         openrouter: () => openRouterService.generateTopicBlueprints(topics, businessInfo, pillars, dispatch),
     });
+};
+
+// --- Wired Intelligence Services ---
+
+/**
+ * Evaluate standalone page vs section/FAQ/merge decisions for topics.
+ * Uses the 7-factor IndexConstructionRule engine.
+ */
+export const evaluateTopicDecisions = (
+    topics: TopicSignals[]
+): Map<string, IndexConstructionResult> => {
+    return IndexConstructionRule.evaluateMap(topics);
+};
+
+/**
+ * Evaluate Query Deserves Page decisions for queries.
+ * Uses volume + intent + depth matrix.
+ */
+export const evaluateQueryDecisions = (
+    queries: QDPSignals[]
+): Map<string, QDPResult> => {
+    return QueryDeservesPage.evaluateBatch(queries);
 };

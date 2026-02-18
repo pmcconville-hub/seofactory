@@ -390,7 +390,11 @@ export class InternalLinkingValidator {
     if (duplicates.length > 0) {
       const examples = duplicates
         .slice(0, 3)
-        .map(d => `"${d.anchor}" \u2192 ${new URL(d.href).pathname} (${d.count}x)`)
+        .map(d => {
+          let path = d.href;
+          try { path = new URL(d.href).pathname; } catch { /* use raw href */ }
+          return `"${d.anchor}" \u2192 ${path} (${d.count}x)`;
+        })
         .join('; ');
       issues.push({
         ruleId: 'rule-189',

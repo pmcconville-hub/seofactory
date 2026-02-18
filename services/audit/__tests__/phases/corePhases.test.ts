@@ -201,7 +201,7 @@ describe('Core Phase Adapters', () => {
       </body></html>`;
       const request = { ...makeRequest(), url: 'https://example.com/test' };
       const result = await phase.execute(request, { html, totalWords: 500 });
-      expect(result.totalChecks).toBe(29); // 16 internal linking + 13 external data
+      expect(result.totalChecks).toBe(32); // 16 internal linking + 13 external data + 3 boilerplate
       expect(result.findings.length).toBeGreaterThan(0); // should find generic anchor issues
     });
   });

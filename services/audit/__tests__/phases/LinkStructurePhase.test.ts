@@ -28,11 +28,11 @@ describe('LinkStructurePhase', () => {
     const result = await phase.execute(makeRequest(), {
       html: '<html><body><a href="/test">Link</a></body></html>',
     });
-    expect(result.totalChecks).toBe(0);
-    expect(result.findings).toHaveLength(0);
+    // BoilerplateDetector still runs on HTML even without URL (3 checks)
+    expect(result.totalChecks).toBe(3);
   });
 
-  it('runs both validators when HTML and URL present (totalChecks = 29)', async () => {
+  it('runs all validators when HTML and URL present (totalChecks = 32)', async () => {
     const phase = new LinkStructurePhase();
     const html = `<html><body>
       <nav><a href="https://example.com/">Home</a><a href="https://example.com/about">About</a><a href="https://example.com/contact">Contact</a></nav>
@@ -44,8 +44,8 @@ describe('LinkStructurePhase', () => {
     </body></html>`;
     const request = makeRequest('https://example.com/test-page');
     const result = await phase.execute(request, { html, totalWords: 400 });
-    // 16 (internal linking) + 13 (external data) = 29
-    expect(result.totalChecks).toBe(29);
+    // 16 (internal linking) + 13 (external data) + 3 (boilerplate) = 32
+    expect(result.totalChecks).toBe(32);
   });
 
   it('detects generic anchor text', async () => {

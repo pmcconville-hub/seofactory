@@ -1,5 +1,6 @@
 // FIX: Replaced placeholder content with a functional module.
 import { GscRow } from '../types';
+import { createClient } from '@supabase/supabase-js';
 
 /**
  * Unified GSC data source — supports both API and CSV import.
@@ -48,6 +49,29 @@ export async function getGscData(source: GscDataSource): Promise<GscRow[]> {
  * @param csvText The raw CSV content as a string.
  * @returns A promise that resolves to an array of GscRow objects.
  */
+/**
+ * Fetch GSC data via the gsc-integration Supabase Edge Function.
+ * Use this when you need server-side GSC API access (avoids CORS).
+ */
+export async function fetchGscEdgeFunctionData(
+  siteUrl: string,
+  accessToken: string,
+  supabaseUrl?: string,
+  supabaseAnonKey?: string
+) {
+  const url = supabaseUrl || import.meta.env.VITE_SUPABASE_URL;
+  const key = supabaseAnonKey || import.meta.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !key) {
+    throw new Error('Supabase URL and anon key are required for GSC edge function calls.');
+  }
+  const supabase = createClient(url, key);
+  const { data, error } = await supabase.functions.invoke('gsc-integration', {
+    body: { siteUrl, accessToken },
+  });
+  if (error) throw error;
+  return data;
+}
+
 export const parseGscCsv = (csvText: string): Promise<GscRow[]> => {
     return new Promise((resolve, reject) => {
         if (!csvText) {

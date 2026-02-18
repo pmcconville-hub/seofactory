@@ -104,11 +104,13 @@ export class SiteAuditAggregator {
     // Aggregate per-phase scores
     const phaseScores = this.aggregatePhases(reports);
 
-    // Find weakest phase
-    const weakestPhase = phaseScores.reduce(
-      (min, p) => p.averageScore < min.averageScore ? p : min,
-      phaseScores[0]
-    );
+    // Find weakest phase (guard against empty phaseScores)
+    const weakestPhase = phaseScores.length > 0
+      ? phaseScores.reduce(
+          (min, p) => p.averageScore < min.averageScore ? p : min,
+          phaseScores[0]
+        )
+      : null;
 
     // Count critical issues
     const criticalIssueCount = reports.reduce((count, report) => {
