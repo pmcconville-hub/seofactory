@@ -30,6 +30,12 @@ function isRetryableByDefault(error: Error): boolean {
   if (message.includes('econnreset')) return true;
   if (message.includes('etimedout')) return true;
 
+  // QUIC / HTTP3 protocol errors (browser-level transport failures)
+  if (message.includes('err_quic_protocol_error')) return true;
+  if (message.includes('quic_too_many_rtos')) return true;
+  if (message.includes('err_http2_protocol_error')) return true;
+  if (message.includes('net::err_')) return true;
+
   // Rate limiting (429)
   if (message.includes('429')) return true;
   if (message.includes('rate limit')) return true;

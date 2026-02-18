@@ -348,11 +348,24 @@ export class ContentGenerationOrchestrator {
     const event = performanceLogger.startEvent('CHECKPOINT', 'updateJob');
 
     try {
-      const { data, error } = await this.supabase
+      let { data, error } = await this.supabase
         .from('content_generation_jobs')
         .update({ ...updates, updated_at: new Date().toISOString() } as unknown as Record<string, unknown>)
         .eq('id', jobId)
         .select('id');
+
+      // 403 during long content generation usually means the auth token expired.
+      if (error && (error.message?.includes('403') || error.code === '42501' || error.message?.includes('Forbidden'))) {
+        console.warn('[Orchestrator] Job update got 403 — refreshing auth session and retrying...');
+        try { await this.supabase.auth.refreshSession(); } catch { /* best effort */ }
+        const retry = await this.supabase
+          .from('content_generation_jobs')
+          .update({ ...updates, updated_at: new Date().toISOString() } as unknown as Record<string, unknown>)
+          .eq('id', jobId)
+          .select('id');
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) throw new Error(`Failed to update job: ${error.message}`);
 
@@ -541,9 +554,24 @@ export class ContentGenerationOrchestrator {
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await this.supabase
+      let { error } = await this.supabase
         .from('content_generation_sections')
         .upsert(section as any, { onConflict: 'job_id,section_key' });
+
+      // 403 during long content generation usually means the auth token expired.
+      // Refresh the session and retry once before failing.
+      if (error && (error.message?.includes('403') || error.code === '42501' || error.message?.includes('Forbidden'))) {
+        console.warn('[Orchestrator] Section upsert got 403 — refreshing auth session and retrying...');
+        try {
+          await this.supabase.auth.refreshSession();
+        } catch (refreshErr) {
+          console.warn('[Orchestrator] Session refresh failed:', refreshErr);
+        }
+        const retry = await this.supabase
+          .from('content_generation_sections')
+          .upsert(section as any, { onConflict: 'job_id,section_key' });
+        error = retry.error;
+      }
 
       if (error) throw new Error(`Failed to upsert section: ${error.message}`);
 

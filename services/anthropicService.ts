@@ -85,29 +85,34 @@ const callApiWithStreaming = async <T>(
             promptLength: requestBody.messages[0]?.content?.length
         });
 
-        // Create abort controller for timeout (5 minutes for streaming)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-            console.error('[Anthropic STREAMING] Request timed out after 5 minutes');
-            controller.abort();
-        }, 300000); // 5 minute timeout
-
+        // Fresh AbortController per retry attempt to prevent shared-signal bug
+        let activeTimeoutId: ReturnType<typeof setTimeout> | null = null;
         let response: Response;
         try {
             // Use shared retryWithBackoff to handle intermittent network failures
-            response = await retryWithBackoff(() => fetch(proxyUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-anthropic-api-key': businessInfo.anthropicApiKey,
-                    'apikey': businessInfo.supabaseAnonKey,
-                    'Authorization': `Bearer ${businessInfo.supabaseAnonKey}`,
-                },
-                body: JSON.stringify(requestBody),
-                signal: controller.signal,
-            }));
+            response = await retryWithBackoff(() => {
+                // Create a new AbortController for each attempt so a timeout on attempt N
+                // does not poison attempt N+1 with an already-aborted signal
+                const controller = new AbortController();
+                if (activeTimeoutId) clearTimeout(activeTimeoutId);
+                activeTimeoutId = setTimeout(() => {
+                    console.error('[Anthropic STREAMING] Request timed out after 5 minutes');
+                    controller.abort();
+                }, 300000); // 5 minute timeout
+                return fetch(proxyUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-anthropic-api-key': businessInfo.anthropicApiKey,
+                        'apikey': businessInfo.supabaseAnonKey,
+                        'Authorization': `Bearer ${businessInfo.supabaseAnonKey}`,
+                    },
+                    body: JSON.stringify(requestBody),
+                    signal: controller.signal,
+                });
+            });
         } finally {
-            clearTimeout(timeoutId);
+            if (activeTimeoutId) clearTimeout(activeTimeoutId);
         }
 
         console.log('[Anthropic STREAMING] Response received:', {
@@ -419,18 +424,29 @@ const callApi = async <T>(
     // Start API call logging
     const apiCallLog = anthropicLogger.start(operation, 'POST');
 
+    let activeTimeoutId: ReturnType<typeof setTimeout> | null = null;
     try {
         // Use shared retryWithBackoff to handle intermittent network failures
-        const response = await retryWithBackoff(() => fetch(proxyUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-anthropic-api-key': businessInfo.anthropicApiKey,
-                'apikey': businessInfo.supabaseAnonKey,
-                'Authorization': `Bearer ${businessInfo.supabaseAnonKey}`,
-            },
-            body: bodyString,
-        }));
+        const response = await retryWithBackoff(() => {
+            const controller = new AbortController();
+            if (activeTimeoutId) clearTimeout(activeTimeoutId);
+            activeTimeoutId = setTimeout(() => {
+                console.error('[Anthropic callApi] Request timed out after 3 minutes');
+                controller.abort();
+            }, 180000); // 3 minute timeout for non-streaming
+            return fetch(proxyUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-anthropic-api-key': businessInfo.anthropicApiKey,
+                    'apikey': businessInfo.supabaseAnonKey,
+                    'Authorization': `Bearer ${businessInfo.supabaseAnonKey}`,
+                },
+                body: bodyString,
+                signal: controller.signal,
+            });
+        });
+        if (activeTimeoutId) clearTimeout(activeTimeoutId);
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ error: response.statusText }));
@@ -542,6 +558,8 @@ const callApi = async <T>(
         return sanitizerFn(responseText);
 
     } catch (error) {
+        if (activeTimeoutId) clearTimeout(activeTimeoutId);
+
         // Log failed usage
         const durationMs = Date.now() - startTime;
         const tokensIn = estimateTokens(prompt.length);
@@ -1269,29 +1287,32 @@ export const generateText = async (
             system: "You are a helpful, expert SEO strategist specializing in semantic optimization and content creation. Write high-quality, comprehensive content that follows SEO best practices. Use markdown formatting for structure."
         };
 
-        // Create abort controller for timeout (5 minutes for streaming)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-            console.error('[Anthropic generateText] Streaming request timed out after 5 minutes');
-            controller.abort();
-        }, 300000); // 5 minute timeout
-
+        // Fresh AbortController per retry attempt to prevent shared-signal bug
+        let activeTimeoutId: ReturnType<typeof setTimeout> | null = null;
         let response: Response;
         try {
             // Use shared retryWithBackoff to handle intermittent network failures
-            response = await retryWithBackoff(() => fetch(proxyUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-anthropic-api-key': businessInfo.anthropicApiKey,
-                    'apikey': businessInfo.supabaseAnonKey || '',
-                    'Authorization': `Bearer ${businessInfo.supabaseAnonKey || ''}`,
-                },
-                body: JSON.stringify(requestBody),
-                signal: controller.signal,
-            }));
+            response = await retryWithBackoff(() => {
+                const controller = new AbortController();
+                if (activeTimeoutId) clearTimeout(activeTimeoutId);
+                activeTimeoutId = setTimeout(() => {
+                    console.error('[Anthropic generateText] Streaming request timed out after 5 minutes');
+                    controller.abort();
+                }, 300000); // 5 minute timeout
+                return fetch(proxyUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-anthropic-api-key': businessInfo.anthropicApiKey,
+                        'apikey': businessInfo.supabaseAnonKey || '',
+                        'Authorization': `Bearer ${businessInfo.supabaseAnonKey || ''}`,
+                    },
+                    body: JSON.stringify(requestBody),
+                    signal: controller.signal,
+                });
+            });
         } finally {
-            clearTimeout(timeoutId);
+            if (activeTimeoutId) clearTimeout(activeTimeoutId);
         }
 
         if (!response.ok) {
