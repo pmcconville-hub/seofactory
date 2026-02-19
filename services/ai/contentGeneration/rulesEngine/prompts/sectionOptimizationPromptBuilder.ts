@@ -1249,6 +1249,16 @@ Your output MUST contain:
 }
 
 // ============================================
+// Semantic aliases for visual semantics builders
+// ============================================
+// In the 10-pass execution order, Pass 6 = Visual Semantics.
+// The prompt builders were originally named buildPass4* (old numbering).
+// These aliases allow pass6Visuals.ts to import by purpose, not by legacy number.
+
+export const buildVisualSemanticsPrompt = buildPass4Prompt;
+export const buildVisualSemanticsBatchPrompt = buildPass4BatchPrompt;
+
+// ============================================
 // Export all builders as named object
 // ============================================
 
@@ -1264,7 +1274,9 @@ export const SectionOptimizationPromptBuilder = {
   buildPass7Prompt,
   buildPass7ConclusionPrompt,
   buildPass8Prompt,
-  buildPass8BatchPrompt
+  buildPass8BatchPrompt,
+  buildVisualSemanticsPrompt,
+  buildVisualSemanticsBatchPrompt
 };
 
 export default SectionOptimizationPromptBuilder;

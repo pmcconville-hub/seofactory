@@ -9,7 +9,7 @@ import {
 } from '../../../../types';
 import { ContentGenerationOrchestrator } from '../orchestrator';
 import { executeSectionPass } from './baseSectionPass';
-import { buildPass4Prompt, buildPass4BatchPrompt } from '../rulesEngine/prompts/sectionOptimizationPromptBuilder';
+import { buildVisualSemanticsPrompt, buildVisualSemanticsBatchPrompt } from '../rulesEngine/prompts/sectionOptimizationPromptBuilder';
 import { BriefChangeTracker } from '../briefChangeTracker';
 import { ImageProcessingService } from '../../../imageProcessingService';
 
@@ -42,11 +42,11 @@ export async function executePass6(
       passNumber: 6,  // Pass 6: Visual Semantics
       passKey: 'pass_6_visuals',
       nextPassNumber: 7,  // Proceed to Pass 7 (Introduction Synthesis)
-      promptBuilder: buildPass4Prompt,
+      promptBuilder: buildVisualSemanticsPrompt,
 
       // Batch processing: 5 sections per API call with proper batch prompt
       batchSize: 5,
-      buildBatchPrompt: buildPass4BatchPrompt,
+      buildBatchPrompt: buildVisualSemanticsBatchPrompt,
 
       // Brief-led processing: Only sections designated by brief for images + justified additions
       filterSections: (sections: ContentGenerationSection[], budget: ContentFormatBudget) => {
