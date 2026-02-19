@@ -49,6 +49,19 @@ const BriefPage = lazy(() => import('../pages/topic/BriefPage'));
 const DraftPage = lazy(() => import('../pages/topic/DraftPage'));
 const StylePage = lazy(() => import('../pages/topic/StylePage'));
 
+// Pipeline routes
+const PipelineLayout = lazy(() => import('../pages/pipeline/PipelineLayout'));
+const PipelineCrawlStep = lazy(() => import('../pages/pipeline/PipelineCrawlStep'));
+const PipelineGapStep = lazy(() => import('../pages/pipeline/PipelineGapStep'));
+const PipelineStrategyStep = lazy(() => import('../pages/pipeline/PipelineStrategyStep'));
+const PipelineEavsStep = lazy(() => import('../pages/pipeline/PipelineEavsStep'));
+const PipelineMapStep = lazy(() => import('../pages/pipeline/PipelineMapStep'));
+const PipelineBriefsStep = lazy(() => import('../pages/pipeline/PipelineBriefsStep'));
+const PipelineContentStep = lazy(() => import('../pages/pipeline/PipelineContentStep'));
+const PipelineAuditStep = lazy(() => import('../pages/pipeline/PipelineAuditStep'));
+const PipelineTechSpecStep = lazy(() => import('../pages/pipeline/PipelineTechSpecStep'));
+const PipelineExportStep = lazy(() => import('../pages/pipeline/PipelineExportStep'));
+
 // Standalone pages
 const AdminPage = lazy(() => import('../pages/AdminPage'));
 const QuotationPage = lazy(() => import('../pages/QuotationPage'));
@@ -98,6 +111,21 @@ const AppRouter: React.FC = () => {
                                     <Route path="competitors" element={<CompetitorsPage />} />
                                     <Route path="catalog" element={<CatalogPage />} />
                                     <Route path="blueprint" element={<BlueprintPage />} />
+                                </Route>
+
+                                {/* Pipeline */}
+                                <Route path="pipeline" element={<PipelineLayout />}>
+                                    <Route index element={<Navigate to="crawl" replace />} />
+                                    <Route path="crawl" element={<PipelineCrawlStep />} />
+                                    <Route path="gap" element={<PipelineGapStep />} />
+                                    <Route path="strategy" element={<PipelineStrategyStep />} />
+                                    <Route path="eavs" element={<PipelineEavsStep />} />
+                                    <Route path="map" element={<PipelineMapStep />} />
+                                    <Route path="briefs" element={<PipelineBriefsStep />} />
+                                    <Route path="content" element={<PipelineContentStep />} />
+                                    <Route path="audit" element={<PipelineAuditStep />} />
+                                    <Route path="tech" element={<PipelineTechSpecStep />} />
+                                    <Route path="export" element={<PipelineExportStep />} />
                                 </Route>
 
                                 {/* Topic routes */}

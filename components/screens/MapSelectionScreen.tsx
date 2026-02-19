@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { SmartLoader } from '../ui/FunLoaders';
 import MergeMapWizard from '../merge/MergeMapWizard';
 import { useAppState } from '../../state/appState';
+import { PipelineStep } from '../../state/slices/pipelineSlice';
 
 function getMapCompleteness(map: TopicalMap): { label: string; color: string; percent: number } {
     let steps = 0;
@@ -45,6 +46,7 @@ interface MapSelectionScreenProps {
   onSelectMap: (mapId: string) => void;
   onCreateNewMap: () => void;
   onStartAnalysis: () => void;
+  onStartPipeline: (isGreenfield: boolean, siteUrl?: string) => void;
   onBackToProjects: () => void;
   onInitiateDeleteMap: (map: TopicalMap) => void;
   onRenameMap: (mapId: string, newName: string) => void;
@@ -56,6 +58,7 @@ const MapSelectionScreen: React.FC<MapSelectionScreenProps> = ({
     onSelectMap,
     onCreateNewMap,
     onStartAnalysis,
+    onStartPipeline,
     onBackToProjects,
     onInitiateDeleteMap,
     onRenameMap
@@ -65,6 +68,8 @@ const MapSelectionScreen: React.FC<MapSelectionScreenProps> = ({
     const [editingMapId, setEditingMapId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
     const editInputRef = useRef<HTMLInputElement>(null);
+    const [pipelineMode, setPipelineMode] = useState<'choose' | 'greenfield' | 'existing'>('choose');
+    const [pipelineSiteUrl, setPipelineSiteUrl] = useState('');
 
     useEffect(() => {
         if (editingMapId && editInputRef.current) {
@@ -100,48 +105,116 @@ const MapSelectionScreen: React.FC<MapSelectionScreenProps> = ({
                 <Button onClick={onBackToProjects} variant="secondary">Back to Projects</Button>
             </header>
 
-            {/* Dual-Path Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Path A: New Strategy */}
-                <div
-                    className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 hover:border-blue-600 transition-colors cursor-pointer group"
-                    onClick={onCreateNewMap}
-                >
-                    <div className="w-12 h-12 rounded-lg bg-blue-900/30 border border-blue-700/50 flex items-center justify-center mb-4">
-                        <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+            {/* PRIMARY: Pipeline Entry */}
+            <div className="bg-gradient-to-br from-blue-900/30 to-purple-900/20 border border-blue-700/50 rounded-xl p-6">
+                <div className="flex items-start gap-4 mb-4">
+                    <div className="w-12 h-12 rounded-lg bg-blue-600/30 border border-blue-500/50 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-6 h-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.841m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
                         </svg>
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2">New Strategy</h3>
-                    <p className="text-gray-400 text-sm mb-4">
-                        Build your content strategy from the ground up. Define your business context,
-                        SEO pillars, and generate an ideal topical map.
-                    </p>
-                    <p className="text-xs text-gray-500 mb-4">Best for: New websites, major pivots, greenfield content</p>
-                    <Button variant="primary" className="w-full group-hover:bg-blue-500">
-                        Start Fresh
-                    </Button>
+                    <div>
+                        <h3 className="text-xl font-bold text-white">Start SEO Pipeline</h3>
+                        <p className="text-gray-400 text-sm mt-1">From website URL to complete SEO action plan in 8 guided steps</p>
+                    </div>
                 </div>
 
-                {/* Path B: Optimize Existing Site */}
+                {/* 5-phase overview */}
+                <div className="flex items-center gap-2 mb-6 text-xs overflow-x-auto pb-1">
+                    {['Discover', 'Strategy', 'Plan', 'Create', 'Validate'].map((phase, i) => (
+                        <React.Fragment key={phase}>
+                            <span className="bg-blue-800/40 text-blue-300 px-2.5 py-1 rounded-full whitespace-nowrap font-medium">{phase}</span>
+                            {i < 4 && <span className="text-gray-600">→</span>}
+                        </React.Fragment>
+                    ))}
+                </div>
+
+                {/* Mode selection */}
+                <div className="space-y-4">
+                    <div className="flex gap-3">
+                        <button
+                            onClick={() => setPipelineMode(pipelineMode === 'existing' ? 'choose' : 'existing')}
+                            className={`flex-1 p-3 rounded-lg border text-left transition-colors ${
+                                pipelineMode === 'existing'
+                                    ? 'border-green-500 bg-green-900/20 text-green-300'
+                                    : 'border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-600'
+                            }`}
+                        >
+                            <span className="text-sm font-medium block">Yes, I have a website</span>
+                            <span className="text-xs opacity-70">Crawl, analyze gaps, then optimize</span>
+                        </button>
+                        <button
+                            onClick={() => setPipelineMode(pipelineMode === 'greenfield' ? 'choose' : 'greenfield')}
+                            className={`flex-1 p-3 rounded-lg border text-left transition-colors ${
+                                pipelineMode === 'greenfield'
+                                    ? 'border-blue-500 bg-blue-900/20 text-blue-300'
+                                    : 'border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-600'
+                            }`}
+                        >
+                            <span className="text-sm font-medium block">No, starting fresh</span>
+                            <span className="text-xs opacity-70">Define business context, then build</span>
+                        </button>
+                    </div>
+
+                    {pipelineMode === 'existing' && (
+                        <div className="flex gap-2">
+                            <input
+                                type="url"
+                                placeholder="https://www.example.com"
+                                value={pipelineSiteUrl}
+                                onChange={e => setPipelineSiteUrl(e.target.value)}
+                                className="flex-1 bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-white text-sm placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                            />
+                            <Button
+                                variant="primary"
+                                onClick={() => onStartPipeline(false, pipelineSiteUrl || undefined)}
+                                disabled={!pipelineSiteUrl.trim()}
+                            >
+                                Start Pipeline
+                            </Button>
+                        </div>
+                    )}
+
+                    {pipelineMode === 'greenfield' && (
+                        <Button
+                            variant="primary"
+                            className="w-full"
+                            onClick={() => onStartPipeline(true)}
+                        >
+                            Start Pipeline
+                        </Button>
+                    )}
+                </div>
+            </div>
+
+            {/* SECONDARY: Quick Setup + Import (legacy paths) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Path A: Quick Setup */}
                 <div
-                    className="bg-gray-800/50 border border-gray-700 rounded-xl p-6 hover:border-green-600 transition-colors cursor-pointer group"
+                    className="bg-gray-800/30 border border-gray-700/50 rounded-lg p-4 hover:border-gray-600 transition-colors cursor-pointer group"
+                    onClick={onCreateNewMap}
+                >
+                    <div className="flex items-center gap-3 mb-2">
+                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+                        </svg>
+                        <h4 className="text-sm font-semibold text-gray-300">Quick Setup</h4>
+                    </div>
+                    <p className="text-xs text-gray-500">Manual wizard for power users</p>
+                </div>
+
+                {/* Path B: Advanced Import */}
+                <div
+                    className="bg-gray-800/30 border border-gray-700/50 rounded-lg p-4 hover:border-gray-600 transition-colors cursor-pointer group"
                     onClick={onStartAnalysis}
                 >
-                    <div className="w-12 h-12 rounded-lg bg-green-900/30 border border-green-700/50 flex items-center justify-center mb-4">
-                        <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex items-center gap-3 mb-2">
+                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
+                        <h4 className="text-sm font-semibold text-gray-300">Advanced Import</h4>
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2">Optimize Existing Site</h3>
-                    <p className="text-gray-400 text-sm mb-4">
-                        Import your site, analyze what you have, discover your SEO pillars from
-                        existing content, and build an optimized strategy around your reality.
-                    </p>
-                    <p className="text-xs text-gray-500 mb-4">Best for: Existing websites, site optimization, content audits</p>
-                    <Button onClick={onStartAnalysis} variant="secondary" className="w-full border-green-700 text-green-400 hover:bg-green-900/30">
-                        Import Site
-                    </Button>
+                    <p className="text-xs text-gray-500">Migration workbench for existing sites</p>
                 </div>
             </div>
 

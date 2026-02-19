@@ -133,6 +133,11 @@ const Icons = {
             <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
         </svg>
     ),
+    pipeline: (
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.841m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+        </svg>
+    ),
 };
 
 const NavItemLink: React.FC<{ item: NavItem; collapsed: boolean }> = ({ item, collapsed }) => (
@@ -191,40 +196,54 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggleCollapse }) => {
     const mapBizInfo = activeMapData?.business_info as Record<string, unknown> | undefined;
     const isEcommerce = (mapBizInfo?.websiteType || state.businessInfo.websiteType) === 'ECOMMERCE';
 
+    // Reset viewMode when clicking any non-migration sidebar link
+    const resetViewMode = () => {
+        if (state.viewMode === 'MIGRATION') {
+            dispatch({ type: 'SET_VIEW_MODE', payload: 'CREATION' });
+        }
+    };
+
+    // Check if pipeline is active for this map
+    const isPipelineActive = activeMap?.pipeline_state?.isActive;
+
     // Level 3: Map selected - full navigation
     const mapSections: NavSection[] = [
         {
             title: 'MAP',
             items: [
-                { label: 'Topical Map', icon: Icons.dashboard, to: mapBase, end: true,
-                  onClick: () => { if (state.viewMode === 'MIGRATION') dispatch({ type: 'SET_VIEW_MODE', payload: 'CREATION' }); }
+                {
+                    label: 'Pipeline',
+                    icon: (<span className="relative inline-flex">{Icons.pipeline}{isPipelineActive && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full" />}</span>),
+                    to: `${mapBase}/pipeline`,
+                    onClick: resetViewMode,
                 },
-                { label: 'Map Settings', icon: Icons.settings, to: `${mapBase}/setup` },
-                ...(isEcommerce ? [{ label: 'Product Catalog', icon: Icons.catalog, to: `${mapBase}/catalog` }] : []),
+                { label: 'Topical Map', icon: Icons.dashboard, to: mapBase, end: true, onClick: resetViewMode },
+                { label: 'Map Settings', icon: Icons.settings, to: `${mapBase}/setup`, onClick: resetViewMode },
+                ...(isEcommerce ? [{ label: 'Product Catalog', icon: Icons.catalog, to: `${mapBase}/catalog`, onClick: resetViewMode }] : []),
             ],
         },
         {
             title: 'ANALYSIS',
             items: [
-                { label: 'Audit Dashboard', icon: Icons.audit, to: `${mapBase}/audit` },
-                { label: 'Insights Hub', icon: Icons.insights, to: `${mapBase}/insights` },
-                { label: 'Gap Analysis', icon: Icons.gap, to: `${mapBase}/gap-analysis` },
-                { label: 'Quality', icon: Icons.quality, to: `${mapBase}/quality` },
+                { label: 'Audit Dashboard', icon: Icons.audit, to: `${mapBase}/audit`, onClick: resetViewMode },
+                { label: 'Insights Hub', icon: Icons.insights, to: `${mapBase}/insights`, onClick: resetViewMode },
+                { label: 'Gap Analysis', icon: Icons.gap, to: `${mapBase}/gap-analysis`, onClick: resetViewMode },
+                { label: 'Quality', icon: Icons.quality, to: `${mapBase}/quality`, onClick: resetViewMode },
             ],
         },
         {
             title: 'PLANNING',
             items: [
-                { label: 'Publication Plan', icon: Icons.planning, to: `${mapBase}/planning` },
-                { label: 'Content Calendar', icon: Icons.calendar, to: `${mapBase}/calendar` },
+                { label: 'Publication Plan', icon: Icons.planning, to: `${mapBase}/planning`, onClick: resetViewMode },
+                { label: 'Content Calendar', icon: Icons.calendar, to: `${mapBase}/calendar`, onClick: resetViewMode },
             ],
         },
         {
             title: 'STRATEGY',
             items: [
-                { label: 'KP Strategy', icon: Icons.strategy, to: `${mapBase}/strategy/kp` },
-                { label: 'Entity Authority', icon: Icons.strategy, to: `${mapBase}/strategy/entity-authority` },
-                { label: 'Entity Health', icon: Icons.strategy, to: `${mapBase}/strategy/entity-health` },
+                { label: 'KP Strategy', icon: Icons.strategy, to: `${mapBase}/strategy/kp`, onClick: resetViewMode },
+                { label: 'Entity Authority', icon: Icons.strategy, to: `${mapBase}/strategy/entity-authority`, onClick: resetViewMode },
+                { label: 'Entity Health', icon: Icons.strategy, to: `${mapBase}/strategy/entity-health`, onClick: resetViewMode },
             ],
         },
     ];

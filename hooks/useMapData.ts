@@ -5,6 +5,7 @@ import { getSupabaseClient } from '../services/supabaseClient';
 import { sanitizeTopicFromDb, sanitizeBriefFromDb } from '../utils/parsers';
 import { batchedIn } from '../utils/supabaseBatchQuery';
 import { BusinessInfo, ContentBrief, TopicalMap } from '../types';
+import { PipelineState, pipelineActions } from '../state/slices/pipelineSlice';
 
 export const useMapData = (
     activeMapId: string | null, 
@@ -12,6 +13,13 @@ export const useMapData = (
     businessInfo: BusinessInfo, 
     dispatch: React.Dispatch<AppAction>
 ) => {
+    // 0. Hydrate pipeline state from the map if it exists
+    useEffect(() => {
+        if (activeMap?.pipeline_state) {
+            dispatch(pipelineActions.restoreState(activeMap.pipeline_state as PipelineState));
+        }
+    }, [activeMap?.id, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
+
     // 1. Hydrate analysis results from the map object if they exist
     useEffect(() => {
         if (activeMap && activeMap.analysis_state) {

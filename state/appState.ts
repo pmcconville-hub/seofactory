@@ -47,6 +47,14 @@ import {
 } from './slices/catalogSlice';
 
 import {
+  type PipelineState,
+  type PipelineAction,
+  initialPipelineState,
+  pipelineReducer,
+  isPipelineAction,
+} from './slices/pipelineSlice';
+
+import {
   topicOperationsReducer,
   isTopicOperationsAction,
 } from './slices/topicOperationsSlice';
@@ -207,6 +215,9 @@ export interface AppState {
 
     // Product Catalog state - delegated to catalogSlice
     catalog: CatalogState;
+
+    // Pipeline state - delegated to pipelineSlice
+    pipeline: PipelineState;
 }
 
 export type AppAction =
@@ -331,7 +342,9 @@ export type AppAction =
   | { type: 'APPLY_PUBLICATION_PLAN'; payload: { mapId: string; planResult: PublicationPlanResult } }
   | { type: 'RESET_PUBLICATION_PLANNING' }
   // Product Catalog actions - delegated to catalogSlice
-  | CatalogAction;
+  | CatalogAction
+  // Pipeline actions - delegated to pipelineSlice
+  | PipelineAction;
 
 export const initialState: AppState = {
     user: null,
@@ -402,6 +415,7 @@ export const initialState: AppState = {
     },
     publicationPlanning: initialPublicationPlanningState,
     catalog: initialCatalogState,
+    pipeline: initialPipelineState,
 };
 
 export const appReducer = (state: AppState, action: AppAction): AppState => {
@@ -757,6 +771,24 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
                 topicalMaps: newTopicalMaps
             };
         }
+        // Pipeline reducers - delegated to pipelineSlice
+        case 'PIPELINE_ACTIVATE':
+        case 'PIPELINE_DEACTIVATE':
+        case 'PIPELINE_SET_STEP_STATUS':
+        case 'PIPELINE_ADVANCE_STEP':
+        case 'PIPELINE_APPROVE_GATE':
+        case 'PIPELINE_REJECT_GATE':
+        case 'PIPELINE_SET_CURRENT_STEP':
+        case 'PIPELINE_TOGGLE_AUTO_APPROVE':
+        case 'PIPELINE_SET_WAVE_CONFIG':
+        case 'PIPELINE_UPDATE_WAVE':
+        case 'PIPELINE_SKIP_STEP':
+        case 'PIPELINE_RESTORE_STATE':
+        case 'PIPELINE_RESET': {
+            const result = pipelineReducer(state.pipeline, action as PipelineAction);
+            return result ? { ...state, pipeline: result } : state;
+        }
+
         default: return state;
     }
 };

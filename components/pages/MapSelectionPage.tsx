@@ -7,6 +7,7 @@ import { TopicalMap } from '../../types';
 import { getSupabaseClient } from '../../services/supabaseClient';
 import { verifiedDelete, verifiedBulkDelete } from '../../services/verifiedDatabaseService';
 import { normalizeRpcData, parseTopicalMap } from '../../utils/parsers';
+import { pipelineActions } from '../../state/slices/pipelineSlice';
 
 /**
  * MapSelectionPage - Route wrapper for map selection within a project.
@@ -140,6 +141,29 @@ const MapSelectionPage: React.FC = () => {
         });
     };
 
+    const handleStartPipeline = async (isGreenfield: boolean, siteUrl?: string) => {
+        if (!projectId) return;
+        const mapName = isGreenfield
+            ? `${activeProject?.project_name || 'Site'} - Pipeline`
+            : `${siteUrl ? new URL(siteUrl).hostname : activeProject?.project_name || 'Site'} - Pipeline`;
+        try {
+            const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+            const { data, error } = await supabase.rpc('create_new_map', { p_project_id: projectId, p_map_name: mapName });
+            if (error) throw error;
+
+            const rawMap = normalizeRpcData(data);
+            const newMap = parseTopicalMap(rawMap);
+
+            dispatch({ type: 'ADD_TOPICAL_MAP', payload: newMap });
+            dispatch({ type: 'SET_ACTIVE_MAP', payload: newMap.id });
+            dispatch(pipelineActions.activate(isGreenfield, siteUrl));
+            navigate(`/p/${projectId}/m/${newMap.id}/pipeline/crawl`);
+        } catch (e) {
+            const message = e instanceof Error ? e.message : 'Failed to create pipeline map.';
+            dispatch({ type: 'SET_ERROR', payload: message });
+        }
+    };
+
     return (
         <>
             <MapSelectionScreen
@@ -148,6 +172,7 @@ const MapSelectionPage: React.FC = () => {
                 onSelectMap={handleSelectMap}
                 onCreateNewMap={handleOpenNewMapModal}
                 onStartAnalysis={handleStartAnalysis}
+                onStartPipeline={handleStartPipeline}
                 onBackToProjects={handleBackToProjects}
                 onInitiateDeleteMap={handleInitiateDeleteMap}
                 onRenameMap={handleRenameMap}

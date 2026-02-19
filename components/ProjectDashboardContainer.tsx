@@ -352,6 +352,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
                     onSelectMap={handleSelectMap}
                     onCreateNewMap={() => dispatch({ type: 'SET_MODAL_VISIBILITY', payload: { modal: 'newMap', visible: true } })}
                     onStartAnalysis={handleImportSite}
+                    onStartPipeline={() => { /* Pipeline started from router-based MapSelectionPage */ }}
                     onBackToProjects={onBackToProjects}
                     onInitiateDeleteMap={onInitiateDeleteMap}
                     onRenameMap={handleRenameMap}

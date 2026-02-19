@@ -18,6 +18,7 @@
 // - types/contentGeneration.ts - Content generation V2 types
 // - types/contentTemplates.ts - Content template routing types
 // - types/social.ts - Social media publishing types (campaigns, posts, compliance)
+// - types/wave.ts - Wave types (WaveConfiguration, Wave, WaveAssignmentResult, WaveProgress)
 
 // FIX: Corrected import path for database types to be a relative path, fixing module resolution error.
 import { Json } from './database.types';
@@ -50,6 +51,7 @@ export * from './types/designDna';
 export * from './types/entityHealth';
 export * from './types/brandExtraction';
 export * from './types/catalog';
+export * from './types/wave';
 
 export enum AppStep {
   AUTH,
@@ -1773,6 +1775,8 @@ export interface TopicalMap {
     navigation?: NavigationStructure;
     // Brand styleguide data (design tokens, analysis, storage key)
     styleguide_data?: import('./services/styleguide-generator/types').BrandStyleguideData | null;
+    // Unified SEO pipeline state (step statuses, approvals, wave config, mode)
+    pipeline_state?: import('./state/slices/pipelineSlice').PipelineState | null;
 }
 
 export interface KnowledgeNode {

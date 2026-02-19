@@ -349,6 +349,9 @@ export interface BlueprintSection {
   // NEW: Website type context
   websiteTypeRole?: string;
   liftPriority?: number;
+
+  // NEW: Semantic zone assignment
+  zone?: SemanticZone;
 }
 
 /**
@@ -368,6 +371,7 @@ export interface LayoutBlueprint {
     colorScheme: 'light' | 'dark' | 'auto';
   };
   designDnaHash?: string;
+  pageType?: PageType;
   metadata: {
     totalSections: number;
     mainSectionCount: number;
@@ -515,4 +519,50 @@ export interface ILayoutEngine {
       websiteType?: string;
     }
   ): LayoutBlueprint;
+}
+
+// =============================================================================
+// SEMANTIC ZONE SYSTEM
+// =============================================================================
+
+/**
+ * Semantic zones define the structural role of a section in a page layout.
+ * Each zone has a specific purpose in the page's information architecture.
+ */
+export type SemanticZone = 'CENTERPIECE' | 'TITLE' | 'MAIN' | 'SUPPLEMENTARY' | 'TRUST' | 'CTA' | 'BRIDGE' | 'BOILERPLATE';
+
+/**
+ * Page types represent the strategic role of a page within the topical map.
+ * Each page type has a specific zone ordering and component requirements.
+ */
+export type PageType = 'homepage' | 'service-hub' | 'service-spoke' | 'region-page' | 'knowledge-hub' | 'knowledge-article';
+
+/**
+ * Defines a zone's role and constraints within a page type template.
+ */
+export interface PageZoneDefinition {
+  zone: SemanticZone;
+  label: string;
+  description: string;
+  order: number;
+  minSections?: number;
+  maxSections?: number;
+  requiredForPageType: boolean;
+}
+
+/**
+ * Complete template for a page type, including zone ordering, component
+ * requirements, LIFT ordering, and publication checklist.
+ */
+export interface PageTypeTemplate {
+  pageType: PageType;
+  label: string;
+  description: string;
+  websiteTypes: string[];
+  zoneOrder: PageZoneDefinition[];
+  liftOrdering: string[];
+  requiredComponents: Partial<Record<SemanticZone, string[]>>;
+  optionalComponents: Partial<Record<SemanticZone, string[]>>;
+  publicationChecklist: string[];
+  schemaTypes: string[];
 }
