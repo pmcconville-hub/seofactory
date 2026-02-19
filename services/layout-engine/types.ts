@@ -454,6 +454,8 @@ export interface ContentPatternOptions {
   content?: string;
   /** Whether this is the first section in the article (for lead-paragraph) */
   isFirstSection?: boolean;
+  /** Audit-derived layout constraints (from LayoutRuleEngine) */
+  constraints?: import('./LayoutRuleEngine').LayoutConstraints;
 }
 
 /**

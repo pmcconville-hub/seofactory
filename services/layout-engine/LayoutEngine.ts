@@ -22,6 +22,7 @@ import { ComponentSelector } from './ComponentSelector';
 import { VisualEmphasizer } from './VisualEmphasizer';
 import { ImageHandler } from './ImageHandler';
 import { generateAILayoutBlueprint, type AIProvider } from './AILayoutPlanner';
+import { LayoutRuleEngine } from './LayoutRuleEngine';
 import {
   BlueprintSection,
   ComponentSelection,
@@ -611,8 +612,12 @@ export class LayoutEngine {
       // Get layout parameters
       const layout = LayoutPlanner.planLayout(analysis, dna);
 
-      // Get component selection
-      let component = ComponentSelector.selectComponent(analysis, dna);
+      // Compute audit-derived layout constraints from LayoutRuleEngine
+      const formatHint = analysis.hasList ? 'list' : analysis.hasTable ? 'table' : 'prose';
+      const constraints = LayoutRuleEngine.getLayoutConstraints(analysis.contentType, formatHint);
+
+      // Get component selection, passing audit constraints as a hint
+      let component = ComponentSelector.selectComponent(analysis, dna, { constraints });
 
       // VARIETY MECHANISM: Alternate between primary and alternatives for visual interest
       // If we have 2+ consecutive sections with same component, use alternatives

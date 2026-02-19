@@ -600,6 +600,23 @@ export class ComponentSelector implements IComponentSelector {
       return contentPatternResult;
     }
 
+    // Priority 3.5: Audit rule constraint hint (from LayoutRuleEngine)
+    // Influences standard selection but does NOT override FS-protected or high-value paths
+    if (options?.constraints?.preferredComponent) {
+      const preferred = options.constraints.preferredComponent;
+      const mapping = getComponentMapping(analysis.contentType);
+      if (mapping.componentType === preferred || mapping.alternatives?.includes(preferred)) {
+        const variant = getVariantForPersonality(mapping, personality);
+        return {
+          primaryComponent: preferred,
+          alternativeComponents: [mapping.componentType, ...(mapping.alternatives || [])].filter(c => c !== preferred),
+          componentVariant: variant,
+          confidence: Math.max(STANDARD_CONFIDENCE, STANDARD_CONFIDENCE),
+          reasoning: `Audit rule constraint: ${preferred} preferred for ${analysis.contentType}`,
+        };
+      }
+    }
+
     // Priority 4: Standard matrix selection
     return ComponentSelector.selectFromMatrix(analysis, personality);
   }
