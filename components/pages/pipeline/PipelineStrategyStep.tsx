@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePipeline } from '../../../hooks/usePipeline';
+import { useAppState } from '../../../state/appState';
 import ApprovalGate from '../../pipeline/ApprovalGate';
-
-// TODO: Integrate PillarDefinitionWizard.tsx
+import { getSupabaseClient } from '../../../services/supabaseClient';
 
 // ──── Tag Input ────
 
@@ -92,17 +92,96 @@ const PipelineStrategyStep: React.FC = () => {
     rejectGate,
     toggleAutoApprove,
     getStepState,
+    setStepStatus,
+    activeMap,
   } = usePipeline();
+  const { state, dispatch } = useAppState();
 
   const stepState = getStepState('strategy');
   const gate = stepState?.gate;
 
-  // Placeholder form state
-  const [ceName, setCeName] = useState('');
-  const [ceDefinition, setCeDefinition] = useState('');
-  const [scType, setScType] = useState('');
-  const [scPriorities, setScPriorities] = useState<string[]>([]);
-  const [csiPredicates, setCsiPredicates] = useState<string[]>([]);
+  // Initialise form from existing map pillars if available
+  const existingPillars = activeMap?.pillars;
+
+  const [ceName, setCeName] = useState(existingPillars?.centralEntity ?? '');
+  const [scType, setScType] = useState(existingPillars?.sourceContext ?? '');
+  const [csiText, setCsiText] = useState(existingPillars?.centralSearchIntent ?? '');
+  const [scPriorities, setScPriorities] = useState<string[]>(
+    existingPillars?.primary_verb ? [existingPillars.primary_verb] : []
+  );
+  const [csiPredicates, setCsiPredicates] = useState<string[]>(
+    existingPillars?.auxiliary_verb ? [existingPillars.auxiliary_verb] : []
+  );
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // Sync form if active map changes (e.g. after navigation)
+  useEffect(() => {
+    if (existingPillars) {
+      setCeName(existingPillars.centralEntity ?? '');
+      setScType(existingPillars.sourceContext ?? '');
+      setCsiText(existingPillars.centralSearchIntent ?? '');
+    }
+  }, [activeMap?.id]);
+
+  const handleSaveStrategy = async () => {
+    if (!ceName.trim()) {
+      setSaveError('Central Entity name is required.');
+      return;
+    }
+    if (!scType.trim()) {
+      setSaveError('Source Context type is required.');
+      return;
+    }
+
+    setSaveError(null);
+    setIsSaving(true);
+    setStepStatus('strategy', 'in_progress');
+
+    const pillars = {
+      centralEntity: ceName.trim(),
+      sourceContext: scType.trim(),
+      centralSearchIntent: csiText.trim() || csiPredicates.join(', '),
+      primary_verb: scPriorities[0] ?? '',
+      auxiliary_verb: csiPredicates[0] ?? '',
+    };
+
+    // Dispatch to global state
+    if (state.activeMapId) {
+      dispatch({
+        type: 'UPDATE_MAP_DATA',
+        payload: { mapId: state.activeMapId, data: { pillars } },
+      });
+
+      // Persist to Supabase
+      try {
+        const supabase = getSupabaseClient(
+          state.businessInfo.supabaseUrl,
+          state.businessInfo.supabaseAnonKey
+        );
+        const { error } = await supabase
+          .from('topical_maps')
+          .update({ pillars } as any)
+          .eq('id', state.activeMapId);
+
+        if (error) {
+          console.warn('[Strategy] Supabase save error:', error.message);
+          // Non-fatal — state is saved in memory
+        }
+      } catch (err) {
+        console.warn('[Strategy] Supabase save failed:', err);
+      }
+    }
+
+    setSavedSuccess(true);
+    setIsSaving(false);
+    setStepStatus('strategy', 'pending_approval');
+
+    // Reset success flash after 3 seconds
+    setTimeout(() => setSavedSuccess(false), 3000);
+  };
 
   return (
     <div className="space-y-8">
@@ -113,6 +192,23 @@ const PipelineStrategyStep: React.FC = () => {
           Define the five core components: Central Entity, Source Context, and Central Search Intent
         </p>
       </div>
+
+      {/* Error */}
+      {saveError && (
+        <div className="bg-red-900/20 border border-red-700 rounded-lg p-4">
+          <p className="text-sm text-red-300">{saveError}</p>
+        </div>
+      )}
+
+      {/* Success */}
+      {savedSuccess && (
+        <div className="bg-green-900/20 border border-green-700 rounded-lg p-4 flex items-center gap-2">
+          <svg className="w-4 h-4 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          <p className="text-sm text-green-300">Strategy saved successfully.</p>
+        </div>
+      )}
 
       {/* Three-card strategy layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -128,7 +224,7 @@ const PipelineStrategyStep: React.FC = () => {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">
-                Entity Name
+                Entity Name <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
@@ -136,18 +232,6 @@ const PipelineStrategyStep: React.FC = () => {
                 onChange={(e) => setCeName(e.target.value)}
                 placeholder="e.g., Electric Bikes"
                 className="w-full bg-gray-900 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">
-                Definition
-              </label>
-              <textarea
-                value={ceDefinition}
-                onChange={(e) => setCeDefinition(e.target.value)}
-                placeholder="Define what this entity encompasses..."
-                rows={3}
-                className="w-full bg-gray-900 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
               />
             </div>
           </div>
@@ -165,7 +249,7 @@ const PipelineStrategyStep: React.FC = () => {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">
-                Source Type
+                Source Type <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
@@ -204,6 +288,18 @@ const PipelineStrategyStep: React.FC = () => {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">
+                Intent Description
+              </label>
+              <input
+                type="text"
+                value={csiText}
+                onChange={(e) => setCsiText(e.target.value)}
+                placeholder="e.g., buy, compare, or learn about"
+                className="w-full bg-gray-900 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">
                 Predicates
               </label>
               <TagInput
@@ -222,6 +318,24 @@ const PipelineStrategyStep: React.FC = () => {
 
       {/* Section Allocation */}
       <SectionAllocationPanel />
+
+      {/* Save Button */}
+      <div className="flex justify-center">
+        <button
+          type="button"
+          onClick={handleSaveStrategy}
+          disabled={isSaving}
+          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-md font-medium transition-colors flex items-center gap-2"
+        >
+          {isSaving && (
+            <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          )}
+          {isSaving ? 'Saving...' : 'Save Strategy'}
+        </button>
+      </div>
 
       {/* Approval Gate — G1, most critical */}
       {gate && (

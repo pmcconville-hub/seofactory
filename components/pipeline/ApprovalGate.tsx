@@ -199,7 +199,7 @@ function PendingGate({
 
 // ──── Approved State ────
 
-function ApprovedGate({ approval }: { approval: StepApproval }) {
+function ApprovedGate({ approval, onProceed }: { approval: StepApproval; onProceed: () => void }) {
   const approvedText = [
     'Approved',
     approval.approvedBy ? ` by ${approval.approvedBy}` : '',
@@ -216,6 +216,7 @@ function ApprovedGate({ approval }: { approval: StepApproval }) {
       </div>
       <button
         type="button"
+        onClick={onProceed}
         className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
       >
         Proceed to Next Step
@@ -226,7 +227,7 @@ function ApprovedGate({ approval }: { approval: StepApproval }) {
 
 // ──── Rejected State ────
 
-function RejectedGate({ approval }: { approval: StepApproval }) {
+function RejectedGate({ approval, onRevise }: { approval: StepApproval; onRevise: () => void }) {
   return (
     <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-6">
       <div className="flex items-center gap-3 mb-3">
@@ -246,6 +247,7 @@ function RejectedGate({ approval }: { approval: StepApproval }) {
 
       <button
         type="button"
+        onClick={onRevise}
         className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
       >
         Revise &amp; Resubmit
@@ -271,11 +273,11 @@ const ApprovalGate: React.FC<ApprovalGateProps> = ({
   const status = approval?.status ?? 'pending';
 
   if (status === 'approved' && approval) {
-    return <ApprovedGate approval={approval} />;
+    return <ApprovedGate approval={approval} onProceed={onApprove} />;
   }
 
   if (status === 'rejected' && approval) {
-    return <RejectedGate approval={approval} />;
+    return <RejectedGate approval={approval} onRevise={() => { /* Reset to pending by re-approving flow */ }} />;
   }
 
   // Default: pending

@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { usePipeline } from '../../../hooks/usePipeline';
+import { useAppState } from '../../../state/appState';
 import ApprovalGate from '../../pipeline/ApprovalGate';
+import * as migrationService from '../../../services/migrationService';
 
 // ──── Metric Card ────
 
@@ -174,14 +176,118 @@ function GreenfieldForm({ onSubmit }: { onSubmit: () => void }) {
 
 // ──── Existing Site Mode ────
 
-function ExistingSiteForm() {
-  // TODO: Integrate SiteIngestionWizard.tsx crawl functionality
-  const [url, setUrl] = useState('');
-  const [crawlPhase] = useState(0); // 0 = URL Input, 1 = Crawl, 2 = Results
+type CrawlPhase = 'input' | 'discovering' | 'crawling' | 'done' | 'error';
+
+interface CrawlResults {
+  pagesFound: number;
+  urlsCrawled: number;
+  totalUrls: number;
+  statusMessage: string;
+}
+
+function ExistingSiteForm({
+  initialUrl,
+  onCrawlComplete,
+}: {
+  initialUrl: string;
+  onCrawlComplete: (results: CrawlResults) => void;
+}) {
+  const { state } = useAppState();
+  const { businessInfo, activeProjectId } = state;
+  const [url, setUrl] = useState(initialUrl || '');
+  const [phase, setPhase] = useState<CrawlPhase>('input');
+  const [results, setResults] = useState<CrawlResults>({
+    pagesFound: 0,
+    urlsCrawled: 0,
+    totalUrls: 0,
+    statusMessage: 'Waiting to start...',
+  });
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Pre-populate URL from pipeline state
+  useEffect(() => {
+    if (initialUrl && !url) setUrl(initialUrl);
+  }, [initialUrl]);
+
+  const phaseIndex = phase === 'input' ? 0 : phase === 'discovering' ? 1 : phase === 'crawling' ? 1 : 2;
+
+  const handleStartCrawl = async () => {
+    if (!url.trim() || !activeProjectId) return;
+
+    setPhase('discovering');
+    setErrorMsg('');
+    setResults(r => ({ ...r, statusMessage: 'Discovering sitemap...' }));
+
+    try {
+      // Step 1: Parse sitemap to discover URLs
+      let sitemapUrl = url.trim();
+      if (!sitemapUrl.endsWith('/sitemap.xml') && !sitemapUrl.includes('sitemap')) {
+        sitemapUrl = sitemapUrl.replace(/\/+$/, '') + '/sitemap.xml';
+      }
+
+      const proxyConfig = {
+        supabaseUrl: businessInfo.supabaseUrl,
+        supabaseAnonKey: businessInfo.supabaseAnonKey,
+      };
+
+      const discoveredUrls = await migrationService.fetchAndParseSitemap(
+        sitemapUrl,
+        (msg) => setResults(r => ({ ...r, statusMessage: msg })),
+        proxyConfig,
+      );
+
+      if (discoveredUrls.length === 0) {
+        setErrorMsg('No URLs found in sitemap. Check that your sitemap.xml is accessible.');
+        setPhase('error');
+        return;
+      }
+
+      setResults(r => ({
+        ...r,
+        pagesFound: discoveredUrls.length,
+        totalUrls: discoveredUrls.length,
+        statusMessage: `Found ${discoveredUrls.length} pages. Saving to inventory...`,
+      }));
+
+      // Step 2: Save URLs to site_inventory
+      setPhase('crawling');
+      await migrationService.initializeInventory(
+        activeProjectId,
+        discoveredUrls,
+        businessInfo.supabaseUrl,
+        businessInfo.supabaseAnonKey,
+        (current, total) => {
+          setResults(r => ({
+            ...r,
+            urlsCrawled: current,
+            statusMessage: `Saving pages... ${current}/${total}`,
+          }));
+        },
+      );
+
+      const finalResults: CrawlResults = {
+        pagesFound: discoveredUrls.length,
+        urlsCrawled: discoveredUrls.length,
+        totalUrls: discoveredUrls.length,
+        statusMessage: `Discovery complete. ${discoveredUrls.length} pages found.`,
+      };
+      setResults(finalResults);
+      setPhase('done');
+      onCrawlComplete(finalResults);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Crawl failed';
+      setErrorMsg(msg);
+      setPhase('error');
+    }
+  };
+
+  const progressPercent = results.totalUrls > 0
+    ? Math.round((results.urlsCrawled / results.totalUrls) * 100)
+    : 0;
 
   return (
     <div className="space-y-6">
-      <PhaseIndicator currentPhase={crawlPhase} />
+      <PhaseIndicator currentPhase={phaseIndex} />
 
       {/* URL Input */}
       <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
@@ -194,33 +300,57 @@ function ExistingSiteForm() {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com"
-            className="flex-1 bg-gray-900 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={phase === 'discovering' || phase === 'crawling'}
+            className="flex-1 bg-gray-900 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
           />
           <button
             type="button"
-            disabled={!url.trim()}
+            onClick={handleStartCrawl}
+            disabled={!url.trim() || phase === 'discovering' || phase === 'crawling'}
             className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap"
           >
-            Start Crawl
+            {phase === 'discovering' || phase === 'crawling' ? 'Crawling...' : phase === 'done' ? 'Re-Crawl' : 'Start Crawl'}
           </button>
         </div>
+        {phase === 'done' && (
+          <p className="text-xs text-green-400 mt-2">Sitemap will be fetched at: {url.replace(/\/+$/, '')}/sitemap.xml</p>
+        )}
       </div>
 
-      {/* Crawl Progress (placeholder) */}
+      {/* Crawl Progress */}
       <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
         <h3 className="text-sm font-medium text-gray-300 mb-4">Crawl Progress</h3>
         <div className="grid grid-cols-3 gap-4">
-          <MetricCard label="Pages Found" value={0} />
-          <MetricCard label="Internal Links" value={0} />
-          <MetricCard label="Orphan Pages" value={0} />
+          <MetricCard label="Pages Found" value={results.pagesFound} color={results.pagesFound > 0 ? 'green' : 'gray'} />
+          <MetricCard label="Saved" value={results.urlsCrawled} color={results.urlsCrawled > 0 ? 'blue' : 'gray'} />
+          <MetricCard label="Total" value={results.totalUrls} />
         </div>
         <div className="mt-4">
           <div className="w-full bg-gray-700 rounded-full h-2">
-            <div className="bg-blue-600 h-2 rounded-full" style={{ width: '0%' }} />
+            <div
+              className={`h-2 rounded-full transition-all duration-300 ${phase === 'done' ? 'bg-green-500' : 'bg-blue-600'}`}
+              style={{ width: `${phase === 'done' ? 100 : progressPercent}%` }}
+            />
           </div>
-          <p className="text-xs text-gray-500 mt-1">Waiting to start...</p>
+          <p className={`text-xs mt-1 ${phase === 'done' ? 'text-green-400' : 'text-gray-500'}`}>
+            {results.statusMessage}
+          </p>
         </div>
       </div>
+
+      {/* Error */}
+      {errorMsg && (
+        <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-4">
+          <p className="text-sm text-red-300">{errorMsg}</p>
+          <button
+            type="button"
+            onClick={() => { setPhase('input'); setErrorMsg(''); }}
+            className="mt-2 text-xs text-red-400 hover:text-red-300 underline"
+          >
+            Try again
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -229,6 +359,7 @@ function ExistingSiteForm() {
 
 const PipelineCrawlStep: React.FC = () => {
   const {
+    pipeline,
     isGreenfield,
     autoApprove,
     setStepStatus,
@@ -240,10 +371,16 @@ const PipelineCrawlStep: React.FC = () => {
 
   const stepState = getStepState('crawl');
   const gate = stepState?.gate;
+  const [crawlResults, setCrawlResults] = useState<CrawlResults | null>(null);
 
   const handleGreenfieldSubmit = () => {
     setStepStatus('crawl', 'completed');
     advanceStep('crawl');
+  };
+
+  const handleCrawlComplete = (results: CrawlResults) => {
+    setCrawlResults(results);
+    setStepStatus('crawl', 'pending_approval');
   };
 
   return (
@@ -264,7 +401,10 @@ const PipelineCrawlStep: React.FC = () => {
       {isGreenfield ? (
         <GreenfieldForm onSubmit={handleGreenfieldSubmit} />
       ) : (
-        <ExistingSiteForm />
+        <ExistingSiteForm
+          initialUrl={pipeline.siteUrl || ''}
+          onCrawlComplete={handleCrawlComplete}
+        />
       )}
 
       {/* Approval Gate (existing site mode only) */}
@@ -278,9 +418,8 @@ const PipelineCrawlStep: React.FC = () => {
           onReject={(reason) => rejectGate('crawl', reason)}
           onToggleAutoApprove={toggleAutoApprove}
           summaryMetrics={[
-            { label: 'Pages Found', value: 0, color: 'gray' },
-            { label: 'Internal Links', value: 0, color: 'gray' },
-            { label: 'Orphan Pages', value: 0, color: 'gray' },
+            { label: 'Pages Found', value: crawlResults?.pagesFound ?? 0, color: crawlResults ? 'green' : 'gray' },
+            { label: 'Saved to Inventory', value: crawlResults?.urlsCrawled ?? 0, color: crawlResults ? 'blue' : 'gray' },
           ]}
         />
       )}
