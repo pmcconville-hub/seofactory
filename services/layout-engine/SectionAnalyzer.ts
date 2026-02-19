@@ -283,28 +283,27 @@ export class SectionAnalyzer implements ISectionAnalyzer {
   static calculateSemanticWeight(input: SemanticWeightInput): number {
     let weight = BASE_WEIGHT;
 
-    // Topic category bonus
+    // Topic category bonus (clamp per bonus to prevent intermediate overflow)
     if (input.attributeCategory) {
-      weight += CATEGORY_BONUSES[input.attributeCategory] || 0;
+      weight = Math.min(MAX_WEIGHT, weight + (CATEGORY_BONUSES[input.attributeCategory] || 0));
     }
 
     // Core topic bonus
     if (input.isCoreTopic) {
-      weight += CORE_TOPIC_BONUS;
+      weight = Math.min(MAX_WEIGHT, weight + CORE_TOPIC_BONUS);
     }
 
     // Featured Snippet target bonus
     if (input.hasFSTarget) {
-      weight += FS_TARGET_BONUS;
+      weight = Math.min(MAX_WEIGHT, weight + FS_TARGET_BONUS);
     }
 
     // Answers main intent bonus
     if (input.answersMainIntent) {
-      weight += MAIN_INTENT_BONUS;
+      weight = Math.min(MAX_WEIGHT, weight + MAIN_INTENT_BONUS);
     }
 
-    // Clamp to valid range
-    return Math.max(MIN_WEIGHT, Math.min(MAX_WEIGHT, weight));
+    return Math.max(MIN_WEIGHT, weight);
   }
 
   /**

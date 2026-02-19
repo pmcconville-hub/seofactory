@@ -84,6 +84,28 @@ describe('SectionAnalyzer', () => {
       const weight = SectionAnalyzer.calculateSemanticWeight({});
       expect(weight).toBeGreaterThanOrEqual(1);
     });
+
+    it('should clamp weight to MAX_WEIGHT=5 even with all bonuses stacked', () => {
+      const weight = SectionAnalyzer.calculateSemanticWeight({
+        attributeCategory: 'UNIQUE',   // +2
+        isCoreTopic: true,             // +0.5
+        hasFSTarget: true,             // +0.5
+        answersMainIntent: true,       // +0.5
+      });
+      expect(weight).toBe(5);
+    });
+
+    it('should clamp intermediate values so bonuses after overflow still work correctly', () => {
+      const weightWithCore = SectionAnalyzer.calculateSemanticWeight({
+        attributeCategory: 'UNIQUE',
+        isCoreTopic: true,
+      });
+      const weightWithout = SectionAnalyzer.calculateSemanticWeight({
+        attributeCategory: 'UNIQUE',
+      });
+      expect(weightWithCore).toBe(5);
+      expect(weightWithout).toBe(5);
+    });
   });
 
   describe('detectContentType', () => {
