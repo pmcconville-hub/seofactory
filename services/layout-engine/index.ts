@@ -26,3 +26,7 @@ export { generateAILayoutBlueprint } from './AILayoutPlanner';
 
 // Component Mappings
 export * from './componentMappings';
+
+// Website Type Layouts
+export { WEBSITE_TYPE_LAYOUTS, getWebsiteTypeLayout } from './websiteTypeLayouts';
+export type { WebsiteTypeComponentRole, WebsiteTypeLayout } from './websiteTypeLayouts';
