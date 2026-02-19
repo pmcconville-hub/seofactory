@@ -456,6 +456,8 @@ export interface ContentPatternOptions {
   isFirstSection?: boolean;
   /** Audit-derived layout constraints (from LayoutRuleEngine) */
   constraints?: import('./LayoutRuleEngine').LayoutConstraints;
+  /** Website type (e.g. 'e-commerce', 'saas', 'blog') for type-aware component selection */
+  websiteType?: string;
 }
 
 /**
@@ -503,6 +505,7 @@ export interface ILayoutEngine {
       topicTitle?: string;
       isCoreTopic?: boolean;
       mainIntent?: string;
+      websiteType?: string;
     }
   ): LayoutBlueprint;
 }

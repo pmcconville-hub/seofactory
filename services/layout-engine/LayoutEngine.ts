@@ -466,6 +466,7 @@ export class LayoutEngine {
       topicTitle?: string;
       isCoreTopic?: boolean;
       mainIntent?: string;
+      websiteType?: string;
     }
   ): LayoutBlueprintOutput {
     // Step 1: Analyze all sections
@@ -477,7 +478,7 @@ export class LayoutEngine {
     }
 
     // Step 2: Generate BlueprintSections for each analysis
-    const sections = LayoutEngine.buildBlueprintSections(analyses, designDna, content);
+    const sections = LayoutEngine.buildBlueprintSections(analyses, designDna, content, options?.websiteType);
 
     // Step 2.5: Validate FS protection chain after initial section building
     validateFsProtectionChain(sections);
@@ -599,7 +600,8 @@ export class LayoutEngine {
   private static buildBlueprintSections(
     analyses: SectionAnalysis[],
     dna?: DesignDNA,
-    content?: string
+    content?: string,
+    websiteType?: string
   ): BlueprintSection[] {
     // Split content into section contents for image handler
     const sectionContents = content ? LayoutEngine.splitContentBySections(content, analyses) : [];
@@ -616,8 +618,8 @@ export class LayoutEngine {
       const formatHint = analysis.hasList ? 'list' : analysis.hasTable ? 'table' : 'prose';
       const constraints = LayoutRuleEngine.getLayoutConstraints(analysis.contentType, formatHint);
 
-      // Get component selection, passing audit constraints as a hint
-      let component = ComponentSelector.selectComponent(analysis, dna, { constraints });
+      // Get component selection, passing audit constraints and website type as hints
+      let component = ComponentSelector.selectComponent(analysis, dna, { constraints, websiteType });
 
       // VARIETY MECHANISM: Alternate between primary and alternatives for visual interest
       // If we have 2+ consecutive sections with same component, use alternatives
@@ -830,6 +832,7 @@ export class LayoutEngine {
       topicTitle?: string;
       isCoreTopic?: boolean;
       mainIntent?: string;
+      websiteType?: string;
     }
   ): LayoutBlueprintOutput {
     return LayoutEngine.generateBlueprint(content, briefSections, designDna, options);

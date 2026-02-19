@@ -30,6 +30,7 @@ import {
   getVariantForPersonality,
   PersonalityType,
 } from './componentMappings';
+import { getWebsiteTypeLayout } from './websiteTypeLayouts';
 import { SERVICE_REGISTRY } from '../../config/serviceRegistry';
 
 // =============================================================================
@@ -614,6 +615,30 @@ export class ComponentSelector implements IComponentSelector {
           confidence: Math.max(STANDARD_CONFIDENCE, STANDARD_CONFIDENCE),
           reasoning: `Audit rule constraint: ${preferred} preferred for ${analysis.contentType}`,
         };
+      }
+    }
+
+    // Priority 3.75: Website-type component preference
+    // Uses LIFT-ordered roles from websiteTypeLayouts to influence component choice
+    if (options?.websiteType) {
+      const typeLayout = getWebsiteTypeLayout(options.websiteType);
+      if (typeLayout) {
+        const mapping = getComponentMapping(analysis.contentType);
+        const variant = getVariantForPersonality(mapping, personality);
+        // Find a matching role based on content type
+        const matchingRole = typeLayout.componentOrder.find(r =>
+          r.preferredComponent === mapping.componentType ||
+          mapping.alternatives?.includes(r.preferredComponent)
+        );
+        if (matchingRole) {
+          return {
+            primaryComponent: matchingRole.preferredComponent,
+            alternativeComponents: [mapping.componentType, ...(mapping.alternatives || [])].filter(c => c !== matchingRole.preferredComponent),
+            componentVariant: variant,
+            confidence: HIGH_VALUE_BASE_CONFIDENCE,
+            reasoning: `Website type ${options.websiteType}: ${matchingRole.role} uses ${matchingRole.preferredComponent}`,
+          };
+        }
       }
     }
 
