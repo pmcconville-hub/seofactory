@@ -586,6 +586,35 @@ describe('ImageHandler', () => {
       expect(['16:9', '4:3', '1:1', 'auto']).toContain(result!.placeholder!.aspectRatio);
     });
 
+    it('generatePlaceholderSpec should return expanded alt text, not templates', () => {
+      const analysis: SectionAnalysis = {
+        sectionId: 'test',
+        heading: 'Installation Process',
+        headingLevel: 2,
+        contentType: 'steps',
+        semanticWeight: 3,
+        semanticWeightFactors: { baseWeight: 3, topicCategoryBonus: 0, coreTopicBonus: 0, fsTargetBonus: 0, mainIntentBonus: 0, totalWeight: 3 },
+        constraints: {},
+        wordCount: 200,
+        hasTable: false, hasList: false, hasQuote: false, hasImage: false,
+        isCoreTopic: false, answersMainIntent: false,
+        contentZone: 'MAIN',
+      };
+
+      const result = ImageHandler.determineImagePlacement(analysis, undefined, 'The process of installing the software requires three steps.');
+      expect(result?.placeholder?.altTextTemplate).not.toContain('${');
+      expect(result?.placeholder?.altTextTemplate).toContain('Installation Process');
+    });
+
+    it('should use fallback when heading is empty', () => {
+      const analysis = createMockSectionAnalysis({ heading: '', contentType: 'explanation' as ContentType });
+      const result = ImageHandler.determineImagePlacement(analysis, undefined, 'The architecture of the system is complex.');
+      if (result?.placeholder?.altTextTemplate) {
+        expect(result.placeholder.altTextTemplate).not.toContain('${');
+        expect(result.placeholder.altTextTemplate.length).toBeGreaterThan(10);
+      }
+    });
+
     it('should generate vocabulary-extending alt text template', () => {
       const analysis = createMockSectionAnalysis({
         semanticWeight: 3,

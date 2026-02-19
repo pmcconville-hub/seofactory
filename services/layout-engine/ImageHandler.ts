@@ -179,20 +179,21 @@ function generatePlaceholderSpec(
   sectionContent?: string,
   isFlowchart: boolean = false
 ): ImagePlaceholderSpec {
-  const mainConcept = extractMainConcept(sectionContent || '', analysis.heading);
+  const heading = analysis.heading?.trim() || 'the concept';
+  const mainConcept = extractMainConcept(sectionContent || '', heading);
 
   if (isFlowchart) {
     return {
       aspectRatio: '16:9',
-      suggestedContent: `Flowchart showing ${analysis.heading || 'the process'} steps`,
-      altTextTemplate: `Step-by-step ${analysis.heading || 'process'} flowchart showing the sequence of actions`,
+      suggestedContent: `Flowchart showing ${heading} steps`,
+      altTextTemplate: `Step-by-step ${heading} flowchart showing the sequence of actions`,
     };
   }
 
   return {
     aspectRatio: '16:9',
     suggestedContent: `Diagram illustrating ${mainConcept}`,
-    altTextTemplate: `${analysis.heading || 'Concept'} diagram showing ${mainConcept.toLowerCase()}`,
+    altTextTemplate: `${heading} diagram showing ${mainConcept.toLowerCase()}`,
   };
 }
 
