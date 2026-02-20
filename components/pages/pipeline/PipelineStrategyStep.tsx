@@ -5,15 +5,23 @@ import ApprovalGate from '../../pipeline/ApprovalGate';
 import { getSupabaseClient } from '../../../services/supabaseClient';
 import { suggestPillarsFromBusinessInfo } from '../../../services/ai/pillarSuggestion';
 
-// ──── Tag Input ────
+// ──── Tag Input (for CSI predicates) ────
 
-function TagInput({ tags, onAdd, onRemove, placeholder }: {
+function TagInput({ tags, onAdd, onRemove, placeholder, accentColor = 'blue' }: {
   tags: string[];
   onAdd: (tag: string) => void;
   onRemove: (index: number) => void;
   placeholder: string;
+  accentColor?: 'blue' | 'amber' | 'sky';
 }) {
   const [input, setInput] = useState('');
+
+  const colorMap = {
+    blue: { bg: 'bg-blue-600/20', text: 'text-blue-300', border: 'border-blue-500/30', btn: 'text-blue-400 hover:text-blue-200', ring: 'focus-within:ring-blue-500' },
+    amber: { bg: 'bg-amber-600/20', text: 'text-amber-300', border: 'border-amber-500/30', btn: 'text-amber-400 hover:text-amber-200', ring: 'focus-within:ring-amber-500' },
+    sky: { bg: 'bg-sky-600/20', text: 'text-sky-300', border: 'border-sky-500/30', btn: 'text-sky-400 hover:text-sky-200', ring: 'focus-within:ring-sky-500' },
+  };
+  const c = colorMap[accentColor];
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && input.trim()) {
@@ -27,17 +35,17 @@ function TagInput({ tags, onAdd, onRemove, placeholder }: {
   };
 
   return (
-    <div className="flex flex-wrap gap-2 bg-gray-900 border border-gray-600 rounded-md px-3 py-2 min-h-[42px] focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
+    <div className={`flex flex-wrap gap-2 bg-gray-900 border border-gray-600 rounded-md px-3 py-2 min-h-[42px] focus-within:ring-2 ${c.ring} focus-within:border-transparent`}>
       {tags.map((tag, i) => (
         <span
           key={i}
-          className="inline-flex items-center gap-1 bg-blue-600/20 text-blue-300 border border-blue-500/30 rounded px-2 py-0.5 text-xs"
+          className={`inline-flex items-center gap-1 ${c.bg} ${c.text} border ${c.border} rounded px-2 py-0.5 text-xs`}
         >
           {tag}
           <button
             type="button"
             onClick={() => onRemove(i)}
-            className="text-blue-400 hover:text-blue-200 ml-0.5"
+            className={`${c.btn} ml-0.5`}
           >
             &times;
           </button>
@@ -55,12 +63,104 @@ function TagInput({ tags, onAdd, onRemove, placeholder }: {
   );
 }
 
+// ──── Ordered Priority List (for SC priorities) ────
+
+function OrderedPriorityList({ items, onAdd, onRemove, onReorder, placeholder, accentColor = 'sky' }: {
+  items: string[];
+  onAdd: (item: string) => void;
+  onRemove: (index: number) => void;
+  onReorder: (from: number, to: number) => void;
+  placeholder: string;
+  accentColor?: 'sky' | 'amber';
+}) {
+  const [input, setInput] = useState('');
+
+  const colorMap = {
+    sky: { num: 'text-sky-400', bg: 'bg-sky-600/10', border: 'border-sky-500/20', text: 'text-sky-200', btn: 'text-sky-400 hover:text-sky-200', ring: 'focus-within:ring-sky-500' },
+    amber: { num: 'text-amber-400', bg: 'bg-amber-600/10', border: 'border-amber-500/20', text: 'text-amber-200', btn: 'text-amber-400 hover:text-amber-200', ring: 'focus-within:ring-amber-500' },
+  };
+  const c = colorMap[accentColor];
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && input.trim()) {
+      e.preventDefault();
+      onAdd(input.trim());
+      setInput('');
+    }
+  };
+
+  return (
+    <div className="space-y-1.5">
+      {items.map((item, i) => (
+        <div
+          key={i}
+          className={`flex items-center gap-2 ${c.bg} border ${c.border} rounded-md px-3 py-1.5 group`}
+        >
+          <span className={`text-xs font-bold ${c.num} w-5 text-right flex-shrink-0`}>{i + 1}.</span>
+          <span className={`text-sm ${c.text} flex-1`}>{item}</span>
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {i > 0 && (
+              <button
+                type="button"
+                onClick={() => onReorder(i, i - 1)}
+                className={`${c.btn} text-xs px-1`}
+                title="Move up"
+              >
+                &uarr;
+              </button>
+            )}
+            {i < items.length - 1 && (
+              <button
+                type="button"
+                onClick={() => onReorder(i, i + 1)}
+                className={`${c.btn} text-xs px-1`}
+                title="Move down"
+              >
+                &darr;
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onRemove(i)}
+              className={`${c.btn} text-xs px-1`}
+              title="Remove"
+            >
+              &times;
+            </button>
+          </div>
+        </div>
+      ))}
+      <div className={`flex bg-gray-900 border border-gray-600 rounded-md px-3 py-1.5 focus-within:ring-2 ${c.ring} focus-within:border-transparent`}>
+        <span className="text-xs font-bold text-gray-600 w-5 text-right flex-shrink-0 pt-0.5">{items.length + 1}.</span>
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          className="flex-1 ml-2 bg-transparent text-sm text-gray-200 placeholder-gray-500 focus:outline-none"
+        />
+      </div>
+    </div>
+  );
+}
+
 // ──── AI Badge ────
 
 function AiBadge() {
   return (
     <span className="inline-flex items-center gap-1 bg-purple-600/20 text-purple-300 border border-purple-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase">
       AI
+    </span>
+  );
+}
+
+// ──── Auto-detected Badge ────
+
+function AutoDetectedBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 bg-emerald-600/15 text-emerald-400 border border-emerald-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">
+      Auto-detected
     </span>
   );
 }
@@ -105,30 +205,55 @@ function BusinessContextCard({ businessInfo }: {
   );
 }
 
-// ──── Section Allocation ────
+// ──── Section Allocation (informational) ────
 
-function SectionAllocationPanel() {
-  const [sections] = useState([
-    { name: 'Core Section (CS)', active: true, description: 'Monetization and conversion-focused pages' },
-    { name: 'Author Section (AS)', active: true, description: 'Authority and expertise-building pages' },
-  ]);
+function SectionAllocationPanel({ industry }: { industry?: string }) {
+  const industryLabel = industry || 'your business';
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-      <h3 className="text-sm font-semibold text-gray-200 mb-4">Section Allocation</h3>
-      <div className="space-y-3">
-        {sections.map((section) => (
-          <div
-            key={section.name}
-            className="flex items-center justify-between bg-gray-900 border border-gray-700 rounded-md px-4 py-3"
-          >
-            <div>
-              <p className="text-sm font-medium text-gray-200">{section.name}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{section.description}</p>
-            </div>
-            <div className={`w-3 h-3 rounded-full ${section.active ? 'bg-green-500' : 'bg-gray-600'}`} />
+      <h3 className="text-sm font-semibold text-gray-200 mb-1">Section Allocation</h3>
+      <p className="text-xs text-gray-500 mb-4">
+        Every page in the topical map is classified into one of two sections based on its purpose.
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* CS — Monetization */}
+        <div className="bg-gray-900 border-l-4 border-emerald-500 rounded-r-md px-4 py-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CS</span>
+            <span className="text-sm font-medium text-gray-200">Core Section &mdash; Monetization</span>
           </div>
-        ))}
+          <p className="text-xs text-gray-400 leading-relaxed">
+            Revenue-driving pages for {industryLabel}: service/product pages, pricing,
+            regional landing pages, comparison pages, and conversion-focused content.
+          </p>
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {['Product pages', 'Pricing', 'Landing pages', 'Comparisons'].map((ex) => (
+              <span key={ex} className="bg-emerald-900/20 text-emerald-400 border border-emerald-700/30 rounded px-1.5 py-0.5 text-[10px]">
+                {ex}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* AS — Authority */}
+        <div className="bg-gray-900 border-l-4 border-sky-500 rounded-r-md px-4 py-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="bg-sky-600/20 text-sky-300 border border-sky-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">AS</span>
+            <span className="text-sm font-medium text-gray-200">Author Section &mdash; Authority</span>
+          </div>
+          <p className="text-xs text-gray-400 leading-relaxed">
+            Expertise-building pages for {industryLabel}: informational hubs, how-to guides,
+            knowledge base articles, thought leadership, and E-E-A-T signals.
+          </p>
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {['Guides', 'Knowledge base', 'Thought leadership', 'How-tos'].map((ex) => (
+              <span key={ex} className="bg-sky-900/20 text-sky-400 border border-sky-700/30 rounded px-1.5 py-0.5 text-[10px]">
+                {ex}
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -136,9 +261,10 @@ function SectionAllocationPanel() {
 
 // ──── Five Components Summary Card ────
 
-function FiveComponentsSummaryCard({ ceName, scType, csiPredicates, csiText, businessInfo }: {
+function FiveComponentsSummaryCard({ ceName, scType, scPriorities, csiPredicates, csiText, businessInfo }: {
   ceName: string;
   scType: string;
+  scPriorities: string[];
   csiPredicates: string[];
   csiText: string;
   businessInfo: {
@@ -152,6 +278,7 @@ function FiveComponentsSummaryCard({ ceName, scType, csiPredicates, csiText, bus
   const hasAuthor = !!businessInfo.authorProfile?.name;
   const hasCredentials = !!businessInfo.authorProfile?.credentials;
   const hasValueProp = !!businessInfo.valueProp;
+  const industryLabel = businessInfo.industry || 'your business';
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
@@ -159,12 +286,12 @@ function FiveComponentsSummaryCard({ ceName, scType, csiPredicates, csiText, bus
 
       <div className="space-y-4">
         {/* CE */}
-        <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
+        <div className="bg-gray-900 border-l-4 border-emerald-500 rounded-r-md px-4 py-3">
           <div className="flex items-center gap-2 mb-1">
-            <span className="bg-purple-600/20 text-purple-300 border border-purple-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CE</span>
-            <span className="text-sm font-medium text-gray-200">{ceName}</span>
+            <span className="bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CE</span>
+            <span className="text-sm font-semibold text-emerald-200">{ceName}</span>
           </div>
-          <ul className="text-xs text-gray-400 space-y-0.5 mt-2 pl-4">
+          <ul className="text-xs text-gray-400 space-y-0.5 mt-2 pl-4 list-disc">
             <li>Must appear in every H1, meta title, meta description</li>
             <li>Use as first word/phrase in title tags where possible</li>
             <li>N-gram variations allowed for natural language</li>
@@ -172,13 +299,26 @@ function FiveComponentsSummaryCard({ ceName, scType, csiPredicates, csiText, bus
         </div>
 
         {/* SC */}
-        <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
+        <div className="bg-gray-900 border-l-4 border-sky-500 rounded-r-md px-4 py-3">
           <div className="flex items-center gap-2 mb-1">
-            <span className="bg-blue-600/20 text-blue-300 border border-blue-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">SC</span>
-            <span className="text-sm font-medium text-gray-200">{scType}</span>
+            <span className="bg-sky-600/20 text-sky-300 border border-sky-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">SC</span>
+            <span className="text-sm font-medium text-sky-200">{scType}</span>
           </div>
           {businessInfo.industry && (
             <p className="text-xs text-gray-500 mt-1">Industry: {businessInfo.industry}</p>
+          )}
+          {scPriorities.length > 0 && (
+            <div className="mt-2">
+              <p className="text-[10px] text-gray-500 uppercase mb-1">Attribute Priorities</p>
+              <ol className="space-y-0.5">
+                {scPriorities.map((p, i) => (
+                  <li key={i} className="flex items-center gap-2 text-xs">
+                    <span className="text-sky-400 font-bold w-4 text-right">{i + 1}.</span>
+                    <span className="text-sky-200">{p}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
           )}
           <div className="flex items-center gap-3 mt-2 text-xs">
             <span className={hasAuthor ? 'text-green-400' : 'text-gray-600'}>
@@ -194,10 +334,10 @@ function FiveComponentsSummaryCard({ ceName, scType, csiPredicates, csiText, bus
         </div>
 
         {/* CSI */}
-        <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
+        <div className="bg-gray-900 border-l-4 border-amber-500 rounded-r-md px-4 py-3">
           <div className="flex items-center gap-2 mb-1">
-            <span className="bg-green-600/20 text-green-300 border border-green-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CSI</span>
-            <span className="text-sm font-medium text-gray-200">
+            <span className="bg-amber-600/20 text-amber-300 border border-amber-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CSI</span>
+            <span className="text-sm font-medium text-amber-200">
               {csiText || csiPredicates.join(', ') || 'Not defined'}
             </span>
           </div>
@@ -206,7 +346,7 @@ function FiveComponentsSummaryCard({ ceName, scType, csiPredicates, csiText, bus
               {csiPredicates.map((pred, i) => (
                 <span
                   key={i}
-                  className="bg-green-900/20 text-green-300 border border-green-700/30 rounded px-2 py-0.5 text-[10px]"
+                  className="bg-amber-900/20 text-amber-300 border border-amber-700/30 rounded px-2 py-0.5 text-[10px]"
                 >
                   {pred}{i === 0 ? ' (primary)' : ''}
                 </span>
@@ -217,15 +357,15 @@ function FiveComponentsSummaryCard({ ceName, scType, csiPredicates, csiText, bus
 
         {/* CS + AS */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
-            <span className="text-[10px] font-semibold text-gray-500 uppercase">CS</span>
-            <p className="text-xs text-gray-300 mt-1">Monetization pages</p>
-            <p className="text-[10px] text-gray-500 mt-0.5">Revenue-driving, commercial intent</p>
+          <div className="bg-gray-900 border-l-4 border-emerald-500 rounded-r-md px-4 py-3">
+            <span className="bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CS</span>
+            <p className="text-xs text-gray-300 mt-1.5">Monetization pages</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">Revenue-driving content for {industryLabel}</p>
           </div>
-          <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
-            <span className="text-[10px] font-semibold text-gray-500 uppercase">AS</span>
-            <p className="text-xs text-gray-300 mt-1">Authority pages</p>
-            <p className="text-[10px] text-gray-500 mt-0.5">Expertise, E-A-T signals</p>
+          <div className="bg-gray-900 border-l-4 border-sky-500 rounded-r-md px-4 py-3">
+            <span className="bg-sky-600/20 text-sky-300 border border-sky-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">AS</span>
+            <p className="text-xs text-gray-300 mt-1.5">Authority pages</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">Expertise &amp; E-E-A-T signals for {industryLabel}</p>
           </div>
         </div>
       </div>
@@ -259,10 +399,12 @@ const PipelineStrategyStep: React.FC = () => {
   const [scType, setScType] = useState(existingPillars?.sourceContext ?? '');
   const [csiText, setCsiText] = useState(existingPillars?.centralSearchIntent ?? '');
   const [scPriorities, setScPriorities] = useState<string[]>(
-    existingPillars?.primary_verb ? [existingPillars.primary_verb] : []
+    existingPillars?.scPriorities?.length ? existingPillars.scPriorities
+      : existingPillars?.primary_verb ? [existingPillars.primary_verb] : []
   );
   const [csiPredicates, setCsiPredicates] = useState<string[]>(
-    existingPillars?.auxiliary_verb ? [existingPillars.auxiliary_verb] : []
+    existingPillars?.csiPredicates?.length ? existingPillars.csiPredicates
+      : existingPillars?.auxiliary_verb ? [existingPillars.auxiliary_verb] : []
   );
 
   const [isSaving, setIsSaving] = useState(false);
@@ -278,6 +420,14 @@ const PipelineStrategyStep: React.FC = () => {
       setCeName(existingPillars.centralEntity ?? '');
       setScType(existingPillars.sourceContext ?? '');
       setCsiText(existingPillars.centralSearchIntent ?? '');
+      setScPriorities(
+        existingPillars.scPriorities?.length ? existingPillars.scPriorities
+          : existingPillars.primary_verb ? [existingPillars.primary_verb] : []
+      );
+      setCsiPredicates(
+        existingPillars.csiPredicates?.length ? existingPillars.csiPredicates
+          : existingPillars.auxiliary_verb ? [existingPillars.auxiliary_verb] : []
+      );
     }
   }, [activeMap?.id]);
 
@@ -333,6 +483,13 @@ const PipelineStrategyStep: React.FC = () => {
     }
   };
 
+  const handleReorderPriorities = (from: number, to: number) => {
+    const updated = [...scPriorities];
+    const [item] = updated.splice(from, 1);
+    updated.splice(to, 0, item);
+    setScPriorities(updated);
+  };
+
   const handleSaveStrategy = async () => {
     if (!ceName.trim()) {
       setSaveError('Central Entity name is required.');
@@ -353,6 +510,8 @@ const PipelineStrategyStep: React.FC = () => {
       centralSearchIntent: csiText.trim() || csiPredicates.join(', '),
       primary_verb: scPriorities[0] ?? '',
       auxiliary_verb: csiPredicates[0] ?? '',
+      csiPredicates: csiPredicates,
+      scPriorities: scPriorities,
     };
 
     // Dispatch to global state
@@ -455,16 +614,26 @@ const PipelineStrategyStep: React.FC = () => {
         </div>
       )}
 
+      {/* Five Components Summary Card — prominent position before editor cards */}
+      <FiveComponentsSummaryCard
+        ceName={ceName}
+        scType={scType}
+        scPriorities={scPriorities}
+        csiPredicates={csiPredicates}
+        csiText={csiText}
+        businessInfo={state.businessInfo}
+      />
+
       {/* Three-card strategy layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Central Entity (CE) */}
-        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+        {/* Central Entity (CE) — emerald accent */}
+        <div className="bg-gray-800 border border-gray-700 border-l-4 border-l-emerald-500 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-4">
-            <span className="bg-purple-600/20 text-purple-300 border border-purple-500/30 rounded px-2 py-0.5 text-xs font-semibold">
+            <span className="bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded px-2 py-0.5 text-xs font-semibold">
               CE
             </span>
             <h3 className="text-sm font-semibold text-gray-200">Central Entity</h3>
-            {aiSuggested && ceName && <AiBadge />}
+            {aiSuggested && ceName && <AutoDetectedBadge />}
           </div>
 
           <div className="space-y-4">
@@ -477,16 +646,16 @@ const PipelineStrategyStep: React.FC = () => {
                 value={ceName}
                 onChange={(e) => setCeName(e.target.value)}
                 placeholder="e.g., Electric Bikes"
-                className="w-full bg-gray-900 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full bg-gray-900 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
               />
             </div>
           </div>
         </div>
 
-        {/* Source Context (SC) */}
-        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+        {/* Source Context (SC) — sky accent */}
+        <div className="bg-gray-800 border border-gray-700 border-l-4 border-l-sky-500 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-4">
-            <span className="bg-blue-600/20 text-blue-300 border border-blue-500/30 rounded px-2 py-0.5 text-xs font-semibold">
+            <span className="bg-sky-600/20 text-sky-300 border border-sky-500/30 rounded px-2 py-0.5 text-xs font-semibold">
               SC
             </span>
             <h3 className="text-sm font-semibold text-gray-200">Source Context</h3>
@@ -503,30 +672,32 @@ const PipelineStrategyStep: React.FC = () => {
                 value={scType}
                 onChange={(e) => setScType(e.target.value)}
                 placeholder="e.g., E-commerce retailer"
-                className="w-full bg-gray-900 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full bg-gray-900 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
               />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">
-                Attribute Priorities
+                Attribute Priorities (ordered)
               </label>
-              <TagInput
-                tags={scPriorities}
-                onAdd={(tag) => setScPriorities([...scPriorities, tag])}
+              <OrderedPriorityList
+                items={scPriorities}
+                onAdd={(item) => setScPriorities([...scPriorities, item])}
                 onRemove={(i) => setScPriorities(scPriorities.filter((_, idx) => idx !== i))}
+                onReorder={handleReorderPriorities}
                 placeholder="Type and press Enter..."
+                accentColor="sky"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Press Enter to add priority attributes
+                Order matters &mdash; highest priority first
               </p>
             </div>
           </div>
         </div>
 
-        {/* Central Search Intent (CSI) */}
-        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+        {/* Central Search Intent (CSI) — amber accent */}
+        <div className="bg-gray-800 border border-gray-700 border-l-4 border-l-amber-500 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-4">
-            <span className="bg-green-600/20 text-green-300 border border-green-500/30 rounded px-2 py-0.5 text-xs font-semibold">
+            <span className="bg-amber-600/20 text-amber-300 border border-amber-500/30 rounded px-2 py-0.5 text-xs font-semibold">
               CSI
             </span>
             <h3 className="text-sm font-semibold text-gray-200">Central Search Intent</h3>
@@ -543,7 +714,7 @@ const PipelineStrategyStep: React.FC = () => {
                 value={csiText}
                 onChange={(e) => setCsiText(e.target.value)}
                 placeholder="e.g., buy, compare, or learn about"
-                className="w-full bg-gray-900 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full bg-gray-900 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
               />
             </div>
             <div>
@@ -555,6 +726,7 @@ const PipelineStrategyStep: React.FC = () => {
                 onAdd={(tag) => setCsiPredicates([...csiPredicates, tag])}
                 onRemove={(i) => setCsiPredicates(csiPredicates.filter((_, idx) => idx !== i))}
                 placeholder="e.g., buy, compare, reviews..."
+                accentColor="amber"
               />
               <p className="text-xs text-gray-500 mt-1">
                 Define the primary search predicates users combine with the CE
@@ -565,7 +737,7 @@ const PipelineStrategyStep: React.FC = () => {
       </div>
 
       {/* Section Allocation */}
-      <SectionAllocationPanel />
+      <SectionAllocationPanel industry={state.businessInfo.industry} />
 
       {/* Save Button */}
       <div className="flex justify-center">
@@ -573,7 +745,7 @@ const PipelineStrategyStep: React.FC = () => {
           type="button"
           onClick={handleSaveStrategy}
           disabled={isSaving}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-md font-medium transition-colors flex items-center gap-2"
+          className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-8 py-2.5 rounded-md font-medium transition-colors flex items-center gap-2"
         >
           {isSaving && (
             <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
@@ -585,32 +757,26 @@ const PipelineStrategyStep: React.FC = () => {
         </button>
       </div>
 
-      {/* Five Components Summary Card (visible after save or when pillars exist) */}
-      <FiveComponentsSummaryCard
-        ceName={ceName}
-        scType={scType}
-        csiPredicates={csiPredicates}
-        csiText={csiText}
-        businessInfo={state.businessInfo}
-      />
-
       {/* Approval Gate — G1, most critical */}
       {gate && (stepState?.status === 'pending_approval' || stepState?.approval?.status === 'rejected') && (
-        <ApprovalGate
-          step="strategy"
-          gate={gate}
-          approval={stepState?.approval}
-          autoApprove={autoApprove}
-          onApprove={() => approveGate('strategy')}
-          onReject={(reason) => rejectGate('strategy', reason)}
-          onRevise={() => reviseStep('strategy')}
-          onToggleAutoApprove={toggleAutoApprove}
-          summaryMetrics={[
-            { label: 'Central Entity', value: ceName || '(not set)', color: ceName ? 'green' : 'amber' },
-            { label: 'Source Context', value: scType || '(not set)', color: scType ? 'green' : 'amber' },
-            { label: 'CSI Predicates', value: csiPredicates.length, color: csiPredicates.length > 0 ? 'green' : 'amber' },
-          ]}
-        />
+        <div className="bg-violet-900/10 border border-violet-700/40 rounded-lg p-1">
+          <ApprovalGate
+            step="strategy"
+            gate={gate}
+            approval={stepState?.approval}
+            autoApprove={autoApprove}
+            onApprove={() => approveGate('strategy')}
+            onReject={(reason) => rejectGate('strategy', reason)}
+            onRevise={() => reviseStep('strategy')}
+            onToggleAutoApprove={toggleAutoApprove}
+            summaryMetrics={[
+              { label: 'Central Entity', value: ceName || '(not set)', color: ceName ? 'green' : 'amber' },
+              { label: 'Source Context', value: scType || '(not set)', color: scType ? 'green' : 'amber' },
+              { label: 'SC Priorities', value: scPriorities.length, color: scPriorities.length > 0 ? 'green' : 'amber' },
+              { label: 'CSI Predicates', value: csiPredicates.length, color: csiPredicates.length > 0 ? 'green' : 'amber' },
+            ]}
+          />
+        </div>
       )}
     </div>
   );

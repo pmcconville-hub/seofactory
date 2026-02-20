@@ -232,6 +232,10 @@ export interface SEOPillars {
   // Holistic SEO - CSI Breakdown
   primary_verb?: string; // e.g. "Buy", "Hire"
   auxiliary_verb?: string; // e.g. "Learn", "Compare"
+
+  // Full arrays for multi-value persistence
+  csiPredicates?: string[];
+  scPriorities?: string[];
 }
 
 // ============================================================================

@@ -75,6 +75,8 @@ export const parsePillars = (json: unknown): SEOPillars => {
     const safeJson: UnknownRecord = (json !== null && json !== undefined && typeof json === 'object' && !Array.isArray(json))
         ? json as UnknownRecord
         : {};
+    const rawCsiPredicates = safeJson.csiPredicates;
+    const rawScPriorities = safeJson.scPriorities;
     return {
         centralEntity: safeString(safeJson.centralEntity),
         sourceContext: safeString(safeJson.sourceContext),
@@ -82,6 +84,9 @@ export const parsePillars = (json: unknown): SEOPillars => {
         // Holistic SEO
         primary_verb: safeJson.primary_verb ? safeString(safeJson.primary_verb) : undefined,
         auxiliary_verb: safeJson.auxiliary_verb ? safeString(safeJson.auxiliary_verb) : undefined,
+        // Full arrays
+        csiPredicates: Array.isArray(rawCsiPredicates) ? rawCsiPredicates.map(safeString).filter(Boolean) : undefined,
+        scPriorities: Array.isArray(rawScPriorities) ? rawScPriorities.map(safeString).filter(Boolean) : undefined,
     };
 };
 
