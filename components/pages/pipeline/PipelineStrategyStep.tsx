@@ -3,6 +3,7 @@ import { usePipeline } from '../../../hooks/usePipeline';
 import { useAppState } from '../../../state/appState';
 import ApprovalGate from '../../pipeline/ApprovalGate';
 import { getSupabaseClient } from '../../../services/supabaseClient';
+import { suggestPillarsFromBusinessInfo } from '../../../services/ai/pillarSuggestion';
 
 // ──── Tag Input ────
 
@@ -54,6 +55,56 @@ function TagInput({ tags, onAdd, onRemove, placeholder }: {
   );
 }
 
+// ──── AI Badge ────
+
+function AiBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 bg-purple-600/20 text-purple-300 border border-purple-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase">
+      AI
+    </span>
+  );
+}
+
+// ──── Business Context Card ────
+
+function BusinessContextCard({ businessInfo }: {
+  businessInfo: {
+    seedKeyword?: string;
+    industry?: string;
+    domain?: string;
+    audience?: string;
+    language?: string;
+    targetMarket?: string;
+  };
+}) {
+  const items = [
+    { label: 'Seed Keyword', value: businessInfo.seedKeyword },
+    { label: 'Industry', value: businessInfo.industry },
+    { label: 'Domain', value: businessInfo.domain },
+    { label: 'Audience', value: businessInfo.audience },
+    { label: 'Language', value: businessInfo.language },
+    { label: 'Market', value: businessInfo.targetMarket },
+  ].filter(item => item.value);
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+      <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">
+        Business Context (from Discover step)
+      </p>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {items.map((item) => (
+          <div key={item.label}>
+            <p className="text-[10px] text-gray-500 uppercase">{item.label}</p>
+            <p className="text-sm text-gray-300 truncate">{item.value}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ──── Section Allocation ────
 
 function SectionAllocationPanel() {
@@ -78,6 +129,105 @@ function SectionAllocationPanel() {
             <div className={`w-3 h-3 rounded-full ${section.active ? 'bg-green-500' : 'bg-gray-600'}`} />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ──── Five Components Summary Card ────
+
+function FiveComponentsSummaryCard({ ceName, scType, csiPredicates, csiText, businessInfo }: {
+  ceName: string;
+  scType: string;
+  csiPredicates: string[];
+  csiText: string;
+  businessInfo: {
+    authorProfile?: { name?: string; credentials?: string };
+    valueProp?: string;
+    industry?: string;
+  };
+}) {
+  if (!ceName || !scType) return null;
+
+  const hasAuthor = !!businessInfo.authorProfile?.name;
+  const hasCredentials = !!businessInfo.authorProfile?.credentials;
+  const hasValueProp = !!businessInfo.valueProp;
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+      <h3 className="text-sm font-semibold text-gray-200 mb-4">Five Components Summary</h3>
+
+      <div className="space-y-4">
+        {/* CE */}
+        <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="bg-purple-600/20 text-purple-300 border border-purple-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CE</span>
+            <span className="text-sm font-medium text-gray-200">{ceName}</span>
+          </div>
+          <ul className="text-xs text-gray-400 space-y-0.5 mt-2 pl-4">
+            <li>Must appear in every H1, meta title, meta description</li>
+            <li>Use as first word/phrase in title tags where possible</li>
+            <li>N-gram variations allowed for natural language</li>
+          </ul>
+        </div>
+
+        {/* SC */}
+        <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="bg-blue-600/20 text-blue-300 border border-blue-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">SC</span>
+            <span className="text-sm font-medium text-gray-200">{scType}</span>
+          </div>
+          {businessInfo.industry && (
+            <p className="text-xs text-gray-500 mt-1">Industry: {businessInfo.industry}</p>
+          )}
+          <div className="flex items-center gap-3 mt-2 text-xs">
+            <span className={hasAuthor ? 'text-green-400' : 'text-gray-600'}>
+              {hasAuthor ? '\u2713' : '\u2717'} Author identity
+            </span>
+            <span className={hasCredentials ? 'text-green-400' : 'text-gray-600'}>
+              {hasCredentials ? '\u2713' : '\u2717'} Credentials
+            </span>
+            <span className={hasValueProp ? 'text-green-400' : 'text-gray-600'}>
+              {hasValueProp ? '\u2713' : '\u2717'} Value proposition
+            </span>
+          </div>
+        </div>
+
+        {/* CSI */}
+        <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="bg-green-600/20 text-green-300 border border-green-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CSI</span>
+            <span className="text-sm font-medium text-gray-200">
+              {csiText || csiPredicates.join(', ') || 'Not defined'}
+            </span>
+          </div>
+          {csiPredicates.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {csiPredicates.map((pred, i) => (
+                <span
+                  key={i}
+                  className="bg-green-900/20 text-green-300 border border-green-700/30 rounded px-2 py-0.5 text-[10px]"
+                >
+                  {pred}{i === 0 ? ' (primary)' : ''}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* CS + AS */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
+            <span className="text-[10px] font-semibold text-gray-500 uppercase">CS</span>
+            <p className="text-xs text-gray-300 mt-1">Monetization pages</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">Revenue-driving, commercial intent</p>
+          </div>
+          <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
+            <span className="text-[10px] font-semibold text-gray-500 uppercase">AS</span>
+            <p className="text-xs text-gray-300 mt-1">Authority pages</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">Expertise, E-A-T signals</p>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -118,6 +268,9 @@ const PipelineStrategyStep: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [aiSuggested, setAiSuggested] = useState(false);
+  const [suggestionReasoning, setSuggestionReasoning] = useState<string | null>(null);
 
   // Sync form if active map changes (e.g. after navigation)
   useEffect(() => {
@@ -127,6 +280,45 @@ const PipelineStrategyStep: React.FC = () => {
       setCsiText(existingPillars.centralSearchIntent ?? '');
     }
   }, [activeMap?.id]);
+
+  // Auto-suggest on mount when pillars are empty and business info is available
+  const hasBusinessContext = !!state.businessInfo.seedKeyword;
+  const hasExistingPillars = !!existingPillars?.centralEntity;
+  const [autoSuggestAttempted, setAutoSuggestAttempted] = useState(false);
+
+  useEffect(() => {
+    if (!hasExistingPillars && hasBusinessContext && !autoSuggestAttempted && !isSuggesting) {
+      setAutoSuggestAttempted(true);
+      handleAiSuggest();
+    }
+  }, [hasExistingPillars, hasBusinessContext]);
+
+  const handleAiSuggest = async () => {
+    if (isSuggesting) return;
+    setIsSuggesting(true);
+    setSaveError(null);
+
+    try {
+      const result = await suggestPillarsFromBusinessInfo(state.businessInfo, dispatch);
+
+      setCeName(result.centralEntity);
+      setScType(result.sourceContext);
+      setCsiText(result.centralSearchIntent);
+      if (result.csiPredicates.length > 0) {
+        setCsiPredicates(result.csiPredicates);
+      }
+      if (result.scPriorities.length > 0) {
+        setScPriorities(result.scPriorities);
+      }
+      setAiSuggested(true);
+      setSuggestionReasoning(result.reasoning);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'AI suggestion failed';
+      setSaveError(message);
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
 
   const handleSaveStrategy = async () => {
     if (!ceName.trim()) {
@@ -188,12 +380,50 @@ const PipelineStrategyStep: React.FC = () => {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-200">Strategic Foundation</h2>
-        <p className="text-sm text-gray-400 mt-1">
-          Define the five core components: Central Entity, Source Context, and Central Search Intent
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-200">Strategic Foundation</h2>
+          <p className="text-sm text-gray-400 mt-1">
+            Define the five core components: Central Entity, Source Context, and Central Search Intent
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleAiSuggest}
+          disabled={isSuggesting || !hasBusinessContext}
+          className="flex items-center gap-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isSuggesting ? (
+            <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+            </svg>
+          )}
+          {isSuggesting ? 'Suggesting...' : 'AI Suggest'}
+        </button>
       </div>
+
+      {/* Business Context Card */}
+      <BusinessContextCard businessInfo={state.businessInfo} />
+
+      {/* AI Suggestion Banner */}
+      {aiSuggested && !savedSuccess && (
+        <div className="bg-purple-900/20 border border-purple-700 rounded-lg p-4 flex items-start gap-3">
+          <AiBadge />
+          <div>
+            <p className="text-sm text-purple-300">
+              Pillars auto-suggested from your business context. Review and adjust before saving.
+            </p>
+            {suggestionReasoning && (
+              <p className="text-xs text-purple-400/70 mt-1">{suggestionReasoning}</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Error */}
       {saveError && (
@@ -221,6 +451,7 @@ const PipelineStrategyStep: React.FC = () => {
               CE
             </span>
             <h3 className="text-sm font-semibold text-gray-200">Central Entity</h3>
+            {aiSuggested && ceName && <AiBadge />}
           </div>
 
           <div className="space-y-4">
@@ -246,6 +477,7 @@ const PipelineStrategyStep: React.FC = () => {
               SC
             </span>
             <h3 className="text-sm font-semibold text-gray-200">Source Context</h3>
+            {aiSuggested && scType && <AiBadge />}
           </div>
 
           <div className="space-y-4">
@@ -285,6 +517,7 @@ const PipelineStrategyStep: React.FC = () => {
               CSI
             </span>
             <h3 className="text-sm font-semibold text-gray-200">Central Search Intent</h3>
+            {aiSuggested && (csiText || csiPredicates.length > 0) && <AiBadge />}
           </div>
 
           <div className="space-y-4">
@@ -338,6 +571,15 @@ const PipelineStrategyStep: React.FC = () => {
           {isSaving ? 'Saving...' : 'Save Strategy'}
         </button>
       </div>
+
+      {/* Five Components Summary Card (visible after save or when pillars exist) */}
+      <FiveComponentsSummaryCard
+        ceName={ceName}
+        scType={scType}
+        csiPredicates={csiPredicates}
+        csiText={csiText}
+        businessInfo={state.businessInfo}
+      />
 
       {/* Approval Gate — G1, most critical */}
       {gate && (stepState?.status === 'pending_approval' || stepState?.approval?.status === 'rejected') && (

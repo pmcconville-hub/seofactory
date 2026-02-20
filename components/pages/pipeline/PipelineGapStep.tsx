@@ -299,7 +299,7 @@ const PipelineGapStep: React.FC = () => {
     setStepStatus,
     activeMap,
   } = usePipeline();
-  const { state } = useAppState();
+  const { state, dispatch } = useAppState();
 
   const stepState = getStepState('gap_analysis');
   const gate = stepState?.gate;
@@ -345,6 +345,23 @@ const PipelineGapStep: React.FC = () => {
         setProgress(prog.currentStep);
       });
       setResults(result);
+
+      // Persist gap analysis results to map state for downstream steps
+      if (state.activeMapId) {
+        dispatch({
+          type: 'UPDATE_MAP_DATA',
+          payload: {
+            mapId: state.activeMapId,
+            data: {
+              analysis_state: {
+                ...activeMap?.analysis_state,
+                gap_analysis: result,
+              },
+            } as any,
+          },
+        });
+      }
+
       setStepStatus('gap_analysis', 'pending_approval');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Gap analysis failed';

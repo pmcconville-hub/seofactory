@@ -3,7 +3,7 @@ import { usePipeline } from '../../../hooks/usePipeline';
 import { useAppState } from '../../../state/appState';
 import ApprovalGate from '../../pipeline/ApprovalGate';
 import { generateInitialTopicalMap } from '../../../services/ai/mapGeneration';
-import type { EnrichedTopic } from '../../../types';
+import type { EnrichedTopic, SemanticTriple } from '../../../types';
 import { getSupabaseClient } from '../../../services/supabaseClient';
 
 // ──── Metric Card ────
@@ -140,31 +140,89 @@ function HubSpokeSection({ coreTopics, outerTopics }: {
   );
 }
 
-// ──── Link Flow Rules ────
+// ──── Linking Flow Diagram ────
 
-function LinkFlowRulesPanel() {
+function LinkingFlowDiagram({ coreTopics, outerTopics }: {
+  coreTopics: EnrichedTopic[];
+  outerTopics: EnrichedTopic[];
+}) {
+  const hubs = coreTopics.filter(t => t.cluster_role === 'pillar');
+
+  // Classify hubs as AS or CS based on topic_class
+  const asHubs = hubs.filter(h => h.topic_class === 'informational' || h.topic_class?.includes('authority'));
+  const csHubs = hubs.filter(h => h.topic_class === 'monetization' || h.topic_class?.includes('transactional'));
+  const otherHubs = hubs.filter(h => !asHubs.includes(h) && !csHubs.includes(h));
+
   const rules = [
-    {
-      code: 'SPOKE -> HUB',
-      description: 'Every spoke links back to its hub page',
-    },
-    {
-      code: 'HUB -> SPOKE (max 15)',
-      description: 'Hub links to all spokes, max 15 contextual links',
-    },
-    {
-      code: 'SPOKE -/-> SPOKE (other cluster)',
-      description: 'No direct cross-cluster spoke links',
-    },
-    {
-      code: 'HUB <-> HUB (semantic)',
-      description: 'Inter-hub links only when semantic distance 0.3-0.7',
-    },
+    { code: 'SPOKE \u2192 HUB', description: 'Every spoke links back to its hub page' },
+    { code: 'HUB \u2192 SPOKE (max 15)', description: 'Hub links to all spokes, max 15 contextual links' },
+    { code: 'SPOKE \u219B SPOKE (cross)', description: 'No direct cross-cluster spoke links' },
+    { code: 'HUB \u2194 HUB (semantic)', description: 'Inter-hub links only when semantic distance 0.3\u20130.7' },
   ];
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-      <h3 className="text-sm font-semibold text-gray-200 mb-4">Link Flow Rules</h3>
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 space-y-6">
+      <h3 className="text-sm font-semibold text-gray-200">Link Architecture Flow</h3>
+
+      {/* Flow diagram */}
+      {hubs.length > 0 && (
+        <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
+          <div className="flex items-center justify-center gap-4 flex-wrap">
+            {/* AS section */}
+            <div className="text-center min-w-[120px]">
+              <p className="text-[10px] uppercase tracking-wider text-purple-400 mb-2">AS (Authority)</p>
+              <div className="space-y-1">
+                {(asHubs.length > 0 ? asHubs : otherHubs.slice(0, Math.ceil(otherHubs.length / 2))).slice(0, 3).map(h => (
+                  <p key={h.id} className="text-[11px] text-gray-400 truncate max-w-[140px]">{h.title}</p>
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-600 mt-1">Low PageRank</p>
+            </div>
+
+            {/* Arrow */}
+            <div className="text-gray-600 flex-shrink-0">
+              <svg className="w-8 h-4" fill="none" viewBox="0 0 32 16">
+                <path d="M0 8h24m0 0l-6-6m6 6l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+
+            {/* CS Knowledge section */}
+            <div className="text-center min-w-[120px]">
+              <p className="text-[10px] uppercase tracking-wider text-blue-400 mb-2">CS (Knowledge)</p>
+              <div className="space-y-1">
+                {(csHubs.length > 1 ? csHubs.slice(0, Math.ceil(csHubs.length / 2)) : otherHubs.slice(Math.ceil(otherHubs.length / 2))).slice(0, 3).map(h => (
+                  <p key={h.id} className="text-[11px] text-gray-400 truncate max-w-[140px]">{h.title}</p>
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-600 mt-1">Medium PageRank</p>
+            </div>
+
+            {/* Arrow */}
+            <div className="text-gray-600 flex-shrink-0">
+              <svg className="w-8 h-4" fill="none" viewBox="0 0 32 16">
+                <path d="M0 8h24m0 0l-6-6m6 6l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+
+            {/* CS Service section */}
+            <div className="text-center min-w-[120px]">
+              <p className="text-[10px] uppercase tracking-wider text-green-400 mb-2">CS (Service)</p>
+              <div className="space-y-1">
+                {(csHubs.length > 1 ? csHubs.slice(Math.ceil(csHubs.length / 2)) : csHubs).slice(0, 3).map(h => (
+                  <p key={h.id} className="text-[11px] text-gray-400 truncate max-w-[140px]">{h.title}</p>
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-600 mt-1">Highest PageRank</p>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-gray-600 text-center mt-3 border-t border-gray-700/50 pt-2">
+            Authority links TO knowledge, knowledge links TO service pages. Never reverse direction for main flow.
+          </p>
+        </div>
+      )}
+
+      {/* Rules */}
       <div className="space-y-3">
         {rules.map((rule, i) => (
           <div key={i} className="flex items-start gap-3">
@@ -172,6 +230,113 @@ function LinkFlowRulesPanel() {
               {rule.code}
             </code>
             <p className="text-sm text-gray-400 pt-0.5">{rule.description}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ──── Contextual Bridges Panel ────
+
+function ContextualBridgesPanel({ coreTopics, eavs }: {
+  coreTopics: EnrichedTopic[];
+  eavs: SemanticTriple[];
+}) {
+  const hubs = coreTopics.filter(t => t.cluster_role === 'pillar');
+
+  if (hubs.length < 2 || eavs.length === 0) return null;
+
+  // Build entity-to-hub mapping from EAVs and topic titles
+  // Find shared entities between hubs based on EAV subjects
+  const hubEntityMap = new Map<string, Set<string>>();
+
+  for (const hub of hubs) {
+    const entities = new Set<string>();
+    const hubTitle = hub.title.toLowerCase();
+
+    for (const eav of eavs) {
+      const entityName = eav.subject?.label?.toLowerCase() ?? '';
+      const attrName = eav.predicate?.relation?.toLowerCase() ?? '';
+      const valueName = String(eav.object?.value ?? '').toLowerCase();
+
+      // Check if this EAV is related to this hub's topic
+      if (
+        hubTitle.includes(entityName) ||
+        entityName.includes(hubTitle.split(' ')[0]) ||
+        attrName.includes(hubTitle.split(' ')[0]) ||
+        valueName.includes(hubTitle.split(' ')[0])
+      ) {
+        entities.add(eav.subject?.label ?? '');
+        if (eav.predicate?.relation) entities.add(eav.predicate.relation);
+      }
+    }
+
+    hubEntityMap.set(hub.id, entities);
+  }
+
+  // Find hub pairs with shared references
+  const bridges: Array<{
+    hubA: EnrichedTopic;
+    hubB: EnrichedTopic;
+    sharedTerms: string[];
+  }> = [];
+
+  for (let i = 0; i < hubs.length; i++) {
+    for (let j = i + 1; j < hubs.length; j++) {
+      const setA = hubEntityMap.get(hubs[i].id) ?? new Set();
+      const setB = hubEntityMap.get(hubs[j].id) ?? new Set();
+      const shared = [...setA].filter(term => setB.has(term) && term.length > 0);
+
+      if (shared.length > 0) {
+        bridges.push({
+          hubA: hubs[i],
+          hubB: hubs[j],
+          sharedTerms: shared.slice(0, 5),
+        });
+      }
+    }
+  }
+
+  // If no shared EAV terms, just show all hub pairs as potential bridges
+  const displayBridges = bridges.length > 0
+    ? bridges
+    : hubs.slice(0, 4).flatMap((a, i) =>
+        hubs.slice(i + 1, i + 3).map(b => ({
+          hubA: a,
+          hubB: b,
+          sharedTerms: [] as string[],
+        }))
+      ).slice(0, 6);
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+      <h3 className="text-sm font-semibold text-gray-200 mb-4">Contextual Bridges</h3>
+      <p className="text-xs text-gray-500 mb-4">
+        Hub-to-hub connection opportunities based on shared EAV attributes
+      </p>
+      <div className="space-y-2">
+        {displayBridges.map((bridge, i) => (
+          <div key={i} className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-gray-300 font-medium truncate max-w-[180px]">{bridge.hubA.title}</span>
+              <span className="text-gray-600 flex-shrink-0">\u2194</span>
+              <span className="text-gray-300 font-medium truncate max-w-[180px]">{bridge.hubB.title}</span>
+            </div>
+            {bridge.sharedTerms.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {bridge.sharedTerms.map((term, j) => (
+                  <span key={j} className="text-[10px] bg-blue-900/20 text-blue-300 border border-blue-700/30 rounded px-1.5 py-0.5">
+                    {term}
+                  </span>
+                ))}
+              </div>
+            )}
+            {bridge.sharedTerms.length === 0 && (
+              <p className="text-[10px] text-gray-600 mt-1">
+                Potential bridge — add shared EAV attributes to strengthen connection
+              </p>
+            )}
           </div>
         ))}
       </div>
@@ -546,8 +711,11 @@ const PipelineMapStep: React.FC = () => {
       {/* Review: Link Architecture */}
       <div>
         <p className="text-[10px] uppercase tracking-widest text-gray-600 mb-2">Link Architecture</p>
-        <LinkFlowRulesPanel />
+        <LinkingFlowDiagram coreTopics={coreTopics} outerTopics={outerTopics} />
       </div>
+
+      {/* Review: Contextual Bridges */}
+      <ContextualBridgesPanel coreTopics={coreTopics} eavs={activeMap?.eavs ?? []} />
 
       {/* Review: Publishing Waves */}
       <PublishingWavesPanel coreTopics={coreTopics} outerTopics={outerTopics} />

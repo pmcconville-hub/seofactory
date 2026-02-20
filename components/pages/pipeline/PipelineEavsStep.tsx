@@ -34,18 +34,224 @@ function MetricCard({ label, value, color = 'gray' }: {
   );
 }
 
-// ──── EAV Table ────
+// ──── Category Badge ────
+
+function CategoryBadge({ category }: { category?: string }) {
+  const cat = category ?? 'COMMON';
+  const styles: Record<string, string> = {
+    UNIQUE: 'bg-purple-900/20 text-purple-300 border-purple-700/40',
+    ROOT: 'bg-blue-900/20 text-blue-300 border-blue-700/40',
+    RARE: 'bg-green-900/20 text-green-300 border-green-700/40',
+    COMMON: 'bg-gray-700 text-gray-400 border-gray-600',
+  };
+  return (
+    <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border ${styles[cat] || styles.COMMON}`}>
+      {cat}
+    </span>
+  );
+}
+
+// ──── Entity-Grouped EAV Display ────
+
+function EntityGroupedEavDisplay({ eavs }: { eavs: Partial<SemanticTriple>[] }) {
+  const [expandedEntities, setExpandedEntities] = useState<Record<string, boolean>>({});
+
+  // Group EAVs by entity name
+  const entityGroups = new Map<string, {
+    eavs: Partial<SemanticTriple>[];
+    entityType: string;
+    categoryCounts: Record<string, number>;
+    completeness: number;
+    missing: string[];
+  }>();
+
+  for (const eav of eavs) {
+    const entityName = eav.subject?.label ?? 'Unknown Entity';
+    if (!entityGroups.has(entityName)) {
+      entityGroups.set(entityName, {
+        eavs: [],
+        entityType: eav.subject?.type ?? 'Entity',
+        categoryCounts: {},
+        completeness: 0,
+        missing: [],
+      });
+    }
+    const group = entityGroups.get(entityName)!;
+    group.eavs.push(eav);
+
+    const cat = eav.predicate?.category ?? 'COMMON';
+    group.categoryCounts[cat] = (group.categoryCounts[cat] || 0) + 1;
+
+    if (!eav.object?.value) {
+      group.missing.push(eav.predicate?.relation ?? 'unknown attribute');
+    }
+  }
+
+  // Calculate completeness for each group
+  for (const group of entityGroups.values()) {
+    const filled = group.eavs.filter(e => e.object?.value).length;
+    group.completeness = group.eavs.length > 0
+      ? Math.round((filled / group.eavs.length) * 100)
+      : 0;
+  }
+
+  const toggleEntity = (name: string) =>
+    setExpandedEntities(prev => ({ ...prev, [name]: !prev[name] }));
+
+  const sortedEntities = [...entityGroups.entries()].sort(
+    (a, b) => b[1].eavs.length - a[1].eavs.length
+  );
+
+  if (eavs.length === 0) {
+    return (
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-12 text-center">
+        <svg
+          className="w-10 h-10 text-gray-600 mx-auto mb-3"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={1.5}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"
+          />
+        </svg>
+        <p className="text-sm text-gray-500">Generate EAV inventory from strategy</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {sortedEntities.map(([entityName, group]) => {
+        const isExpanded = expandedEntities[entityName] ?? false;
+        const completenessColor = group.completeness >= 80
+          ? 'text-green-400'
+          : group.completeness >= 50
+            ? 'text-amber-400'
+            : 'text-red-400';
+
+        return (
+          <div key={entityName} className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
+            {/* Entity header */}
+            <button
+              type="button"
+              onClick={() => toggleEntity(entityName)}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-700/30 transition-colors text-left"
+            >
+              <svg
+                className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-200">{entityName}</span>
+                  <span className="text-[10px] text-gray-500">({group.entityType})</span>
+                </div>
+                {/* Category summary */}
+                <div className="flex gap-2 mt-1">
+                  {Object.entries(group.categoryCounts).map(([cat, count]) => (
+                    <span key={cat} className="text-[10px] text-gray-500">
+                      {cat}: {count}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <span className="text-xs text-gray-500">{group.eavs.length} attributes</span>
+                <span className={`text-xs font-medium ${completenessColor}`}>{group.completeness}%</span>
+              </div>
+            </button>
+
+            {/* Missing attribute warning */}
+            {group.missing.length > 0 && !isExpanded && (
+              <div className="px-4 pb-2 -mt-1">
+                <p className="text-[10px] text-amber-400">
+                  Missing values: {group.missing.slice(0, 3).join(', ')}
+                  {group.missing.length > 3 && ` +${group.missing.length - 3} more`}
+                </p>
+              </div>
+            )}
+
+            {/* Expanded EAV rows */}
+            {isExpanded && (
+              <div className="border-t border-gray-700/50">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-700/50">
+                      <th className="text-left px-4 py-2 text-[10px] font-medium text-gray-500 uppercase">Attribute</th>
+                      <th className="text-left px-4 py-2 text-[10px] font-medium text-gray-500 uppercase">Value</th>
+                      <th className="text-center px-4 py-2 text-[10px] font-medium text-gray-500 uppercase">Category</th>
+                      <th className="text-center px-4 py-2 text-[10px] font-medium text-gray-500 uppercase">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.eavs.map((eav, i) => (
+                      <tr key={i} className="border-b border-gray-700/30">
+                        <td className="px-4 py-2 text-gray-300 font-mono text-xs">
+                          {eav.predicate?.relation ?? '\u2014'}
+                        </td>
+                        <td className="px-4 py-2 text-xs">
+                          {eav.object?.value
+                            ? <span className="text-gray-400">{String(eav.object.value)}</span>
+                            : <span className="text-amber-500 italic">needs value</span>
+                          }
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          <CategoryBadge category={eav.predicate?.category} />
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          {eav.object?.value ? (
+                            <span className="text-green-400 text-xs">Ready</span>
+                          ) : (
+                            <span className="text-amber-400 text-xs">Pending</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ──── Flat EAV Table (toggle option) ────
 
 function EavInventoryTable({ eavs }: { eavs: Partial<SemanticTriple>[] }) {
-  const filled = eavs.filter(e => e.object?.value);
-  const needConfirmation = eavs.filter(e => !e.object?.value);
+  if (eavs.length === 0) {
+    return (
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-12 text-center">
+        <svg
+          className="w-10 h-10 text-gray-600 mx-auto mb-3"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={1.5}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"
+          />
+        </svg>
+        <p className="text-sm text-gray-500">Generate EAV inventory from strategy</p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-200">EAV Inventory</h3>
-        <span className="text-xs text-gray-500">{eavs.length} triples</span>
-      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -58,62 +264,29 @@ function EavInventoryTable({ eavs }: { eavs: Partial<SemanticTriple>[] }) {
             </tr>
           </thead>
           <tbody>
-            {eavs.length > 0 ? (
-              eavs.map((eav, i) => (
-                <tr key={i} className="border-b border-gray-700/50">
-                  <td className="px-6 py-3 text-gray-300 font-medium truncate max-w-[120px]">
-                    {eav.subject?.label ?? '—'}
-                  </td>
-                  <td className="px-6 py-3 text-gray-300 font-mono text-xs">
-                    {eav.predicate?.relation ?? '—'}
-                  </td>
-                  <td className="px-6 py-3 text-gray-400 italic text-xs">
-                    {eav.object?.value ? String(eav.object.value) : <span className="text-amber-500">needs value</span>}
-                  </td>
-                  <td className="px-6 py-3 text-center">
-                    <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border ${
-                      eav.predicate?.category === 'UNIQUE'
-                        ? 'bg-purple-900/20 text-purple-300 border-purple-700/40'
-                        : eav.predicate?.category === 'ROOT'
-                          ? 'bg-blue-900/20 text-blue-300 border-blue-700/40'
-                          : eav.predicate?.category === 'RARE'
-                            ? 'bg-green-900/20 text-green-300 border-green-700/40'
-                            : 'bg-gray-700 text-gray-400 border-gray-600'
-                    }`}>
-                      {eav.predicate?.category ?? 'COMMON'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-3 text-center">
-                    {eav.object?.value ? (
-                      <span className="text-green-400 text-xs">Ready</span>
-                    ) : (
-                      <span className="text-amber-400 text-xs">Pending</span>
-                    )}
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={5} className="px-6 py-12 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <svg
-                      className="w-10 h-10 text-gray-600"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={1.5}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"
-                      />
-                    </svg>
-                    <p className="text-sm text-gray-500">Generate EAV inventory from strategy</p>
-                  </div>
+            {eavs.map((eav, i) => (
+              <tr key={i} className="border-b border-gray-700/50">
+                <td className="px-6 py-3 text-gray-300 font-medium truncate max-w-[120px]">
+                  {eav.subject?.label ?? '\u2014'}
+                </td>
+                <td className="px-6 py-3 text-gray-300 font-mono text-xs">
+                  {eav.predicate?.relation ?? '\u2014'}
+                </td>
+                <td className="px-6 py-3 text-gray-400 italic text-xs">
+                  {eav.object?.value ? String(eav.object.value) : <span className="text-amber-500">needs value</span>}
+                </td>
+                <td className="px-6 py-3 text-center">
+                  <CategoryBadge category={eav.predicate?.category} />
+                </td>
+                <td className="px-6 py-3 text-center">
+                  {eav.object?.value ? (
+                    <span className="text-green-400 text-xs">Ready</span>
+                  ) : (
+                    <span className="text-amber-400 text-xs">Pending</span>
+                  )}
                 </td>
               </tr>
-            )}
+            ))}
           </tbody>
         </table>
       </div>
@@ -192,6 +365,7 @@ const PipelineEavsStep: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedEavs, setGeneratedEavs] = useState<Partial<SemanticTriple>[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grouped' | 'flat'>('grouped');
 
   // Use existing map EAVs if available, fallback to generated
   const displayEavs = existingEavs.length > 0 ? existingEavs : generatedEavs;
@@ -346,8 +520,43 @@ const PipelineEavsStep: React.FC = () => {
         </div>
       )}
 
-      {/* EAV Table */}
-      <EavInventoryTable eavs={displayEavs as SemanticTriple[]} />
+      {/* View Mode Toggle */}
+      {displayEavs.length > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] uppercase tracking-widest text-gray-600">EAV Inventory</p>
+          <div className="flex items-center bg-gray-800 border border-gray-700 rounded-md overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setViewMode('grouped')}
+              className={`px-3 py-1.5 text-xs transition-colors ${
+                viewMode === 'grouped'
+                  ? 'bg-blue-600/20 text-blue-300 border-r border-gray-700'
+                  : 'text-gray-400 hover:text-gray-300 border-r border-gray-700'
+              }`}
+            >
+              Group by entity
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('flat')}
+              className={`px-3 py-1.5 text-xs transition-colors ${
+                viewMode === 'flat'
+                  ? 'bg-blue-600/20 text-blue-300'
+                  : 'text-gray-400 hover:text-gray-300'
+              }`}
+            >
+              Show all
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* EAV Display */}
+      {viewMode === 'grouped' ? (
+        <EntityGroupedEavDisplay eavs={displayEavs as SemanticTriple[]} />
+      ) : (
+        <EavInventoryTable eavs={displayEavs as SemanticTriple[]} />
+      )}
 
       {/* Generate Button */}
       <div className="flex justify-center">

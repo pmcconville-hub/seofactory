@@ -149,7 +149,7 @@ function WaveBriefGroup({
   );
 }
 
-// ──── Brief Preview Panel ────
+// ──── Brief Preview Panel with Featured Snippet Targets ────
 
 function BriefPreviewPanel({ selectedBrief }: { selectedBrief: ContentBrief | null }) {
   if (!selectedBrief) {
@@ -181,26 +181,171 @@ function BriefPreviewPanel({ selectedBrief }: { selectedBrief: ContentBrief | nu
     );
   }
 
+  // Detect snippet type heuristically per section
+  const getSnippetType = (section: { heading: string; level: number; content_type?: string }): string | null => {
+    const heading = section.heading.toLowerCase();
+    if (heading.startsWith('wat is') || heading.startsWith('what is') || heading.includes('definitie') || heading.includes('definition')) return 'paragraph';
+    if (heading.includes('stappen') || heading.includes('steps') || heading.includes('how to') || heading.includes('hoe')) return 'list';
+    if (heading.includes('vergelijk') || heading.includes('compare') || heading.includes('kosten') || heading.includes('prijzen') || heading.includes('types')) return 'table';
+    if (section.content_type === 'list') return 'list';
+    if (section.content_type === 'table') return 'table';
+    return null;
+  };
+
+  const snippetColors: Record<string, string> = {
+    paragraph: 'bg-blue-900/20 text-blue-300 border-blue-700/30',
+    list: 'bg-green-900/20 text-green-300 border-green-700/30',
+    table: 'bg-amber-900/20 text-amber-300 border-amber-700/30',
+  };
+
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
       <h3 className="text-sm font-semibold text-gray-200 mb-4">Brief Preview: {selectedBrief.title}</h3>
       <div className="bg-gray-900 border border-gray-700 rounded-md p-4 max-h-[400px] overflow-y-auto">
         {selectedBrief.structured_outline && selectedBrief.structured_outline.length > 0 ? (
           <div className="space-y-1">
-            {selectedBrief.structured_outline.map((section, i) => (
-              <div
-                key={i}
-                className="text-xs text-gray-300 font-mono"
-                style={{ paddingLeft: `${(section.level - 1) * 16}px` }}
-              >
-                {'#'.repeat(section.level)} {section.heading}
-              </div>
-            ))}
+            {selectedBrief.structured_outline.map((section, i) => {
+              const snippetType = getSnippetType(section);
+              return (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 text-xs text-gray-300 font-mono"
+                  style={{ paddingLeft: `${(section.level - 1) * 16}px` }}
+                >
+                  <span>{'#'.repeat(section.level)} {section.heading}</span>
+                  {snippetType && (
+                    <span className={`text-[9px] px-1 py-0.5 rounded border ${snippetColors[snippetType]}`}>
+                      FS:{snippetType}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <p className="text-xs text-gray-500">{selectedBrief.outline || 'No outline available'}</p>
         )}
       </div>
+    </div>
+  );
+}
+
+// ──── Writing Rules Panel ────
+
+function WritingRulesPanel({ language }: { language: string }) {
+  const isNL = language?.toLowerCase().startsWith('nl') || language?.toLowerCase() === 'dutch';
+
+  const rules = [
+    { rule: 'One EAV-triple per sentence', detail: 'Each sentence states exactly one entity-attribute-value relationship' },
+    { rule: 'S-P-O word order', detail: 'Subject \u2192 Predicate \u2192 Object for maximum clarity' },
+    { rule: 'Max 25 words per sentence', detail: 'Definitions: 15\u201320 words. Explanations: max 25 words' },
+    { rule: 'Repeat noun, avoid pronouns', detail: 'Use the entity name explicitly instead of "it", "this", "they"' },
+    { rule: isNL ? 'Geen vultaal' : 'No filler words', detail: isNL
+      ? 'Vermijd: eigenlijk, uiteraard, over het algemeen, in feite'
+      : 'Avoid: basically, actually, generally speaking, in fact'
+    },
+    { rule: 'Definitive modality for facts', detail: 'Use "is", "has", "costs" for facts. "can", "may" only for advice' },
+    { rule: 'First 400 chars = core answer', detail: 'No preamble. Start with the direct answer immediately' },
+    { rule: 'First sentence after H2 answers it', detail: 'Subordinate text: the heading\u2019s question is answered in sentence 1' },
+  ];
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+      <h3 className="text-sm font-semibold text-gray-200 mb-4">Writing Rules</h3>
+      <div className="space-y-2">
+        {rules.map((item, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <svg className="w-3.5 h-3.5 text-green-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <div>
+              <p className="text-xs text-gray-300 font-medium">{item.rule}</p>
+              <p className="text-[10px] text-gray-500">{item.detail}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ──── Anchor Text Strategy Panel ────
+
+function AnchorTextStrategyPanel({ briefs }: { briefs: Record<string, ContentBrief> }) {
+  // Scan all briefs for internal link anchors and count frequency
+  const anchorCounts = new Map<string, number>();
+
+  for (const brief of Object.values(briefs)) {
+    // Check structured outline for internal links
+    if (brief.structured_outline) {
+      for (const section of brief.structured_outline) {
+        const links = (section as any).internal_links ?? [];
+        for (const link of links) {
+          const anchor = typeof link === 'string' ? link : (link.anchor_text ?? link.text ?? '');
+          if (anchor) {
+            const normalized = anchor.toLowerCase().trim();
+            anchorCounts.set(normalized, (anchorCounts.get(normalized) || 0) + 1);
+          }
+        }
+      }
+    }
+
+    // Check top-level internal_links
+    const topLinks = (brief as any).internal_links ?? [];
+    for (const link of topLinks) {
+      const anchor = typeof link === 'string' ? link : (link.anchor_text ?? link.text ?? '');
+      if (anchor) {
+        const normalized = anchor.toLowerCase().trim();
+        anchorCounts.set(normalized, (anchorCounts.get(normalized) || 0) + 1);
+      }
+    }
+  }
+
+  const sortedAnchors = [...anchorCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+
+  if (sortedAnchors.length === 0 && Object.keys(briefs).length === 0) return null;
+
+  const MAX_USAGE = 3;
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+      <h3 className="text-sm font-semibold text-gray-200 mb-4">Anchor Text Strategy</h3>
+      {sortedAnchors.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="text-left px-3 py-2 text-[10px] font-medium text-gray-500 uppercase">Primary Anchor</th>
+                <th className="text-center px-3 py-2 text-[10px] font-medium text-gray-500 uppercase">Used</th>
+                <th className="text-center px-3 py-2 text-[10px] font-medium text-gray-500 uppercase">Max {MAX_USAGE}x</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedAnchors.map(([anchor, count], i) => (
+                <tr key={i} className="border-b border-gray-700/30">
+                  <td className="px-3 py-2 text-gray-300 text-xs truncate max-w-[200px]">{anchor}</td>
+                  <td className="px-3 py-2 text-center text-gray-400 text-xs">{count}x</td>
+                  <td className="px-3 py-2 text-center">
+                    {count > MAX_USAGE ? (
+                      <span className="text-amber-400 text-xs font-medium">OVER</span>
+                    ) : count === MAX_USAGE ? (
+                      <span className="text-amber-400 text-xs">MAX</span>
+                    ) : (
+                      <span className="text-green-400 text-xs">{'\u2713'}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="text-xs text-gray-500 text-center py-4">
+          Generate briefs to analyze anchor text distribution
+        </p>
+      )}
     </div>
   );
 }
@@ -487,6 +632,9 @@ const PipelineBriefsStep: React.FC = () => {
         />
       </div>
 
+      {/* Writing Rules Panel */}
+      <WritingRulesPanel language={state.businessInfo.language || 'en'} />
+
       {/* Wave-grouped Brief List + Preview Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Brief list — 2 columns on large screens */}
@@ -506,6 +654,7 @@ const PipelineBriefsStep: React.FC = () => {
         <div className="space-y-4">
           <BriefPreviewPanel selectedBrief={null} />
           <ValidationChecklist briefs={allBriefs} />
+          <AnchorTextStrategyPanel briefs={allBriefs} />
         </div>
       </div>
 

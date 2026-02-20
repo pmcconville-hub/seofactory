@@ -97,13 +97,37 @@ Deno.serve(async (req: Request) => {
                    contentType.includes('json') ||
                    contentType.includes('html');
 
+    // Guard against excessively large responses (10MB limit)
+    const contentLength = response.headers.get('content-length');
+    const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10MB
+    if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_SIZE) {
+      return json({
+        error: `Response too large (${contentLength} bytes). Maximum supported size is ${MAX_RESPONSE_SIZE} bytes.`,
+        ok: false,
+        status: 413,
+      }, 200, origin);
+    }
+
     let responseBody: any;
     if (isText) {
       responseBody = await response.text();
     } else {
-      // For binary content, return base64
+      // For binary content, return base64 using chunk-based approach
+      // (spread into String.fromCharCode crashes on large buffers)
       const buffer = await response.arrayBuffer();
-      responseBody = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+      if (buffer.byteLength > MAX_RESPONSE_SIZE) {
+        return json({
+          error: `Response body too large (${buffer.byteLength} bytes). Maximum supported size is ${MAX_RESPONSE_SIZE} bytes.`,
+          ok: false,
+          status: 413,
+        }, 200, origin);
+      }
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      responseBody = btoa(binary);
     }
 
     return json({
