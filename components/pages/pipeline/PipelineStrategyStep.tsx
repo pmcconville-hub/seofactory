@@ -312,6 +312,19 @@ const PipelineStrategyStep: React.FC = () => {
       }
       setAiSuggested(true);
       setSuggestionReasoning(result.reasoning);
+
+      // Apply detected language/region to businessInfo if not already set
+      const currentLang = state.businessInfo.language;
+      const currentMarket = state.businessInfo.targetMarket;
+      const needsLangUpdate = (!currentLang || currentLang === 'en') && result.detectedLanguage && result.detectedLanguage !== 'en';
+      const needsMarketUpdate = (!currentMarket || currentMarket === 'United States') && result.detectedRegion && result.detectedRegion !== 'Global';
+
+      if (needsLangUpdate || needsMarketUpdate) {
+        const updatedInfo = { ...state.businessInfo };
+        if (needsLangUpdate) updatedInfo.language = result.detectedLanguage;
+        if (needsMarketUpdate) updatedInfo.targetMarket = result.detectedRegion;
+        dispatch({ type: 'SET_BUSINESS_INFO', payload: updatedInfo });
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'AI suggestion failed';
       setSaveError(message);

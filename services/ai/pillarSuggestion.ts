@@ -21,6 +21,8 @@ export interface PillarSuggestionResult {
   csiPredicates: string[];
   scPriorities: string[];
   reasoning: string;
+  detectedLanguage: string;
+  detectedRegion: string;
 }
 
 /**
@@ -31,7 +33,20 @@ export async function suggestPillarsFromBusinessInfo(
   businessInfo: BusinessInfo,
   dispatch: React.Dispatch<AppAction>
 ): Promise<PillarSuggestionResult> {
-  const { seedKeyword, industry, valueProp, audience, domain, language, targetMarket } = businessInfo;
+  const { seedKeyword, industry, valueProp, audience, domain, language, targetMarket, region } = businessInfo;
+
+  // Detect language signals from existing business info content
+  const hasExplicitLanguage = !!language && language !== 'en';
+  const hasExplicitMarket = !!targetMarket && targetMarket !== 'United States';
+
+  // Extract TLD from domain for language/region hints
+  let domainTLD = '';
+  if (domain) {
+    try {
+      const hostname = new URL(domain.startsWith('http') ? domain : `https://${domain}`).hostname;
+      domainTLD = hostname.split('.').pop() || '';
+    } catch { /* ignore */ }
+  }
 
   const prompt = `You are a Holistic SEO strategist specializing in the five-component framework: Central Entity (CE), Source Context (SC), Central Search Intent (CSI), Core Section (CS), and Author Section (AS).
 
@@ -42,27 +57,37 @@ BUSINESS CONTEXT:
 - Industry: "${industry}"
 - Value Proposition: "${valueProp}"
 - Target Audience: "${audience}"
-- Domain: "${domain || 'not specified'}"
-- Language: "${language || 'en'}"
-- Target Market: "${targetMarket || 'not specified'}"
+- Domain: "${domain || 'not specified'}"${domainTLD ? ` (TLD: .${domainTLD})` : ''}
+- Language (if known): "${language || 'detect from content'}"
+- Target Market (if known): "${targetMarket || 'detect from content'}"${region ? `\n- Region: "${region}"` : ''}
 
-TASK:
-1. **Central Entity (CE)**: The single unambiguous entity this website should be the definitive source for. Must be a noun or noun phrase (not a keyword). It should appear in every H1, meta title, and meta description.
+LANGUAGE & REGION DETECTION — CRITICAL:
+First, detect the website's language and target region from ALL available signals:
+1. The VALUE PROPOSITION text — what language is it written in?
+2. The TARGET AUDIENCE text — what language?
+3. The domain TLD (.nl = Netherlands, .de = Germany, .fr = France, .be = Belgium, .es = Spain, .uk = United Kingdom, etc.)
+4. The explicitly provided language/market fields (if non-empty and not "en"/"United States")
+Only default to "en" / "Global" if there are absolutely no signals.
 
-2. **Source Context (SC)**: The authority type — how the website positions itself as a source (e.g., "B2B service provider", "E-commerce retailer", "SaaS platform", "Industry expert blog"). This determines E-A-T signaling.
+PILLAR SUGGESTIONS — must be in the DETECTED language (not English, unless the detected language IS English):
+1. **Central Entity (CE)**: The single unambiguous entity this website should be the definitive source for. Must be a noun or noun phrase (not a keyword). Write in the website's language.
 
-3. **Central Search Intent (CSI)**: The primary search predicates users combine with the CE. Provide both a description and a ranked list of predicates (verbs/action phrases).
+2. **Source Context (SC)**: The authority type — how the website positions itself as a source. Write in the website's language (e.g., for Dutch: "B2B dienstverlener", for German: "B2B-Dienstleister").
 
-4. **SC Attribute Priorities**: Key attributes that define this source type's authority (e.g., "certifications", "case studies", "pricing transparency").
+3. **Central Search Intent (CSI)**: The primary search predicates users combine with the CE. Predicates must be in the website's language.
+
+4. **SC Attribute Priorities**: Key authority attributes in the website's language.
 
 Return JSON:
 {
-  "centralEntity": "string — the CE noun/phrase",
-  "sourceContext": "string — the SC authority type",
-  "centralSearchIntent": "string — one-sentence CSI description",
+  "centralEntity": "string — the CE noun/phrase in the website's language",
+  "sourceContext": "string — the SC authority type in the website's language",
+  "centralSearchIntent": "string — one-sentence CSI description in the website's language",
   "csiPredicates": ["verb1", "verb2", "verb3", "verb4", "verb5"],
   "scPriorities": ["priority1", "priority2", "priority3"],
-  "reasoning": "Brief explanation of why these pillars are optimal for this business"
+  "reasoning": "Brief explanation (in English) of why these pillars are optimal",
+  "detectedLanguage": "ISO 639-1 language code (e.g., 'nl', 'de', 'en', 'fr', 'es')",
+  "detectedRegion": "Country name (e.g., 'Netherlands', 'Germany', 'United States')"
 }`;
 
   const fallback: PillarSuggestionResult = {
@@ -72,6 +97,8 @@ Return JSON:
     csiPredicates: [],
     scPriorities: [],
     reasoning: 'Fallback — AI suggestion unavailable',
+    detectedLanguage: language || '',
+    detectedRegion: targetMarket || region || '',
   };
 
   try {
@@ -90,6 +117,8 @@ Return JSON:
       csiPredicates: Array.isArray(result.csiPredicates) ? result.csiPredicates : [],
       scPriorities: Array.isArray(result.scPriorities) ? result.scPriorities : [],
       reasoning: result.reasoning || '',
+      detectedLanguage: result.detectedLanguage || fallback.detectedLanguage,
+      detectedRegion: result.detectedRegion || fallback.detectedRegion,
     };
   } catch (err) {
     console.warn('[pillarSuggestion] AI suggestion failed, using fallback:', err);
