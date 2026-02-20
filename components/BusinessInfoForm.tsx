@@ -227,6 +227,7 @@ const SmartWizardPanel: React.FC<SmartWizardPanelProps> = ({
     const smartWizard = useSmartWizard();
     const [showApplyButton, setShowApplyButton] = useState(false);
     const autoResearchTriggeredRef = useRef(false);
+    const autoAppliedRef = useRef(false);
 
     const handleResearch = async () => {
         const result = await smartWizard.research();
@@ -244,14 +245,18 @@ const SmartWizardPanel: React.FC<SmartWizardPanelProps> = ({
     useEffect(() => {
         if (autoResearchUrl && !autoResearchTriggeredRef.current && !smartWizard.isResearching && !smartWizard.result) {
             autoResearchTriggeredRef.current = true;
-            smartWizard.researchUrl(autoResearchUrl).then((result) => {
-                if (result && result.suggestions && Object.keys(result.suggestions).length > 0) {
-                    // Auto-apply suggestions for pipeline flow
-                    smartWizard.applySuggestions(localBusinessInfo, setLocalBusinessInfo);
-                }
-            });
+            smartWizard.researchUrl(autoResearchUrl);
         }
     }, [autoResearchUrl]);
+
+    // Auto-apply suggestions once result arrives from auto-research
+    // (must be a separate effect so applySuggestions sees the updated result state)
+    useEffect(() => {
+        if (autoResearchUrl && smartWizard.result && !autoAppliedRef.current && !smartWizard.isResearching) {
+            autoAppliedRef.current = true;
+            smartWizard.applySuggestions(localBusinessInfo, setLocalBusinessInfo);
+        }
+    }, [smartWizard.result, smartWizard.isResearching]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
