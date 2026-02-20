@@ -33,18 +33,38 @@ function formatDate(iso: string): string {
 
 // ──── Sub-components ────
 
-function CheckboxIcon({ checked }: { checked: boolean }) {
-  if (checked) {
-    return (
-      <svg className="w-4 h-4 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    );
-  }
+function InteractiveCheckbox({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
   return (
-    <svg className="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
+    <label className="flex items-center gap-2 cursor-pointer group">
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+          checked
+            ? 'bg-green-600 border-green-500'
+            : 'bg-transparent border-gray-500 group-hover:border-gray-400'
+        }`}
+      >
+        {checked && (
+          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        )}
+      </button>
+      <span className={`text-sm transition-colors ${checked ? 'text-green-300' : 'text-gray-300'}`}>
+        {label}
+      </span>
+    </label>
   );
 }
 
@@ -90,6 +110,14 @@ function PendingGate({
 }: Omit<ApprovalGateProps, 'step' | 'approval' | 'onRevise'>) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
+
+  const allChecked = gate.reviewItems.length === 0 ||
+    gate.reviewItems.every(item => checkedItems[item]);
+
+  const toggleItem = (item: string, checked: boolean) => {
+    setCheckedItems(prev => ({ ...prev, [item]: checked }));
+  };
 
   const handleSubmitRejection = () => {
     const trimmed = rejectionReason.trim();
@@ -109,7 +137,7 @@ function PendingGate({
             REVIEW GATE
           </span>
           <span className="text-sm text-gray-300">
-            Review required before proceeding to next step
+            Confirm each item below before proceeding
           </span>
         </div>
         <AutoApproveToggle checked={autoApprove} onChange={onToggleAutoApprove} />
@@ -120,14 +148,16 @@ function PendingGate({
         Reviewer: {gate.reviewer}
       </p>
 
-      {/* Review items checklist */}
+      {/* Review items — interactive checkboxes */}
       {gate.reviewItems.length > 0 && (
-        <div className="space-y-2 mb-4">
+        <div className="space-y-3 mb-4">
           {gate.reviewItems.map((item) => (
-            <div key={item} className="flex items-center gap-2">
-              <CheckboxIcon checked={false} />
-              <span className="text-sm text-gray-300">{item}</span>
-            </div>
+            <InteractiveCheckbox
+              key={item}
+              label={item}
+              checked={!!checkedItems[item]}
+              onChange={(checked) => toggleItem(item, checked)}
+            />
           ))}
         </div>
       )}
@@ -147,7 +177,12 @@ function PendingGate({
         <button
           type="button"
           onClick={onApprove}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
+          disabled={!allChecked}
+          className={`px-4 py-2 rounded-md font-medium transition-colors ${
+            allChecked
+              ? 'bg-green-600 hover:bg-green-700 text-white'
+              : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+          }`}
         >
           Approve &amp; Continue
         </button>
@@ -159,6 +194,11 @@ function PendingGate({
           >
             Request Changes
           </button>
+        )}
+        {!allChecked && gate.reviewItems.length > 0 && (
+          <span className="text-xs text-amber-400">
+            Check all {gate.reviewItems.length} items to enable approval
+          </span>
         )}
       </div>
 
