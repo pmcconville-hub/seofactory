@@ -35,48 +35,107 @@ function HubSpokeSection({ coreTopics, outerTopics }: {
   coreTopics: EnrichedTopic[];
   outerTopics: EnrichedTopic[];
 }) {
-  const hubCount = coreTopics.filter(t => t.cluster_role === 'pillar').length;
-  const spokeCount = outerTopics.length;
+  const [expandedHubs, setExpandedHubs] = useState<Record<string, boolean>>({});
+  const INITIAL_SPOKES = 5;
+
+  const hubs = coreTopics.filter(t => t.cluster_role === 'pillar');
+  // Group spokes by parent_topic_id
+  const spokesByHub = outerTopics.reduce<Record<string, EnrichedTopic[]>>((acc, spoke) => {
+    const key = spoke.parent_topic_id ?? '_unassigned';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(spoke);
+    return acc;
+  }, {});
+
+  const toggleHub = (hubId: string) =>
+    setExpandedHubs(prev => ({ ...prev, [hubId]: !prev[hubId] }));
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-      <h3 className="text-sm font-semibold text-gray-200 mb-4">Hub-Spoke Architecture</h3>
-      <div className="space-y-3">
-        <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-purple-600/20 border border-purple-500/30 flex items-center justify-center">
-                <span className="text-xs font-semibold text-purple-300">H</span>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-300">Hub pages</p>
-                <p className="text-xs text-gray-500">Cluster pillar pages</p>
-              </div>
-            </div>
-            <span className="text-xs text-gray-400">{hubCount} pages</span>
-          </div>
-        </div>
-        <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
-                <span className="text-xs font-semibold text-blue-300">S</span>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-300">Spoke pages</p>
-                <p className="text-xs text-gray-500">Supporting topic pages</p>
-              </div>
-            </div>
-            <span className="text-xs text-gray-400">{spokeCount} pages</span>
-          </div>
-        </div>
-
-        {coreTopics.length === 0 && (
-          <p className="text-xs text-gray-500 text-center pt-2">
-            Generate topical map to populate cluster architecture
-          </p>
-        )}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-gray-200">Page Structure</h3>
+        <span className="text-xs text-gray-500">{hubs.length} hubs, {outerTopics.length} spokes</span>
       </div>
+
+      {hubs.length === 0 ? (
+        <p className="text-xs text-gray-500 text-center pt-2">
+          Generate topical map to populate cluster architecture
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {hubs.map(hub => {
+            const spokes = spokesByHub[hub.id] ?? [];
+            const isExpanded = expandedHubs[hub.id] ?? false;
+            const visibleSpokes = isExpanded ? spokes : spokes.slice(0, INITIAL_SPOKES);
+            const hiddenCount = spokes.length - INITIAL_SPOKES;
+
+            return (
+              <div key={hub.id} className="bg-gray-900 border border-gray-700 rounded-md overflow-hidden">
+                {/* Hub row */}
+                <button
+                  type="button"
+                  onClick={() => toggleHub(hub.id)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800/50 transition-colors text-left"
+                >
+                  <div className="w-6 h-6 rounded-full bg-purple-600/20 border border-purple-500/30 flex items-center justify-center flex-shrink-0">
+                    <span className="text-[10px] font-semibold text-purple-300">H</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-200 truncate">{hub.title}</p>
+                    {hub.slug && (
+                      <p className="text-[11px] text-gray-500 font-mono truncate">/{hub.slug}</p>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-500 flex-shrink-0">{spokes.length} spokes</span>
+                  <svg
+                    className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {/* Spokes list (always show first few, expand for rest) */}
+                {spokes.length > 0 && (isExpanded || visibleSpokes.length > 0) && (
+                  <div className="border-t border-gray-700/50 px-4 py-2 space-y-1">
+                    {visibleSpokes.map(spoke => (
+                      <div key={spoke.id} className="flex items-center gap-2 py-1 pl-4">
+                        <div className="w-4 h-4 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
+                          <span className="text-[8px] font-semibold text-blue-300">S</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-gray-400 truncate">{spoke.title}</p>
+                          {spoke.slug && (
+                            <p className="text-[10px] text-gray-600 font-mono truncate">/{spoke.slug}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {!isExpanded && hiddenCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => toggleHub(hub.id)}
+                        className="text-[11px] text-blue-400 hover:text-blue-300 pl-4 py-1"
+                      >
+                        Show {hiddenCount} more
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Unassigned spokes */}
+          {(spokesByHub['_unassigned']?.length ?? 0) > 0 && (
+            <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
+              <p className="text-xs text-gray-500">
+                {spokesByHub['_unassigned'].length} spokes without hub assignment
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -126,6 +185,8 @@ function PublishingWavesPanel({ coreTopics, outerTopics }: {
   coreTopics: EnrichedTopic[];
   outerTopics: EnrichedTopic[];
 }) {
+  const [expandedWaves, setExpandedWaves] = useState<Record<number, boolean>>({});
+
   // Classify topics into waves based on topic_class.
   // topic_class is typed as 'monetization' | 'informational' but may carry
   // additional legacy string values at runtime; cast for flexible comparisons.
@@ -143,6 +204,7 @@ function PublishingWavesPanel({ coreTopics, outerTopics }: {
       description: 'CS monetization (first) -- Revenue-driving pages targeting commercial search intent with highest conversion potential.',
       color: 'border-green-500/50 bg-green-900/10',
       count: wave1.length,
+      topics: wave1,
     },
     {
       number: 2,
@@ -150,6 +212,7 @@ function PublishingWavesPanel({ coreTopics, outerTopics }: {
       description: 'CS knowledge clusters -- Informational content supporting commercial topics, building topical depth.',
       color: 'border-blue-500/50 bg-blue-900/10',
       count: wave2.length,
+      topics: wave2,
     },
     {
       number: 3,
@@ -157,6 +220,7 @@ function PublishingWavesPanel({ coreTopics, outerTopics }: {
       description: 'Regional pages -- Location-specific content for geographic targeting and local authority.',
       color: 'border-amber-500/50 bg-amber-900/10',
       count: wave3.length,
+      topics: wave3,
     },
     {
       number: 4,
@@ -164,10 +228,12 @@ function PublishingWavesPanel({ coreTopics, outerTopics }: {
       description: 'AS authority pages -- Author Section expertise pages that build entity authority and E-E-A-T signals.',
       color: 'border-purple-500/50 bg-purple-900/10',
       count: wave4.length,
+      topics: wave4,
     },
   ];
 
   const total = coreTopics.length + outerTopics.length;
+  const WAVE_INITIAL = 8;
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
@@ -175,6 +241,10 @@ function PublishingWavesPanel({ coreTopics, outerTopics }: {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {waves.map((wave) => {
           const percent = total > 0 ? Math.round((wave.count / total) * 100) : 0;
+          const isExpanded = expandedWaves[wave.number] ?? false;
+          const visibleTopics = isExpanded ? wave.topics : wave.topics.slice(0, WAVE_INITIAL);
+          const hiddenCount = wave.topics.length - WAVE_INITIAL;
+
           return (
             <div
               key={wave.number}
@@ -193,6 +263,46 @@ function PublishingWavesPanel({ coreTopics, outerTopics }: {
                   {wave.count > 0 ? `${wave.count} topics assigned` : 'Not started'}
                 </p>
               </div>
+
+              {/* Expandable topic list */}
+              {wave.topics.length > 0 && (
+                <div className="mt-3 border-t border-gray-700/40 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedWaves(prev => ({ ...prev, [wave.number]: !prev[wave.number] }))}
+                    className="text-[11px] text-blue-400 hover:text-blue-300 mb-1.5 flex items-center gap-1"
+                  >
+                    <svg
+                      className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                    {isExpanded ? 'Hide topics' : `Show ${wave.topics.length} topics`}
+                  </button>
+                  {(isExpanded || visibleTopics.length <= WAVE_INITIAL) && isExpanded && (
+                    <div className="space-y-1">
+                      {visibleTopics.map(t => (
+                        <div key={t.id} className="text-[11px] text-gray-400 py-0.5 pl-1">
+                          <span className="truncate block">{t.title}</span>
+                          {t.slug && (
+                            <span className="text-[10px] text-gray-600 font-mono block truncate">/{t.slug}</span>
+                          )}
+                        </div>
+                      ))}
+                      {!isExpanded && hiddenCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedWaves(prev => ({ ...prev, [wave.number]: true }))}
+                          className="text-[10px] text-blue-400 hover:text-blue-300 pl-1"
+                        >
+                          Show {hiddenCount} more
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
@@ -203,9 +313,19 @@ function PublishingWavesPanel({ coreTopics, outerTopics }: {
 
 // ──── Topic List ────
 
-function TopicList({ topics, label }: { topics: EnrichedTopic[]; label: string }) {
+function TopicList({ topics, label, allCoreTopics }: {
+  topics: EnrichedTopic[];
+  label: string;
+  allCoreTopics?: EnrichedTopic[];
+}) {
   const [expanded, setExpanded] = useState(false);
   const display = expanded ? topics : topics.slice(0, 5);
+
+  // Build a lookup for parent hub names
+  const hubNameById = (allCoreTopics ?? []).reduce<Record<string, string>>((acc, t) => {
+    if (t.cluster_role === 'pillar') acc[t.id] = t.title;
+    return acc;
+  }, {});
 
   if (topics.length === 0) return null;
 
@@ -216,17 +336,34 @@ function TopicList({ topics, label }: { topics: EnrichedTopic[]; label: string }
         <span className="text-xs text-gray-500">{topics.length} topics</span>
       </div>
       <div className="space-y-1">
-        {display.map((t, i) => (
-          <div key={i} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-900 rounded px-3 py-1.5">
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-              t.cluster_role === 'pillar' ? 'bg-purple-400' : 'bg-blue-400'
-            }`} />
-            <span className="truncate">{t.title}</span>
-            {t.topic_class && (
-              <span className="ml-auto text-gray-600 flex-shrink-0">{t.topic_class}</span>
-            )}
-          </div>
-        ))}
+        {display.map((t, i) => {
+          const parentName = t.parent_topic_id ? hubNameById[t.parent_topic_id] : null;
+          return (
+            <div key={i} className="bg-gray-900 rounded px-3 py-2">
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                  t.cluster_role === 'pillar' ? 'bg-purple-400' : 'bg-blue-400'
+                }`} />
+                <span className="truncate">{t.title}</span>
+                {t.topic_class && (
+                  <span className="ml-auto text-gray-600 flex-shrink-0">{t.topic_class}</span>
+                )}
+              </div>
+              {(t.slug || parentName) && (
+                <div className="flex items-center gap-2 pl-4 mt-0.5">
+                  {t.slug && (
+                    <span className="text-[10px] text-gray-600 font-mono truncate">/{t.slug}</span>
+                  )}
+                  {parentName && (
+                    <span className="text-[10px] text-gray-600 truncate">
+                      <span className="text-gray-700 mx-1">&rarr;</span>Hub: {parentName}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       {topics.length > 5 && (
         <button
@@ -392,21 +529,27 @@ const PipelineMapStep: React.FC = () => {
         <MetricCard label="Internal Links" value={internalLinksEstimate > 0 ? `~${internalLinksEstimate}` : 0} color={internalLinksEstimate > 0 ? 'amber' : 'gray'} />
       </div>
 
-      {/* Hub-Spoke Architecture */}
+      {/* Review: Page Structure */}
       <HubSpokeSection coreTopics={coreTopics} outerTopics={outerTopics} />
 
-      {/* Topic Lists */}
+      {/* Review: URL Slugs */}
       {totalTopics > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <TopicList topics={coreTopics} label="Core Topics (Hub Pages)" />
-          <TopicList topics={outerTopics} label="Outer Topics (Spoke Pages)" />
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-gray-600 mb-2">URL Slugs</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <TopicList topics={coreTopics} label="Core Topics (Hub Pages)" allCoreTopics={coreTopics} />
+            <TopicList topics={outerTopics} label="Outer Topics (Spoke Pages)" allCoreTopics={coreTopics} />
+          </div>
         </div>
       )}
 
-      {/* Link Flow Rules */}
-      <LinkFlowRulesPanel />
+      {/* Review: Link Architecture */}
+      <div>
+        <p className="text-[10px] uppercase tracking-widest text-gray-600 mb-2">Link Architecture</p>
+        <LinkFlowRulesPanel />
+      </div>
 
-      {/* Publishing Waves */}
+      {/* Review: Publishing Waves */}
       <PublishingWavesPanel coreTopics={coreTopics} outerTopics={outerTopics} />
 
       {/* Generate Button */}
