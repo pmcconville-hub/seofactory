@@ -20,6 +20,7 @@ export interface PillarSuggestionResult {
   centralSearchIntent: string;
   csiPredicates: string[];
   scPriorities: string[];
+  contentAreas: Array<{ name: string; type: 'revenue' | 'authority' }>;
   reasoning: string;
   detectedLanguage: string;
   detectedRegion: string;
@@ -78,6 +79,8 @@ PILLAR SUGGESTIONS — must be in the DETECTED language (not English, unless the
 
 4. **SC Attribute Priorities**: Key authority attributes in the website's language.
 
+5. **Content Areas**: 5-7 content groups for the topical map, each labeled with a business-recognizable name and classified as either "revenue" (service/product pages driving conversions) or "authority" (informational/expertise pages building E-E-A-T). Names should be in the website's language and reflect the actual business service lines or topic areas.
+
 Return JSON:
 {
   "centralEntity": "string — the CE noun/phrase in the website's language",
@@ -85,6 +88,10 @@ Return JSON:
   "centralSearchIntent": "string — one-sentence CSI description in the website's language",
   "csiPredicates": ["verb1", "verb2", "verb3", "verb4", "verb5"],
   "scPriorities": ["priority1", "priority2", "priority3"],
+  "contentAreas": [
+    {"name": "business-recognizable area name", "type": "revenue"},
+    {"name": "another area name", "type": "authority"}
+  ],
   "reasoning": "Brief explanation (in English) of why these pillars are optimal",
   "detectedLanguage": "ISO 639-1 language code (e.g., 'nl', 'de', 'en', 'fr', 'es')",
   "detectedRegion": "Country name (e.g., 'Netherlands', 'Germany', 'United States')"
@@ -96,6 +103,7 @@ Return JSON:
     centralSearchIntent: '',
     csiPredicates: [],
     scPriorities: [],
+    contentAreas: [],
     reasoning: 'Fallback — AI suggestion unavailable',
     detectedLanguage: language || '',
     detectedRegion: targetMarket || region || '',
@@ -116,6 +124,9 @@ Return JSON:
       centralSearchIntent: result.centralSearchIntent || fallback.centralSearchIntent,
       csiPredicates: Array.isArray(result.csiPredicates) ? result.csiPredicates : [],
       scPriorities: Array.isArray(result.scPriorities) ? result.scPriorities : [],
+      contentAreas: Array.isArray(result.contentAreas)
+        ? result.contentAreas.filter((a: any) => a?.name && (a?.type === 'revenue' || a?.type === 'authority'))
+        : [],
       reasoning: result.reasoning || '',
       detectedLanguage: result.detectedLanguage || fallback.detectedLanguage,
       detectedRegion: result.detectedRegion || fallback.detectedRegion,

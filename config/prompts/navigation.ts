@@ -587,13 +587,14 @@ export const RESEARCH_BUSINESS_PROMPT = (
   input: string,
   inputType: 'url' | 'name' | 'description' | 'mixed',
   scrapedContent?: { title: string; description: string; content: string },
-  userDescription?: string
+  userDescription?: string,
+  domainTLD?: string
 ): string => `
 You are a business analyst expert. Analyze the provided information and extract structured business data to help auto-fill a content strategy form.
 
 ## Input Information
 - **Input Type**: ${inputType}
-- **User Input**: ${input}
+- **User Input**: ${input}${domainTLD ? `\n- **Domain TLD**: .${domainTLD}` : ''}
 
 ${userDescription ? `
 ## User-Provided Description
@@ -611,12 +612,20 @@ ${scrapedContent.content}
 ## Your Task
 Based on the above information, extract the following business details. If you cannot determine a value with reasonable confidence, leave it as an empty string.
 
+LANGUAGE & REGION DETECTION — CRITICAL:
+Detect the website's language and target region from ALL available signals:
+1. The scraped content / page text — what language is it written in?
+2. The domain TLD (.nl = Netherlands/Dutch, .de = Germany/German, .fr = France/French, .be = Belgium, .es = Spain/Spanish, .uk = United Kingdom, etc.)
+3. Location mentions in the content (city names, regions, country references)
+4. Only default to "en" / "United States" if there are absolutely NO non-English signals.
+For "region", extract the most specific geographic area (province/state/city) if mentioned.
+
 **IMPORTANT**:
 - Be specific and accurate. Do not make up information.
-- For language and targetMarket, infer from the content language and business location/focus.
+- For language and targetMarket, use the multi-signal detection above — do NOT default to English/US if non-English signals are present.
 - For seedKeyword, identify the main topic or product/service the business focuses on.
-- For valueProp, extract what makes this business unique or what value they provide.
-- For audience, identify who the business is targeting.
+- For valueProp, extract what makes this business unique or what value they provide. Write in the DETECTED language.
+- For audience, identify who the business is targeting. Write in the DETECTED language.
 ${inputType === 'name' || inputType === 'description' || inputType === 'mixed' ? '- Use your knowledge about the business/industry to supplement any gaps.' : ''}
 
 ${jsonResponseInstruction}
@@ -629,6 +638,7 @@ Return a JSON object with these fields:
   "audience": "Target audience description (e.g., 'Small business owners', 'Enterprise legal teams')",
   "language": "Language code (e.g., 'en', 'nl', 'de', 'es')",
   "targetMarket": "Target country/region (e.g., 'United States', 'Netherlands', 'European Union')",
+  "region": "Most specific geographic area mentioned (e.g., 'Gelderland', 'California', 'Noord-Brabant'), or empty if not determinable",
   "authorName": "If identifiable, the main author/expert name, otherwise empty",
   "authorBio": "If identifiable, a brief bio of the expert, otherwise empty",
   "authorCredentials": "If identifiable, credentials/qualifications, otherwise empty"

@@ -93,6 +93,199 @@ function SchemaPreviewPanel({ content }: { content?: string }) {
   );
 }
 
+// ──── JSON-LD Schema Preview (T1) ────
+
+function JsonLdSchemaPreview({
+  pillars,
+  eavs,
+  businessInfo,
+}: {
+  pillars?: { centralEntity?: string; sourceContext?: string };
+  eavs?: Array<{ predicate?: { relation?: string }; object?: { value?: string | number } }>;
+  businessInfo: {
+    projectName?: string;
+    domain?: string;
+    industry?: string;
+    language?: string;
+    targetMarket?: string;
+  };
+}) {
+  if (!pillars?.centralEntity && (!eavs || eavs.length === 0)) return null;
+
+  // Extract EAV values for schema fields
+  const findEav = (patterns: string[]): string | undefined => {
+    if (!eavs) return undefined;
+    for (const pattern of patterns) {
+      const found = eavs.find(e =>
+        e.predicate?.relation?.toLowerCase()?.includes(pattern.toLowerCase())
+      );
+      if (found?.object?.value) return String(found.object.value);
+    }
+    return undefined;
+  };
+
+  const foundingDate = findEav(['founded', 'founding', 'established', 'since', 'opgericht']);
+  const employees = findEav(['employees', 'medewerkers', 'team size', 'staff']);
+  const address = findEav(['address', 'location', 'adres', 'kantoor']);
+  const certification = findEav(['certification', 'certificering', 'keurmerk', 'iso', 'accreditation']);
+  const slogan = findEav(['slogan', 'tagline', 'motto']);
+
+  const schema: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: businessInfo.projectName || pillars?.centralEntity || '',
+    url: businessInfo.domain ? (businessInfo.domain.startsWith('http') ? businessInfo.domain : `https://${businessInfo.domain}`) : '',
+    ...(pillars?.sourceContext && { description: pillars.sourceContext }),
+    ...(foundingDate && { foundingDate }),
+    ...(employees && { numberOfEmployees: { '@type': 'QuantitativeValue', value: employees } }),
+    ...(address && { address: { '@type': 'PostalAddress', streetAddress: address } }),
+    ...(certification && { hasCredential: { '@type': 'EducationalOccupationalCredential', credentialCategory: certification } }),
+    ...(slogan && { slogan }),
+    ...(businessInfo.industry && { industry: businessInfo.industry }),
+    ...(pillars?.centralEntity && { knowsAbout: pillars.centralEntity }),
+    ...(businessInfo.language && { inLanguage: businessInfo.language }),
+  };
+
+  const schemaJson = JSON.stringify(schema, null, 2);
+  const eavFieldCount = [foundingDate, employees, address, certification, slogan].filter(Boolean).length;
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-gray-200">JSON-LD Schema Preview</h3>
+        {eavFieldCount > 0 && (
+          <span className="text-[10px] bg-emerald-900/20 text-emerald-400 border border-emerald-700/30 rounded px-1.5 py-0.5">
+            {eavFieldCount} business facts embedded
+          </span>
+        )}
+      </div>
+      <div className="bg-gray-900 border border-gray-700 rounded-md p-4 max-h-[350px] overflow-y-auto">
+        <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap">
+          {`<script type="application/ld+json">\n${schemaJson}\n</script>`}
+        </pre>
+      </div>
+      <p className="text-xs text-gray-500 mt-2">
+        Schema populated with your verified business data. Hand this to your developer for implementation.
+      </p>
+    </div>
+  );
+}
+
+// ──── Performance Targets Card (T2) ────
+
+function PerformanceTargetsCard() {
+  const targets = [
+    { metric: 'TTFB', target: '< 150ms', note: 'Time to First Byte — use CDN, optimize server response' },
+    { metric: 'LCP', target: '< 2.5s', note: 'Largest Contentful Paint — optimize hero images, defer non-critical CSS' },
+    { metric: 'INP', target: '< 200ms', note: 'Interaction to Next Paint — minimize JS execution, use requestIdleCallback' },
+    { metric: 'CLS', target: '< 0.1', note: 'Cumulative Layout Shift — set explicit dimensions on images/embeds' },
+  ];
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+      <h3 className="text-sm font-semibold text-gray-200 mb-4">Performance Targets (Core Web Vitals)</h3>
+      <div className="space-y-2">
+        {targets.map(t => (
+          <div key={t.metric} className="flex items-center gap-3 bg-gray-900 border border-gray-700 rounded-md px-3 py-2">
+            <code className="text-xs font-mono font-bold text-blue-300 w-12 flex-shrink-0">{t.metric}</code>
+            <span className="text-xs font-semibold text-green-400 w-16 flex-shrink-0">{t.target}</span>
+            <span className="text-[11px] text-gray-500">{t.note}</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-gray-600 mt-3">
+        Share this card with your developer. All targets based on Google's "Good" thresholds.
+      </p>
+    </div>
+  );
+}
+
+// ──── Navigation Spec (T3) ────
+
+function NavigationSpecCard({ topics }: {
+  topics: Array<{ title: string; cluster_role?: string; topic_class?: string | null; slug?: string }>;
+}) {
+  if (topics.length === 0) return null;
+
+  const hubs = topics.filter(t => t.cluster_role === 'pillar');
+  const headerItems = hubs.slice(0, 7);
+  const footerItems = hubs;
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+      <h3 className="text-sm font-semibold text-gray-200 mb-4">Navigation Structure</h3>
+
+      {/* Header nav wireframe */}
+      <div className="bg-gray-900 border border-gray-700 rounded-md p-4 mb-4">
+        <p className="text-[10px] text-gray-500 uppercase mb-2">Header Navigation (max 7 items)</p>
+        <div className="flex flex-wrap gap-2">
+          <span className="text-[11px] bg-gray-700 text-gray-300 rounded px-2.5 py-1 border border-gray-600 font-medium">Home</span>
+          {headerItems.map((hub, i) => (
+            <span key={i} className="text-[11px] bg-gray-700 text-gray-300 rounded px-2.5 py-1 border border-gray-600">
+              {hub.title.length > 25 ? hub.title.slice(0, 22) + '...' : hub.title}
+            </span>
+          ))}
+          <span className="text-[11px] bg-gray-700 text-gray-300 rounded px-2.5 py-1 border border-gray-600 font-medium">Contact</span>
+        </div>
+      </div>
+
+      {/* Footer nav wireframe */}
+      <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
+        <p className="text-[10px] text-gray-500 uppercase mb-2">Footer Navigation</p>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div>
+            <p className="text-[10px] text-gray-400 font-semibold mb-1">Services</p>
+            {footerItems.filter(h => h.topic_class === 'monetization').slice(0, 4).map((h, i) => (
+              <p key={i} className="text-[10px] text-gray-500">{h.title}</p>
+            ))}
+          </div>
+          <div>
+            <p className="text-[10px] text-gray-400 font-semibold mb-1">Knowledge</p>
+            {footerItems.filter(h => h.topic_class !== 'monetization').slice(0, 4).map((h, i) => (
+              <p key={i} className="text-[10px] text-gray-500">{h.title}</p>
+            ))}
+          </div>
+          <div>
+            <p className="text-[10px] text-gray-400 font-semibold mb-1">Legal</p>
+            <p className="text-[10px] text-gray-500">Privacy Policy</p>
+            <p className="text-[10px] text-gray-500">Terms of Service</p>
+            <p className="text-[10px] text-gray-500">Cookie Settings</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──── Image Specification Card (T4) ────
+
+function ImageSpecCard({ centralEntity }: { centralEntity?: string }) {
+  const entity = centralEntity || 'your-brand';
+  const rules = [
+    { rule: 'Format', value: 'WebP or AVIF (fallback: JPEG)', note: 'Use <picture> element with format fallbacks' },
+    { rule: 'Max width', value: '1200px', note: 'Hero images. Content images: 800px max' },
+    { rule: 'Lazy loading', value: 'loading="lazy"', note: 'All images below the fold. Hero image: eager' },
+    { rule: 'Alt text', value: 'Visual semantics', note: 'Use alt text from content generation (vocabulary-extending)' },
+    { rule: 'File naming', value: `${entity.toLowerCase().replace(/\s+/g, '-')}-[topic]-[descriptor].webp`, note: 'Entity-prefixed for brand signal' },
+    { rule: 'Aspect ratio', value: 'Set width + height', note: 'Prevents CLS — always specify dimensions' },
+  ];
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+      <h3 className="text-sm font-semibold text-gray-200 mb-4">Image Implementation Spec</h3>
+      <div className="space-y-2">
+        {rules.map(r => (
+          <div key={r.rule} className="flex items-start gap-3 text-xs">
+            <span className="text-gray-400 font-medium w-24 flex-shrink-0">{r.rule}</span>
+            <code className="text-blue-300 font-mono text-[11px] flex-shrink-0">{r.value}</code>
+            <span className="text-gray-500 text-[10px]">{r.note}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ──── Prerequisite Banner ────
 
 function PrerequisiteBanner({ message }: { message: string }) {
@@ -296,6 +489,22 @@ const PipelineTechSpecStep: React.FC = () => {
 
       {/* Sitemap / Schema Preview */}
       <SchemaPreviewPanel content={sitemapDeliverable?.content} />
+
+      {/* JSON-LD Schema with Real Data (T1) */}
+      <JsonLdSchemaPreview
+        pillars={activeMap?.pillars}
+        eavs={activeMap?.eavs}
+        businessInfo={state.businessInfo}
+      />
+
+      {/* Performance Targets (T2) */}
+      <PerformanceTargetsCard />
+
+      {/* Navigation Spec (T3) */}
+      <NavigationSpecCard topics={activeMap?.topics ?? []} />
+
+      {/* Image Spec (T4) */}
+      <ImageSpecCard centralEntity={activeMap?.pillars?.centralEntity} />
 
       {/* Action Buttons */}
       <div className="flex items-center gap-3 justify-center">

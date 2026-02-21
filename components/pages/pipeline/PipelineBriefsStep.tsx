@@ -4,7 +4,7 @@ import { useAppState } from '../../../state/appState';
 import ApprovalGate from '../../pipeline/ApprovalGate';
 import { generateContentBrief, suggestResponseCode } from '../../../services/ai/briefGeneration';
 import { KnowledgeGraph } from '../../../lib/knowledgeGraph';
-import type { EnrichedTopic, ContentBrief } from '../../../types';
+import type { EnrichedTopic, ContentBrief, BriefSection } from '../../../types';
 import { getSupabaseClient } from '../../../services/supabaseClient';
 
 // ──── Metric Card ────
@@ -46,25 +46,301 @@ function StatusBadge({ status }: { status: 'Pending' | 'Generated' | 'Reviewed' 
   );
 }
 
-// ──── Brief Row ────
+// ──── Format Icons ────
 
-function BriefRow({ title, sections, wordTarget, status }: {
-  title: string;
-  sections: number;
-  wordTarget: number;
-  status: 'Pending' | 'Generated' | 'Reviewed';
+function FormatIcon({ format }: { format: string }) {
+  const lower = format.toLowerCase();
+  if (lower.includes('table') || lower === 'table') {
+    return <span className="text-[9px] bg-blue-900/20 text-blue-300 border border-blue-700/30 rounded px-1 py-0.5">table</span>;
+  }
+  if (lower.includes('list') || lower === 'listing' || lower.includes('paa')) {
+    return <span className="text-[9px] bg-green-900/20 text-green-300 border border-green-700/30 rounded px-1 py-0.5">list</span>;
+  }
+  if (lower === 'fs' || lower.includes('featured')) {
+    return <span className="text-[9px] bg-amber-900/20 text-amber-300 border border-amber-700/30 rounded px-1 py-0.5">snippet</span>;
+  }
+  return <span className="text-[9px] bg-gray-700/30 text-gray-400 border border-gray-600/30 rounded px-1 py-0.5">prose</span>;
+}
+
+// ──── Brief Compact Card (Decision 7) ────
+
+function BriefCard({ topic, brief }: {
+  topic: EnrichedTopic;
+  brief: ContentBrief | null;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const sections = brief?.structured_outline ?? [];
+  const sectionCount = sections.length;
+  const isPending = !brief;
+
+  // Framework label from topic_class
+  const frameworkLabel = topic.topic_class === 'monetization' ? 'revenue page' : 'authority page';
+  const labelColor = topic.topic_class === 'monetization' ? 'text-emerald-400/60' : 'text-sky-400/60';
+
+  // B1: Count formats
+  const formatCounts = { prose: 0, table: 0, list: 0 };
+  for (const s of sections) {
+    const fmt = (s.format_code || s.content_type || s.format || '').toLowerCase();
+    if (fmt.includes('table')) formatCounts.table++;
+    else if (fmt.includes('list') || fmt === 'listing' || fmt === 'paa') formatCounts.list++;
+    else formatCounts.prose++;
+  }
+  const formatSummary = [
+    formatCounts.prose > 0 ? `${formatCounts.prose} prose` : '',
+    formatCounts.table > 0 ? `${formatCounts.table} table${formatCounts.table > 1 ? 's' : ''}` : '',
+    formatCounts.list > 0 ? `${formatCounts.list} list${formatCounts.list > 1 ? 's' : ''}` : '',
+  ].filter(Boolean).join(', ');
+
+  // B2: Count featured snippet targets
+  const snippetTargets = sections.filter(s => {
+    const fmt = (s.format_code || '').toUpperCase();
+    return fmt === 'FS' || fmt === 'PAA';
+  }).length;
+
+  // B3: Count business facts (mapped EAVs)
+  let eavCount = 0;
+  for (const s of sections) {
+    eavCount += (s.mapped_eavs?.length ?? 0);
+  }
+  // Also count contextualVectors
+  if (brief?.contextualVectors) eavCount = Math.max(eavCount, brief.contextualVectors.length);
+
+  // B5: Word count target
+  const wordTarget = topic.cluster_role === 'pillar' ? '1,200-1,500' : '800-1,200';
+
+  // Snippet type detection for expanded view
+  const getSnippetType = (section: BriefSection): string | null => {
+    const fmt = (section.format_code || '').toUpperCase();
+    if (fmt === 'FS') return 'paragraph';
+    if (fmt === 'PAA') return 'list';
+    if (fmt === 'TABLE') return 'table';
+    if (fmt === 'LISTING') return 'list';
+    const heading = section.heading.toLowerCase();
+    if (heading.startsWith('wat is') || heading.startsWith('what is') || heading.includes('definition')) return 'paragraph';
+    if (heading.includes('stappen') || heading.includes('steps') || heading.includes('how to')) return 'list';
+    if (heading.includes('vergelijk') || heading.includes('compare') || heading.includes('types')) return 'table';
+    return null;
+  };
+
   return (
-    <div className="flex items-center justify-between bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-300 truncate">{title}</p>
-        <p className="text-xs text-gray-500 mt-0.5">
-          {sections} sections &middot; {wordTarget.toLocaleString()} words target
-        </p>
-      </div>
-      <StatusBadge status={status} />
+    <div className={`bg-gray-900 border border-gray-700 rounded-md overflow-hidden ${isPending ? 'opacity-60' : ''}`}>
+      {/* Compact card (always visible) */}
+      <button
+        type="button"
+        onClick={() => !isPending && setExpanded(!expanded)}
+        disabled={isPending}
+        className="w-full flex items-start justify-between px-4 py-3 text-left hover:bg-gray-800/30 transition-colors disabled:cursor-default"
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-gray-300 truncate">{topic.title}</p>
+            <span className={`text-[9px] ${labelColor} flex-shrink-0`}>({frameworkLabel})</span>
+          </div>
+          {!isPending && (
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-[10px] text-gray-500">{sectionCount} sections</span>
+              {formatSummary && (
+                <>
+                  <span className="text-gray-700">&middot;</span>
+                  <span className="text-[10px] text-gray-500">{formatSummary}</span>
+                </>
+              )}
+              <span className="text-gray-700">&middot;</span>
+              <span className="text-[10px] text-gray-500">{wordTarget} words</span>
+              {eavCount > 0 && (
+                <>
+                  <span className="text-gray-700">&middot;</span>
+                  <span className="text-[10px] text-blue-400">{eavCount} facts</span>
+                </>
+              )}
+              {snippetTargets > 0 && (
+                <>
+                  <span className="text-gray-700">&middot;</span>
+                  <span className="text-[10px] text-amber-400">{snippetTargets} snippet target{snippetTargets > 1 ? 's' : ''}</span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+          <StatusBadge status={isPending ? 'Pending' : 'Generated'} />
+          {!isPending && (
+            <svg
+              className={`w-3.5 h-3.5 text-gray-500 transition-transform ${expanded ? 'rotate-180' : ''}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          )}
+        </div>
+      </button>
+
+      {/* Expanded view — full heading hierarchy (Decision 7) */}
+      {expanded && brief && (
+        <div className="border-t border-gray-700/50 px-4 py-3 space-y-3">
+          {/* Heading hierarchy with format + snippet badges */}
+          {sections.length > 0 && (
+            <div className="space-y-1">
+              {sections.map((section, i) => {
+                const snippetType = getSnippetType(section);
+                const fmt = section.format_code || section.content_type || section.format || 'PROSE';
+                // B4: Opening sentence hint
+                const openingHint = section.level === 2
+                  ? (() => {
+                      const h = section.heading.toLowerCase();
+                      if (h.startsWith('wat is') || h.startsWith('what is') || h.includes('definitie'))
+                        return 'Lead with: Define the concept in one sentence';
+                      if (h.includes('kosten') || h.includes('cost') || h.includes('prijs') || h.includes('price'))
+                        return 'Lead with: State the typical price range immediately';
+                      if (h.includes('hoe') || h.includes('how') || h.includes('stappen') || h.includes('steps'))
+                        return 'Lead with: State the goal, then list steps';
+                      if (h.includes('voordel') || h.includes('benefit') || h.includes('advantages'))
+                        return 'Lead with: Name the primary benefit in sentence 1';
+                      if (h.includes('vergelijk') || h.includes('compare') || h.includes('vs'))
+                        return 'Lead with: State the key differentiator';
+                      return 'Lead with: Answer the heading\'s question directly';
+                    })()
+                  : null;
+                return (
+                  <div key={i}>
+                    <div
+                      className="flex items-center gap-2 text-xs"
+                      style={{ paddingLeft: `${(section.level - 1) * 16}px` }}
+                    >
+                      <span className="text-gray-500 font-mono text-[10px] w-6 flex-shrink-0">H{section.level}</span>
+                      <span className="text-gray-300 truncate flex-1">{section.heading}</span>
+                      <FormatIcon format={fmt} />
+                      {snippetType && (
+                        <span className="text-[9px] bg-amber-900/20 text-amber-300 border border-amber-700/30 rounded px-1 py-0.5">
+                          Google answer: {snippetType}
+                        </span>
+                      )}
+                      {(section.mapped_eavs?.length ?? 0) > 0 && (
+                        <span className="text-[9px] text-blue-400">{section.mapped_eavs!.length} facts</span>
+                      )}
+                    </div>
+                    {openingHint && (
+                      <p className="text-[9px] text-gray-600 italic" style={{ paddingLeft: `${(section.level - 1) * 16 + 30}px` }}>
+                        {openingHint}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Required facts panel */}
+          {eavCount > 0 && brief.contextualVectors && brief.contextualVectors.length > 0 && (
+            <div className="bg-gray-800/50 border border-gray-700/50 rounded-md px-3 py-2">
+              <p className="text-[10px] text-gray-500 uppercase mb-1">Required business facts</p>
+              <div className="flex flex-wrap gap-1">
+                {brief.contextualVectors.slice(0, 8).map((eav, i) => (
+                  <span key={i} className="text-[10px] bg-blue-900/15 text-blue-300 border border-blue-700/20 rounded px-1.5 py-0.5">
+                    {eav.predicate?.relation || 'fact'}: {String(eav.object?.value ?? '').slice(0, 30)}
+                  </span>
+                ))}
+                {brief.contextualVectors.length > 8 && (
+                  <span className="text-[10px] text-gray-500">+{brief.contextualVectors.length - 8} more</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Internal link targets */}
+          {brief.contextualBridge && (
+            <div className="bg-gray-800/50 border border-gray-700/50 rounded-md px-3 py-2">
+              <p className="text-[10px] text-gray-500 uppercase mb-1">Internal link targets</p>
+              <div className="flex flex-wrap gap-1">
+                {(Array.isArray(brief.contextualBridge)
+                  ? brief.contextualBridge
+                  : brief.contextualBridge.links ?? []
+                ).slice(0, 5).map((link, i) => (
+                  <span key={i} className="text-[10px] text-gray-400">
+                    {link.targetTopic}
+                    {i < 4 ? ',' : ''}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
+}
+
+// ──── Wave Quality Score (W5) ────
+
+function computeWaveQuality(briefs: Array<{ topic: EnrichedTopic; brief: ContentBrief | null }>): number {
+  const generated = briefs.filter(b => b.brief !== null);
+  if (generated.length === 0) return 0;
+
+  let totalScore = 0;
+  for (const { brief } of generated) {
+    if (!brief) continue;
+    let score = 0;
+    const sections = brief.structured_outline ?? [];
+    // Has heading structure (25 pts)
+    if (sections.length >= 3) score += 25;
+    else if (sections.length > 0) score += 15;
+    // Has EAV assignments (25 pts)
+    const eavCount = sections.reduce((sum, s) => sum + (s.mapped_eavs?.length ?? 0), 0);
+    if (eavCount >= 3) score += 25;
+    else if (eavCount > 0) score += 15;
+    // Has internal links (25 pts)
+    const hasLinks = brief.contextualBridge || sections.some(s => (s as any).internal_links?.length > 0);
+    if (hasLinks) score += 25;
+    // Has snippet targets (25 pts)
+    const fsCount = sections.filter(s => {
+      const fmt = (s.format_code || '').toUpperCase();
+      return fmt === 'FS' || fmt === 'PAA';
+    }).length;
+    if (fsCount >= 2) score += 25;
+    else if (fsCount > 0) score += 15;
+
+    totalScore += score;
+  }
+
+  return Math.round(totalScore / generated.length);
+}
+
+// ──── Cross-page EAV Consistency (W3) ────
+
+interface EavUsage {
+  predicate: string;
+  values: Array<{ value: string; pageTitle: string }>;
+}
+
+function findEavInconsistencies(
+  briefs: Array<{ topic: EnrichedTopic; brief: ContentBrief | null }>
+): EavUsage[] {
+  const predicateMap = new Map<string, Array<{ value: string; pageTitle: string }>>();
+
+  for (const { topic, brief } of briefs) {
+    if (!brief) continue;
+    const vectors = brief.contextualVectors ?? [];
+    for (const eav of vectors) {
+      const pred = eav.predicate?.relation?.toLowerCase().trim();
+      const val = String(eav.object?.value ?? '').trim();
+      if (!pred || !val) continue;
+
+      if (!predicateMap.has(pred)) predicateMap.set(pred, []);
+      predicateMap.get(pred)!.push({ value: val, pageTitle: topic.title });
+    }
+  }
+
+  // Keep only predicates with inconsistent values
+  const inconsistencies: EavUsage[] = [];
+  for (const [predicate, usages] of predicateMap) {
+    const uniqueValues = new Set(usages.map(u => u.value.toLowerCase()));
+    if (uniqueValues.size > 1) {
+      inconsistencies.push({ predicate, values: usages });
+    }
+  }
+
+  return inconsistencies;
 }
 
 // ──── Wave Brief Group ────
@@ -83,13 +359,21 @@ function WaveBriefGroup({
   const [expanded, setExpanded] = useState(waveNumber === 1);
 
   const waveColors: Record<number, string> = {
-    1: 'border-green-500/50',
+    1: 'border-emerald-500/50',
     2: 'border-blue-500/50',
     3: 'border-amber-500/50',
-    4: 'border-purple-500/50',
+    4: 'border-sky-500/50',
   };
 
   const generatedCount = briefs.filter(b => b.brief !== null).length;
+
+  // W5: Wave quality score
+  const qualityScore = computeWaveQuality(briefs);
+  const qualityThreshold = 85;
+  const qualityOk = qualityScore >= qualityThreshold;
+
+  // W3: Cross-page EAV inconsistencies
+  const eavInconsistencies = findEavInconsistencies(briefs);
 
   return (
     <div className={`border rounded-lg ${waveColors[waveNumber] || 'border-gray-700'}`}>
@@ -112,6 +396,22 @@ function WaveBriefGroup({
           <span className="text-xs text-gray-500">
             {generatedCount}/{briefs.length} briefs generated
           </span>
+          {/* W5: Quality badge */}
+          {generatedCount > 0 && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+              qualityOk
+                ? 'bg-green-900/20 text-green-300 border-green-500/30'
+                : 'bg-amber-900/20 text-amber-300 border-amber-500/30'
+            }`}>
+              {qualityScore}%
+            </span>
+          )}
+          {/* W3: Inconsistency warning */}
+          {eavInconsistencies.length > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded border bg-red-900/20 text-red-300 border-red-500/30">
+              {eavInconsistencies.length} inconsistenc{eavInconsistencies.length === 1 ? 'y' : 'ies'}
+            </span>
+          )}
         </div>
         <button
           type="button"
@@ -128,14 +428,50 @@ function WaveBriefGroup({
 
       {expanded && (
         <div className="px-4 pb-4 space-y-2">
+          {/* W5: Quality bar (when briefs exist) */}
+          {generatedCount > 0 && (
+            <div className="flex items-center gap-3 py-2">
+              <span className="text-[10px] text-gray-500 uppercase w-20 flex-shrink-0">Quality</span>
+              <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${qualityOk ? 'bg-green-500' : 'bg-amber-500'}`}
+                  style={{ width: `${qualityScore}%` }}
+                />
+              </div>
+              <span className={`text-[10px] font-medium ${qualityOk ? 'text-green-400' : 'text-amber-400'}`}>
+                {qualityScore}% {qualityOk ? '' : `(target: ${qualityThreshold}%)`}
+              </span>
+            </div>
+          )}
+
+          {/* W3: EAV consistency warnings */}
+          {eavInconsistencies.length > 0 && (
+            <div className="bg-red-900/10 border border-red-500/20 rounded-md px-3 py-2 space-y-1">
+              <p className="text-[10px] text-red-400 uppercase font-medium">Cross-page fact inconsistencies</p>
+              {eavInconsistencies.slice(0, 3).map((item, i) => (
+                <div key={i} className="text-xs text-gray-400">
+                  <span className="text-red-300 font-medium">{item.predicate}</span>
+                  {': '}
+                  {[...new Set(item.values.map(v => v.value))].map((val, j) => (
+                    <span key={j}>
+                      {j > 0 && <span className="text-red-400"> vs </span>}
+                      <span className="text-gray-300">"{val}"</span>
+                    </span>
+                  ))}
+                </div>
+              ))}
+              {eavInconsistencies.length > 3 && (
+                <p className="text-[10px] text-red-400/60">+{eavInconsistencies.length - 3} more</p>
+              )}
+            </div>
+          )}
+
           {briefs.length > 0 ? (
             briefs.map((item, i) => (
-              <BriefRow
+              <BriefCard
                 key={i}
-                title={item.topic.title}
-                sections={item.brief?.structured_outline?.length ?? 5}
-                wordTarget={item.brief ? 2000 : 1500}
-                status={item.brief ? 'Generated' : 'Pending'}
+                topic={item.topic}
+                brief={item.brief}
               />
             ))
           ) : (
@@ -458,6 +794,10 @@ const PipelineBriefsStep: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [progressText, setProgressText] = useState('');
 
+  // J1: Adaptive display — summary when briefs exist, detail when adjusting
+  const hasBriefData = Object.keys(existingBriefs).length > 0;
+  const [isAdjusting, setIsAdjusting] = useState(!hasBriefData);
+
   const allBriefs = { ...existingBriefs, ...localBriefs };
 
   const handleGenerateWave = async (waveNumber: number) => {
@@ -582,9 +922,9 @@ const PipelineBriefsStep: React.FC = () => {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-200">Content Briefs</h2>
+        <h2 className="text-lg font-semibold text-gray-200">Content Specs</h2>
         <p className="text-sm text-gray-400 mt-1">
-          Wave-grouped content briefs with heading hierarchy, EAV assignments, and link targets
+          Detailed page specifications with heading structure, business facts, and Google answer targets
         </p>
       </div>
 
@@ -632,6 +972,24 @@ const PipelineBriefsStep: React.FC = () => {
         />
       </div>
 
+      {/* J1: Adaptive display — Adjust button in summary mode */}
+      {!isAdjusting && hasBriefData && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setIsAdjusting(true)}
+            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 px-5 py-2 rounded-md text-sm font-medium transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />
+            </svg>
+            Adjust Content Specs
+          </button>
+        </div>
+      )}
+
+      {/* Detail view — only shown when adjusting or no data */}
+      {isAdjusting && (<>
       {/* Writing Rules Panel */}
       <WritingRulesPanel language={state.businessInfo.language || 'en'} />
 
@@ -657,6 +1015,7 @@ const PipelineBriefsStep: React.FC = () => {
           <AnchorTextStrategyPanel briefs={allBriefs} />
         </div>
       </div>
+      </>)}
 
       {/* Approval Gate */}
       {gate && (stepState?.status === 'pending_approval' || stepState?.approval?.status === 'rejected') && (

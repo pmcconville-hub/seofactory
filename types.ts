@@ -395,6 +395,9 @@ export interface SEOPillars {
   // Full arrays for multi-value persistence
   csiPredicates?: string[];
   scPriorities?: string[];
+
+  // Content areas with hybrid naming (Decision 4)
+  contentAreas?: Array<{ name: string; type: 'revenue' | 'authority' }>;
 }
 
 export interface CandidateEntity {

@@ -16,7 +16,7 @@ const DebugStatePanel: React.FC<DebugStatePanelProps> = ({ stateSnapshot }) => {
     return (
       <button
         onClick={togglePanel}
-        className="fixed bottom-4 left-4 z-[200] bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-3 rounded-full shadow-lg text-xs"
+        className="fixed bottom-4 right-4 z-[200] bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-3 rounded-full shadow-lg text-xs"
         title="Debug State"
       >
         {"{...}"}
@@ -26,8 +26,8 @@ const DebugStatePanel: React.FC<DebugStatePanelProps> = ({ stateSnapshot }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[199]" onClick={togglePanel}>
-        <Card 
-            className="fixed bottom-4 left-4 z-[200] w-[450px] max-w-[90vw] h-[80vh] flex flex-col shadow-2xl"
+        <Card
+            className="fixed bottom-4 right-4 z-[200] w-[450px] max-w-[90vw] h-[80vh] flex flex-col shadow-2xl"
             onClick={e => e.stopPropagation()}
         >
             <div className="flex-shrink-0 bg-gray-800 p-2 border-b border-gray-700 flex justify-between items-center">

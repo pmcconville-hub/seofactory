@@ -124,13 +124,17 @@ export const useSmartWizard = (): UseSmartWizardReturn => {
         'audience',
         'language',
         'targetMarket',
+        'region',
       ];
 
       for (const field of fieldsToApply) {
         const suggestedValue = suggestions[field];
         if (suggestedValue && String(suggestedValue).trim()) {
-          // Only apply if the current value is empty or user hasn't edited it
-          if (!currentValues[field] || !String(currentValues[field]).trim()) {
+          const currentVal = currentValues[field] ? String(currentValues[field]).trim() : '';
+          // Treat known defaults as empty so AI suggestions can override them
+          const isDefault = (field === 'language' && currentVal === 'en')
+                         || (field === 'targetMarket' && currentVal === 'United States');
+          if (!currentVal || isDefault) {
             (newValues as any)[field] = suggestedValue;
             newAppliedFields.add(field);
           }

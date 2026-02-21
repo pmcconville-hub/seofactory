@@ -358,6 +358,7 @@ const callPerplexityForResearch = async (
     audience: String,
     language: String,
     targetMarket: String,
+    region: String,
     authorName: String,
     authorBio: String,
     authorCredentials: String,
@@ -410,13 +411,23 @@ export const researchBusiness = async (
     }
   }
 
+  // Extract TLD from domain for language/region hints
+  let domainTLD = '';
+  if (parsedInput.extractedUrl) {
+    try {
+      const hostname = new URL(parsedInput.extractedUrl).hostname;
+      domainTLD = hostname.split('.').pop() || '';
+    } catch { /* ignore */ }
+  }
+
   // Step 2: Build the research prompt with all available info
   // For mixed input, include both the scraped content and the user-provided description
   const prompt = RESEARCH_BUSINESS_PROMPT(
     input,
     parsedInput.inputType,
     scrapedContent,
-    parsedInput.extractedDescription
+    parsedInput.extractedDescription,
+    domainTLD
   );
 
   // Step 3: Call Perplexity for analysis

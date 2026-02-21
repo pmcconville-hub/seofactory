@@ -145,24 +145,33 @@ function OrderedPriorityList({ items, onAdd, onRemove, onReorder, placeholder, a
   );
 }
 
+// ──── Data Source Badge (J2) ────
+
+function DataSourceBadge({ source }: { source: 'website' | 'ai' | 'competitor' | 'user' }) {
+  const config = {
+    website: { label: 'From website', bg: 'bg-emerald-600/15 text-emerald-400 border-emerald-500/30' },
+    ai: { label: 'AI-suggested', bg: 'bg-purple-600/20 text-purple-300 border-purple-500/30' },
+    competitor: { label: 'From competitors', bg: 'bg-blue-600/20 text-blue-300 border-blue-500/30' },
+    user: { label: 'You entered', bg: 'bg-gray-600/20 text-gray-400 border-gray-500/30' },
+  };
+  const c = config[source];
+  return (
+    <span className={`inline-flex items-center gap-1 border rounded px-1.5 py-0.5 text-[9px] font-medium ${c.bg}`}>
+      {c.label}
+    </span>
+  );
+}
+
 // ──── AI Badge ────
 
 function AiBadge() {
-  return (
-    <span className="inline-flex items-center gap-1 bg-purple-600/20 text-purple-300 border border-purple-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase">
-      AI
-    </span>
-  );
+  return <DataSourceBadge source="ai" />;
 }
 
 // ──── Auto-detected Badge ────
 
 function AutoDetectedBadge() {
-  return (
-    <span className="inline-flex items-center gap-1 bg-emerald-600/15 text-emerald-400 border border-emerald-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">
-      Auto-detected
-    </span>
-  );
+  return <DataSourceBadge source="website" />;
 }
 
 // ──── Business Context Card ────
@@ -205,55 +214,156 @@ function BusinessContextCard({ businessInfo }: {
   );
 }
 
-// ──── Section Allocation (informational) ────
+// ──── Content Areas Preview (Decision 4: Hybrid Naming) ────
 
-function SectionAllocationPanel({ industry }: { industry?: string }) {
+function ContentAreasPreview({ contentAreas, onUpdate, industry }: {
+  contentAreas: Array<{ name: string; type: 'revenue' | 'authority' }>;
+  onUpdate: (areas: Array<{ name: string; type: 'revenue' | 'authority' }>) => void;
+  industry?: string;
+}) {
+  const [newAreaName, setNewAreaName] = useState('');
+  const [newAreaType, setNewAreaType] = useState<'revenue' | 'authority'>('revenue');
+
+  const revenueAreas = contentAreas.filter(a => a.type === 'revenue');
+  const authorityAreas = contentAreas.filter(a => a.type === 'authority');
+
+  const handleAddArea = () => {
+    if (!newAreaName.trim()) return;
+    onUpdate([...contentAreas, { name: newAreaName.trim(), type: newAreaType }]);
+    setNewAreaName('');
+  };
+
+  const handleRemoveArea = (index: number) => {
+    onUpdate(contentAreas.filter((_, i) => i !== index));
+  };
+
   const industryLabel = industry || 'your business';
+  const hasAreas = contentAreas.length > 0;
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-      <h3 className="text-sm font-semibold text-gray-200 mb-1">Section Allocation</h3>
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-sm font-semibold text-gray-200">Content Areas</h3>
+        {hasAreas && (
+          <span className="text-xs text-gray-500">{contentAreas.length} areas</span>
+        )}
+      </div>
       <p className="text-xs text-gray-500 mb-4">
-        Every page in the topical map is classified into one of two sections based on its purpose.
+        Your content will be organized into these business areas. Each becomes a cluster in the topical map.
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* CS — Monetization */}
-        <div className="bg-gray-900 border-l-4 border-emerald-500 rounded-r-md px-4 py-3">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CS</span>
-            <span className="text-sm font-medium text-gray-200">Core Section &mdash; Monetization</span>
-          </div>
-          <p className="text-xs text-gray-400 leading-relaxed">
-            Revenue-driving pages for {industryLabel}: service/product pages, pricing,
-            regional landing pages, comparison pages, and conversion-focused content.
-          </p>
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {['Product pages', 'Pricing', 'Landing pages', 'Comparisons'].map((ex) => (
-              <span key={ex} className="bg-emerald-900/20 text-emerald-400 border border-emerald-700/30 rounded px-1.5 py-0.5 text-[10px]">
-                {ex}
-              </span>
-            ))}
-          </div>
-        </div>
 
-        {/* AS — Authority */}
-        <div className="bg-gray-900 border-l-4 border-sky-500 rounded-r-md px-4 py-3">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="bg-sky-600/20 text-sky-300 border border-sky-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">AS</span>
-            <span className="text-sm font-medium text-gray-200">Author Section &mdash; Authority</span>
+      {hasAreas ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Revenue column */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CS</span>
+              <span className="text-xs font-medium text-emerald-300">Revenue pages</span>
+              <span className="text-[10px] text-gray-600">{revenueAreas.length} areas</span>
+            </div>
+            <div className="space-y-1.5">
+              {revenueAreas.map((area) => {
+                const globalIdx = contentAreas.findIndex(a => a === area);
+                return (
+                  <div key={globalIdx} className="flex items-center gap-2 bg-gray-900 border-l-4 border-emerald-500 rounded-r-md px-3 py-2 group">
+                    <span className="text-sm text-gray-200 flex-1">{area.name}</span>
+                    <span className="text-[10px] text-emerald-400/60">(revenue)</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveArea(globalIdx)}
+                      className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                );
+              })}
+              {revenueAreas.length === 0 && (
+                <p className="text-xs text-gray-600 italic py-2">No revenue areas yet</p>
+              )}
+            </div>
           </div>
-          <p className="text-xs text-gray-400 leading-relaxed">
-            Expertise-building pages for {industryLabel}: informational hubs, how-to guides,
-            knowledge base articles, thought leadership, and E-E-A-T signals.
-          </p>
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {['Guides', 'Knowledge base', 'Thought leadership', 'How-tos'].map((ex) => (
-              <span key={ex} className="bg-sky-900/20 text-sky-400 border border-sky-700/30 rounded px-1.5 py-0.5 text-[10px]">
-                {ex}
-              </span>
-            ))}
+
+          {/* Authority column */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="bg-sky-600/20 text-sky-300 border border-sky-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">AS</span>
+              <span className="text-xs font-medium text-sky-300">Authority pages</span>
+              <span className="text-[10px] text-gray-600">{authorityAreas.length} areas</span>
+            </div>
+            <div className="space-y-1.5">
+              {authorityAreas.map((area) => {
+                const globalIdx = contentAreas.findIndex(a => a === area);
+                return (
+                  <div key={globalIdx} className="flex items-center gap-2 bg-gray-900 border-l-4 border-sky-500 rounded-r-md px-3 py-2 group">
+                    <span className="text-sm text-gray-200 flex-1">{area.name}</span>
+                    <span className="text-[10px] text-sky-400/60">(authority)</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveArea(globalIdx)}
+                      className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                );
+              })}
+              {authorityAreas.length === 0 && (
+                <p className="text-xs text-gray-600 italic py-2">No authority areas yet</p>
+              )}
+            </div>
           </div>
         </div>
+      ) : (
+        /* Empty state — show the general CS/AS explanation */
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-gray-900 border-l-4 border-emerald-500 rounded-r-md px-4 py-3">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CS</span>
+              <span className="text-sm font-medium text-gray-200">Revenue pages</span>
+            </div>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Service/product pages, pricing, regional landing pages, and conversion-focused content for {industryLabel}.
+            </p>
+          </div>
+          <div className="bg-gray-900 border-l-4 border-sky-500 rounded-r-md px-4 py-3">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="bg-sky-600/20 text-sky-300 border border-sky-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">AS</span>
+              <span className="text-sm font-medium text-gray-200">Authority pages</span>
+            </div>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Informational hubs, how-to guides, knowledge base articles, and E-E-A-T content for {industryLabel}.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Add area input */}
+      <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-700/50">
+        <input
+          type="text"
+          value={newAreaName}
+          onChange={(e) => setNewAreaName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddArea(); } }}
+          placeholder="Add content area..."
+          className="flex-1 bg-gray-900 border border-gray-600 rounded-md px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+        <select
+          value={newAreaType}
+          onChange={(e) => setNewAreaType(e.target.value as 'revenue' | 'authority')}
+          className="bg-gray-900 border border-gray-600 rounded-md px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="revenue">Revenue</option>
+          <option value="authority">Authority</option>
+        </select>
+        <button
+          type="button"
+          onClick={handleAddArea}
+          disabled={!newAreaName.trim()}
+          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+        >
+          Add
+        </button>
       </div>
     </div>
   );
@@ -261,17 +371,20 @@ function SectionAllocationPanel({ industry }: { industry?: string }) {
 
 // ──── Five Components Summary Card ────
 
-function FiveComponentsSummaryCard({ ceName, scType, scPriorities, csiPredicates, csiText, businessInfo }: {
+function FiveComponentsSummaryCard({ ceName, scType, scPriorities, csiPredicates, csiText, contentAreas, businessInfo, ceFromCrawl, aiSuggested }: {
   ceName: string;
   scType: string;
   scPriorities: string[];
   csiPredicates: string[];
   csiText: string;
+  contentAreas: Array<{ name: string; type: 'revenue' | 'authority' }>;
   businessInfo: {
     authorProfile?: { name?: string; credentials?: string };
     valueProp?: string;
     industry?: string;
   };
+  ceFromCrawl?: boolean;
+  aiSuggested?: boolean;
 }) {
   if (!ceName || !scType) return null;
 
@@ -290,6 +403,7 @@ function FiveComponentsSummaryCard({ ceName, scType, scPriorities, csiPredicates
           <div className="flex items-center gap-2 mb-1">
             <span className="bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CE</span>
             <span className="text-sm font-semibold text-emerald-200">{ceName}</span>
+            <DataSourceBadge source={ceFromCrawl ? 'website' : aiSuggested ? 'ai' : 'user'} />
           </div>
           <ul className="text-xs text-gray-400 space-y-0.5 mt-2 pl-4 list-disc">
             <li>Must appear in every H1, meta title, meta description</li>
@@ -303,6 +417,7 @@ function FiveComponentsSummaryCard({ ceName, scType, scPriorities, csiPredicates
           <div className="flex items-center gap-2 mb-1">
             <span className="bg-sky-600/20 text-sky-300 border border-sky-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">SC</span>
             <span className="text-sm font-medium text-sky-200">{scType}</span>
+            <DataSourceBadge source={aiSuggested ? 'ai' : 'user'} />
           </div>
           {businessInfo.industry && (
             <p className="text-xs text-gray-500 mt-1">Industry: {businessInfo.industry}</p>
@@ -355,17 +470,37 @@ function FiveComponentsSummaryCard({ ceName, scType, scPriorities, csiPredicates
           )}
         </div>
 
-        {/* CS + AS */}
+        {/* Content Areas */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-gray-900 border-l-4 border-emerald-500 rounded-r-md px-4 py-3">
             <span className="bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CS</span>
-            <p className="text-xs text-gray-300 mt-1.5">Monetization pages</p>
-            <p className="text-[10px] text-gray-500 mt-0.5">Revenue-driving content for {industryLabel}</p>
+            <p className="text-xs text-gray-300 mt-1.5">Revenue pages</p>
+            {contentAreas.filter(a => a.type === 'revenue').length > 0 ? (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {contentAreas.filter(a => a.type === 'revenue').map((a, i) => (
+                  <span key={i} className="bg-emerald-900/20 text-emerald-400 border border-emerald-700/30 rounded px-1.5 py-0.5 text-[10px]">
+                    {a.name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[10px] text-gray-500 mt-0.5">Revenue-driving content for {industryLabel}</p>
+            )}
           </div>
           <div className="bg-gray-900 border-l-4 border-sky-500 rounded-r-md px-4 py-3">
             <span className="bg-sky-600/20 text-sky-300 border border-sky-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">AS</span>
             <p className="text-xs text-gray-300 mt-1.5">Authority pages</p>
-            <p className="text-[10px] text-gray-500 mt-0.5">Expertise &amp; E-E-A-T signals for {industryLabel}</p>
+            {contentAreas.filter(a => a.type === 'authority').length > 0 ? (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {contentAreas.filter(a => a.type === 'authority').map((a, i) => (
+                  <span key={i} className="bg-sky-900/20 text-sky-400 border border-sky-700/30 rounded px-1.5 py-0.5 text-[10px]">
+                    {a.name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[10px] text-gray-500 mt-0.5">Expertise &amp; E-E-A-T signals for {industryLabel}</p>
+            )}
           </div>
         </div>
       </div>
@@ -407,12 +542,20 @@ const PipelineStrategyStep: React.FC = () => {
       : existingPillars?.auxiliary_verb ? [existingPillars.auxiliary_verb] : []
   );
 
+  const [contentAreas, setContentAreas] = useState<Array<{ name: string; type: 'revenue' | 'authority' }>>(
+    existingPillars?.contentAreas ?? []
+  );
+
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [aiSuggested, setAiSuggested] = useState(false);
   const [suggestionReasoning, setSuggestionReasoning] = useState<string | null>(null);
+
+  // J1: Adaptive display — show summary when data exists, editor when adjusting
+  const hasStrategyData = !!existingPillars?.centralEntity && !!existingPillars?.sourceContext;
+  const [isAdjusting, setIsAdjusting] = useState(!hasStrategyData);
 
   // Sync form if active map changes (e.g. after navigation)
   useEffect(() => {
@@ -428,14 +571,24 @@ const PipelineStrategyStep: React.FC = () => {
         existingPillars.csiPredicates?.length ? existingPillars.csiPredicates
           : existingPillars.auxiliary_verb ? [existingPillars.auxiliary_verb] : []
       );
+      setContentAreas(existingPillars.contentAreas ?? []);
     }
   }, [activeMap?.id]);
 
-  // Auto-suggest on mount when pillars are empty and business info is available
+  // G4: Pre-fill CE from seedKeyword if empty (immediate, before AI suggest)
   const hasBusinessContext = !!state.businessInfo.seedKeyword;
   const hasExistingPillars = !!existingPillars?.centralEntity;
   const [autoSuggestAttempted, setAutoSuggestAttempted] = useState(false);
+  const [ceFromCrawl, setCeFromCrawl] = useState(false);
 
+  useEffect(() => {
+    if (!ceName && state.businessInfo.seedKeyword) {
+      setCeName(state.businessInfo.seedKeyword);
+      setCeFromCrawl(true);
+    }
+  }, [state.businessInfo.seedKeyword]);
+
+  // Auto-suggest on mount when pillars are empty and business info is available
   useEffect(() => {
     if (!hasExistingPillars && hasBusinessContext && !autoSuggestAttempted && !isSuggesting) {
       setAutoSuggestAttempted(true);
@@ -459,6 +612,9 @@ const PipelineStrategyStep: React.FC = () => {
       }
       if (result.scPriorities.length > 0) {
         setScPriorities(result.scPriorities);
+      }
+      if (result.contentAreas.length > 0) {
+        setContentAreas(result.contentAreas);
       }
       setAiSuggested(true);
       setSuggestionReasoning(result.reasoning);
@@ -512,6 +668,7 @@ const PipelineStrategyStep: React.FC = () => {
       auxiliary_verb: csiPredicates[0] ?? '',
       csiPredicates: csiPredicates,
       scPriorities: scPriorities,
+      contentAreas: contentAreas,
     };
 
     // Dispatch to global state
@@ -621,10 +778,30 @@ const PipelineStrategyStep: React.FC = () => {
         scPriorities={scPriorities}
         csiPredicates={csiPredicates}
         csiText={csiText}
+        contentAreas={contentAreas}
         businessInfo={state.businessInfo}
+        ceFromCrawl={ceFromCrawl}
+        aiSuggested={aiSuggested}
       />
 
-      {/* Three-card strategy layout */}
+      {/* J1: Adaptive display — Adjust button when in summary mode */}
+      {!isAdjusting && hasStrategyData && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setIsAdjusting(true)}
+            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 px-5 py-2 rounded-md text-sm font-medium transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />
+            </svg>
+            Adjust Strategy
+          </button>
+        </div>
+      )}
+
+      {/* Three-card strategy layout — only shown when adjusting or no data */}
+      {isAdjusting && (<>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Central Entity (CE) — emerald accent */}
         <div className="bg-gray-800 border border-gray-700 border-l-4 border-l-emerald-500 rounded-lg p-4">
@@ -634,6 +811,11 @@ const PipelineStrategyStep: React.FC = () => {
             </span>
             <h3 className="text-sm font-semibold text-gray-200">Central Entity</h3>
             {aiSuggested && ceName && <AutoDetectedBadge />}
+            {ceFromCrawl && !aiSuggested && ceName && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded border bg-green-900/20 text-green-400 border-green-700/40">
+                From website
+              </span>
+            )}
           </div>
 
           <div className="space-y-4">
@@ -649,6 +831,15 @@ const PipelineStrategyStep: React.FC = () => {
                 className="w-full bg-gray-900 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
               />
             </div>
+            {/* S2: CE evidence card */}
+            {ceName && ceFromCrawl && (
+              <div className="bg-emerald-900/10 border border-emerald-700/20 rounded-md px-3 py-2">
+                <p className="text-[10px] text-emerald-400/80 uppercase font-medium mb-1">Evidence</p>
+                <p className="text-[10px] text-gray-400">
+                  Detected from your website content. This entity will anchor every page in your content plan.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -690,6 +881,16 @@ const PipelineStrategyStep: React.FC = () => {
               <p className="text-xs text-gray-500 mt-1">
                 Order matters &mdash; highest priority first
               </p>
+              {/* S4: Priority reasoning */}
+              {scPriorities.length > 0 && aiSuggested && (
+                <div className="mt-2 space-y-0.5">
+                  {scPriorities.slice(0, 3).map((p, i) => (
+                    <p key={i} className="text-[10px] text-sky-400/60">
+                      {i + 1}. {p} — {i === 0 ? 'most searched attribute by your target audience' : i === 1 ? 'key differentiator in your industry' : 'supports conversion decisions'}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -731,16 +932,52 @@ const PipelineStrategyStep: React.FC = () => {
               <p className="text-xs text-gray-500 mt-1">
                 Define the primary search predicates users combine with the CE
               </p>
+              {/* S3: Search query preview under predicates */}
+              {csiPredicates.length > 0 && ceName && (
+                <div className="mt-3 bg-amber-900/10 border border-amber-700/20 rounded-md px-3 py-2">
+                  <p className="text-[10px] text-amber-400/70 uppercase tracking-wider mb-1.5">
+                    What people search for
+                  </p>
+                  <div className="space-y-1">
+                    {csiPredicates.slice(0, 5).map((pred, i) => {
+                      const ce = ceName.toLowerCase();
+                      const p = pred.toLowerCase();
+                      const queries = [
+                        `${ce} ${p}`,
+                        `${p} ${ce}`,
+                        `beste ${ce} ${p}`.replace('beste beste', 'beste'),
+                      ];
+                      return (
+                        <div key={i} className="flex items-start gap-2">
+                          <span className="text-amber-400 text-xs font-mono mt-0.5 flex-shrink-0">{pred}:</span>
+                          <span className="text-xs text-gray-400">
+                            {queries.map((q, qi) => (
+                              <span key={qi}>
+                                {qi > 0 && <span className="text-gray-600 mx-1">&middot;</span>}
+                                <span className="text-amber-200/70">&ldquo;{q}&rdquo;</span>
+                              </span>
+                            ))}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Section Allocation */}
-      <SectionAllocationPanel industry={state.businessInfo.industry} />
+      {/* Content Areas (Decision 4: Hybrid Naming) */}
+      <ContentAreasPreview
+        contentAreas={contentAreas}
+        onUpdate={setContentAreas}
+        industry={state.businessInfo.industry}
+      />
 
       {/* Save Button */}
-      <div className="flex justify-center">
+      <div className="flex justify-center gap-3">
         <button
           type="button"
           onClick={handleSaveStrategy}
@@ -755,7 +992,17 @@ const PipelineStrategyStep: React.FC = () => {
           )}
           {isSaving ? 'Saving...' : 'Save Strategy'}
         </button>
+        {hasStrategyData && (
+          <button
+            type="button"
+            onClick={() => setIsAdjusting(false)}
+            className="text-gray-400 hover:text-gray-300 px-4 py-2.5 text-sm transition-colors"
+          >
+            Cancel
+          </button>
+        )}
       </div>
+      </>)}
 
       {/* Approval Gate — G1, most critical */}
       {gate && (stepState?.status === 'pending_approval' || stepState?.approval?.status === 'rejected') && (

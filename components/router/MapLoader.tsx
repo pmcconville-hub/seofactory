@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Outlet, useParams, Navigate } from 'react-router-dom';
+import { Outlet, useParams, useLocation, Navigate } from 'react-router-dom';
 import { useAppState } from '../../state/appState';
 
 /**
@@ -10,6 +10,7 @@ import { useAppState } from '../../state/appState';
 const MapLoader: React.FC = () => {
     const { mapId } = useParams<{ mapId: string }>();
     const { state, dispatch } = useAppState();
+    const location = useLocation();
 
     // Sync mapId from URL to state
     useEffect(() => {
@@ -17,6 +18,17 @@ const MapLoader: React.FC = () => {
             dispatch({ type: 'SET_ACTIVE_MAP', payload: mapId });
         }
     }, [mapId, state.activeMapId, dispatch]);
+
+    // Reset viewMode when navigating away from the index route (where Migration renders)
+    // This prevents the migration view from being "stuck" when clicking sidebar links
+    useEffect(() => {
+        if (!mapId) return;
+        const mapIndexPath = `/p/${state.activeProjectId}/m/${mapId}`;
+        const isOnIndex = location.pathname === mapIndexPath || location.pathname === `${mapIndexPath}/`;
+        if (!isOnIndex && state.viewMode === 'MIGRATION') {
+            dispatch({ type: 'SET_VIEW_MODE', payload: 'CREATION' });
+        }
+    }, [location.pathname, mapId, state.activeProjectId, state.viewMode, dispatch]);
 
     // Validate map exists in loaded maps
     if (mapId && state.topicalMaps.length > 0) {

@@ -362,11 +362,11 @@ export const SiteIngestionWizard: React.FC<SiteIngestionWizardProps> = ({ isOpen
                         {/* Step 3: Technical Audit */}
                         {step === 3 && (
                             <div>
-                                <div className="bg-yellow-900/20 border border-yellow-700 p-4 rounded mb-4">
-                                    <h4 className="text-yellow-300 font-bold text-sm mb-1">⚠️ Firecrawl Usage Warning</h4>
+                                <div className="bg-blue-900/20 border border-blue-700 p-4 rounded mb-4">
+                                    <h4 className="text-blue-300 font-bold text-sm mb-1">Technical Audit</h4>
                                     <p className="text-xs text-gray-300">
-                                        This step will scrape pages to calculate the <strong>Cost of Retrieval (CoR)</strong>. 
-                                        Each page audit consumes 1 Firecrawl credit.
+                                        This step scrapes pages to calculate the <strong>Cost of Retrieval (CoR)</strong> score.
+                                        Uses Jina (primary) with Firecrawl/Apify fallback based on your configured API keys.
                                     </p>
                                 </div>
                                 

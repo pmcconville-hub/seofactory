@@ -86,58 +86,474 @@ function DownloadCard({
   );
 }
 
-// ──── Content Calendar ────
+// ──── Visual Content Calendar (X1) ────
 
-function ContentCalendar({ topics }: { topics: Array<{ title: string; topic_class?: string | null; type: string }> }) {
-  const waves = [
-    { label: 'Wave 1', class: 'monetization', color: 'bg-green-500/20 text-green-300 border-green-500/30' },
-    { label: 'Wave 2', class: 'informational', color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
-    { label: 'Wave 3', class: 'regional', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
-    { label: 'Wave 4', class: 'authority', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
-  ];
+function ContentCalendar({
+  topics,
+  contentAreas,
+}: {
+  topics: Array<{ title: string; topic_class?: string | null; type: string; parent_topic_id?: string | null }>;
+  contentAreas?: Array<{ name: string; type: 'revenue' | 'authority' }>;
+}) {
+  // Assign topics to waves
+  function getWave(cls: string, type: string): number {
+    const c = cls.toLowerCase();
+    if (c.includes('monetization') || c.includes('transactional')) return 1;
+    if (c.includes('informational') || c.includes('educational')) return 2;
+    if (c.includes('regional') || c.includes('local')) return 3;
+    if (c.includes('authority') || c.includes('author')) return 4;
+    return type === 'core' ? 1 : 2;
+  }
 
-  const topicsByWave = waves.map((wave) => ({
-    ...wave,
-    items: topics.filter((t) => {
-      const cls = t.topic_class?.toLowerCase() ?? '';
-      return cls === wave.class;
-    }),
-  }));
+  // Map waves to week ranges
+  const waveWeeks: Record<number, [number, number]> = {
+    1: [1, 2],
+    2: [2, 4],
+    3: [4, 5],
+    4: [5, 7],
+  };
 
-  const hasAny = topicsByWave.some((w) => w.items.length > 0);
+  // Group topics by content area (or fallback to wave grouping)
+  interface CalendarRow {
+    label: string;
+    type: 'revenue' | 'authority';
+    pageCount: number;
+    startWeek: number;
+    endWeek: number;
+  }
 
-  if (!hasAny) {
+  const rows: CalendarRow[] = [];
+  const totalWeeks = 7;
+
+  if (contentAreas && contentAreas.length > 0) {
+    // Use content areas for rows
+    for (const area of contentAreas) {
+      const wave = area.type === 'revenue' ? 1 : 4;
+      const weeks = waveWeeks[wave];
+      const areaTopics = topics.filter(t => {
+        const w = getWave(t.topic_class ?? '', t.type);
+        return area.type === 'revenue' ? (w === 1 || w === 3) : (w === 2 || w === 4);
+      });
+      // Divide topics roughly across matching content areas
+      const sameTypeAreas = contentAreas.filter(a => a.type === area.type);
+      const perArea = Math.ceil(areaTopics.length / Math.max(sameTypeAreas.length, 1));
+      const areaIdx = sameTypeAreas.indexOf(area);
+      const count = Math.min(perArea, Math.max(0, areaTopics.length - areaIdx * perArea));
+      if (count > 0) {
+        rows.push({
+          label: area.name,
+          type: area.type,
+          pageCount: count,
+          startWeek: weeks[0],
+          endWeek: weeks[1],
+        });
+      }
+    }
+  }
+
+  // Fallback: wave-based rows if no content areas or no rows produced
+  if (rows.length === 0 && topics.length > 0) {
+    const waveDefs = [
+      { label: 'Service Pages', type: 'revenue' as const, wave: 1 },
+      { label: 'Knowledge Content', type: 'authority' as const, wave: 2 },
+      { label: 'Regional Pages', type: 'revenue' as const, wave: 3 },
+      { label: 'Authority Content', type: 'authority' as const, wave: 4 },
+    ];
+    for (const def of waveDefs) {
+      const count = topics.filter(t => getWave(t.topic_class ?? '', t.type) === def.wave).length;
+      if (count > 0) {
+        const weeks = waveWeeks[def.wave];
+        rows.push({
+          label: def.label,
+          type: def.type,
+          pageCount: count,
+          startWeek: weeks[0],
+          endWeek: weeks[1],
+        });
+      }
+    }
+  }
+
+  if (rows.length === 0) {
     return (
       <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-        <h3 className="text-sm font-semibold text-gray-200 mb-4">Publishing Plan</h3>
+        <h3 className="text-sm font-semibold text-gray-200 mb-4">Content Calendar</h3>
         <p className="text-xs text-gray-500">
-          Topics will appear here after Map Planning and Brief generation are complete.
+          Topics will appear here after the content plan is generated.
         </p>
       </div>
     );
   }
 
+  const weekHeaders = Array.from({ length: totalWeeks }, (_, i) => i + 1);
+
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-      <h3 className="text-sm font-semibold text-gray-200 mb-4">Publishing Plan by Wave</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {topicsByWave.map((wave) => (
-          <div key={wave.label} className={`border rounded-lg p-4 ${wave.color}`}>
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wider">{wave.label}</h4>
-              <span className="text-xs font-medium">{wave.items.length}</span>
+      <h3 className="text-sm font-semibold text-gray-200 mb-4">Content Calendar</h3>
+      <div className="space-y-1">
+        {/* Week header */}
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-40 flex-shrink-0" />
+          {weekHeaders.map(w => (
+            <div key={w} className="flex-1 text-center">
+              <span className="text-[10px] text-gray-500 uppercase">Week {w}</span>
             </div>
-            <div className="space-y-1.5">
-              {wave.items.slice(0, 5).map((t, i) => (
-                <p key={i} className="text-[11px] text-current opacity-80 truncate">{t.title}</p>
+          ))}
+          <div className="w-16 flex-shrink-0" />
+        </div>
+
+        {/* Rows */}
+        {rows.map((row, i) => {
+          const barColor = row.type === 'revenue'
+            ? 'bg-emerald-500/30 border-emerald-500/50'
+            : 'bg-sky-500/30 border-sky-500/50';
+          const labelColor = row.type === 'revenue' ? 'text-emerald-300' : 'text-sky-300';
+          const typeLabel = row.type === 'revenue' ? '(revenue)' : '(authority)';
+
+          return (
+            <div key={i} className="flex items-center gap-2 h-10">
+              <div className="w-40 flex-shrink-0 text-right pr-2">
+                <span className="text-xs text-gray-300 truncate block">{row.label}</span>
+                <span className={`text-[9px] ${labelColor}`}>{typeLabel}</span>
+              </div>
+              {weekHeaders.map(w => {
+                const isActive = w >= row.startWeek && w <= row.endWeek;
+                const isStart = w === row.startWeek;
+                const isEnd = w === row.endWeek;
+                return (
+                  <div key={w} className="flex-1 h-7 flex items-center">
+                    {isActive ? (
+                      <div
+                        className={`w-full h-6 border ${barColor} ${isStart ? 'rounded-l-md' : ''} ${isEnd ? 'rounded-r-md' : ''}`}
+                      />
+                    ) : (
+                      <div className="w-full h-px bg-gray-700/50" />
+                    )}
+                  </div>
+                );
+              })}
+              <div className="w-16 flex-shrink-0 text-right">
+                <span className="text-xs text-gray-400">{row.pageCount} pg</span>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Total row */}
+        <div className="flex items-center gap-2 h-8 border-t border-gray-700/50 mt-2 pt-2">
+          <div className="w-40 flex-shrink-0 text-right pr-2">
+            <span className="text-xs font-medium text-gray-400">Total</span>
+          </div>
+          <div className="flex-1" />
+          <div className="w-16 flex-shrink-0 text-right">
+            <span className="text-xs font-medium text-gray-300">{topics.length} pg</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──── Open Items by Role (X2) ────
+
+interface OpenItem {
+  id: string;
+  label: string;
+  owner: 'business' | 'developer' | 'content';
+  severity: 'high' | 'medium' | 'low';
+}
+
+function deriveOpenItems(
+  topics: Array<{ title: string; type: string; topic_class?: string | null }>,
+  briefs: Record<string, { articleDraft?: string }>,
+  pillars?: { centralEntity?: string; contentAreas?: Array<{ name: string; type: string }> },
+  eavs?: Array<{ predicate?: { relation?: string } }>,
+  analysisState?: Record<string, unknown>,
+): OpenItem[] {
+  const items: OpenItem[] = [];
+  const briefCount = Object.keys(briefs).length;
+  const hasArticles = Object.values(briefs).some(b => !!b.articleDraft);
+  const auditScore = (analysisState as any)?.audit?.overallScore ?? null;
+
+  // ── Business items ──
+  if (pillars?.centralEntity) {
+    items.push({ id: 'biz-review-strategy', label: 'Review and approve SEO strategy', owner: 'business', severity: 'high' });
+  }
+  if ((eavs?.length ?? 0) > 0) {
+    items.push({ id: 'biz-verify-facts', label: `Verify ${eavs!.length} business facts are accurate`, owner: 'business', severity: 'high' });
+  }
+  if (topics.length > 0) {
+    items.push({ id: 'biz-approve-plan', label: `Approve content plan (${topics.length} pages)`, owner: 'business', severity: 'high' });
+  }
+  if (pillars?.contentAreas && pillars.contentAreas.length > 0) {
+    items.push({ id: 'biz-review-areas', label: 'Confirm content area naming matches business terminology', owner: 'business', severity: 'medium' });
+  }
+  items.push({ id: 'biz-brand-assets', label: 'Provide brand assets (logo, colors, fonts) for publishing', owner: 'business', severity: 'low' });
+
+  // ── Developer items ──
+  if (topics.length > 0) {
+    items.push({ id: 'dev-urls', label: `Create ${topics.length} URL routes on the website`, owner: 'developer', severity: 'high' });
+    items.push({ id: 'dev-sitemap', label: 'Generate and deploy XML sitemap', owner: 'developer', severity: 'high' });
+    items.push({ id: 'dev-robots', label: 'Configure robots.txt for crawl optimization', owner: 'developer', severity: 'medium' });
+  }
+  if (pillars?.centralEntity) {
+    items.push({ id: 'dev-schema', label: 'Implement Organization JSON-LD schema markup', owner: 'developer', severity: 'high' });
+  }
+  if (topics.length > 5) {
+    items.push({ id: 'dev-linking', label: 'Set up internal linking structure between hub and spoke pages', owner: 'developer', severity: 'medium' });
+  }
+  if (auditScore !== null && auditScore < 80) {
+    items.push({ id: 'dev-audit-fixes', label: `Fix technical audit issues (score: ${auditScore}/100)`, owner: 'developer', severity: 'high' });
+  }
+  items.push({ id: 'dev-analytics', label: 'Set up search analytics tracking (GSC, GA4)', owner: 'developer', severity: 'low' });
+
+  // ── Content items ──
+  if (briefCount > 0 && !hasArticles) {
+    items.push({ id: 'content-write', label: `Write ${briefCount} articles from content briefs`, owner: 'content', severity: 'high' });
+  } else if (hasArticles) {
+    const written = Object.values(briefs).filter(b => !!b.articleDraft).length;
+    const remaining = briefCount - written;
+    if (remaining > 0) {
+      items.push({ id: 'content-write', label: `Write remaining ${remaining} articles`, owner: 'content', severity: 'high' });
+    }
+    items.push({ id: 'content-review', label: `Review ${written} generated articles for accuracy`, owner: 'content', severity: 'high' });
+  }
+  if (topics.length > 0) {
+    items.push({ id: 'content-meta', label: 'Write meta titles and descriptions for all pages', owner: 'content', severity: 'medium' });
+    items.push({ id: 'content-images', label: 'Source and optimize images for each article', owner: 'content', severity: 'medium' });
+  }
+  if ((eavs?.length ?? 0) > 5) {
+    items.push({ id: 'content-eav', label: 'Embed EAV facts naturally into article content', owner: 'content', severity: 'medium' });
+  }
+  items.push({ id: 'content-proofread', label: 'Final proofreading and brand voice check', owner: 'content', severity: 'low' });
+
+  return items;
+}
+
+const OWNER_CONFIG = {
+  business: { label: 'Business', color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/30', badge: 'bg-purple-900/40 text-purple-300 border-purple-500/30' },
+  developer: { label: 'Developer', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30', badge: 'bg-blue-900/40 text-blue-300 border-blue-500/30' },
+  content: { label: 'Content', color: 'text-green-400', bg: 'bg-green-500/10 border-green-500/30', badge: 'bg-green-900/40 text-green-300 border-green-500/30' },
+} as const;
+
+const SEVERITY_BADGE: Record<string, string> = {
+  high: 'bg-red-900/30 text-red-300 border border-red-500/30',
+  medium: 'bg-amber-900/30 text-amber-300 border border-amber-500/30',
+  low: 'bg-gray-800 text-gray-400 border border-gray-600',
+};
+
+function OpenItemsByRole({
+  topics,
+  briefs,
+  pillars,
+  eavs,
+  analysisState,
+  mapId,
+}: {
+  topics: Array<{ title: string; type: string; topic_class?: string | null }>;
+  briefs: Record<string, { articleDraft?: string }>;
+  pillars?: { centralEntity?: string; contentAreas?: Array<{ name: string; type: string }> };
+  eavs?: Array<{ predicate?: { relation?: string } }>;
+  analysisState?: Record<string, unknown>;
+  mapId?: string;
+}) {
+  // Persist checked items in localStorage keyed by mapId
+  const storageKey = mapId ? `pipeline-open-items-${mapId}` : null;
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(() => {
+    if (!storageKey) return new Set();
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const [filterOwner, setFilterOwner] = useState<'all' | 'business' | 'developer' | 'content'>('all');
+
+  const toggleItem = useCallback((id: string) => {
+    setCheckedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      if (storageKey) {
+        try { localStorage.setItem(storageKey, JSON.stringify([...next])); } catch { /* noop */ }
+      }
+      return next;
+    });
+  }, [storageKey]);
+
+  const allItems = deriveOpenItems(topics, briefs, pillars, eavs, analysisState);
+  const filtered = filterOwner === 'all' ? allItems : allItems.filter(i => i.owner === filterOwner);
+  const doneCount = allItems.filter(i => checkedIds.has(i.id)).length;
+  const totalCount = allItems.length;
+
+  // Role summary counts
+  const roleCounts = {
+    business: allItems.filter(i => i.owner === 'business').length,
+    developer: allItems.filter(i => i.owner === 'developer').length,
+    content: allItems.filter(i => i.owner === 'content').length,
+  };
+  const roleDone = {
+    business: allItems.filter(i => i.owner === 'business' && checkedIds.has(i.id)).length,
+    developer: allItems.filter(i => i.owner === 'developer' && checkedIds.has(i.id)).length,
+    content: allItems.filter(i => i.owner === 'content' && checkedIds.has(i.id)).length,
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Progress bar */}
+      <div className="flex items-center gap-4">
+        <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+            style={{ width: totalCount > 0 ? `${(doneCount / totalCount) * 100}%` : '0%' }}
+          />
+        </div>
+        <span className="text-sm font-medium text-gray-300 whitespace-nowrap">
+          {doneCount}/{totalCount} done
+        </span>
+      </div>
+
+      {/* Role filter tabs + counts */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setFilterOwner('all')}
+          className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+            filterOwner === 'all'
+              ? 'bg-gray-700 border-gray-500 text-gray-200'
+              : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-300'
+          }`}
+        >
+          All ({totalCount})
+        </button>
+        {(Object.keys(OWNER_CONFIG) as Array<keyof typeof OWNER_CONFIG>).map(owner => (
+          <button
+            key={owner}
+            type="button"
+            onClick={() => setFilterOwner(owner)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+              filterOwner === owner
+                ? `${OWNER_CONFIG[owner].bg} ${OWNER_CONFIG[owner].color}`
+                : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-300'
+            }`}
+          >
+            {OWNER_CONFIG[owner].label} ({roleDone[owner]}/{roleCounts[owner]})
+          </button>
+        ))}
+      </div>
+
+      {/* Item list */}
+      <div className="space-y-1">
+        {filtered.map(item => {
+          const done = checkedIds.has(item.id);
+          const ownerCfg = OWNER_CONFIG[item.owner];
+          return (
+            <div
+              key={item.id}
+              className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
+                done ? 'bg-gray-800/50' : 'bg-gray-800 hover:bg-gray-750'
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => toggleItem(item.id)}
+                className={`w-5 h-5 flex-shrink-0 rounded border transition-colors flex items-center justify-center ${
+                  done
+                    ? 'bg-emerald-600 border-emerald-500 text-white'
+                    : 'bg-gray-700 border-gray-600 hover:border-gray-500'
+                }`}
+              >
+                {done && (
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+              <span className={`flex-1 text-sm ${done ? 'text-gray-500 line-through' : 'text-gray-300'}`}>
+                {item.label}
+              </span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded border ${ownerCfg.badge}`}>
+                {ownerCfg.label}
+              </span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded ${SEVERITY_BADGE[item.severity]}`}>
+                {item.severity}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {filtered.length === 0 && (
+        <p className="text-xs text-gray-500 text-center py-4">
+          No open items for this role. Complete pipeline steps to generate action items.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ──── Growth Projections (X3) ────
+
+function GrowthProjectionsCard({ topicCount, briefCount }: {
+  topicCount: number;
+  briefCount: number;
+}) {
+  if (topicCount === 0) return null;
+
+  // Conservative estimates based on page count
+  const month3Pages = Math.min(topicCount, Math.ceil(topicCount * 0.6));
+  const month6Keywords = Math.ceil(topicCount * 1.5);
+  const month12Sessions = Math.ceil(topicCount * 40); // conservative 40 sessions/page/month
+
+  const milestones = [
+    {
+      period: 'Month 3',
+      items: [
+        `${month3Pages} pages indexed`,
+        'Initial rankings appearing',
+        'Internal linking structure active',
+      ],
+      color: 'border-amber-500/30 text-amber-300',
+    },
+    {
+      period: 'Month 6',
+      items: [
+        `Top-20 rankings for ~${month6Keywords} keywords`,
+        'Topical authority building',
+        'Featured snippet opportunities appearing',
+      ],
+      color: 'border-blue-500/30 text-blue-300',
+    },
+    {
+      period: 'Month 12',
+      items: [
+        `Estimated ${month12Sessions.toLocaleString()} organic sessions/month`,
+        'Full topical coverage established',
+        'Authority signals across all clusters',
+      ],
+      color: 'border-green-500/30 text-green-300',
+    },
+  ];
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+      <h3 className="text-sm font-semibold text-gray-200 mb-1">Growth Projections</h3>
+      <p className="text-[10px] text-gray-500 mb-4">
+        Conservative estimates based on {topicCount} pages. Actual results depend on competition, domain authority, and content quality.
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {milestones.map(m => (
+          <div key={m.period} className={`border rounded-lg p-4 bg-gray-900 ${m.color.split(' ')[0]}`}>
+            <h4 className={`text-sm font-semibold mb-2 ${m.color.split(' ')[1]}`}>{m.period}</h4>
+            <ul className="space-y-1">
+              {m.items.map((item, i) => (
+                <li key={i} className="text-[11px] text-gray-400 flex items-start gap-1.5">
+                  <span className="text-gray-600 mt-0.5 flex-shrink-0">&bull;</span>
+                  {item}
+                </li>
               ))}
-              {wave.items.length > 5 && (
-                <p className="text-[11px] opacity-60">+{wave.items.length - 5} more</p>
-              )}
-              {wave.items.length === 0 && (
-                <p className="text-[11px] opacity-50">No topics assigned</p>
-              )}
-            </div>
+            </ul>
           </div>
         ))}
       </div>
@@ -145,65 +561,61 @@ function ContentCalendar({ topics }: { topics: Array<{ title: string; topic_clas
   );
 }
 
-// ──── Open Items by Role ────
+// ──── Maintenance Plan (X4) ────
 
-function OpenItemsByRole({
-  topicCount,
-  briefCount,
-  auditScore,
-}: {
-  topicCount: number;
-  briefCount: number;
-  auditScore?: number;
-}) {
-  const roles = [
+function MaintenancePlanCard() {
+  const schedule = [
     {
-      name: 'Business Actions',
-      icon: (
-        <svg className="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.894m7.5 0a48.667 48.667 0 00-7.5 0" />
-        </svg>
-      ),
-      value: topicCount,
-      label: 'pages to publish',
-      color: 'border-purple-500/30 bg-purple-900/10',
+      frequency: 'Monthly',
+      color: 'border-l-blue-500',
+      tasks: [
+        'Check Google Search Console for ranking changes',
+        'Update EAV values if business facts changed',
+        'Review and respond to new search queries',
+      ],
     },
     {
-      name: 'Developer Actions',
-      icon: (
-        <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-        </svg>
-      ),
-      value: topicCount,
-      label: 'URLs to implement',
-      color: 'border-blue-500/30 bg-blue-900/10',
+      frequency: 'Quarterly',
+      color: 'border-l-amber-500',
+      tasks: [
+        'Add 5-10 new articles targeting emerging queries',
+        'Refresh top-performing pages with updated data',
+        'Run competitive gap analysis for new opportunities',
+      ],
     },
     {
-      name: 'Content Actions',
-      icon: (
-        <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-        </svg>
-      ),
-      value: briefCount,
-      label: 'briefs ready',
-      color: 'border-green-500/30 bg-green-900/10',
+      frequency: 'Annually',
+      color: 'border-l-emerald-500',
+      tasks: [
+        'Full content audit (re-run all 15 phases)',
+        'Competitor re-analysis and strategy update',
+        'Prune underperforming content (410 vs 301 vs keep)',
+        'Review and update content area priorities',
+      ],
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {roles.map((role) => (
-        <div key={role.name} className={`border rounded-lg p-4 ${role.color}`}>
-          <div className="flex items-center gap-3 mb-3">
-            {role.icon}
-            <h4 className="text-sm font-medium text-gray-200">{role.name}</h4>
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+      <h3 className="text-sm font-semibold text-gray-200 mb-1">What Happens After Launch</h3>
+      <p className="text-[10px] text-gray-500 mb-4">
+        Your content plan is a living asset. Here's the ongoing maintenance schedule.
+      </p>
+      <div className="space-y-3">
+        {schedule.map(s => (
+          <div key={s.frequency} className={`bg-gray-900 border border-gray-700 border-l-4 ${s.color} rounded-md px-4 py-3`}>
+            <h4 className="text-xs font-semibold text-gray-200 mb-1.5">{s.frequency}</h4>
+            <ul className="space-y-1">
+              {s.tasks.map((task, i) => (
+                <li key={i} className="text-[11px] text-gray-400 flex items-start gap-1.5">
+                  <span className="text-gray-600 mt-0.5 flex-shrink-0">&bull;</span>
+                  {task}
+                </li>
+              ))}
+            </ul>
           </div>
-          <p className="text-2xl font-semibold text-gray-300">{role.value}</p>
-          <p className="text-xs text-gray-500 mt-1">{role.label}</p>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -591,8 +1003,8 @@ const PipelineExportStep: React.FC = () => {
         </button>
       </div>
 
-      {/* Content Calendar */}
-      <ContentCalendar topics={topics} />
+      {/* Content Calendar (X1) */}
+      <ContentCalendar topics={topics} contentAreas={activeMap?.pillars?.contentAreas} />
 
       {/* Role-Based View */}
       <div>
@@ -601,10 +1013,20 @@ const PipelineExportStep: React.FC = () => {
           <RoleViewTabs activeTab={activeTab} onTabChange={setActiveTab} />
         </div>
         <OpenItemsByRole
-          topicCount={topics.length}
-          briefCount={briefCount}
+          topics={topics}
+          briefs={briefs}
+          pillars={activeMap?.pillars}
+          eavs={activeMap?.eavs}
+          analysisState={activeMap?.analysis_state as Record<string, unknown> | undefined}
+          mapId={activeMap?.id}
         />
       </div>
+
+      {/* Growth Projections (X3) */}
+      <GrowthProjectionsCard topicCount={topics.length} briefCount={briefCount} />
+
+      {/* Maintenance Plan (X4) */}
+      <MaintenancePlanCard />
     </div>
   );
 };

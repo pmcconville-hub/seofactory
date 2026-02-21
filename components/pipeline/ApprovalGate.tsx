@@ -1,6 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PipelineStep, GateDefinition, StepApproval } from '../../state/slices/pipelineSlice';
 import StepSummaryCard from './StepSummaryCard';
+
+// ──── Contextual Gate Text (Decision 9) ────
+
+const GATE_TEXT: Record<PipelineStep, { approve: string; revise: string }> = {
+  crawl: { approve: 'Confirm Business Profile', revise: 'Edit Business Profile' },
+  gap_analysis: { approve: 'Confirm Competitive Analysis', revise: 'Adjust Analysis' },
+  strategy: { approve: 'Approve Strategy', revise: 'Adjust Strategy' },
+  eavs: { approve: 'Confirm Business Facts', revise: 'Edit Business Facts' },
+  map_planning: { approve: 'Approve Content Plan', revise: 'Modify Content Plan' },
+  briefs: { approve: 'Approve Content Specs', revise: 'Edit Content Specs' },
+  content: { approve: 'Approve Articles', revise: 'Edit Articles' },
+  audit: { approve: 'Accept Audit Results', revise: 'Review Findings' },
+  tech_spec: { approve: 'Approve Technical Specs', revise: 'Edit Technical Specs' },
+  export: { approve: 'Complete', revise: 'Review' },
+};
 
 // ──── Types ────
 
@@ -97,17 +112,94 @@ function AutoApproveToggle({
   );
 }
 
+// ──── Auto-Approve Countdown (J3) ────
+
+const AUTO_APPROVE_DELAY = 3000;
+
+function AutoApproveCountdown({
+  summaryMetrics,
+  approveLabel,
+  onApprove,
+  onPause,
+}: {
+  summaryMetrics?: ApprovalGateProps['summaryMetrics'];
+  approveLabel: string;
+  onApprove: () => void;
+  onPause: () => void;
+}) {
+  const [remaining, setRemaining] = useState(AUTO_APPROVE_DELAY);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startRef = useRef(Date.now());
+
+  useEffect(() => {
+    startRef.current = Date.now();
+    timerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startRef.current;
+      const left = Math.max(0, AUTO_APPROVE_DELAY - elapsed);
+      setRemaining(left);
+      if (left <= 0) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        onApprove();
+      }
+    }, 50);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [onApprove]);
+
+  const progress = 1 - remaining / AUTO_APPROVE_DELAY;
+  const secondsLeft = Math.ceil(remaining / 1000);
+
+  return (
+    <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <span className="bg-blue-600 text-xs font-bold text-white px-2 py-0.5 rounded">
+            AUTO-APPROVE
+          </span>
+          <span className="text-sm text-gray-300">
+            Advancing in {secondsLeft}s...
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onPause}
+          className="border border-amber-600/50 text-amber-300 hover:bg-amber-900/20 px-3 py-1.5 rounded text-xs font-medium transition-colors"
+        >
+          Pause &amp; Review
+        </button>
+      </div>
+
+      {/* Progress bar */}
+      <div className="w-full bg-gray-700 rounded-full h-1.5 mb-4">
+        <div
+          className="bg-blue-500 h-1.5 rounded-full transition-all duration-75"
+          style={{ width: `${progress * 100}%` }}
+        />
+      </div>
+
+      {/* Summary metrics */}
+      {summaryMetrics && summaryMetrics.length > 0 && (
+        <StepSummaryCard title="Step Output Summary" metrics={summaryMetrics} />
+      )}
+    </div>
+  );
+}
+
 // ──── Pending State ────
 
 function PendingGate({
   gate,
   summaryMetrics,
   autoApprove,
+  approveLabel,
+  reviseLabel,
   onApprove,
   onReject,
   onToggleAutoApprove,
   children,
-}: Omit<ApprovalGateProps, 'step' | 'approval' | 'onRevise'>) {
+}: Omit<ApprovalGateProps, 'step' | 'approval' | 'onRevise'> & { approveLabel: string; reviseLabel: string }) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
@@ -184,7 +276,7 @@ function PendingGate({
               : 'bg-gray-700 text-gray-500 cursor-not-allowed'
           }`}
         >
-          Approve &amp; Continue
+          {approveLabel}
         </button>
         {!showRejectInput && (
           <button
@@ -192,7 +284,7 @@ function PendingGate({
             onClick={() => setShowRejectInput(true)}
             className="border border-gray-600 text-gray-300 hover:bg-gray-800 px-4 py-2 rounded-md transition-colors"
           >
-            Request Changes
+            {reviseLabel}
           </button>
         )}
         {!allChecked && gate.reviewItems.length > 0 && (
@@ -268,7 +360,7 @@ function ApprovedGate({ approval, onProceed }: { approval: StepApproval; onProce
 
 // ──── Rejected State ────
 
-function RejectedGate({ approval, onRevise }: { approval: StepApproval; onRevise: () => void }) {
+function RejectedGate({ approval, reviseLabel, onRevise }: { approval: StepApproval; reviseLabel: string; onRevise: () => void }) {
   return (
     <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-6">
       <div className="flex items-center gap-3 mb-3">
@@ -291,7 +383,7 @@ function RejectedGate({ approval, onRevise }: { approval: StepApproval; onRevise
         onClick={onRevise}
         className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
       >
-        Revise &amp; Resubmit
+        {reviseLabel}
       </button>
     </div>
   );
@@ -311,6 +403,9 @@ const ApprovalGate: React.FC<ApprovalGateProps> = ({
   onToggleAutoApprove,
   children,
 }) => {
+  const gateText = GATE_TEXT[step] || { approve: 'Approve & Continue', revise: 'Request Changes' };
+  const [paused, setPaused] = useState(false);
+
   // Determine gate state
   const status = approval?.status ?? 'pending';
 
@@ -319,15 +414,29 @@ const ApprovalGate: React.FC<ApprovalGateProps> = ({
   }
 
   if (status === 'rejected' && approval) {
-    return <RejectedGate approval={approval} onRevise={onRevise} />;
+    return <RejectedGate approval={approval} reviseLabel={gateText.revise} onRevise={onRevise} />;
   }
 
-  // Default: pending
+  // J3: Auto-approve with 3-second review window
+  if (autoApprove && !paused) {
+    return (
+      <AutoApproveCountdown
+        summaryMetrics={summaryMetrics}
+        approveLabel={gateText.approve}
+        onApprove={onApprove}
+        onPause={() => setPaused(true)}
+      />
+    );
+  }
+
+  // Default: pending (manual review)
   return (
     <PendingGate
       gate={gate}
       summaryMetrics={summaryMetrics}
       autoApprove={autoApprove}
+      approveLabel={gateText.approve}
+      reviseLabel={gateText.revise}
       onApprove={onApprove}
       onReject={onReject}
       onToggleAutoApprove={onToggleAutoApprove}

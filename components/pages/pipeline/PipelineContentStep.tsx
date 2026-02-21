@@ -66,6 +66,39 @@ interface WaveProgress {
   isGenerating: boolean;
 }
 
+// W1: Wave rationale and action guidance per the plan
+const WAVE_CONFIG: Record<number, {
+  name: string;
+  rationale: string;
+  action: string;
+  improvement: string;
+}> = {
+  1: {
+    name: 'Your Services (revenue)',
+    rationale: 'Revenue pages first — these drive conversions and establish your service authority.',
+    action: 'Submit to Search Console, add homepage links, share on business channels.',
+    improvement: 'Strengthened in Wave 2 when knowledge content links back to them.',
+  },
+  2: {
+    name: 'Knowledge Content',
+    rationale: 'Informational content that supports your service pages and builds topical depth.',
+    action: 'Add contextual links from these pages to your Wave 1 service pages.',
+    improvement: 'Expect Wave 1 ranking improvements within 4-6 weeks as authority flows.',
+  },
+  3: {
+    name: 'Regional Pages',
+    rationale: 'Location-specific content for geographic targeting and local search visibility.',
+    action: 'Update Google Business Profiles with links to these regional pages.',
+    improvement: 'Regional pages target local search queries and strengthen geographic relevance.',
+  },
+  4: {
+    name: 'Authority Content',
+    rationale: 'Expertise-building pages that establish your authority and strengthen all content.',
+    action: 'Share on professional networks and link from author bio pages.',
+    improvement: 'Completes your topical authority and improves E-E-A-T signals site-wide.',
+  },
+};
+
 function WaveCard({
   waveNumber,
   progress,
@@ -82,19 +115,39 @@ function WaveCard({
   const { done, total, isGenerating } = progress;
   const percent = total > 0 ? Math.round((done / total) * 100) : 0;
   const isComplete = total > 0 && done === total;
+  const config = WAVE_CONFIG[waveNumber];
 
   return (
     <div className={`bg-gray-800 border rounded-lg p-4 ${active ? color : 'border-gray-700 opacity-60'}`}>
-      <div className="flex items-center justify-between mb-3">
-        <h4 className="text-sm font-medium text-gray-200">Wave {waveNumber}</h4>
+      <div className="flex items-center justify-between mb-1">
+        <h4 className="text-sm font-medium text-gray-200">
+          Wave {waveNumber}{config ? `: ${config.name}` : ''}
+        </h4>
         <span className="text-xs text-gray-400">{done}/{total}</span>
       </div>
-      <div className="w-full bg-gray-700 rounded-full h-1.5 mb-3">
+
+      {/* W1: Rationale */}
+      {config && total > 0 && (
+        <p className="text-[10px] text-gray-400 mb-2 leading-relaxed">{config.rationale}</p>
+      )}
+
+      <div className="w-full bg-gray-700 rounded-full h-1.5 mb-2">
         <div
           className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
           style={{ width: `${percent}%` }}
         />
       </div>
+
+      {/* W1: After-publishing actions */}
+      {config && isComplete && total > 0 && (
+        <div className="mb-2 space-y-1">
+          <p className="text-[10px] text-blue-400/80">
+            <span className="font-medium">Next:</span> {config.action}
+          </p>
+          <p className="text-[10px] text-gray-500 italic">{config.improvement}</p>
+        </div>
+      )}
+
       <button
         type="button"
         onClick={onGenerate}
@@ -144,9 +197,21 @@ interface PageQuality {
   score: number;
   words: number;
   status: 'PASS' | 'REVIEW';
+  draft?: string;
 }
 
 function QualityScoresTable({ pages }: { pages: PageQuality[] }) {
+  const [expandedPage, setExpandedPage] = useState<number | null>(null);
+
+  // W4: Extract a preview snippet from the draft (first ~300 chars after title)
+  const getPreview = (draft: string): string => {
+    // Strip HTML tags and get first paragraph content
+    const stripped = draft.replace(/<[^>]+>/g, '').replace(/^#+ .+\n/gm, '').trim();
+    const firstChunk = stripped.slice(0, 400);
+    const lastPeriod = firstChunk.lastIndexOf('.');
+    return lastPeriod > 100 ? firstChunk.slice(0, lastPeriod + 1) : firstChunk + '...';
+  };
+
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-700">
@@ -165,14 +230,44 @@ function QualityScoresTable({ pages }: { pages: PageQuality[] }) {
           <tbody>
             {pages.length > 0 ? (
               pages.map((page, i) => (
-                <tr key={i} className="border-b border-gray-700/50">
-                  <td className="px-6 py-3 text-gray-300">{page.name}</td>
-                  <td className="px-6 py-3 text-center text-gray-300">{page.score}/100</td>
-                  <td className="px-6 py-3 text-center text-gray-400">{page.words.toLocaleString()}</td>
-                  <td className="px-6 py-3 text-center">
-                    <QualityBadge status={page.status} />
-                  </td>
-                </tr>
+                <React.Fragment key={i}>
+                  <tr
+                    className={`border-b border-gray-700/50 ${page.draft ? 'cursor-pointer hover:bg-gray-800/50' : ''}`}
+                    onClick={() => page.draft && setExpandedPage(expandedPage === i ? null : i)}
+                  >
+                    <td className="px-6 py-3 text-gray-300">
+                      <div className="flex items-center gap-2">
+                        {page.draft && (
+                          <svg
+                            className={`w-3.5 h-3.5 text-gray-500 transition-transform flex-shrink-0 ${expandedPage === i ? 'rotate-180' : ''}`}
+                            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        )}
+                        {page.name}
+                      </div>
+                    </td>
+                    <td className="px-6 py-3 text-center text-gray-300">{page.score}/100</td>
+                    <td className="px-6 py-3 text-center text-gray-400">{page.words.toLocaleString()}</td>
+                    <td className="px-6 py-3 text-center">
+                      <QualityBadge status={page.status} />
+                    </td>
+                  </tr>
+                  {/* W4: Content preview */}
+                  {expandedPage === i && page.draft && (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-4 bg-gray-900/50 border-b border-gray-700/50">
+                        <p className="text-xs text-gray-400 leading-relaxed whitespace-pre-line">
+                          {getPreview(page.draft)}
+                        </p>
+                        <p className="text-[10px] text-gray-600 mt-2">
+                          Preview of first section — full content available after export
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))
             ) : (
               <tr>
@@ -381,6 +476,7 @@ const PipelineContentStep: React.FC = () => {
       score: data.score,
       words: data.wordCount,
       status: data.score >= 70 ? 'PASS' : 'REVIEW',
+      draft: data.draft, // W4: content preview
     };
   });
 

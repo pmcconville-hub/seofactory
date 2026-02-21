@@ -29,17 +29,18 @@ function MetricCard({ label, value, color = 'gray' }: {
   );
 }
 
-// ──── Hub-Spoke Architecture ────
+// ──── Cluster Cards (Decision 6 — primary view) ────
 
-function HubSpokeSection({ coreTopics, outerTopics }: {
+function ClusterCardsView({ coreTopics, outerTopics, contentAreas }: {
   coreTopics: EnrichedTopic[];
   outerTopics: EnrichedTopic[];
+  contentAreas?: Array<{ name: string; type: 'revenue' | 'authority' }>;
 }) {
-  const [expandedHubs, setExpandedHubs] = useState<Record<string, boolean>>({});
-  const INITIAL_SPOKES = 5;
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
+  const [showTree, setShowTree] = useState(false);
+  const INITIAL_SPOKES = 3;
 
   const hubs = coreTopics.filter(t => t.cluster_role === 'pillar');
-  // Group spokes by parent_topic_id
   const spokesByHub = outerTopics.reduce<Record<string, EnrichedTopic[]>>((acc, spoke) => {
     const key = spoke.parent_topic_id ?? '_unassigned';
     if (!acc[key]) acc[key] = [];
@@ -47,93 +48,235 @@ function HubSpokeSection({ coreTopics, outerTopics }: {
     return acc;
   }, {});
 
-  const toggleHub = (hubId: string) =>
-    setExpandedHubs(prev => ({ ...prev, [hubId]: !prev[hubId] }));
+  // Match hubs to content areas from strategy (Decision 4 + S5)
+  const getClusterLabel = (hub: EnrichedTopic): { businessName: string; frameworkLabel: string; colorType: 'revenue' | 'authority' } => {
+    const topicClass = hub.topic_class;
+    const colorType: 'revenue' | 'authority' = topicClass === 'monetization' ? 'revenue' : 'authority';
+    const frameworkLabel = colorType === 'revenue' ? 'revenue pages' : 'authority pages';
+
+    // Try to match with a content area from strategy step
+    if (contentAreas && contentAreas.length > 0) {
+      const hubTitleLower = hub.title.toLowerCase();
+      const match = contentAreas.find(a =>
+        hubTitleLower.includes(a.name.toLowerCase()) ||
+        a.name.toLowerCase().includes(hubTitleLower.split(' ')[0])
+      );
+      if (match) {
+        return { businessName: match.name, frameworkLabel, colorType: match.type };
+      }
+    }
+
+    return { businessName: hub.title, frameworkLabel, colorType };
+  };
+
+  const toggleCard = (hubId: string) =>
+    setExpandedCards(prev => ({ ...prev, [hubId]: !prev[hubId] }));
+
+  if (hubs.length === 0) {
+    return (
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+        <h3 className="text-sm font-semibold text-gray-200 mb-2">Content Structure</h3>
+        <p className="text-xs text-gray-500 text-center pt-2">
+          Generate topical map to see your content organized into clusters
+        </p>
+      </div>
+    );
+  }
+
+  const unassigned = spokesByHub['_unassigned'] ?? [];
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-gray-200">Page Structure</h3>
-        <span className="text-xs text-gray-500">{hubs.length} hubs, {outerTopics.length} spokes</span>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-200">Content Structure</h3>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-500">{hubs.length} clusters, {outerTopics.length} articles</span>
+          <button
+            type="button"
+            onClick={() => setShowTree(!showTree)}
+            className="text-[11px] text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              {showTree ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+              )}
+            </svg>
+            {showTree ? 'Card view' : 'Tree view'}
+          </button>
+        </div>
       </div>
 
-      {hubs.length === 0 ? (
-        <p className="text-xs text-gray-500 text-center pt-2">
-          Generate topical map to populate cluster architecture
-        </p>
+      {showTree ? (
+        /* Tree view — original hub-spoke hierarchy */
+        <TreeView hubs={hubs} spokesByHub={spokesByHub} unassigned={unassigned} />
       ) : (
-        <div className="space-y-2">
+        /* Cluster cards — primary view (Decision 6) */
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {hubs.map(hub => {
             const spokes = spokesByHub[hub.id] ?? [];
-            const isExpanded = expandedHubs[hub.id] ?? false;
+            const totalPages = 1 + spokes.length;
+            const { businessName, frameworkLabel, colorType } = getClusterLabel(hub);
+            const isExpanded = expandedCards[hub.id] ?? false;
             const visibleSpokes = isExpanded ? spokes : spokes.slice(0, INITIAL_SPOKES);
-            const hiddenCount = spokes.length - INITIAL_SPOKES;
+
+            const borderColor = colorType === 'revenue' ? 'border-emerald-500' : 'border-sky-500';
+            const bgColor = colorType === 'revenue' ? 'bg-emerald-900/10' : 'bg-sky-900/10';
+            const badgeBg = colorType === 'revenue' ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/30' : 'bg-sky-600/20 text-sky-300 border-sky-500/30';
+            const labelColor = colorType === 'revenue' ? 'text-emerald-400/60' : 'text-sky-400/60';
+            const countColor = colorType === 'revenue' ? 'text-emerald-400' : 'text-sky-400';
 
             return (
-              <div key={hub.id} className="bg-gray-900 border border-gray-700 rounded-md overflow-hidden">
-                {/* Hub row */}
+              <div
+                key={hub.id}
+                className={`${bgColor} border border-gray-700 border-l-4 ${borderColor} rounded-lg overflow-hidden`}
+              >
                 <button
                   type="button"
-                  onClick={() => toggleHub(hub.id)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800/50 transition-colors text-left"
+                  onClick={() => toggleCard(hub.id)}
+                  className="w-full px-4 py-3 text-left hover:bg-gray-800/30 transition-colors"
                 >
-                  <div className="w-6 h-6 rounded-full bg-purple-600/20 border border-purple-500/30 flex items-center justify-center flex-shrink-0">
-                    <span className="text-[10px] font-semibold text-purple-300">H</span>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`${badgeBg} border rounded px-1.5 py-0.5 text-[10px] font-semibold flex-shrink-0`}>
+                          {colorType === 'revenue' ? 'CS' : 'AS'}
+                        </span>
+                        <span className="text-sm font-medium text-gray-200 truncate">{businessName}</span>
+                        <span className={`text-[10px] ${labelColor}`}>({frameworkLabel})</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        1 hub + {spokes.length} article{spokes.length !== 1 ? 's' : ''} = <span className={`font-semibold ${countColor}`}>{totalPages} pages</span>
+                      </p>
+                    </div>
+                    <svg
+                      className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 mt-1 ${isExpanded ? 'rotate-180' : ''}`}
+                      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-200 truncate">{hub.title}</p>
-                    {hub.slug && (
-                      <p className="text-[11px] text-gray-500 font-mono truncate">/{hub.slug}</p>
-                    )}
-                  </div>
-                  <span className="text-xs text-gray-500 flex-shrink-0">{spokes.length} spokes</span>
-                  <svg
-                    className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
-                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
                 </button>
 
-                {/* Spokes list (always show first few, expand for rest) */}
-                {spokes.length > 0 && (isExpanded || visibleSpokes.length > 0) && (
+                {/* Expanded: show hub + first spokes */}
+                {isExpanded && (
                   <div className="border-t border-gray-700/50 px-4 py-2 space-y-1">
+                    {/* Hub page */}
+                    <div className="flex items-center gap-2 py-1">
+                      <div className="w-4 h-4 rounded-full bg-purple-600/20 border border-purple-500/30 flex items-center justify-center flex-shrink-0">
+                        <span className="text-[8px] font-semibold text-purple-300">H</span>
+                      </div>
+                      <span className="text-xs text-gray-300 truncate">{hub.title}</span>
+                      {hub.slug && <span className="text-[10px] text-gray-600 font-mono truncate">/{hub.slug}</span>}
+                    </div>
+                    {/* Spoke pages */}
                     {visibleSpokes.map(spoke => (
-                      <div key={spoke.id} className="flex items-center gap-2 py-1 pl-4">
-                        <div className="w-4 h-4 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
-                          <span className="text-[8px] font-semibold text-blue-300">S</span>
+                      <div key={spoke.id} className="flex items-center gap-2 py-1 pl-3">
+                        <div className="w-3 h-3 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
+                          <span className="text-[7px] font-semibold text-blue-300">S</span>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-gray-400 truncate">{spoke.title}</p>
-                          {spoke.slug && (
-                            <p className="text-[10px] text-gray-600 font-mono truncate">/{spoke.slug}</p>
-                          )}
-                        </div>
+                        <span className="text-[11px] text-gray-400 truncate">{spoke.title}</span>
                       </div>
                     ))}
-                    {!isExpanded && hiddenCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => toggleHub(hub.id)}
-                        className="text-[11px] text-blue-400 hover:text-blue-300 pl-4 py-1"
-                      >
-                        Show {hiddenCount} more
-                      </button>
+                    {spokes.length > visibleSpokes.length && (
+                      <p className="text-[10px] text-gray-600 pl-3 py-1">
+                        ... and {spokes.length - visibleSpokes.length} more articles
+                      </p>
                     )}
                   </div>
                 )}
               </div>
             );
           })}
+        </div>
+      )}
 
-          {/* Unassigned spokes */}
-          {(spokesByHub['_unassigned']?.length ?? 0) > 0 && (
-            <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
-              <p className="text-xs text-gray-500">
-                {spokesByHub['_unassigned'].length} spokes without hub assignment
-              </p>
-            </div>
-          )}
+      {/* Unassigned topics */}
+      {unassigned.length > 0 && (
+        <div className="bg-gray-800 border border-gray-700 rounded-md px-4 py-3">
+          <p className="text-xs text-gray-500">
+            {unassigned.length} topics without cluster assignment
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ──── Tree View (secondary, toggled from ClusterCardsView) ────
+
+function TreeView({ hubs, spokesByHub, unassigned }: {
+  hubs: EnrichedTopic[];
+  spokesByHub: Record<string, EnrichedTopic[]>;
+  unassigned: EnrichedTopic[];
+}) {
+  const [expandedHubs, setExpandedHubs] = useState<Record<string, boolean>>({});
+  const INITIAL_SPOKES = 5;
+
+  const toggleHub = (hubId: string) =>
+    setExpandedHubs(prev => ({ ...prev, [hubId]: !prev[hubId] }));
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 space-y-2">
+      {hubs.map(hub => {
+        const spokes = spokesByHub[hub.id] ?? [];
+        const isExpanded = expandedHubs[hub.id] ?? false;
+        const visibleSpokes = isExpanded ? spokes : spokes.slice(0, INITIAL_SPOKES);
+        const hiddenCount = spokes.length - INITIAL_SPOKES;
+
+        return (
+          <div key={hub.id} className="bg-gray-900 border border-gray-700 rounded-md overflow-hidden">
+            <button
+              type="button"
+              onClick={() => toggleHub(hub.id)}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800/50 transition-colors text-left"
+            >
+              <div className="w-6 h-6 rounded-full bg-purple-600/20 border border-purple-500/30 flex items-center justify-center flex-shrink-0">
+                <span className="text-[10px] font-semibold text-purple-300">H</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-200 truncate">{hub.title}</p>
+                {hub.slug && <p className="text-[11px] text-gray-500 font-mono truncate">/{hub.slug}</p>}
+              </div>
+              <span className="text-xs text-gray-500 flex-shrink-0">{spokes.length} spokes</span>
+              <svg
+                className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {spokes.length > 0 && (isExpanded || visibleSpokes.length > 0) && (
+              <div className="border-t border-gray-700/50 px-4 py-2 space-y-1">
+                {visibleSpokes.map(spoke => (
+                  <div key={spoke.id} className="flex items-center gap-2 py-1 pl-4">
+                    <div className="w-4 h-4 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
+                      <span className="text-[8px] font-semibold text-blue-300">S</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-400 truncate">{spoke.title}</p>
+                      {spoke.slug && <p className="text-[10px] text-gray-600 font-mono truncate">/{spoke.slug}</p>}
+                    </div>
+                  </div>
+                ))}
+                {!isExpanded && hiddenCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => toggleHub(hub.id)}
+                    className="text-[11px] text-blue-400 hover:text-blue-300 pl-4 py-1"
+                  >
+                    Show {hiddenCount} more
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {unassigned.length > 0 && (
+        <div className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
+          <p className="text-xs text-gray-500">{unassigned.length} spokes without hub assignment</p>
         </div>
       )}
     </div>
@@ -154,29 +297,29 @@ function LinkingFlowDiagram({ coreTopics, outerTopics }: {
   const otherHubs = hubs.filter(h => !asHubs.includes(h) && !csHubs.includes(h));
 
   const rules = [
-    { code: 'SPOKE \u2192 HUB', description: 'Every spoke links back to its hub page' },
-    { code: 'HUB \u2192 SPOKE (max 15)', description: 'Hub links to all spokes, max 15 contextual links' },
-    { code: 'SPOKE \u219B SPOKE (cross)', description: 'No direct cross-cluster spoke links' },
-    { code: 'HUB \u2194 HUB (semantic)', description: 'Inter-hub links only when semantic distance 0.3\u20130.7' },
+    { code: 'Article \u2192 Hub', description: 'Every article links back to its main cluster page' },
+    { code: 'Hub \u2192 Articles (max 15)', description: 'Main page links to all its articles, max 15 contextual links' },
+    { code: 'No cross-cluster', description: 'Articles don\u2019t link directly to articles in other clusters' },
+    { code: 'Authority \u2192 Revenue', description: 'Authority pages link to revenue pages, building their ranking power' },
   ];
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 space-y-6">
-      <h3 className="text-sm font-semibold text-gray-200">Link Architecture Flow</h3>
+      <h3 className="text-sm font-semibold text-gray-200">How Pages Link Together</h3>
 
       {/* Flow diagram */}
       {hubs.length > 0 && (
         <div className="bg-gray-900 border border-gray-700 rounded-md p-4">
           <div className="flex items-center justify-center gap-4 flex-wrap">
-            {/* AS section */}
+            {/* Authority pages */}
             <div className="text-center min-w-[120px]">
-              <p className="text-[10px] uppercase tracking-wider text-purple-400 mb-2">AS (Authority)</p>
+              <p className="text-[10px] uppercase tracking-wider text-sky-400 mb-2">Authority pages</p>
               <div className="space-y-1">
                 {(asHubs.length > 0 ? asHubs : otherHubs.slice(0, Math.ceil(otherHubs.length / 2))).slice(0, 3).map(h => (
                   <p key={h.id} className="text-[11px] text-gray-400 truncate max-w-[140px]">{h.title}</p>
                 ))}
               </div>
-              <p className="text-[10px] text-gray-600 mt-1">Low PageRank</p>
+              <p className="text-[10px] text-gray-600 mt-1">Builds expertise</p>
             </div>
 
             {/* Arrow */}
@@ -186,15 +329,15 @@ function LinkingFlowDiagram({ coreTopics, outerTopics }: {
               </svg>
             </div>
 
-            {/* CS Knowledge section */}
+            {/* Knowledge pages */}
             <div className="text-center min-w-[120px]">
-              <p className="text-[10px] uppercase tracking-wider text-blue-400 mb-2">CS (Knowledge)</p>
+              <p className="text-[10px] uppercase tracking-wider text-blue-400 mb-2">Knowledge pages</p>
               <div className="space-y-1">
                 {(csHubs.length > 1 ? csHubs.slice(0, Math.ceil(csHubs.length / 2)) : otherHubs.slice(Math.ceil(otherHubs.length / 2))).slice(0, 3).map(h => (
                   <p key={h.id} className="text-[11px] text-gray-400 truncate max-w-[140px]">{h.title}</p>
                 ))}
               </div>
-              <p className="text-[10px] text-gray-600 mt-1">Medium PageRank</p>
+              <p className="text-[10px] text-gray-600 mt-1">Supports services</p>
             </div>
 
             {/* Arrow */}
@@ -204,20 +347,20 @@ function LinkingFlowDiagram({ coreTopics, outerTopics }: {
               </svg>
             </div>
 
-            {/* CS Service section */}
+            {/* Service/Revenue pages */}
             <div className="text-center min-w-[120px]">
-              <p className="text-[10px] uppercase tracking-wider text-green-400 mb-2">CS (Service)</p>
+              <p className="text-[10px] uppercase tracking-wider text-emerald-400 mb-2">Service pages</p>
               <div className="space-y-1">
                 {(csHubs.length > 1 ? csHubs.slice(Math.ceil(csHubs.length / 2)) : csHubs).slice(0, 3).map(h => (
                   <p key={h.id} className="text-[11px] text-gray-400 truncate max-w-[140px]">{h.title}</p>
                 ))}
               </div>
-              <p className="text-[10px] text-gray-600 mt-1">Highest PageRank</p>
+              <p className="text-[10px] text-gray-600 mt-1">Drives revenue</p>
             </div>
           </div>
 
           <p className="text-[10px] text-gray-600 text-center mt-3 border-t border-gray-700/50 pt-2">
-            Authority links TO knowledge, knowledge links TO service pages. Never reverse direction for main flow.
+            Authority pages build expertise that supports knowledge content, which drives traffic to your service pages.
           </p>
         </div>
       )}
@@ -237,22 +380,148 @@ function LinkingFlowDiagram({ coreTopics, outerTopics }: {
   );
 }
 
-// ──── Contextual Bridges Panel ────
+// ──── Anchor Text Strategy Card (M2) ────
 
-function ContextualBridgesPanel({ coreTopics, eavs }: {
+function AnchorTextStrategyCard({ coreTopics, contentAreas }: {
+  coreTopics: EnrichedTopic[];
+  contentAreas?: Array<{ name: string; type: 'revenue' | 'authority' }>;
+}) {
+  const hubs = coreTopics.filter(t => t.cluster_role === 'pillar');
+  if (hubs.length < 2) return null;
+
+  const getType = (hub: EnrichedTopic): 'revenue' | 'authority' =>
+    hub.topic_class === 'monetization' ? 'revenue' : 'authority';
+
+  const getLabel = (hub: EnrichedTopic): string => {
+    if (contentAreas) {
+      const titleLow = hub.title.toLowerCase();
+      const match = contentAreas.find(a =>
+        titleLow.includes(a.name.toLowerCase()) ||
+        a.name.toLowerCase().includes(titleLow.split(' ')[0])
+      );
+      if (match) return match.name;
+    }
+    return hub.title;
+  };
+
+  // Build linking rules based on cluster types
+  const rules: Array<{
+    from: string;
+    fromType: 'revenue' | 'authority';
+    to: string;
+    toType: 'revenue' | 'authority';
+    anchorPattern: string;
+    direction: string;
+  }> = [];
+
+  const authorityHubs = hubs.filter(h => getType(h) === 'authority');
+  const revenueHubs = hubs.filter(h => getType(h) === 'revenue');
+
+  // Authority → Revenue links (most valuable)
+  for (const auth of authorityHubs.slice(0, 3)) {
+    for (const rev of revenueHubs.slice(0, 2)) {
+      const authLabel = getLabel(auth);
+      const revLabel = getLabel(rev);
+      rules.push({
+        from: authLabel,
+        fromType: 'authority',
+        to: revLabel,
+        toType: 'revenue',
+        anchorPattern: `"${revLabel.split(' ')[0].toLowerCase()} services" or "${revLabel.toLowerCase()}"`,
+        direction: 'authority \u2192 revenue',
+      });
+    }
+  }
+
+  // Revenue → Authority links (context building)
+  for (const rev of revenueHubs.slice(0, 2)) {
+    for (const auth of authorityHubs.slice(0, 2)) {
+      const authLabel = getLabel(auth);
+      const revLabel = getLabel(rev);
+      rules.push({
+        from: revLabel,
+        fromType: 'revenue',
+        to: authLabel,
+        toType: 'authority',
+        anchorPattern: `"learn more about ${authLabel.toLowerCase()}" or "${authLabel.split(' ')[0].toLowerCase()} guide"`,
+        direction: 'revenue \u2192 authority',
+      });
+    }
+  }
+
+  const directionColors: Record<string, string> = {
+    'authority \u2192 revenue': 'bg-emerald-900/20 text-emerald-300 border-emerald-500/30',
+    'revenue \u2192 authority': 'bg-sky-900/20 text-sky-300 border-sky-500/30',
+  };
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+      <h3 className="text-sm font-semibold text-gray-200 mb-1">Anchor Text Strategy</h3>
+      <p className="text-xs text-gray-500 mb-4">
+        Recommended link text between clusters — authority pages pass ranking power to revenue pages
+      </p>
+
+      <div className="space-y-2">
+        {rules.slice(0, 6).map((rule, i) => {
+          const fromColor = rule.fromType === 'revenue' ? 'text-emerald-300' : 'text-sky-300';
+          const toColor = rule.toType === 'revenue' ? 'text-emerald-300' : 'text-sky-300';
+          return (
+            <div key={i} className="bg-gray-900 border border-gray-700 rounded-md px-3 py-2">
+              <div className="flex items-center gap-2 text-xs flex-wrap">
+                <span className={`font-medium ${fromColor} truncate max-w-[140px]`}>{rule.from}</span>
+                <span className="text-gray-600 flex-shrink-0">{'\u2192'}</span>
+                <span className={`font-medium ${toColor} truncate max-w-[140px]`}>{rule.to}</span>
+                <span className={`text-[9px] px-1.5 py-0.5 rounded border ml-auto ${directionColors[rule.direction] ?? 'bg-gray-700 text-gray-400 border-gray-600'}`}>
+                  {rule.direction}
+                </span>
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1">
+                Anchor: {rule.anchorPattern}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 bg-gray-900/50 border border-gray-700/50 rounded-md px-3 py-2">
+        <p className="text-[10px] text-gray-500">
+          <span className="text-gray-400 font-medium">Rule:</span> Max 3 uses per anchor text. Vary anchors: use primary, synonym, and contextual variants.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ──── Contextual Bridges Panel (M3 enhanced) ────
+
+function ContextualBridgesPanel({ coreTopics, eavs, contentAreas }: {
   coreTopics: EnrichedTopic[];
   eavs: SemanticTriple[];
+  contentAreas?: Array<{ name: string; type: 'revenue' | 'authority' }>;
 }) {
   const hubs = coreTopics.filter(t => t.cluster_role === 'pillar');
 
   if (hubs.length < 2 || eavs.length === 0) return null;
 
+  const getLabel = (hub: EnrichedTopic): string => {
+    if (contentAreas) {
+      const titleLow = hub.title.toLowerCase();
+      const match = contentAreas.find(a =>
+        titleLow.includes(a.name.toLowerCase()) ||
+        a.name.toLowerCase().includes(titleLow.split(' ')[0])
+      );
+      if (match) return match.name;
+    }
+    return hub.title;
+  };
+
   // Build entity-to-hub mapping from EAVs and topic titles
-  // Find shared entities between hubs based on EAV subjects
   const hubEntityMap = new Map<string, Set<string>>();
+  const hubAttributeMap = new Map<string, Array<{ predicate: string; value: string }>>();
 
   for (const hub of hubs) {
     const entities = new Set<string>();
+    const attributes: Array<{ predicate: string; value: string }> = [];
     const hubTitle = hub.title.toLowerCase();
 
     for (const eav of eavs) {
@@ -260,7 +529,6 @@ function ContextualBridgesPanel({ coreTopics, eavs }: {
       const attrName = eav.predicate?.relation?.toLowerCase() ?? '';
       const valueName = String(eav.object?.value ?? '').toLowerCase();
 
-      // Check if this EAV is related to this hub's topic
       if (
         hubTitle.includes(entityName) ||
         entityName.includes(hubTitle.split(' ')[0]) ||
@@ -268,11 +536,18 @@ function ContextualBridgesPanel({ coreTopics, eavs }: {
         valueName.includes(hubTitle.split(' ')[0])
       ) {
         entities.add(eav.subject?.label ?? '');
-        if (eav.predicate?.relation) entities.add(eav.predicate.relation);
+        if (eav.predicate?.relation) {
+          entities.add(eav.predicate.relation);
+          attributes.push({
+            predicate: eav.predicate.relation,
+            value: String(eav.object?.value ?? ''),
+          });
+        }
       }
     }
 
     hubEntityMap.set(hub.id, entities);
+    hubAttributeMap.set(hub.id, attributes);
   }
 
   // Find hub pairs with shared references
@@ -280,6 +555,7 @@ function ContextualBridgesPanel({ coreTopics, eavs }: {
     hubA: EnrichedTopic;
     hubB: EnrichedTopic;
     sharedTerms: string[];
+    businessConcept: string;
   }> = [];
 
   for (let i = 0; i < hubs.length; i++) {
@@ -288,17 +564,27 @@ function ContextualBridgesPanel({ coreTopics, eavs }: {
       const setB = hubEntityMap.get(hubs[j].id) ?? new Set();
       const shared = [...setA].filter(term => setB.has(term) && term.length > 0);
 
+      // M3: Generate business concept explanation
+      const labelA = getLabel(hubs[i]);
+      const labelB = getLabel(hubs[j]);
+      let businessConcept = '';
+      if (shared.length > 0) {
+        const mainTerm = shared[0];
+        businessConcept = `${labelA} connects to ${labelB} through ${mainTerm}. When discussing ${mainTerm}, link to both clusters.`;
+      }
+
       if (shared.length > 0) {
         bridges.push({
           hubA: hubs[i],
           hubB: hubs[j],
           sharedTerms: shared.slice(0, 5),
+          businessConcept,
         });
       }
     }
   }
 
-  // If no shared EAV terms, just show all hub pairs as potential bridges
+  // Fallback: show all hub pairs as potential bridges
   const displayBridges = bridges.length > 0
     ? bridges
     : hubs.slice(0, 4).flatMap((a, i) =>
@@ -306,39 +592,52 @@ function ContextualBridgesPanel({ coreTopics, eavs }: {
           hubA: a,
           hubB: b,
           sharedTerms: [] as string[],
+          businessConcept: '',
         }))
       ).slice(0, 6);
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-      <h3 className="text-sm font-semibold text-gray-200 mb-4">Contextual Bridges</h3>
+      <h3 className="text-sm font-semibold text-gray-200 mb-1">Contextual Bridges</h3>
       <p className="text-xs text-gray-500 mb-4">
-        Hub-to-hub connection opportunities based on shared EAV attributes
+        How your content areas connect through shared business concepts
       </p>
       <div className="space-y-2">
-        {displayBridges.map((bridge, i) => (
-          <div key={i} className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-gray-300 font-medium truncate max-w-[180px]">{bridge.hubA.title}</span>
-              <span className="text-gray-600 flex-shrink-0">\u2194</span>
-              <span className="text-gray-300 font-medium truncate max-w-[180px]">{bridge.hubB.title}</span>
-            </div>
-            {bridge.sharedTerms.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {bridge.sharedTerms.map((term, j) => (
-                  <span key={j} className="text-[10px] bg-blue-900/20 text-blue-300 border border-blue-700/30 rounded px-1.5 py-0.5">
-                    {term}
-                  </span>
-                ))}
+        {displayBridges.map((bridge, i) => {
+          const labelA = getLabel(bridge.hubA);
+          const labelB = getLabel(bridge.hubB);
+          return (
+            <div key={i} className="bg-gray-900 border border-gray-700 rounded-md px-4 py-3">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-gray-300 font-medium truncate max-w-[180px]">{labelA}</span>
+                <span className="text-gray-600 flex-shrink-0">{'\u2194'}</span>
+                <span className="text-gray-300 font-medium truncate max-w-[180px]">{labelB}</span>
               </div>
-            )}
-            {bridge.sharedTerms.length === 0 && (
-              <p className="text-[10px] text-gray-600 mt-1">
-                Potential bridge — add shared EAV attributes to strengthen connection
-              </p>
-            )}
-          </div>
-        ))}
+              {bridge.sharedTerms.length > 0 && (
+                <>
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    <span className="text-[10px] text-gray-500 mr-1">Shared:</span>
+                    {bridge.sharedTerms.map((term, j) => (
+                      <span key={j} className="text-[10px] bg-blue-900/20 text-blue-300 border border-blue-700/30 rounded px-1.5 py-0.5">
+                        {term}
+                      </span>
+                    ))}
+                  </div>
+                  {bridge.businessConcept && (
+                    <p className="text-[10px] text-gray-400 mt-1.5 italic">
+                      {bridge.businessConcept}
+                    </p>
+                  )}
+                </>
+              )}
+              {bridge.sharedTerms.length === 0 && (
+                <p className="text-[10px] text-gray-600 mt-1">
+                  Potential bridge — add shared EAV attributes to strengthen connection
+                </p>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -365,33 +664,41 @@ function PublishingWavesPanel({ coreTopics, outerTopics }: {
   const waves = [
     {
       number: 1,
-      name: 'Wave 1: CS Monetization',
-      description: 'CS monetization (first) -- Revenue-driving pages targeting commercial search intent with highest conversion potential.',
-      color: 'border-green-500/50 bg-green-900/10',
+      name: 'Wave 1: Your Services (revenue)',
+      description: 'Publish these first — they directly serve customers searching for your services and drive conversions.',
+      action: 'After publishing: submit URLs to Google Search Console, add internal links from your homepage.',
+      improvement: 'These pages will be strengthened in Wave 2 when knowledge content links back to them.',
+      color: 'border-emerald-500/50 bg-emerald-900/10',
       count: wave1.length,
       topics: wave1,
     },
     {
       number: 2,
-      name: 'Wave 2: CS Knowledge',
-      description: 'CS knowledge clusters -- Informational content supporting commercial topics, building topical depth.',
+      name: 'Wave 2: Knowledge Content',
+      description: 'Informational content that supports your service pages and builds topical depth.',
+      action: 'After publishing: add contextual links from these pages to your Wave 1 service pages.',
+      improvement: 'Expect Wave 1 ranking improvements within 4-6 weeks as authority flows from these pages.',
       color: 'border-blue-500/50 bg-blue-900/10',
       count: wave2.length,
       topics: wave2,
     },
     {
       number: 3,
-      name: 'Wave 3: Regional',
-      description: 'Regional pages -- Location-specific content for geographic targeting and local authority.',
+      name: 'Wave 3: Regional Pages',
+      description: 'Location-specific content for geographic targeting and local search visibility.',
+      action: 'After publishing: update Google Business Profiles with links to these regional pages.',
+      improvement: 'Regional pages target local search queries and strengthen geographic relevance.',
       color: 'border-amber-500/50 bg-amber-900/10',
       count: wave3.length,
       topics: wave3,
     },
     {
       number: 4,
-      name: 'Wave 4: AS Authority',
-      description: 'AS authority pages -- Author Section expertise pages that build entity authority and E-E-A-T signals.',
-      color: 'border-purple-500/50 bg-purple-900/10',
+      name: 'Wave 4: Authority Content',
+      description: 'Expertise-building pages that establish your authority and strengthen all other content.',
+      action: 'After publishing: share on professional networks and link from author bio pages.',
+      improvement: 'These pages complete your topical authority and improve E-E-A-T signals across the entire site.',
+      color: 'border-sky-500/50 bg-sky-900/10',
       count: wave4.length,
       topics: wave4,
     },
@@ -402,7 +709,7 @@ function PublishingWavesPanel({ coreTopics, outerTopics }: {
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-      <h3 className="text-sm font-semibold text-gray-200 mb-4">Publishing Waves</h3>
+      <h3 className="text-sm font-semibold text-gray-200 mb-4">Publishing Strategy</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {waves.map((wave) => {
           const percent = total > 0 ? Math.round((wave.count / total) * 100) : 0;
@@ -420,12 +727,20 @@ function PublishingWavesPanel({ coreTopics, outerTopics }: {
                 <span className="text-xs text-gray-400">{wave.count} pages</span>
               </div>
               <p className="text-xs text-gray-400">{wave.description}</p>
+              {wave.count > 0 && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-[10px] text-blue-400/80">
+                    <span className="font-medium">Action:</span> {wave.action}
+                  </p>
+                  <p className="text-[10px] text-gray-500 italic">{wave.improvement}</p>
+                </div>
+              )}
               <div className="mt-3">
                 <div className="w-full bg-gray-700 rounded-full h-1.5">
                   <div className="bg-gray-500 h-1.5 rounded-full" style={{ width: `${percent}%` }} />
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1">
-                  {wave.count > 0 ? `${wave.count} topics assigned` : 'Not started'}
+                  {wave.count > 0 ? `${wave.count} pages assigned` : 'Not started'}
                 </p>
               </div>
 
@@ -443,7 +758,7 @@ function PublishingWavesPanel({ coreTopics, outerTopics }: {
                     >
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                     </svg>
-                    {isExpanded ? 'Hide topics' : `Show ${wave.topics.length} topics`}
+                    {isExpanded ? 'Hide pages' : `Show ${wave.topics.length} pages`}
                   </button>
                   {(isExpanded || visibleTopics.length <= WAVE_INITIAL) && isExpanded && (
                     <div className="space-y-1">
@@ -543,10 +858,188 @@ function TopicList({ topics, label, allCoreTopics }: {
   );
 }
 
+// ──── Existing Page Mapping (M5 — Migration) ────
+
+interface PageMapping {
+  oldUrl: string;
+  newSlug: string;
+  action: 'keep' | 'redirect' | 'new';
+  matchedTopic?: string;
+}
+
+function ExistingPageMappingPanel({
+  topics,
+  domain,
+  pagesFound,
+  crawledUrls,
+}: {
+  topics: EnrichedTopic[];
+  domain?: string;
+  pagesFound?: number;
+  crawledUrls?: string[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Normalize crawled URLs for matching
+  const crawledSlugs = new Set(
+    (crawledUrls ?? []).map(url => {
+      try {
+        const parsed = new URL(url);
+        return parsed.pathname.replace(/\/$/, '').toLowerCase();
+      } catch {
+        return url.replace(/\/$/, '').toLowerCase();
+      }
+    }).filter(Boolean)
+  );
+
+  // Build mapping with intelligent action detection
+  const mappings: PageMapping[] = topics
+    .filter(t => t.slug)
+    .map(t => {
+      const slug = t.slug || '';
+      const newSlug = `/${slug}`;
+
+      // Determine action based on whether existing page matches
+      let action: 'keep' | 'redirect' | 'new' = 'new';
+
+      if (crawledSlugs.size > 0) {
+        // Check for exact slug match in crawled pages
+        const exactMatch = crawledSlugs.has(newSlug.toLowerCase());
+        if (exactMatch) {
+          action = 'keep'; // Same URL, content will be updated in-place
+        } else {
+          // Check for partial match (existing page covers similar topic)
+          const slugWords = slug.toLowerCase().split('-').filter(w => w.length > 2);
+          const hasPartialMatch = [...crawledSlugs].some(crawledSlug => {
+            const crawledWords = crawledSlug.split('/').pop()?.split('-').filter(w => w.length > 2) ?? [];
+            const overlap = slugWords.filter(w => crawledWords.includes(w));
+            return overlap.length >= 2; // At least 2 meaningful words match
+          });
+          action = hasPartialMatch ? 'redirect' : 'new';
+        }
+      } else {
+        // No crawled data: hubs are 'keep' (existing pages), spokes are 'new'
+        action = t.cluster_role === 'pillar' ? 'redirect' : 'new';
+      }
+
+      return {
+        oldUrl: domain ? `${domain}/${slug}` : newSlug,
+        newSlug,
+        action,
+        matchedTopic: t.title,
+      };
+    });
+
+  const newPages = mappings.filter(m => m.action === 'new').length;
+  const redirectPages = mappings.filter(m => m.action === 'redirect').length;
+  const keepPages = mappings.filter(m => m.action === 'keep').length;
+
+  if (mappings.length === 0) return null;
+
+  const shown = expanded ? mappings : mappings.slice(0, 8);
+
+  const actionConfig = {
+    keep: { label: 'Keep', bg: 'bg-green-900/20 text-green-400 border-green-700/30' },
+    redirect: { label: 'Redirect', bg: 'bg-amber-900/20 text-amber-300 border-amber-700/30' },
+    new: { label: 'New Page', bg: 'bg-blue-900/20 text-blue-300 border-blue-700/30' },
+  };
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-6 py-4 hover:bg-gray-800/50 transition-colors text-left"
+      >
+        <div className="flex items-center gap-3">
+          <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+          </svg>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-200">Page Migration Mapping</h3>
+            <p className="text-[10px] text-gray-500">
+              {keepPages > 0 && `${keepPages} to update, `}
+              {redirectPages > 0 && `${redirectPages} to redirect, `}
+              {newPages} new page{newPages !== 1 ? 's' : ''}
+              {pagesFound ? ` \u2014 ${pagesFound} existing pages on site` : ''}
+            </p>
+          </div>
+        </div>
+        <svg
+          className={`w-4 h-4 text-gray-500 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-gray-700/50">
+          {/* Summary bar */}
+          <div className="px-6 py-3 bg-gray-900/50 flex items-center gap-4 text-xs">
+            {keepPages > 0 && <span className="text-green-400">{keepPages} keep (update content)</span>}
+            {redirectPages > 0 && <span className="text-amber-400">{redirectPages} redirects</span>}
+            <span className="text-blue-400">{newPages} new pages</span>
+            {pagesFound && pagesFound > (keepPages + redirectPages) && (
+              <span className="text-gray-500">{pagesFound - keepPages - redirectPages} unchanged</span>
+            )}
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-700/50 text-[10px] text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-2 text-left font-medium">New URL</th>
+                  <th className="px-6 py-2 text-left font-medium">Maps To Topic</th>
+                  <th className="px-6 py-2 text-left font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((m, i) => {
+                  const ac = actionConfig[m.action];
+                  return (
+                    <tr key={i} className="border-b border-gray-700/20 hover:bg-gray-800/50">
+                      <td className="px-6 py-2">
+                        <span className="text-xs text-gray-400 font-mono">{m.newSlug}</span>
+                      </td>
+                      <td className="px-6 py-2">
+                        <span className="text-xs text-gray-300">{m.matchedTopic ?? '\u2014'}</span>
+                      </td>
+                      <td className="px-6 py-2">
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${ac.bg}`}>
+                          {ac.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {mappings.length > 8 && !expanded && (
+            <div className="px-6 py-2 text-center">
+              <button
+                type="button"
+                onClick={() => setExpanded(true)}
+                className="text-xs text-blue-400 hover:text-blue-300"
+              >
+                Show all {mappings.length} pages
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ──── Main Component ────
 
 const PipelineMapStep: React.FC = () => {
   const {
+    isGreenfield,
     autoApprove,
     advanceStep,
     approveGate,
@@ -571,6 +1064,10 @@ const PipelineMapStep: React.FC = () => {
   const [generatedCore, setGeneratedCore] = useState<EnrichedTopic[]>([]);
   const [generatedOuter, setGeneratedOuter] = useState<EnrichedTopic[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // J1: Adaptive display — summary when data exists, detail when adjusting
+  const hasMapData = existingCore.length > 0;
+  const [isAdjusting, setIsAdjusting] = useState(!hasMapData);
 
   const coreTopics = existingCore.length > 0 ? existingCore : generatedCore;
   const outerTopics = existingOuter.length > 0 ? existingOuter : generatedOuter;
@@ -651,9 +1148,9 @@ const PipelineMapStep: React.FC = () => {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-200">Topical Map</h2>
+        <h2 className="text-lg font-semibold text-gray-200">Content Plan</h2>
         <p className="text-sm text-gray-400 mt-1">
-          Hub-spoke architecture, internal linking rules, and publishing wave strategy
+          Your content organized into clusters with internal linking and publishing strategy
         </p>
       </div>
 
@@ -694,28 +1191,63 @@ const PipelineMapStep: React.FC = () => {
         <MetricCard label="Internal Links" value={internalLinksEstimate > 0 ? `~${internalLinksEstimate}` : 0} color={internalLinksEstimate > 0 ? 'amber' : 'gray'} />
       </div>
 
-      {/* Review: Page Structure */}
-      <HubSpokeSection coreTopics={coreTopics} outerTopics={outerTopics} />
+      {/* Review: Content Structure (Decision 6 — cluster cards primary, tree toggle) */}
+      <ClusterCardsView
+        coreTopics={coreTopics}
+        outerTopics={outerTopics}
+        contentAreas={activeMap?.pillars?.contentAreas}
+      />
 
+      {/* J1: Adaptive display — Adjust button in summary mode */}
+      {!isAdjusting && hasMapData && totalTopics > 0 && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setIsAdjusting(true)}
+            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 px-5 py-2 rounded-md text-sm font-medium transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />
+            </svg>
+            Modify Content Plan
+          </button>
+        </div>
+      )}
+
+      {/* Detail sections — only shown when adjusting or no data */}
+      {isAdjusting && (<>
       {/* Review: URL Slugs */}
       {totalTopics > 0 && (
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-gray-600 mb-2">URL Slugs</p>
+          <p className="text-[10px] uppercase tracking-widest text-gray-600 mb-2">All Pages</p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <TopicList topics={coreTopics} label="Core Topics (Hub Pages)" allCoreTopics={coreTopics} />
-            <TopicList topics={outerTopics} label="Outer Topics (Spoke Pages)" allCoreTopics={coreTopics} />
+            <TopicList topics={coreTopics} label="Hub Pages (main cluster pages)" allCoreTopics={coreTopics} />
+            <TopicList topics={outerTopics} label="Articles (supporting pages)" allCoreTopics={coreTopics} />
           </div>
         </div>
       )}
 
       {/* Review: Link Architecture */}
       <div>
-        <p className="text-[10px] uppercase tracking-widest text-gray-600 mb-2">Link Architecture</p>
+        <p className="text-[10px] uppercase tracking-widest text-gray-600 mb-2">Linking Strategy</p>
         <LinkingFlowDiagram coreTopics={coreTopics} outerTopics={outerTopics} />
       </div>
 
-      {/* Review: Contextual Bridges */}
-      <ContextualBridgesPanel coreTopics={coreTopics} eavs={activeMap?.eavs ?? []} />
+      {/* Review: Anchor Text Strategy (M2) */}
+      <AnchorTextStrategyCard coreTopics={coreTopics} contentAreas={activeMap?.pillars?.contentAreas} />
+
+      {/* Review: Contextual Bridges (M3 enhanced) */}
+      <ContextualBridgesPanel coreTopics={coreTopics} eavs={activeMap?.eavs ?? []} contentAreas={activeMap?.pillars?.contentAreas} />
+
+      {/* M5: Existing page mapping (migration only) */}
+      {!isGreenfield && totalTopics > 0 && (
+        <ExistingPageMappingPanel
+          topics={[...coreTopics, ...outerTopics]}
+          domain={activeMap?.business_info?.domain || state.businessInfo.domain}
+          pagesFound={(activeMap?.business_info as any)?.pagesFound}
+          crawledUrls={(activeMap?.analysis_state as any)?.crawl?.urls ?? (activeMap?.analysis_state as any)?.discovery?.urls}
+        />
+      )}
 
       {/* Review: Publishing Waves */}
       <PublishingWavesPanel coreTopics={coreTopics} outerTopics={outerTopics} />
@@ -741,6 +1273,7 @@ const PipelineMapStep: React.FC = () => {
               : 'Generate Topical Map'}
         </button>
       </div>
+      </>)}
 
       {/* Approval Gate */}
       {gate && (stepState?.status === 'pending_approval' || stepState?.approval?.status === 'rejected') && (
