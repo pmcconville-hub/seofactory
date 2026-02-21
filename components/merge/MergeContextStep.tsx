@@ -9,7 +9,7 @@ interface MergeContextStepProps {
   contextConflicts: ContextConflict[];
   resolvedContext: {
     businessInfo: Partial<BusinessInfo>;
-    pillars: SEOPillars | null;
+    pillars: Partial<SEOPillars> | null;
   };
   isAnalyzing: boolean;
   onResolveConflict: (field: string, resolution: ContextConflict['resolution'], customValue?: any) => void;
@@ -101,7 +101,7 @@ const MergeContextStep: React.FC<MergeContextStepProps> = ({
             type="text"
             placeholder="Or enter custom value..."
             className="flex-1 px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white text-sm"
-            value={conflict.resolution === 'custom' ? conflict.customValue || '' : ''}
+            value={conflict.resolution === 'custom' ? (conflict.customValue as string) || '' : ''}
             onChange={(e) => onResolveConflict(conflict.field, 'custom', e.target.value)}
           />
         </div>

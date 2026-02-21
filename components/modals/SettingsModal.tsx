@@ -198,10 +198,6 @@ const ServiceSettings: React.FC<{ settings: Partial<BusinessInfo>, handleChange:
         <h3 className="text-lg font-semibold text-green-400 pt-4 border-t border-gray-700">Knowledge Graph & Tools</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
              <div>
-                <Label htmlFor="infranodusApiKey">Infranodus API Key</Label>
-                <Input id="infranodusApiKey" name="infranodusApiKey" value={settings.infranodusApiKey || ''} onChange={handleChange} type="password" placeholder="Infranodus API Key" />
-            </div>
-             <div>
                 <Label htmlFor="jinaApiKey">Jina API Key</Label>
                 <Input id="jinaApiKey" name="jinaApiKey" value={settings.jinaApiKey || ''} onChange={handleChange} type="password" placeholder="Jina API Key" />
             </div>

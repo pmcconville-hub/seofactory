@@ -375,7 +375,7 @@ export interface ProviderResult {
 /**
  * Dashboard metrics for site analysis
  */
-export interface DashboardMetrics {
+export interface SiteAnalysisDashboardMetrics {
   briefGenerationProgress: number;
   knowledgeDomainCoverage: number;
   avgEAVsPerBrief: number;

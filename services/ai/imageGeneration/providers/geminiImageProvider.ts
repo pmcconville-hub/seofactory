@@ -8,7 +8,7 @@ import {
   buildNoTextInstruction,
   normalizeImageType
 } from '../../../../config/imageTypeRouting';
-import { ImageStyle } from '../../../../types/contextualEditor';
+import { ContextualImageStyle } from '../../../../types/contextualEditor';
 
 // Imagen models — try newer first, fall back to older
 const IMAGEN_MODELS = [
@@ -88,7 +88,7 @@ export const geminiImageProvider: ImageProvider = {
     const aspectRatio = getAspectRatio(placeholder.specs.width, placeholder.specs.height);
 
     // Determine person generation setting based on image type and user preference
-    const normalizedType = normalizeImageType(placeholder.type as ImageStyle);
+    const normalizedType = normalizeImageType(placeholder.type as ContextualImageStyle);
     const allowPeople = options.excludePeople
       ? false
       : PERSON_IMAGE_TYPES.has(normalizedType);
@@ -341,7 +341,7 @@ function buildImagePrompt(
   const isHero = placeholder.type === 'HERO';
 
   // Normalize the image type and get the mapping
-  const normalizedType = normalizeImageType(placeholder.type as ImageStyle);
+  const normalizedType = normalizeImageType(placeholder.type as ContextualImageStyle);
   const mapping = IMAGE_TYPE_PROMPTS[normalizedType] ?? IMAGE_TYPE_PROMPTS.scene;
   const entity = businessInfo.seedKeyword || '';
 

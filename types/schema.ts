@@ -37,34 +37,17 @@ export type SchemaPageType =
 /**
  * Entity type for resolution
  */
-export enum SchemaEntityType {
-  PERSON = 'Person',
-  ORGANIZATION = 'Organization',
-  PLACE = 'Place',
-  THING = 'Thing',
-  EVENT = 'Event',
-  CREATIVE_WORK = 'CreativeWork',
-}
+export type SchemaEntityType = 'Person' | 'Organization' | 'Place' | 'Thing' | 'Event' | 'CreativeWork';
 
 /**
  * Entity role in content
  */
-export enum EntityRole {
-  SUBJECT = 'subject',
-  AUTHOR = 'author',
-  PUBLISHER = 'publisher',
-  MENTIONED = 'mentioned',
-  ABOUT = 'about',
-}
+export type EntityRole = 'subject' | 'author' | 'publisher' | 'mentioned' | 'about';
 
 /**
  * Entity resolution source
  */
-export enum EntityResolutionSource {
-  WIKIDATA = 'wikidata',
-  AI_INFERRED = 'ai_inferred',
-  USER_PROVIDED = 'user_provided',
-}
+export type EntityResolutionSource = 'wikidata' | 'ai_inferred' | 'user_provided' | 'pattern_inference';
 
 // ============================================================================
 // ENTITY TYPES

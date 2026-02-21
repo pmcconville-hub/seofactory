@@ -413,8 +413,8 @@ const runAuditCheck = (
       case 'link-no-generic':
         const genericAnchors = ['click here', 'read more', 'learn more', 'here', 'more'];
         const links = page.jinaExtraction?.links || [];
-        const genericLinks = links.filter(l =>
-          genericAnchors.some(g => l.text.toLowerCase().trim() === g)
+        const genericLinks = links.filter((l: any) =>
+          genericAnchors.some(g => ((l as { text: string }).text || '').toLowerCase().trim() === g)
         );
         check.passed = genericLinks.length === 0;
         check.score = check.passed ? 100 : Math.max(0, 100 - (genericLinks.length * 20));

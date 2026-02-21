@@ -1,0 +1,643 @@
+Case Study: From Struggling to Fully Booked: How We Ranked a Miami Plumber in 90 Days
+Before:
+•	2-3 calls per week from website
+•	Single homepage, no service pages
+•	8 reviews (last one 6 months old)
+•	Not ranking in map pack
+•	Website last updated in 2023
+After (90 Days):
+•	280+ monthly website visitors
+•	76 calls last month from Google Business Profile alone
+•	34 total reviews
+•	Ranking in map pack for 4 main keywords within 9 -mile radius
+This is a breakdown of how we took a small plumbing company in Coral Gables from barely surviving to turning down work in one of the most competitive markets in the country.
+Website Structure Before Our Work:
+•	Single homepage with basic contact information
+•	No dedicated pages for individual services
+•	Missing schema markup implementation
+•	Google Business Profile set up but not optimized
+•	No service area pages
+Building Topical Authority Through Comprehensive Content:
+Most plumbers make the mistake of creating one generic "Services" page. We took a different approach.
+We built out complete coverage of their plumbing services with main service pages and sub-service pages underneath each one.
+Main Service Pages Created:
+•	Emergency Plumbing Services
+•	Water Heater Repair & Replacement
+
+
+•	Drain Cleaning & Camera Inspection
+•	Slab Leak Detection
+•	Repiping Services
+Sub-Service Pages for Depth:
+Under Water Heaters:
+•	Tankless Water Heater Installation
+•	Water Heater Repair vs Replacement
+•	Gas vs Electric Water Heater Options
+Under Drain Cleaning:
+•	Kitchen Drain Cleaning
+•	Bathroom Drain Cleaning
+•	Main Sewer Line Cleaning & Repair
+Each service page contained 1,200+ words of content specific to Miami homeowners, addressing coral rock foundations, aging cast iron pipe issues, and hurricane season preparation.
+Service Area Pages:
+•	Coral Gables Plumbing Services
+•	Coconut Grove Plumbing Services
+•	Pinecrest Plumbing Services
+•	South Miami Plumbing Services
+This level of topical coverage tells Google we're the authority on plumbing in this market.
+Internal Linking Implementation:
+•	Linked main service pages to all relevant sub-service pages
+•	Connected sub-service pages back to main services
+•	Linked all GBP Product pages to corresponding service area pages
+Schema Markup:
+Implemented local business schema across all pages, connecting services to specific geographic areas.
+Website Performance Results:
+In 90 days: 280+ monthly visitors, primarily from service and sub-service pages ranking organically. No paid ads.
+Authority Building:
+Miami is too competitive to rank on on-page optimization alone. We had to build real authority.
+•	Local Chamber of Commerce: Got them listed with the Coral Gables Chamber
+•	Press Releases: Published 2 press releases through local Miami news outlets
+•	Citations: Built 25 local directory citations
+•	Backlinks: Secured 8 backlinks from relevant local blogs and business sites
+This process took the majority of the 90 days. It's tedious work, but in competitive markets like Miami, there's no way around it.
+Google Business Profile Optimization:
+•	NAP Consistency: Fixed three different versions of their address across platforms (Yelp, Facebook, directories)
+•	Regular Posts: Posted twice per week with job updates, before/after photos, and seasonal maintenance tips
+•	Photos: Used only real job site photos, no stock images
+•	Review Strategy: Coached the owner on asking satisfied customers for reviews. Went from 8 reviews to 34 reviews in 90 days.
+•	Service Categories: Added every service as a category in GBP
+•	Service Keywords: Used service keywords in all photo titles and captions
+Data Integration Across Platforms:
+Made sure service areas listed in GBP matched exactly with:
+•	Website footer service areas
+•	Local schema markup
+•	Individual service area pages
+Google rewards this consistency.
+GBP Performance Results:
+Now ranking in the map pack for primary keywords within a 9-mile radius:
+•	Plumber near me
+•	Emergency plumber Miami
+•	Emergency plumber near me
+•	Water heater repair
+•	Drain cleaning
+Last month: 76 phone calls directly from Google Business Profile.
+What Actually Got Them Ranked:
+The comprehensive service page structure gave us the topical authority. The service area pages gave us geographic relevance. But the backlinks, press releases, and local citations are what pushed us into rankings in a market with Dozens of plumbers competing.
+In competitive markets, you can't skip the authority-building phase. That's the reality.
+Thanks for reading. Drop questions below if you're working on ranking in a tough market.
+
+
+
+
+A Simple Programmatic SEO Case Study for a Premium Domain Registrar
+One of the biggest challenges for domain registrars is scale.
+They generate thousands of URLs, many of which target queries with little or no real search demand.
+At that point, the real strategy is not “publish more” but decide what deserves to exist in Google’s index.
+This project focused on clarity, structure, and efficiency:
+• Optimized internal PageRank distribution using dynamic header and footer architecture
+• Rebuilt and selectively indexed product pages with stronger components
+• Designed a new content brief and layout system for generic category pages
+• Implemented Product schema for individual domain pages
+• Used Carousel structured data for category-level pages
+• Prioritized technical SEO to reduce the cost of retrieval
+• Applied a full redesign to the homepage, category pages, and product pages
+The outcome was simple and measurable:
+Fewer URLs → higher value per URL → stronger rankings.
+This site had been losing visibility for nearly 18 months.
+After restructuring, it won the December 2025 Broad Core Algorithm Update.
+Every URL we removed helped Google focus more clearly on what truly mattered.
+No hacks.
+No shortcuts.
+Just structure, semantics, and precision.
+
+
+
+Microsoft Bing Webmaster Tools has always been more useful and efficient than Google Search Console, and once again, they’ve proven their commitment to transparency.
+Microsoft Bing has just launched the AI Performance Dashboard, which introduces “citations” and “cited pages” reporting. This offers a fresh and much-needed way to understand how SEO actually contributes to what many now call GEO, AEO, SXO, or whatever new acronym is trending.
+Going forward, search performance dashboards will focus less on clicks, positions, and individual queries, and more on topics, visibility, and overall exposure.
+We’re moving toward an “estate-based performance” mindset rather than hyper-precise, keyword-level rank tracking.
+And as always, semantics and topical authority sit right at the center of this transition.
+
+
+ From 0 to 12,000 clicks per day with a SaaS - without panic SEO
+This SEO project clearly showed how Google’s ranking algorithms run confidence tests based on click data.
+Sometimes, the best SEO move is doing nothing.
+When a page is already optimized and aligned with your roadmap, sudden ranking drops don’t always mean something is broken. In many cases, Google is simply running embedding relevance and click-responsiveness tests.
+Example  
+For a competitive query like “Women’s Glasses”, we saw temporary drops. No changes were made.
+The next day, the page returned to #1.
+Why?
+Because Google was testing the query–page relationship, not penalizing it.
+This project was in the English SaaS market, and the site gained and lost several high-volume, high-value queries multiple times.
+Key decision:
+ We optimized those pages once
+ Then changed nothing for those specific query–page pairs
+ Instead, we focused on completing the topical map and improving site-wide relevance/responsiveness and structure
+Result:
+As overall site rankability increased, those important queries stabilized permanently.
+ Takeaway
+Ranking graphs should not dictate your long-term SEO strategy.
+If you change direction after every fluctuation, you break algorithmic trust.
+Follow the roadmap.
+Let Google finish its tests.
+Optimize the system, not the panic.
+
+
+What happens when you actually implement #semanticSEO on a SaaS site? This:
+12 months of "doing SEO."
+68 blog posts. $50K spent. A fancy agency with weekly reports.
+Result?
+73 clicks/day. Zero demos from organic. CAC stuck at $847.
+Then we took over.
+4 months later:
+→ 2,500+ clicks/day
+→ 312 organic demos/month
+→ CAC dropped to $143
+→ $1.2M pipeline from organic
+→ 4,200+ AI citations across Google AI Overview, ChatGPT and Perplexity
+They're not just ranking.
+They're THE answer buyers find before they start comparing.
+This was an email marketing SaaS.
+$3M ARR. Good product. 94% of pipeline from paid ads.
+The problem?
+TOFU content attracts readers.
+BOFU content attracts buyers.
+They had zero BOFU presence.
+Every "vs" page? Competitors.
+Every "alternative to X" search? Competitors.
+Every buyer-intent query? Competitors.
+They were feeding their competitors' pipeline.
+3 fatal issues:
+1/ No semantic architecture
+↳ 68 posts floating in isolation
+↳ No central entity connecting content
+↳ Google saw topics, not authority
+2/ Wrong content, wrong intent
+↳ 80% TOFU targeting browsers
+↳ 0 pages filling commercial frame slots
+↳ Missing the queries buyers actually search
+3/ No entity signals
+↳ Google couldn't answer: "What is this company an authority on?"
+↳ Invisible to LLMs: not recognized as a citable source
+They had content. Not a semantic content network.
+Here's what we did:
+Month 1: Authority Audit
+Mapped buyer journey to search intent. Found 12 BOFU keywords competitors ignored.
+Month 2: Semantic Architecture
+Pillar-cluster structure. Internal linking based on buyer logic. 6 definitive guides targeting decision-stage queries.
+Month 3: BOFU Blitz
+Comparison pages for every competitor. "Alternative to X" pages. Product-led content for buyers, not browsers.
+Month 4: Compound Effect
+BOFU pages ranked. Demos tripled.
+The inflection hit Week 11.
+One pillar: position 47 → 3.
+Internal links kicked in. Clusters pulled each other up.
+Then pipeline followed.
+Traffic:
+→ 2,500+ clicks/day (was 73)
+→ 157K clicks
+→ Ranking above ConvertKit for 23 terms
+Pipeline:
+→ 312 demos/month from organic (was 0)
+→ 41% of pipeline now from SEO
+→ CAC: $847 → $143
+→ $1.2M pipeline (Month 4-6)
+AI visibility:
+→ 4,200+ citations (Google AI Overview, ChatGPT, Perplexity)
+No link building. No PR stunts.
+Just semantic architecture + topical authority + BOFU strategy.
+Organic became their #1 pipeline channel in 4 months.
+I call it the 'Authority Search-to-Pipeline Engine'.
+Credit to Koray Tuğberk Gübür for the topical authority framework. We just applied it to SaaS pipeline.
+
+
+
+
+I helped this Ecommerce store generate over 6.7 million dollars in sales last year.
+Not traffic.
+Not impressions.
+Actual revenue hitting the bank account every month, growing month after month.
+All organic.
+From SEO.
+Here's what we did based on Koray Tuğberk Gübür's framework.
+- Ran a full technical SEO audit. Crawlability, rendering, indexing, sitemaps, URL structure, duplicate content, structured data, Core Web Vitals, internal linking architecture and E-E-A-T signals. Fixed everything that was stopping Google from properly understanding the site. Consolidated ranking signals to the pages that actually generate revenue.
+- Ran a comprehensive content audit. Reviewed every existing page based on relevance, historical performance and alignment with source context. Every page got one of four actions: delete, merge, update, or leave. Thousands of junk pages were removed or consolidated.
+- Built full topical maps for each product category. Not keyword spreadsheets. Structured semantic maps built around the central entity and its closest attributes, organized into a content network covering every important context, attribute and query within the knowledge domain.
+- Rebuilt category and product pages with templated semantic content. Most stores treat category pages as a product grid with filters. We turned them into semantic hubs with unique descriptions, proper heading hierarchies and entity-driven content. Product pages were rewritten with specific descriptions covering what it is, who it's for, how it compares. Schema markup, semantic HTML and conversion-focused layouts.
+- Created semantic content briefs and published in rounds. Every brief mapped out search intent layers, questions to answer, topics to cover and depth required. Content was written following semantic SEO rules, semantic triples, proper ontologies and conversion optimization best practices.
+- Covered the messy middle. Buying guides, comparison posts, "best for" roundups, "X vs Y" breakdowns. The consideration-stage content that catches people while they're still deciding what to buy.
+- Built contextual internal links across the entire site. Each link placed with purpose to connect semantically related pages, push authority to money pages and strengthening the content network.
+- Optimized visual content for search. Descriptive file names, proper alt text and visuals placed where they reinforce entity associations and page context.
+- Engineered content for AI search and featured snippets. Answer blocks, FAQ sections, comparison tables and clear definitions structured so search engines can extract them directly.
+All these strategies helped grow revenue every single month for 12 months straight.
+SEO works when it's treated like a system. Every page has a job. Every link has a reason. Every piece of content moves someone closer to buying.
+When you connect all of that together, the revenue follows.
+This is what SEO looks like when it's engineered, not guessed.
+
+
+
+𝐖𝐡𝐚𝐭 𝐢𝐬 𝐂𝐨𝐧𝐭𝐞𝐱𝐭𝐮𝐚𝐥 𝐂𝐨𝐯𝐞𝐫𝐚𝐠𝐞 𝐢𝐧 Koray Tuğberk Gübür 𝐅𝐫𝐚𝐦𝐞𝐰𝐨𝐫𝐤?
+Every page holds multiple contexts.
+But only one should lead.
+Contextual coverage defines how much space each idea occupies.
+It’s the proportional weight of topics inside your document.
+If you over-extend one context, you dilute the others.
+If you touch too many contexts lightly, you weaken the main intent.
+Coverage is about distribution, not length.
+Search engines read how much semantic surface a concept occupies.
+They measure whether that coverage aligns with user intent.
+Passage ranking depends on this balance.
+Too much detail in one area can fragment the document vector.
+Too little makes your content shallow.
+Each section of a page must carry its weight in the overall meaning.
+When contextual coverage is precise, your document flows naturally between main and supplementary ideas and the algorithm recognizes it as organized thought, not scattered writing.
+
+
+
+0-60k Impressions in 40 days on a GCU penalized website - Can a quality node reverse the entire GCU penalty? Ranking #1-2 in the U.S.A. for query "3d" with only an 8-page topical map with the leverage of methodologies of Koray Tuğberk Gübür's relevance configuration-maxing & adjusting.
+
+What if you could measure from 1-100 how well a page will do in the SERP using relevance solely, not counting in other initial ranking factors. How relevant is a page non-corporally to a query, topic & entity + 100 other factors ( stop-word-count, AGC signals, number of total passive sentences, word sequences ... )
+
+A new website & small project overtaking Adobe, Wikipedia, Blender, Microsoft etc - all due to implementing "semantic perfection" through proper implementation of Korays Framework?
+
+This project, #128 in my portfolio, is just that - I'll keep updating the post with updates - have finished writing 251.000 words with 42(100)% relevance configuration - 71 pages of commercial pages following the informational TM.
+
+
+A Brand that gets 1M Clicks in 3 months from Microsoft Bing, and has 12,5M Citations from AI Search.
+Guess what?
+Did we do anything for AEO/AGO/SXO/WhateverO
+No.
+Pure semantic SEO, with overall Holistic SEO Principles and our Framework.
+
+
+
+Microsoft Bing Webmaster Tools has always been more useful and efficient than Google Search Console, and once again, they’ve proven their commitment to transparency.
+Microsoft Bing has just launched the AI Performance Dashboard, which introduces “citations” and “cited pages” reporting. This offers a fresh and much-needed way to understand how SEO actually contributes to what many now call GEO, AEO, SXO, or whatever new acronym is trending.
+Going forward, search performance dashboards will focus less on clicks, positions, and individual queries, and more on topics, visibility, and overall exposure.
+We’re moving toward an “estate-based performance” mindset rather than hyper-precise, keyword-level rank tracking.
+And as always, semantics and topical authority sit right at the center of this transition.
+
+
+
+
+This is a practical example of how semantically organized link campaigns can be used across multiple sources to improve rankings for seasonal tourism queries.
+Before the seasonal demand peak, we analyzed the existing link graph and executed a focused link sprint designed to strengthen PageRank distribution and relevance flow.
+These campaigns function as an external topical map defining shared concepts, criteria, and services under a consistent metric framework, helping search engines form a clear consensus.
+Alongside links pointing directly to our own link graph, we also deployed what we call correlational links. These connect to high-authority informational sources without diluting ranking signals, while reinforcing topical trust and association within the same graph.
+For this winter tourism segment, we combined internal semantic SEO optimizations with a strong emphasis on external link campaigns.
+ Results compared to last year:
+• +25% clicks
+• +10% impressions
+We also improved card structures, rendering behavior, and resolved broader technical SEO issues.
+This is a mini case study we’ll be breaking down in more detail on our YouTube channel soon.
+
+
+
+Ranking the front page for the money keyword or using a solutions page? 
+Hi, I'm working on a topical map for a SaaS. They don't rank today, so we're also rebuilding the main structure. They offer one product presented on a Solutions page in the top menu. They have quite a strong historic link profile, so I thought that we stand a better chance of winning by using the strongest page on the site. 
+Pros/Cons?
+
+
+
+A Simple Programmatic SEO Case Study for a Premium Domain Registrar
+One of the biggest challenges for domain registrars is scale.
+They generate thousands of URLs, many of which target queries with little or no real search demand.
+At that point, the real strategy is not “publish more” but decide what deserves to exist in Google’s index.
+This project focused on clarity, structure, and efficiency:
+• Optimized internal PageRank distribution using dynamic header and footer architecture
+• Rebuilt and selectively indexed product pages with stronger components
+• Designed a new content brief and layout system for generic category pages
+• Implemented Product schema for individual domain pages
+• Used Carousel structured data for category-level pages
+• Prioritized technical SEO to reduce the cost of retrieval
+• Applied a full redesign to the homepage, category pages, and product pages
+The outcome was simple and measurable:
+Fewer URLs → higher value per URL → stronger rankings.
+This site had been losing visibility for nearly 18 months.
+After restructuring, it won the December 2025 Broad Core Algorithm Update.
+Every URL we removed helped Google focus more clearly on what truly mattered.
+No hacks.
+No shortcuts.
+Just structure, semantics, and precision.
+
+
+
+
+94% Click Increase and 33% Impression Increase for a Social Media Marketing SaaS
+Language: English
+Methodology: Semantic SEO (including Visual Semantics), Technical SEO, and Local SEO
+This project doubled its organic traffic over the last six months by winning the latest Broad Core Algorithm Update (BCAU) in December 2025.
+In parallel, the website increased its crawl frequency by more than 60%, while the total number of URLs remained stable.
+For every web document, we introduced new components to better demonstrate responsiveness, usability, and functional value.
+One critical improvement for SaaS websites is adding a clear “human face” to the brand.
+This means defining real people, real roles, and real responsibility, especially on the homepage.
+The homepage should clearly communicate who stands behind the product, the content, and the reputation of the company.
+A second essential element is the use of verifiable reviews sourced from third-party platforms, and connecting those reviews with the SoftwareApplication schema.
+Personally, I use onClick events for outbound review links to avoid leaking PageRank, while still preserving strong navigational and behavioral association signals between the brand and trusted review sources.
+Another strong performance factor for SaaS homepages is allowing users to perform at least one meaningful freemium action, such as:
+• Calculating
+• Converting
+• Transcribing
+• Translating
+• Testing a feature
+Landing pages that provide immediate utility before forcing sign-up consistently demonstrate stronger responsiveness and engagement signals.
+To understand this effect, you can analyze SERP behavior for queries like “download YouTube videos” and compare how different page types generate distinct click and interaction profiles.
+
+
+
+Six months ago, I started working on a U.S. law firm site that was doing everything “right” on the surface, yet it had a familiar problem.
+They were investing in content, publishing service pages like:
+Personal injury lawyer
+• Car accident attorney
+• Medical malpractice lawyer
+• Wrongful death law firm
+But traffic was flat.
+Visibility was limited.
+And AI systems were not citing the site at all.
+So I changed the approach.
+Instead of creating more pages, I rebuilt the entire structure using
+Koray’s framework and a fully Semantic SEO strategy.
+ I stopped thinking in keywords.
+ I started thinking in legal entities, case types, procedures, and user intent.
+I mapped how real people actually search:
+• “Do I need a personal injury lawyer?”
+• “How much does a car accident attorney cost?”
+• “What is the statute of limitations in my state?”
+And I aligned the site with how Google and AI systems understand law topics, not just how they rank pages.
+The result:
+ A 16% increase in consistent organic traffic
+ A 38% expansion in high-intent legal keywords
+ Visibility in AI Overviews, ChatGPT, and Gemini
+ Brand mentions across authoritative legal sources
+ Winning the December 2025 Google Broad Core Algorithm Update (BCAU)
+One rule guided the entire project:
+Thanks to Koray Tuğberk Gübür, I learned that not every legal 
+query deserves a page
+• Some deserve a page.
+• Some deserve a section.
+• Some deserve a single, precise answer.
+Topical Authority in the legal niche is built by aligning:
+• Search demand in the U.S. market
+• Client intent at different legal stages
+• Indexing logic of Google
+• Semantic relationships between legal concepts
+That’s why this site doesn’t publish:
+• “car accident lawyer + every city”
+• “personal injury attorney + every zip code”
+It only publishes what the ecosystem actually deserves to rank and be cited in AI search.
+Semantic SEO is no longer just about rankings.
+In 2026, it is how law firms win both Google and AI visibility.
+
+
+
+Proud to share a real 6-month Semantic SEO case study from one of my eCommerce projects.
+Six months ago, when I started this project, I was very confused and worried about the ranking of this website because the site had many technical issues and very poor content.
+However, I was confident that I would win this race and gain organic rankings for this site, as well as my client’s trust, because I had Koray Tuğberk GÜBÜR’s framework. I earned my client’s trust because he achieved $2.00M in growth using this framework.
+Special thanks to Koray Tuğberk Gübür for building a framework that turns SEO into a true search engineering discipline, not guesswork.
+So I implemented Semantic SEO using the Koray Tuğberk GÜBÜR Framework — and today, Google Search Console clearly reflects the impact.
+ 6-Month Comparison (Year over Year)
+ Clicks: 4.58K → 5.95K
+ Impressions: 549K → 1.56M
+ Average Position: 22.1 → 17.1
+ Average CTR: 0.8% → 0.4%
+And sustained growth through the December 2025 Google Core Update
+This growth was not driven by link spam, keyword stuffing, or short-term hacks.
+It was driven by a full semantic restructuring of the website:
+ Designing a Semantic Topical Map
+ Defining correct entities, attributes, and relations
+ Building clean ontology and taxonomy layers
+ Creating strong parent–child topical hierarchies
+ Aligning queries → documents → entities
+ Writing content under Algorithmic Authorship principles
+ Reducing semantic distance and increasing contextual consistency
+ Maximizing coverage depth and topical completeness
+ Build a strong internal linking strategy by connecting all nodes to the product pages and interlinking them naturally with each other.
+Instead of optimizing pages, I optimized the information architecture.
+As a result, during the December 2025 Core Update, this site didn’t lose visibility — it gained it.
+ Semantic SEO is not optional anymore.
+ It is how modern search understands the web.
+
+
+
+𝐇𝐨𝐰 𝐝𝐨 𝐲𝐨𝐮 𝐨𝐫𝐝𝐞𝐫 𝐭𝐡𝐞 𝐡𝐞𝐚𝐝𝐢𝐧𝐠𝐬 (𝐂𝐨𝐧𝐭𝐞𝐱𝐭𝐮𝐚𝐥 𝐕𝐞𝐜𝐭𝐨𝐫𝐬) 𝐢𝐧 𝐭𝐡𝐞 𝐜𝐨𝐧𝐭𝐞𝐧𝐭 𝐛𝐫𝐢𝐞𝐟?
+Answer from [Koray Tugberk GUBUR](https://www.linkedin.com/in/koray-tugberk-gubur/)
+When it comes to the Contextual Vectors - we order the headings depending on the context.
+* The first rule is staying on the same subject as much as possible.
+* If you're talking about "how to clean a pool" for instance, and in the second question, if you ask - "what is chloride?" - it doesn't work in a proper way like that.
+* You should always stay in the specific Predicate.
+* You should continue to talk about "cleaning the pool" and NOT the definition of the specific thing ( like "chloride").
+* Usually, when people start to create certain type of web documents, they start to talk about multiple contexts at the same time. 
+For instance "how to perform deadlift in a proper form?". 
+It's NOT about - "what are the types of deadlifts". It's just about "how to perform deadlift with a proper form".
+* Which means - you need to have a instruction list at the top.
+* If I have a list at the top, I usually add one bridge - a kind of H2. 
+Then I start to ask a question - "how to perform a deadlift as a beginner, or as a female or as a man, or maybe with some diseases etc",
+or "from powerlifter to body-builder" (- some of the types that you will be implementing might be changing).
+* So we are actually distributing the "deadlift types" still inside "performing it in a proper form" 
+which means that we don't actually dilute the context - still we are staying in the same subject as much as possible.
+* But we continue to mention the "types of deadlifts" or the "types of the athletes", like, the body-builder. 
+Once we start to talk about that, then we start to use the internal links.
+* Usually, I don't link from the top of the page. I link from the middle or MOSTLY from the bottom section.
+* Because in the bottom headings, most of the time, I have 2 Main Entities 
+* One of them is the Subject at the H1.
+* The second one is the Subject I will be having in the targeted pages - internally linked targeted pages.
+* If I am able to distribute them like that you will be justifying the connections as much as possible.
+* If you're able to implement these above 3 or 4 simple things - it will help you to protect your context.
+Credit of this text extraction from the conversation goes to one of our community member "Razor"
+
+•	
+•	
+•	
+•	
+•	
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+
+
+Koray Tuğberk Gübür  ·
+Follow
+Admin
+Group expert
+ All-star contributor
+ ·tpdSeroons46t2g3t09J4i10 :rgta49g hm47n3utc580a3ha0hy6tc21t  ·
+3rd Travel SEO Website in the 3rd Day, but this time with Links… 
+See more
+
+•	
+•	
+•	
+•	
+•	
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+
+
+Koray Tuğberk Gübür  ·
+Follow
+Admin
+Group expert
+ All-star contributor
+ ·tpdSeroons45t2g3t09J4i10 :rgta47g hm27n3utc580a3ha0hy6tc21t  ·
+Another Core Update win for an e-commerce website operating in Canada, Australia, and New Zealand.… 
+See more
+
+•	
+•	
+•	
+•	
+•	
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+Facebook
+About
+Private
+Only members can see who's in the group and what they post.
+Visible
+Anyone can find this group.
+Recent media
+
+
+
+
+3rd Travel SEO Website in the 3rd Day, but this time with Links
+ +185.78% clicks, 9.44K → 27K
+ +89.97% impressions, 353K → 671K
+ +48.15% CTR improvement, 2.7% → 4.0%
+ Rankings influenced despite neutral BCAU impact
+Can Semantic SEO be applied to backlinks and link graph manipulation?
+The results below belong to another global travel brand’s hotel landing pages.
+Over the last three days, I shared three different travel websites.
+The first two won the BCAU.
+This third one is neutral for BCAU impact, but we still moved rankings for seasonally critical landing pages using links and link graph optimization.
+This is a rare case where I openly discuss backlink campaigns. A few days ago, James Dooley asked how topical maps could be applied to external links. This case is a direct answer to that question.
+What we actually do
+We do not build random links. We run what I call Link Sprints.
+Instead of building links for a single site, we create a topical map and semantic content network across multiple websites, then position the main brand as the consensus source within the open web’s information graph. This consolidates PageRank, authority, and trust naturally around the target entity.
+External publishing is synchronized with internal momentum.
+Content velocity and link velocity reinforce each other.
+We intentionally add correlation sources and links to reduce detectable footprints, while using definitional and comparative declarations to shape how the knowledge graph understands entity relationships.
+The link graph remains active because older assets continue receiving natural links over time. It grows layer by layer, not through artificial bursts.
+This is something I am now considering adding to our future education materials, partly due to conversations like the one with James.
+In June 2026, we plan to launch a new course focused on:
+• Visual Semantics
+• Algorithmic Authorship
+• Information Graph Engineering
+
+
+
+ +19.88% Click Growth in 28 Days (WON BCAU) | Travel Industry SEO | English Market | Global Project
+Another Travel Industry SEO case study.
+This project is nationwide and won the December 2025 BCAU.
+Project strengths:
+- Strong Semantic SEO architecture using programmatic templates and deep contextual connections to properly distribute ranking signals.
+- Solid brand attribution (competitive but not artificially inflated).
+- Use of Visual Semantics through structured information cards.
+- Active social amplification, leveraging existing content to improve crawl priority via referral link flow.
+- Lowered cost of retrieval by cleaning unnecessary URL layers.
+Eliminated wasteful URLs that did not deserve to exist as pages.
+This leads to a concept I developed:
+Query Deserves Page.
+- Not every query deserves a page.
+- Some deserve a section.
+- Some deserve a single sentence.
+To achieve Topical Authority, the system must align with:
+• Search demand
+• User intent
+• Google’s index refinement strategies
+That’s why this project does not blindly create every possible combination (hotel + city, bus + region, tour + route).
+It only publishes what the ecosystem genuinely deserves.
+I will publish the full case study soon.
+In June 2026, we are launching a new course on
+Algorithmic Authorship + Visual Semantics
+

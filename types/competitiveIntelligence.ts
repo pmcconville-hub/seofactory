@@ -12,7 +12,7 @@
  * @module types/competitiveIntelligence
  */
 
-import { SemanticTriple } from './semantic';
+import { SemanticTriple, AttributeCategory } from './semantic';
 
 // =============================================================================
 // ATTRIBUTE RARITY CLASSIFICATION
@@ -1085,4 +1085,408 @@ export interface AnalysisStatus {
   warnings: AnalysisWarning[];
   startedAt?: Date;
   completedAt?: Date;
+}
+
+// =============================================================================
+// QUERY NETWORK AUDIT TYPES
+// For LLM-driven competitive analysis and content gap identification
+// =============================================================================
+
+/**
+ * Query intent classification for SERP analysis
+ */
+export type QueryIntent = 'informational' | 'commercial' | 'transactional' | 'navigational';
+
+/**
+ * A query within the network with metadata
+ */
+export interface QueryNetworkNode {
+  query: string;
+  intent: QueryIntent;
+  searchVolume?: number;
+  difficulty?: number;
+  relatedQueries: string[];
+  questions: string[];
+}
+
+/**
+ * SERP competitor data for a single query
+ */
+export interface SerpCompetitorData {
+  url: string;
+  title: string;
+  position: number;
+  domain: string;
+  wordCount?: number;
+  headings?: { level: number; text: string }[];
+  featuredSnippet?: boolean;
+}
+
+/**
+ * EAV (Entity-Attribute-Value) extracted from competitor content
+ */
+export interface CompetitorEAV {
+  entity: string;
+  attribute: string;
+  value: string;
+  source: string; // URL where this was found
+  confidence: number;
+  category?: AttributeCategory;
+}
+
+/**
+ * Information density metrics for a piece of content
+ */
+export interface InformationDensityScore {
+  factsPerSentence: number;
+  uniqueEntitiesCount: number;
+  uniqueAttributesCount: number;
+  totalEAVs: number;
+  densityScore: number; // 0-100
+  benchmark?: number; // Industry/competitor average
+}
+
+/**
+ * Content gap identified through competitive analysis
+ */
+export interface ContentGap {
+  missingAttribute: string;
+  foundInCompetitors: string[]; // URLs where this attribute exists
+  frequency: number; // How many competitors cover this
+  priority: 'high' | 'medium' | 'low';
+  suggestedContent?: string;
+}
+
+// =============================================================================
+// GAP NETWORK VISUALIZATION TYPES
+// =============================================================================
+
+/**
+ * Node types for competitor gap network visualization
+ */
+export type GapNodeType = 'your_eav' | 'gap' | 'competitor_eav';
+
+/**
+ * Node in the competitor gap network graph
+ * Represents either your EAVs (coverage) or gaps (missing content)
+ */
+export interface GapNode {
+  id: string;
+  type: GapNodeType;
+
+  // For your_eav and competitor_eav
+  entity?: string;
+  attribute?: string;
+  value?: string;
+
+  // For gap nodes
+  missingAttribute?: string;
+  suggestedContent?: string;
+
+  // Competitor coverage info
+  competitorCount: number;        // How many competitors cover this
+  competitorUrls: string[];       // Which competitor URLs have this
+
+  // Visual properties
+  label: string;                  // Display label
+  priority: 'high' | 'medium' | 'low';
+
+  // Physics simulation (populated during render)
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+
+  // Metrics
+  semanticDistance?: number;      // Distance from central entity (0-1)
+  relatedTopicIds?: string[];     // Topics that could address this gap
+}
+
+/**
+ * Edge types for competitor gap network visualization
+ */
+export type GapEdgeType = 'semantic' | 'hierarchical' | 'suggested_bridge';
+
+/**
+ * Edge connecting nodes in the competitor gap network
+ */
+export interface GapEdge {
+  id: string;
+  source: string;                 // Source node ID
+  target: string;                 // Target node ID
+  type: GapEdgeType;
+
+  // Semantic relationship strength (0-1, lower = more related)
+  semanticDistance: number;
+
+  // For suggested_bridge edges
+  bridgeReason?: string;          // Why this connection is suggested
+
+  // Visual weight for rendering
+  weight: number;                 // 1-10, affects line thickness
+}
+
+/**
+ * Complete competitor gap network data for visualization
+ */
+export interface CompetitorGapNetwork {
+  nodes: GapNode[];
+  edges: GapEdge[];
+
+  // Aggregated metrics
+  metrics: {
+    totalGaps: number;
+    highPriorityGaps: number;
+    yourCoverage: number;         // Percentage of topics you cover (0-100)
+    avgCompetitorCoverage: number; // Average competitor coverage count
+    centralEntity: string;        // The focus entity
+    competitors: string[];        // List of competitor domains analyzed
+  };
+
+  // Cluster information
+  clusters?: {
+    id: string;
+    label: string;
+    nodeIds: string[];
+    centroidNodeId?: string;      // Most central node in cluster
+  }[];
+}
+
+/**
+ * Heading hierarchy analysis for a competitor page
+ */
+export interface HeadingHierarchy {
+  url: string;
+  headings: {
+    level: number;
+    text: string;
+    wordCount: number;
+  }[];
+  hierarchyScore: number; // 0-100, how well-structured
+  issues: string[];
+}
+
+/**
+ * Complete Query Network analysis result
+ */
+export interface QueryNetworkAnalysisResult {
+  seedKeyword: string;
+  queryNetwork: QueryNetworkNode[];
+  serpResults: Map<string, SerpCompetitorData[]>;
+  competitorEAVs: CompetitorEAV[];
+  ownContentEAVs?: CompetitorEAV[];
+  contentGaps: ContentGap[];
+  informationDensity: {
+    own?: InformationDensityScore;
+    competitorAverage: InformationDensityScore;
+    topCompetitor: InformationDensityScore;
+  };
+  headingAnalysis: HeadingHierarchy[];
+  recommendations: QueryNetworkRecommendationRef[];
+  /** GSC-derived insights (quick wins, low CTR, etc.) */
+  gscInsights?: GscInsight[];
+  /** Whether real GSC data was used in this analysis */
+  hasGscData?: boolean;
+  timestamp: string;
+}
+
+// =============================================================================
+// ENTITY AUTHORITY TYPES
+// =============================================================================
+
+/**
+ * Wikipedia entity verification result
+ */
+export interface WikipediaEntityResult {
+  found: boolean;
+  title?: string;
+  extract?: string;
+  pageUrl?: string;
+  wikidataId?: string;
+  categories?: string[];
+  relatedEntities?: string[];
+}
+
+/**
+ * Wikidata entity data
+ */
+export interface WikidataEntityResult {
+  id: string;
+  label: string;
+  description?: string;
+  aliases?: string[];
+  claims?: Record<string, unknown>;
+  sitelinks?: Record<string, string>;
+}
+
+/**
+ * Google Knowledge Graph entity result
+ */
+export interface KnowledgeGraphEntityResult {
+  id: string;
+  name: string;
+  type: string[];
+  description?: string;
+  detailedDescription?: {
+    articleBody: string;
+    url: string;
+    license: string;
+  };
+  image?: {
+    url: string;
+    contentUrl: string;
+  };
+  url?: string;
+  resultScore: number;
+}
+
+/**
+ * Combined entity authority validation result
+ */
+export interface EntityAuthorityResult {
+  entityName: string;
+  wikipedia: WikipediaEntityResult | null;
+  wikidata: WikidataEntityResult | null;
+  knowledgeGraph: KnowledgeGraphEntityResult | null;
+  authorityScore: number; // 0-100
+  verificationStatus: 'verified' | 'partial' | 'unverified';
+  recommendations: string[];
+}
+
+// =============================================================================
+// GSC INSIGHT TYPES
+// =============================================================================
+
+/**
+ * GSC-derived insight for gap analysis enrichment
+ */
+export interface GscInsight {
+  type: 'quick_win' | 'low_ctr' | 'declining' | 'zero_clicks' | 'cannibalization';
+  query: string;
+  page?: string;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  position: number;
+  recommendation: string;
+}
+
+// =============================================================================
+// MENTION SCANNER TYPES
+// =============================================================================
+
+/**
+ * Reputation signal from external source
+ */
+export interface ReputationSignal {
+  source: string;
+  sourceType: 'review_platform' | 'news' | 'social' | 'industry' | 'government';
+  sentiment: 'positive' | 'neutral' | 'negative';
+  mentionCount: number;
+  avgRating?: number;
+  url?: string;
+  lastUpdated?: string;
+}
+
+/**
+ * Entity co-occurrence in content
+ */
+export interface EntityCoOccurrence {
+  entity: string;
+  frequency: number;
+  contexts: string[];
+  associationType: 'competitor' | 'partner' | 'industry_term' | 'related_brand';
+}
+
+/**
+ * E-A-T (Expertise, Authority, Trust) breakdown
+ */
+export interface EATBreakdown {
+  expertise: {
+    score: number;
+    signals: string[];
+  };
+  authority: {
+    score: number;
+    signals: string[];
+  };
+  trust: {
+    score: number;
+    signals: string[];
+  };
+}
+
+/**
+ * Mention Scanner configuration
+ */
+export interface MentionScannerConfig {
+  entityName: string;
+  domain?: string;
+  industry?: string;
+  language: string;
+  includeReviews: boolean;
+  includeSocialMentions: boolean;
+  includeNewsArticles: boolean;
+}
+
+/**
+ * Mention Scanner progress
+ */
+export interface MentionScannerProgress {
+  phase: 'initializing' | 'verifying_identity' | 'scanning_reputation' | 'analyzing_cooccurrences' | 'calculating_score' | 'complete' | 'error';
+  currentStep: string;
+  totalSteps: number;
+  completedSteps: number;
+  progress: number;
+  error?: string;
+}
+
+/**
+ * Complete Mention Scanner result
+ */
+export interface MentionScannerResult {
+  entityName: string;
+  domain?: string;
+  timestamp: string;
+
+  // Identity verification
+  entityAuthority: EntityAuthorityResult;
+
+  // Reputation signals
+  reputationSignals: ReputationSignal[];
+  overallSentiment: 'positive' | 'neutral' | 'negative' | 'mixed';
+
+  // Co-occurrences
+  coOccurrences: EntityCoOccurrence[];
+  topicalAssociations: string[];
+
+  // E-A-T Analysis
+  eatBreakdown: EATBreakdown;
+  eatScore: number; // 0-100
+
+  // Recommendations
+  recommendations: MentionScannerRecommendation[];
+}
+
+/**
+ * Mention Scanner recommendation
+ */
+export interface MentionScannerRecommendation {
+  type: 'identity' | 'reputation' | 'authority' | 'trust' | 'visibility';
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  title: string;
+  description: string;
+  suggestedAction: string;
+  estimatedImpact: string;
+}
+
+// Forward declaration for QueryNetworkRecommendation (canonical in types/audit.ts)
+interface QueryNetworkRecommendationRef {
+  type: 'content_gap' | 'density_improvement' | 'structure_fix' | 'new_topic';
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  title: string;
+  description: string;
+  affectedQueries: string[];
+  estimatedImpact: string;
+  suggestedAction: string;
 }

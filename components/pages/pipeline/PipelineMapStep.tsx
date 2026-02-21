@@ -34,7 +34,7 @@ function MetricCard({ label, value, color = 'gray' }: {
 function ClusterCardsView({ coreTopics, outerTopics, contentAreas }: {
   coreTopics: EnrichedTopic[];
   outerTopics: EnrichedTopic[];
-  contentAreas?: Array<{ name: string; type: 'revenue' | 'authority' }>;
+  contentAreas?: string[];
 }) {
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [showTree, setShowTree] = useState(false);
@@ -58,11 +58,11 @@ function ClusterCardsView({ coreTopics, outerTopics, contentAreas }: {
     if (contentAreas && contentAreas.length > 0) {
       const hubTitleLower = hub.title.toLowerCase();
       const match = contentAreas.find(a =>
-        hubTitleLower.includes(a.name.toLowerCase()) ||
-        a.name.toLowerCase().includes(hubTitleLower.split(' ')[0])
+        hubTitleLower.includes(a.toLowerCase()) ||
+        a.toLowerCase().includes(hubTitleLower.split(' ')[0])
       );
       if (match) {
-        return { businessName: match.name, frameworkLabel, colorType: match.type };
+        return { businessName: match, frameworkLabel, colorType };
       }
     }
 
@@ -384,7 +384,7 @@ function LinkingFlowDiagram({ coreTopics, outerTopics }: {
 
 function AnchorTextStrategyCard({ coreTopics, contentAreas }: {
   coreTopics: EnrichedTopic[];
-  contentAreas?: Array<{ name: string; type: 'revenue' | 'authority' }>;
+  contentAreas?: string[];
 }) {
   const hubs = coreTopics.filter(t => t.cluster_role === 'pillar');
   if (hubs.length < 2) return null;
@@ -396,10 +396,10 @@ function AnchorTextStrategyCard({ coreTopics, contentAreas }: {
     if (contentAreas) {
       const titleLow = hub.title.toLowerCase();
       const match = contentAreas.find(a =>
-        titleLow.includes(a.name.toLowerCase()) ||
-        a.name.toLowerCase().includes(titleLow.split(' ')[0])
+        titleLow.includes(a.toLowerCase()) ||
+        a.toLowerCase().includes(titleLow.split(' ')[0])
       );
-      if (match) return match.name;
+      if (match) return match;
     }
     return hub.title;
   };
@@ -497,7 +497,7 @@ function AnchorTextStrategyCard({ coreTopics, contentAreas }: {
 function ContextualBridgesPanel({ coreTopics, eavs, contentAreas }: {
   coreTopics: EnrichedTopic[];
   eavs: SemanticTriple[];
-  contentAreas?: Array<{ name: string; type: 'revenue' | 'authority' }>;
+  contentAreas?: string[];
 }) {
   const hubs = coreTopics.filter(t => t.cluster_role === 'pillar');
 
@@ -507,10 +507,10 @@ function ContextualBridgesPanel({ coreTopics, eavs, contentAreas }: {
     if (contentAreas) {
       const titleLow = hub.title.toLowerCase();
       const match = contentAreas.find(a =>
-        titleLow.includes(a.name.toLowerCase()) ||
-        a.name.toLowerCase().includes(titleLow.split(' ')[0])
+        titleLow.includes(a.toLowerCase()) ||
+        a.toLowerCase().includes(titleLow.split(' ')[0])
       );
-      if (match) return match.name;
+      if (match) return match;
     }
     return hub.title;
   };

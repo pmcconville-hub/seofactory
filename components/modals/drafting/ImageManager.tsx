@@ -7,7 +7,7 @@ import { ImagePlaceholder } from '../../../types';
 import { extractPlaceholdersFromDraft } from '../../../services/ai/imageGeneration/placeholderParser';
 import { generateImage as generateImageFromOrchestrator, initImageGeneration } from '../../../services/ai/imageGeneration/orchestrator';
 import { getSupabaseClient } from '../../../services/supabaseClient';
-import { ImageStyle, AspectRatio } from '../../../types/contextualEditor';
+import { ContextualImageStyle, AspectRatio } from '../../../types/contextualEditor';
 
 export interface ImageManagerHook {
   // Image state
@@ -26,7 +26,7 @@ export interface ImageManagerHook {
   // Contextual image generation
   contextualImageUrl: string | undefined;
   isGeneratingContextualImage: boolean;
-  handleContextualImageGenerate: (prompt: string, style: ImageStyle, aspectRatio: AspectRatio) => Promise<void>;
+  handleContextualImageGenerate: (prompt: string, style: ContextualImageStyle, aspectRatio: AspectRatio) => Promise<void>;
   handleContextualImageAccept: (imageUrl: string, altText: string) => void;
   handleContextualImageReject: () => void;
   handleContextualImageClose: () => void;
@@ -250,7 +250,7 @@ export function useImageManager(contextualEditor?: any): ImageManagerHook {
   /**
    * Handle contextual image generation (from selected text)
    */
-  const handleContextualImageGenerate = useCallback(async (prompt: string, style: ImageStyle, aspectRatio: AspectRatio) => {
+  const handleContextualImageGenerate = useCallback(async (prompt: string, style: ContextualImageStyle, aspectRatio: AspectRatio) => {
     if (!contextualEditor?.selection) return;
 
     setIsGeneratingContextualImage(true);

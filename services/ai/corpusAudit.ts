@@ -126,7 +126,7 @@ export function detectContentOverlaps(
   // Extract significant phrases from each page (using headings as proxy)
   const pageSignatures = pages.map(page => ({
     url: page.url,
-    phrases: page.headings.map(h => h.text.toLowerCase()),
+    phrases: page.headings.map(h => (typeof h === 'string' ? h : h.text).toLowerCase()),
   }));
 
   // Compare each pair of pages
@@ -225,7 +225,7 @@ export function calculateSemanticCoverage(
 
   // Combine all page content (using headings as proxy)
   const corpusText = pages
-    .flatMap(p => [p.title, ...p.headings.map(h => h.text)])
+    .flatMap(p => [p.title, ...p.headings.map(h => typeof h === 'string' ? h : h.text)])
     .join(' ')
     .toLowerCase();
 

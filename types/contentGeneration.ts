@@ -1,6 +1,13 @@
 // types/contentGeneration.ts
 // Content Generation V2 Types - Priority-based generation with user control
 
+import type { ContentBrief } from './content';
+import type { BusinessInfo } from './business';
+import type { SemanticTriple } from './semantic';
+import type { EnhancedSchemaResult, ResolvedEntity, SchemaPageType, ProgressiveSchemaData } from './schema';
+import type { SchemaValidationResult } from './audit';
+import type { ImagePlaceholder, AuditDetails, QualityReport } from '../types';
+
 // ============================================================================
 // PRIORITY & SETTINGS TYPES
 // ============================================================================
@@ -703,4 +710,207 @@ export function normalizePriorities(priorities: ContentGenerationPriorities): Co
     machineOptimization: Math.round(priorities.machineOptimization * factor),
     factualDensity: Math.round(priorities.factualDensity * factor)
   };
+}
+
+// ============================================================================
+// MULTI-PASS CONTENT GENERATION TYPES (migrated from types.ts)
+// ============================================================================
+
+export type JobStatus = 'pending' | 'in_progress' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'audit_failed';
+export type SectionStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
+export type PassStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
+
+export interface PassesStatus {
+  // Correct 10-pass order: Intro synthesis AFTER body polish
+  pass_1_draft: PassStatus;
+  pass_2_headers: PassStatus;
+  pass_3_lists: PassStatus;           // Lists & Tables (body only)
+  pass_4_discourse: PassStatus;       // Discourse Integration (body only)
+  pass_5_microsemantics: PassStatus;  // Micro Semantics (body only)
+  pass_6_visuals: PassStatus;         // Visual Semantics (body only)
+  pass_7_intro: PassStatus;           // Introduction Synthesis (AFTER body is polished)
+  pass_8_polish: PassStatus;          // Final Polish (entire article)
+  pass_9_audit: PassStatus;           // Final Audit
+  pass_10_schema: PassStatus;         // Schema Generation
+}
+
+// Context passed to content generation passes
+export interface ContentGenerationContext {
+  pillars: {
+    centralEntity: string;
+    sourceContext: string;
+    centralSearchIntent: string;
+    primaryVerb?: string;
+    auxiliaryVerb?: string;
+  };
+  eavs: SemanticTriple[];
+  businessInfo: BusinessInfo;
+  brief: ContentBrief;
+  topic: {
+    id: string;
+    title: string;
+    type: 'core' | 'outer' | 'child';
+    parentTopicId?: string;
+    topicClass?: 'monetization' | 'informational';
+  };
+  topicalMap: {
+    id: string;
+    name: string;
+    totalTopics: number;
+    relatedTopics: Array<{ id: string; title: string; type: string }>;
+  };
+  knowledgeGraphTerms?: string[];
+}
+
+// Audit issue types for auto-fix capability
+export type AuditIssueType =
+  | 'missing_h1'
+  | 'duplicate_h2'
+  | 'missing_image'
+  | 'broken_link'
+  | 'section_too_short'
+  | 'section_too_long'
+  | 'missing_conclusion'
+  | 'weak_intro'
+  | 'missing_eav_coverage'
+  | 'no_lists'
+  | 'missing_transition'
+  | 'header_hierarchy_jump'
+  | 'poor_flow'
+  | 'weak_conclusion';
+
+export interface AuditIssue {
+  id: string;
+  type: AuditIssueType;
+  severity: 'critical' | 'warning' | 'suggestion';
+  sectionId?: string;
+  sectionTitle?: string;
+  description: string;
+  currentContent?: string;
+  suggestedFix?: string;
+  autoFixable: boolean;
+  fixApplied?: boolean;
+}
+
+export interface ContentGenerationJob {
+  id: string;
+  brief_id: string;
+  user_id: string;
+  map_id: string;
+  status: JobStatus;
+  current_pass: number;
+  passes_status: PassesStatus;
+  total_sections: number | null;
+  completed_sections: number;
+  current_section_key: string | null;
+  draft_content: string | null;
+  final_audit_score: number | null;
+  audit_details: AuditDetails | null;
+  last_error: string | null;
+  retry_count: number;
+  max_retries: number;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+
+  // Schema generation fields (Pass 10)
+  schema_data: EnhancedSchemaResult | null;
+  schema_validation_results: SchemaValidationResult | null;
+  schema_entities: ResolvedEntity[] | null;
+  schema_page_type: SchemaPageType | null;
+  progressive_schema_data: ProgressiveSchemaData | null;
+
+  // Image generation fields
+  image_placeholders?: ImagePlaceholder[];
+
+  // Audit auto-fix support
+  audit_issues?: AuditIssue[];
+
+  // Quality enforcement report (comprehensive quality data)
+  quality_report?: QualityReport | null;
+
+  // Quality warning message (from strategy validation)
+  quality_warning?: string | null;
+
+  // Structural snapshots for tracking changes across passes
+  structural_snapshots?: Record<string, unknown>;
+
+  // Pass quality scores for tracking quality trends
+  pass_quality_scores?: Record<string, number>;
+
+  // Audit auto-retry count (max 1 auto-retry before manual intervention)
+  audit_retry_count?: number;
+}
+
+export interface ContentGenerationSection {
+  id: string;
+  job_id: string;
+  section_key: string;
+  section_heading: string | null;
+  section_order: number;
+  section_level: number;
+  pass_1_content: string | null;
+  pass_2_content: string | null;
+  pass_3_content: string | null;
+  pass_4_content: string | null;
+  pass_5_content: string | null;
+  pass_6_content: string | null;
+  pass_7_content: string | null;
+  pass_8_content: string | null;
+  pass_9_content: string | null;
+  pass_10_content: string | null;  // Schema-related section content
+  current_content: string | null;
+  current_pass: number;
+  audit_scores: Record<string, number>;
+  status: SectionStatus;
+  created_at: string;
+  updated_at: string;
+  // Per-pass versioning for rollback capability
+  pass_contents?: Record<string, string>;
+  // Section type for intro/conclusion filtering
+  section_type?: 'introduction' | 'conclusion' | 'body';
+}
+
+export const PASS_NAMES: Record<number, string> = {
+  1: 'Draft Generation',
+  2: 'Header Optimization',
+  3: 'Lists & Tables',           // Body content polish starts
+  4: 'Discourse Integration',
+  5: 'Micro Semantics',
+  6: 'Visual Semantics',         // Body content polish ends
+  7: 'Introduction Synthesis',   // AFTER body polish - intro sees polished content
+  8: 'Final Polish',             // Entire article polish
+  9: 'Final Audit',
+  10: 'Schema Generation'
+};
+
+// Total number of passes in the content generation pipeline
+export const TOTAL_PASSES = 10;
+
+// Passes that should exclude intro/conclusion sections
+// Passes 2-5 process body content only; Pass 7 rewrites intro/conclusion with full polished body context
+// NOTE: Pass 6 (Visual Semantics) is NOT excluded - it needs to add hero image to intro section
+export const PASSES_EXCLUDE_INTRO_CONCLUSION = [2, 3, 4, 5];
+
+// ============================================================================
+// SEMANTIC ACTION & SMART FIX TYPES (migrated from types.ts)
+// ============================================================================
+
+export type SemanticActionCategory = 'Low Hanging Fruit' | 'Mid Term' | 'Long Term';
+export type SemanticActionType = 'Micro-Semantics' | 'Macro-Semantics';
+export type SemanticActionImpact = 'High' | 'Medium' | 'Low';
+
+export interface SmartFixResult {
+  fixType?: 'replace' | 'insert' | 'rewrite_section';
+  searchText?: string;        // Exact text to find in the draft
+  replacementText?: string;   // Text to replace with
+  explanation?: string;       // Why this change helps (in user's language)
+  applied?: boolean;          // Whether fix has been applied
+  // Legacy/migration fix fields
+  type?: string;
+  before?: string;
+  after?: string;
+  location?: string;
+  [key: string]: unknown;
 }

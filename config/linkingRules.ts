@@ -34,20 +34,19 @@ export const GENERIC_ANCHORS = [
 export const DEFAULT_LINKING_RULES: InternalLinkingRules = {
   // Pass 1: Fundamentals
   maxLinksPerPage: 150,           // Maximum 150 internal links per page (including navigation)
-  maxAnchorTextRepetition: 3,     // Same anchor text max 3x per target URL
+  maxAnchorRepetitionPerTarget: 3, // Same anchor text max 3x per target URL
+  maxAnchorTextRepetition: 3,     // Same anchor text max 3x across pages
 
   // Content prioritization
   prioritizeMainContentLinks: true,  // 70-95% of links should be in main content
   useDescriptiveAnchorText: true,    // Always use descriptive anchor text
-  avoidGenericAnchors: [...GENERIC_ANCHORS],
+  genericAnchorsToAvoid: [...GENERIC_ANCHORS],
 
-  // Pass 3: Flow Direction
-  contextualBridgeRequired: true,    // Require contextual bridges for discordant topics
-  delayLowRelevanceLinks: true,      // Place Core links at bottom of Author section pages
-  hubSpokeFlowDirection: 'spoke_to_hub',  // Authority flows: Author Section → Core Section
+  // Pass 2: Annotation and placement
+  requireAnnotationText: true,       // Require context around anchors
+  forbidFirstSentenceLinks: true,    // Links before entity defined
 
   // Quality filtering
-  linkToQualityNodesFirst: true,     // Prefer linking to high-quality pages
   qualityNodeThreshold: 70,          // Minimum quality score for priority linking
 };
 

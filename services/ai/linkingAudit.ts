@@ -712,14 +712,13 @@ export const runLinkingAudit = (ctx: LinkingAuditContext): LinkingAuditResult =>
 
 export const DEFAULT_LINKING_RULES: InternalLinkingRules = {
   maxLinksPerPage: MAX_LINKS_PER_PAGE,
+  maxAnchorRepetitionPerTarget: MAX_ANCHOR_TEXT_REPETITION,
   maxAnchorTextRepetition: MAX_ANCHOR_TEXT_REPETITION,
   prioritizeMainContentLinks: true,
   useDescriptiveAnchorText: true,
-  avoidGenericAnchors: GENERIC_ANCHORS,
-  contextualBridgeRequired: true,
-  delayLowRelevanceLinks: true,
-  hubSpokeFlowDirection: 'spoke_to_hub', // Author → Core
-  linkToQualityNodesFirst: true,
+  genericAnchorsToAvoid: GENERIC_ANCHORS,
+  requireAnnotationText: true,
+  forbidFirstSentenceLinks: true,
   qualityNodeThreshold: LINK_QUALITY_NODE_THRESHOLD,
 };
 

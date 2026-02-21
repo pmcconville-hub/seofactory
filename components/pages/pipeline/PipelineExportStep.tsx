@@ -93,7 +93,7 @@ function ContentCalendar({
   contentAreas,
 }: {
   topics: Array<{ title: string; topic_class?: string | null; type: string; parent_topic_id?: string | null }>;
-  contentAreas?: Array<{ name: string; type: 'revenue' | 'authority' }>;
+  contentAreas?: string[];
 }) {
   // Assign topics to waves
   function getWave(cls: string, type: string): number {
@@ -126,23 +126,19 @@ function ContentCalendar({
   const totalWeeks = 7;
 
   if (contentAreas && contentAreas.length > 0) {
-    // Use content areas for rows
-    for (const area of contentAreas) {
-      const wave = area.type === 'revenue' ? 1 : 4;
-      const weeks = waveWeeks[wave];
-      const areaTopics = topics.filter(t => {
-        const w = getWave(t.topic_class ?? '', t.type);
-        return area.type === 'revenue' ? (w === 1 || w === 3) : (w === 2 || w === 4);
-      });
-      // Divide topics roughly across matching content areas
-      const sameTypeAreas = contentAreas.filter(a => a.type === area.type);
-      const perArea = Math.ceil(areaTopics.length / Math.max(sameTypeAreas.length, 1));
-      const areaIdx = sameTypeAreas.indexOf(area);
-      const count = Math.min(perArea, Math.max(0, areaTopics.length - areaIdx * perArea));
+    // Use content areas for rows — distribute topics evenly across areas
+    const perArea = Math.ceil(topics.length / Math.max(contentAreas.length, 1));
+    for (let idx = 0; idx < contentAreas.length; idx++) {
+      const area = contentAreas[idx];
+      const count = Math.min(perArea, Math.max(0, topics.length - idx * perArea));
+      // Spread areas across the timeline
+      const waveIndex = (idx % 4) + 1;
+      const weeks = waveWeeks[waveIndex];
+      const colorType: 'revenue' | 'authority' = idx % 2 === 0 ? 'revenue' : 'authority';
       if (count > 0) {
         rows.push({
-          label: area.name,
-          type: area.type,
+          label: area,
+          type: colorType,
           pageCount: count,
           startWeek: weeks[0],
           endWeek: weeks[1],
@@ -266,7 +262,7 @@ interface OpenItem {
 function deriveOpenItems(
   topics: Array<{ title: string; type: string; topic_class?: string | null }>,
   briefs: Record<string, { articleDraft?: string }>,
-  pillars?: { centralEntity?: string; contentAreas?: Array<{ name: string; type: string }> },
+  pillars?: { centralEntity?: string; contentAreas?: string[] },
   eavs?: Array<{ predicate?: { relation?: string } }>,
   analysisState?: Record<string, unknown>,
 ): OpenItem[] {
@@ -352,7 +348,7 @@ function OpenItemsByRole({
 }: {
   topics: Array<{ title: string; type: string; topic_class?: string | null }>;
   briefs: Record<string, { articleDraft?: string }>;
-  pillars?: { centralEntity?: string; contentAreas?: Array<{ name: string; type: string }> };
+  pillars?: { centralEntity?: string; contentAreas?: string[] };
   eavs?: Array<{ predicate?: { relation?: string } }>;
   analysisState?: Record<string, unknown>;
   mapId?: string;

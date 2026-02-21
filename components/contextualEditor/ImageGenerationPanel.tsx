@@ -4,21 +4,21 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ImagePromptResult, ImageStyle, AspectRatio } from '../../types/contextualEditor';
+import { ImagePromptResult, ContextualImageStyle, AspectRatio } from '../../types/contextualEditor';
 import { Button } from '../ui/Button';
 
 interface ImageGenerationPanelProps {
   promptResult: ImagePromptResult | null;
   isGenerating: boolean;
   isLoadingPrompt?: boolean;
-  onGenerate: (prompt: string, style: ImageStyle, aspectRatio: AspectRatio) => void;
+  onGenerate: (prompt: string, style: ContextualImageStyle, aspectRatio: AspectRatio) => void;
   onAccept: (imageUrl: string, altText: string) => void;
   onReject: () => void;
   onClose: () => void;
   generatedImageUrl?: string;
 }
 
-const STYLE_OPTIONS: { value: ImageStyle; label: string }[] = [
+const STYLE_OPTIONS: { value: ContextualImageStyle; label: string }[] = [
   { value: 'photograph', label: 'Photograph' },
   { value: 'illustration', label: 'Illustration' },
   { value: 'diagram', label: 'Diagram' },
@@ -43,7 +43,7 @@ export const ImageGenerationPanel: React.FC<ImageGenerationPanelProps> = ({
   generatedImageUrl,
 }) => {
   const [editedPrompt, setEditedPrompt] = useState(promptResult?.prompt || '');
-  const [style, setStyle] = useState<ImageStyle>(promptResult?.suggestedStyle || 'photograph');
+  const [style, setStyle] = useState<ContextualImageStyle>(promptResult?.suggestedStyle || 'photograph');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(promptResult?.suggestedAspectRatio || '4:3');
   const [altText, setAltText] = useState(promptResult?.altTextSuggestion || '');
 

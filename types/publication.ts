@@ -42,12 +42,7 @@ export type PublicationPhase =
 /**
  * Priority level for publication ordering
  */
-export enum PublicationPriority {
-  CRITICAL = 'critical',
-  HIGH = 'high',
-  MEDIUM = 'medium',
-  LOW = 'low',
-}
+export type PublicationPriority = 'critical' | 'high' | 'medium' | 'low';
 
 // ============================================================================
 // PUBLICATION PLAN TYPES

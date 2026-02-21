@@ -61,11 +61,7 @@ export interface SEOPillarsRef {
 /**
  * Audit rule severity levels
  */
-export enum AuditSeverity {
-  CRITICAL = 'critical',
-  WARNING = 'warning',
-  SUGGESTION = 'suggestion',
-}
+export type AuditSeverity = 'critical' | 'warning' | 'suggestion';
 
 /**
  * Validation violation from content rules
@@ -75,7 +71,7 @@ export interface ValidationViolation {
   text: string;
   position: number;
   suggestion: string;
-  severity: 'error' | 'warning';
+  severity: 'error' | 'warning' | 'info';
 }
 
 /**
@@ -247,12 +243,23 @@ export interface TripleAuditResult {
  */
 export interface ContentIntegrityResult {
   overallSummary: string;
-  draftText: string;
+  draftText: string; // The text that was audited (needed for Auto-Fix)
   eavCheck: { isPassing: boolean; details: string };
   linkCheck: { isPassing: boolean; details: string };
   linguisticModality: { score: number; summary: string };
   frameworkRules: AuditRuleResult[];
   tripleAnalysis?: TripleAuditResult;
+  // Computed fields for UI display
+  overallScore?: number; // Computed 0-100 score
+  algorithmicResults?: AuditRuleResult[]; // Alias for frameworkRules for backward compatibility
+  // Brief-level audit fields (used by ContentBrief.contentAudit)
+  sections?: Array<{
+    key: string;
+    heading: string;
+    score: number;
+    issues: string[];
+  }>;
+  summary?: string;
 }
 
 /**
@@ -752,13 +759,7 @@ export interface SiteWideNGramAudit {
 /**
  * Navigation segment type
  */
-export enum NavigationSegment {
-  CORE_SECTION = 'core_section',
-  AUTHOR_SECTION = 'author_section',
-  PILLAR = 'pillar',
-  CLUSTER = 'cluster',
-  FOUNDATION = 'foundation',
-}
+export type NavigationSegment = 'core_section' | 'author_section' | 'pillar' | 'cluster' | 'foundation';
 
 /**
  * Dynamic navigation rule
@@ -999,38 +1000,59 @@ export interface AlignmentScores {
 export interface CoreEntities {
   centralEntity?: string;
   sourceContext?: string;
-  identifiedEntities: string[];
-  entityTypes: Record<string, string>;
+  searchIntent?: string;
+  detectedSourceContext?: string;
+  identifiedEntities?: string[];
+  entityTypes?: Record<string, string>;
 }
 
 /**
  * Macro analysis result
  */
 export interface MacroAnalysis {
-  topicalCoverage: number;
-  contextualDepth: number;
-  semanticCoherence: number;
-  gaps: string[];
+  topicalCoverage?: number;
+  contextualDepth?: number;
+  semanticCoherence?: number;
+  gaps?: string[];
+  contextualVector?: string;
+  hierarchy?: string;
+  sourceContext?: string;
 }
 
 /**
  * Micro analysis result
  */
 export interface MicroAnalysis {
-  lexicalDiversity: number;
-  sentenceComplexity: number;
-  keywordDensity: Record<string, number>;
-  issues: string[];
+  lexicalDiversity?: number;
+  sentenceComplexity?: number;
+  keywordDensity?: Record<string, number>;
+  issues?: string[];
+  sentenceStructure?: string;
+  informationDensity?: string;
+  htmlSemantics?: string;
 }
 
 /**
  * Semantic action item
  */
 export interface SemanticActionItem {
-  type: 'add' | 'remove' | 'modify';
-  target: string;
+  id: string;
+  type: string;
+  title: string;
+  target?: string;
   description: string;
-  priority: 'high' | 'medium' | 'low';
+  category: string;
+  impact: string;
+  priority?: 'high' | 'medium' | 'low';
+  ruleReference?: string;
+  smartFix?: unknown;
+  structuredFix?: {
+    type?: string;
+    before?: string;
+    after?: string;
+    location?: string;
+    [key: string]: unknown;
+  };
 }
 
 /**
@@ -1083,28 +1105,36 @@ export interface CorpusPage {
   url: string;
   title: string;
   wordCount: number;
-  headings: string[];
-  topics: string[];
-  lastCrawled: string;
+  headings: (string | { level: number; text: string })[];
+  topics?: string[];
+  lastCrawled?: string;
+  internalLinks?: { url: string; anchorText: string }[];
+  externalLinks?: { url: string; anchorText: string }[];
 }
 
 /**
  * Content overlap detection
  */
 export interface ContentOverlap {
-  urls: string[];
+  urls?: string[];
   overlapPercentage: number;
-  sharedContent: string;
-  type: 'duplicate' | 'near_duplicate' | 'partial';
+  sharedContent?: string;
+  sharedPhrases?: string[];
+  type?: 'duplicate' | 'near_duplicate' | 'partial';
+  overlapType?: string;
+  pageA?: string;
+  pageB?: string;
 }
 
 /**
  * Anchor text pattern analysis
  */
 export interface AnchorTextPattern {
-  anchor: string;
+  anchor?: string;
+  anchorText?: string;
   frequency: number;
-  targets: string[];
+  targets?: string[];
+  targetUrls?: string[];
   isOverOptimized: boolean;
   isGeneric: boolean;
 }
@@ -1115,10 +1145,15 @@ export interface AnchorTextPattern {
 export interface CorpusMetrics {
   totalPages: number;
   avgWordCount: number;
-  duplicateRatio: number;
-  orphanRatio: number;
-  internalLinkDensity: number;
-  contentFreshness: number;
+  duplicateRatio?: number;
+  orphanRatio?: number;
+  internalLinkDensity?: number;
+  contentFreshness?: number;
+  totalWordCount?: number;
+  avgInternalLinks?: number;
+  avgExternalLinks?: number;
+  avgHeadings?: number;
+  topicalCoverage?: number;
 }
 
 /**
@@ -1182,13 +1217,15 @@ export interface QueryNetworkAuditConfig {
   maxCompetitors?: number;
   includeEntityValidation?: boolean;
   includeOwnContent?: boolean;
+  /** GSC search analytics rows to enrich analysis with real data */
+  gscData?: import('../types').GscRow[];
 }
 
 /**
  * Query network audit progress
  */
 export interface QueryNetworkAuditProgress {
-  phase: 'generating_network' | 'fetching_serps' | 'extracting_eavs' | 'analyzing_gaps' | 'validating_entities' | 'complete' | 'error';
+  phase: 'generating_network' | 'fetching_serps' | 'extracting_eavs' | 'analyzing_gaps' | 'validating_entities' | 'enriching_gsc' | 'complete' | 'error';
   currentStep: string;
   totalSteps: number;
   completedSteps: number;
@@ -1200,12 +1237,13 @@ export interface QueryNetworkAuditProgress {
  * Query network recommendation
  */
 export interface QueryNetworkRecommendation {
-  type: 'content_gap' | 'entity_gap' | 'authority_gap' | 'coverage_opportunity';
+  type: 'content_gap' | 'density_improvement' | 'structure_fix' | 'new_topic';
   priority: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
-  queries: string[];
+  affectedQueries: string[];
   estimatedImpact: string;
+  suggestedAction: string;
 }
 
 /**
@@ -1242,9 +1280,9 @@ export interface ComprehensiveAuditReport {
 // ============================================================================
 
 /**
- * Alt text validation result
+ * Alt text validation result (audit-specific)
  */
-export interface AltTextValidationResult {
+export interface AuditAltTextResult {
   imageUrl: string;
   hasAlt: boolean;
   altText?: string;
@@ -1255,9 +1293,9 @@ export interface AltTextValidationResult {
 }
 
 /**
- * File name validation result
+ * File name validation result (audit-specific)
  */
-export interface FileNameValidationResult {
+export interface AuditFileNameResult {
   url: string;
   originalName: string;
   isDescriptive: boolean;
@@ -1267,14 +1305,14 @@ export interface FileNameValidationResult {
 }
 
 /**
- * Visual semantics validation result
+ * Visual semantics validation result (audit-specific)
  */
-export interface VisualSemanticsValidationResult {
+export interface AuditVisualSemanticsResult {
   totalImages: number;
   imagesWithAlt: number;
   imagesWithDescriptiveAlt: number;
-  altTextResults: AltTextValidationResult[];
-  fileNameResults: FileNameValidationResult[];
+  altTextResults: AuditAltTextResult[];
+  fileNameResults: AuditFileNameResult[];
   overallScore: number;
   recommendations: string[];
 }
@@ -1284,9 +1322,9 @@ export interface VisualSemanticsValidationResult {
 // ============================================================================
 
 /**
- * Hreflang validation result
+ * Hreflang validation result (audit-specific)
  */
-export interface HreflangValidationResult {
+export interface AuditHreflangResult {
   url: string;
   declaredLanguages: string[];
   issues: {
@@ -1295,4 +1333,305 @@ export interface HreflangValidationResult {
     message: string;
   }[];
   isValid: boolean;
+}
+
+// ============================================================================
+// KNOWLEDGE GRAPH TYPES
+// ============================================================================
+
+// AdminProject is defined in core.ts (canonical location)
+
+/**
+ * Knowledge graph node
+ */
+export interface KnowledgeNode {
+  id: string;
+  term: string;
+  type: string;
+  definition: string;
+  metadata: {
+    importance: number;
+    source: string;
+    [key: string]: any;
+  };
+}
+
+/**
+ * Knowledge graph edge
+ */
+export interface KnowledgeEdge {
+  id: string;
+  source: string;
+  target: string;
+  relation: string;
+  metadata: {
+    source: string;
+    [key: string]: any;
+  };
+}
+
+/**
+ * Topic recommendation
+ */
+export interface TopicRecommendation {
+    id: string;
+    title: string;
+    slug: string;
+    description: string;
+    category: 'GAP_FILLING' | 'COMPETITOR_BASED' | 'EXPANSION';
+    reasoning: string;
+}
+
+/**
+ * WordNet interface for semantic distance calculations
+ */
+export interface WordNetInterface {
+  getHypernyms(concept: string): Promise<string[]>;
+  getDepth(concept: string): Promise<number>;
+  getMaxDepth(): Promise<number>;
+  findLCS(concept1: string, concept2: string): Promise<string[]>;
+  getShortestPath(concept1: string, concept2: string): Promise<number>;
+}
+
+// ============================================================================
+// SEO AUDIT REPORT TYPES
+// ============================================================================
+
+export type ReportScope = 'page' | 'site';
+export type ReportAudience = 'business' | 'technical';
+export type HealthStatus = 'excellent' | 'good' | 'needs-work' | 'critical';
+export type EffortLevel = 'Quick Fix' | 'Moderate' | 'Complex';
+
+/**
+ * Full SEO audit report
+ */
+export interface SEOAuditReport {
+  id: string;
+  projectId: string;
+  pageId?: string;
+  scope: ReportScope;
+  generatedAt: string;
+
+  executiveSummary: {
+    overallScore: number;
+    healthStatus: HealthStatus;
+    keyFindings: string[];
+    pagesAnalyzed: number;
+    issuesCritical: number;
+    issuesHigh: number;
+    issuesMedium: number;
+    issuesLow: number;
+  };
+
+  phaseScores: {
+    technical: { score: number; passed: number; total: number };
+    semantic: { score: number; passed: number; total: number };
+    linkStructure: { score: number; passed: number; total: number };
+    contentQuality: { score: number; passed: number; total: number };
+    visualSchema: { score: number; passed: number; total: number };
+  };
+
+  pillarContext?: {
+    centralEntity: string;
+    centralEntityExplanation: string;
+    sourceContext: string;
+    sourceContextExplanation: string;
+    centralSearchIntent: string;
+  };
+
+  issues: ReportIssue[];
+
+  progress: {
+    totalTasks: number;
+    completed: number;
+    pending: number;
+    dismissed: number;
+  };
+
+  pages?: PageReportSummary[];
+}
+
+/**
+ * Report issue entry
+ */
+export interface ReportIssue {
+  id: string;
+  ruleId: string;
+  phase: string;
+  priority: 'critical' | 'high' | 'medium' | 'low';
+
+  // Business view fields
+  headline: string;
+  whyItMatters: string;
+  businessImpact: string;
+  suggestedAction: string;
+  effortLevel: EffortLevel;
+
+  // Technical view fields
+  technicalDetails: {
+    ruleName: string;
+    actualValue?: string | number;
+    expectedValue?: string | number;
+    remediation: string;
+    aiSuggestion?: string;
+  };
+
+  affectedPages: string[];
+  status: 'pending' | 'in_progress' | 'completed' | 'dismissed';
+}
+
+/**
+ * Page report summary
+ */
+export interface PageReportSummary {
+  url: string;
+  title: string;
+  overallScore: number;
+  issueCount: number;
+  topIssue?: string;
+}
+
+/**
+ * Business language translation for audit findings
+ */
+export interface BusinessLanguageTranslation {
+  headline: string;
+  whyItMatters: string;
+  businessImpact: string;
+  effortLevel: EffortLevel;
+}
+
+/**
+ * Business name for audit phase
+ */
+export interface PhaseBusinessName {
+  name: string;
+  explanation: string;
+}
+
+// ============================================================================
+// FOUNDATION & NAVIGATION ISSUE TYPES
+// ============================================================================
+
+/**
+ * Foundation page issues
+ */
+export interface FoundationPageIssues {
+  missingPages: FoundationPageType[];
+  incompletePages: { type: FoundationPageType; missing: string[] }[];
+  napIssues?: string[];
+}
+
+/**
+ * Navigation issues
+ */
+export interface NavigationIssues {
+  headerLinkCount: number;
+  footerLinkCount: number;
+  warnings: string[];
+}
+
+// ============================================================================
+// TELEMETRY TYPES
+// ============================================================================
+
+/**
+ * Telemetry log entry
+ */
+export interface TelemetryLog {
+    id: string;
+    timestamp: number;
+    provider: string;
+    model: string;
+    operation: string;
+    tokens_in: number;
+    tokens_out: number;
+    cost_est: number;
+}
+
+// ============================================================================
+// CONTENT GENERATION AUDIT TYPES
+// ============================================================================
+
+/**
+ * Comprehensive audit details for content generation
+ */
+export interface AuditDetails {
+  algorithmicResults: AuditRuleResult[];
+  aiAuditResult?: {
+    semanticScore: number;
+    suggestions: string[];
+  };
+  passingRules: number;
+  totalRules: number;
+  timestamp: string;
+  // Semantic Compliance Score (target >= 85%)
+  complianceScore?: {
+    overall: number;
+    passed: boolean;
+    grade: 'A' | 'B' | 'C' | 'D' | 'F';
+    breakdown: {
+      eavCoverage: number;
+      contextualFlow: number;
+      anchorDiversity: number;
+      formatCompliance: number;
+      schemaCompleteness: number;
+      visualHierarchy: number;
+      centralEntityFocus: number;
+      subordinateText: number;
+      freshnessSignals: number;
+    };
+    issues: Array<{
+      factor: string;
+      severity: 'critical' | 'major' | 'minor';
+      message: string;
+      recommendation: string;
+    }>;
+    recommendations: string[];
+  };
+  // Cross-page EAV consistency check results (Knowledge-Based Trust)
+  crossPageContradictions?: Array<{
+    entity: string;
+    attribute: string;
+    currentValue: string;
+    conflictingValue: string;
+    conflictingArticle: { id: string; title: string };
+  }>;
+}
+
+/**
+ * Comprehensive quality report stored with content generation jobs.
+ * This captures the full quality enforcement state including rule compliance,
+ * violations, pass tracking, and systemic checks.
+ */
+export interface QualityReport {
+  /** Overall quality score (0-100) */
+  overallScore: number;
+  /** Scores by rule category (A-S) */
+  categoryScores: Record<string, number>;
+  /** Rule violations found during generation */
+  violations: Array<{
+    rule: string;
+    text: string;
+    severity: 'error' | 'warning' | 'info';
+    suggestion: string;
+  }>;
+  /** Pass-by-pass quality deltas */
+  passDeltas: Array<{
+    passNumber: number;
+    rulesFixed: string[];
+    rulesRegressed: string[];
+    netChange: number;
+  }>;
+  /** Systemic/structural checks (word count, image balance, etc.) */
+  systemicChecks: Array<{
+    checkId: string;
+    name: string;
+    status: 'pass' | 'warning' | 'fail';
+    value: string;
+  }>;
+  /** When this report was generated */
+  generatedAt: string;
+  /** The generation mode used (autonomous or supervised) */
+  generationMode: 'autonomous' | 'supervised';
 }

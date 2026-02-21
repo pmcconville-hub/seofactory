@@ -33,7 +33,6 @@ export const defaultBusinessInfo: BusinessInfo = {
   dataforseoLogin: env('VITE_DATAFORSEO_LOGIN'),
   dataforseoPassword: env('VITE_DATAFORSEO_PASSWORD'),
   apifyToken: env('VITE_APIFY_TOKEN'),
-  infranodusApiKey: env('VITE_INFRANODUS_API_KEY'),
   jinaApiKey: env('VITE_JINA_API_KEY'),
   firecrawlApiKey: env('VITE_FIRECRAWL_API_KEY'),
   apitemplateApiKey: env('VITE_APITEMPLATE_API_KEY'),

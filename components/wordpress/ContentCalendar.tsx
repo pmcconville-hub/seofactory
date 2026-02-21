@@ -8,7 +8,7 @@ import { useAppState } from '../../state/appState';
 import { Loader } from '../ui/Loader';
 import {
   CalendarEntry,
-  PublicationStatus,
+  WPPublicationStatus,
   WordPressPublication
 } from '../../types/wordpress';
 import { EnrichedTopic } from '../../types';
@@ -421,7 +421,7 @@ const CalendarDayCell: React.FC<CalendarDayCellProps> = ({ day, onEntryClick }) 
 // ============================================================================
 
 interface StatusDotProps {
-  status: CalendarEntry['type'] | PublicationStatus;
+  status: CalendarEntry['type'] | WPPublicationStatus;
   className?: string;
 }
 

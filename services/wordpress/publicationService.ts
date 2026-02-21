@@ -12,7 +12,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import {
   WordPressPublication,
   PublishOptions,
-  PublicationStatus,
+  WPPublicationStatus,
   ConflictReport,
   ConflictResolution,
   CreatePostRequest,
@@ -346,7 +346,7 @@ export async function publishTopic(
     const wpPost = createResult.data;
 
     // Determine publication status
-    let pubStatus: PublicationStatus = 'draft';
+    let pubStatus: WPPublicationStatus = 'draft';
     if (wpPost.status === 'publish') pubStatus = 'published';
     else if (wpPost.status === 'future') pubStatus = 'scheduled';
     else if (wpPost.status === 'pending') pubStatus = 'pending_review';
@@ -489,7 +489,7 @@ export async function updatePublication(
     // Update publication record
     const newContentHash = updateData.cutthecrap_version_hash as string || publication.app_version_hash;
 
-    let pubStatus: PublicationStatus = publication.status;
+    let pubStatus: WPPublicationStatus = publication.status;
     if (wpPost.status === 'publish') pubStatus = 'published';
     else if (wpPost.status === 'future') pubStatus = 'scheduled';
     else if (wpPost.status === 'pending') pubStatus = 'pending_review';
@@ -572,7 +572,7 @@ export async function syncPublicationStatus(
           { table: 'wordpress_publications', operationDescription: 'mark as trashed' },
           { column: 'id', value: publicationId },
           {
-            status: 'trashed' as PublicationStatus,
+            status: 'trashed' as WPPublicationStatus,
             last_sync_status: 'post_not_found'
           },
           '*'
@@ -601,7 +601,7 @@ export async function syncPublicationStatus(
     const hasChanges = wpContentHash !== publication.app_version_hash;
 
     // Map WordPress status to our status
-    let pubStatus: PublicationStatus = publication.status;
+    let pubStatus: WPPublicationStatus = publication.status;
     if (wpPost.status === 'publish') pubStatus = 'published';
     else if (wpPost.status === 'future') pubStatus = 'scheduled';
     else if (wpPost.status === 'pending') pubStatus = 'pending_review';

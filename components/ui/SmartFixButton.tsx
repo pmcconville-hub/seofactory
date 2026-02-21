@@ -111,7 +111,7 @@ export const SmartFixButton: React.FC<SmartFixButtonProps> = ({
         </div>
         {isExpanded && structuredFix && (
           <div className="mt-2 p-3 bg-green-900/10 border border-green-500/20 rounded text-xs text-gray-300">
-            <p className="text-green-400/80 mb-1">{structuredFix.explanation}</p>
+            <p className="text-green-400/80 mb-1">{structuredFix.explanation as string}</p>
           </div>
         )}
       </div>
@@ -144,21 +144,21 @@ export const SmartFixButton: React.FC<SmartFixButtonProps> = ({
         <div className="bg-gray-800/50 border border-gray-700/50 rounded p-2 text-xs">
           <div className="flex gap-2 items-start">
             <span className="text-red-400/70 flex-shrink-0 mt-0.5">-</span>
-            <span className="text-red-300/60 line-through break-words">{structuredFix.searchText.substring(0, 120)}{structuredFix.searchText.length > 120 ? '...' : ''}</span>
+            <span className="text-red-300/60 line-through break-words">{(structuredFix.searchText as string).substring(0, 120)}{(structuredFix.searchText as string).length > 120 ? '...' : ''}</span>
           </div>
           <div className="flex gap-2 items-start mt-1">
             <span className="text-green-400/70 flex-shrink-0 mt-0.5">+</span>
-            <span className="text-green-300/80 break-words">{structuredFix.replacementText.substring(0, 120)}{structuredFix.replacementText.length > 120 ? '...' : ''}</span>
+            <span className="text-green-300/80 break-words">{(structuredFix.replacementText as string).substring(0, 120)}{(structuredFix.replacementText as string).length > 120 ? '...' : ''}</span>
           </div>
         </div>
 
         {/* Expanded details */}
         {isExpanded && (
           <div className="p-3 bg-purple-900/10 border border-purple-500/20 rounded text-xs text-gray-300 space-y-2">
-            <p className="text-purple-300/80">{structuredFix.explanation}</p>
+            <p className="text-purple-300/80">{structuredFix.explanation as string}</p>
             <div>
               <p className="text-gray-500 mb-1">Full replacement:</p>
-              <pre className="bg-gray-900/50 p-2 rounded text-xs text-gray-300 whitespace-pre-wrap break-words max-h-40 overflow-y-auto">{structuredFix.replacementText}</pre>
+              <pre className="bg-gray-900/50 p-2 rounded text-xs text-gray-300 whitespace-pre-wrap break-words max-h-40 overflow-y-auto">{structuredFix.replacementText as string}</pre>
             </div>
           </div>
         )}

@@ -3,22 +3,21 @@
 /**
  * GSC Integration Edge Function
  *
- * Fetches Google Search Console data for audit enrichment:
+ * Fetches Google Search Console data for audit/gap analysis enrichment:
  * - Search performance (impressions, clicks, CTR, position)
- * - Index coverage
- * - URL inspection
  *
- * Requires Google OAuth token stored in user settings.
+ * Supports two auth modes:
+ * 1. accountId — looks up encrypted token from analytics_accounts (preferred)
+ * 2. accessToken — direct token pass-through (legacy)
+ *
+ * Requires: Authorization header with Supabase JWT (for accountId mode)
  */
 
-function getEnvVar(name: string): string {
-  const Deno = (globalThis as any).Deno;
-  const value = Deno.env.get(name);
-  if (!value) {
-    console.warn(`Environment variable ${name} is not set.`);
-  }
-  return value || "";
-}
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { decrypt, encrypt } from '../_shared/crypto.ts'
+import { refreshGoogleToken } from '../_shared/googleAuth.ts'
+
+const Deno = (globalThis as any).Deno;
 
 const ALLOWED_ORIGINS = [
   'https://holistic-seo-topical-map-generator.vercel.app',
@@ -49,7 +48,86 @@ function json(body: any, status = 200, origin?: string | null) {
   });
 }
 
-const Deno = (globalThis as any).Deno;
+/**
+ * Resolve access token from accountId (decrypt + refresh if expired)
+ */
+async function resolveAccessToken(
+  accountId: string,
+  authHeader: string,
+  origin: string | null
+): Promise<{ token: string } | { error: Response }> {
+  const projectUrl = Deno.env.get('PROJECT_URL') || Deno.env.get('SUPABASE_URL');
+  const anonKey = Deno.env.get('ANON_KEY') || Deno.env.get('SUPABASE_ANON_KEY');
+  const serviceRoleKey = Deno.env.get('SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+  if (!projectUrl || !anonKey || !serviceRoleKey) {
+    return { error: json({ error: 'Server configuration error' }, 500, origin) };
+  }
+
+  // Authenticate calling user
+  const supabaseAuth = createClient(projectUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+  if (authError || !user) {
+    return { error: json({ error: 'Authentication failed' }, 401, origin) };
+  }
+
+  // Fetch account with service role (to read encrypted tokens)
+  const serviceClient = createClient(projectUrl, serviceRoleKey);
+  const { data: account, error: fetchError } = await serviceClient
+    .from('analytics_accounts')
+    .select('*')
+    .eq('id', accountId)
+    .eq('user_id', user.id)
+    .single();
+
+  if (fetchError || !account) {
+    return { error: json({ error: 'Account not found or access denied' }, 404, origin) };
+  }
+
+  // Decrypt access token
+  let accessToken: string | null;
+  try {
+    accessToken = await decrypt(account.access_token_encrypted);
+  } catch {
+    return { error: json({ error: 'Token decryption failed' }, 500, origin) };
+  }
+
+  if (!accessToken) {
+    return { error: json({ error: 'No access token available' }, 500, origin) };
+  }
+
+  // Refresh if expired
+  const tokenExpiry = account.token_expires_at ? new Date(account.token_expires_at) : null;
+  const isExpired = tokenExpiry && tokenExpiry.getTime() < Date.now() + 60000;
+
+  if (isExpired && account.refresh_token_encrypted) {
+    try {
+      const refreshToken = await decrypt(account.refresh_token_encrypted);
+      if (refreshToken) {
+        const newTokens = await refreshGoogleToken(refreshToken);
+        accessToken = newTokens.access_token;
+
+        const newAccessEncrypted = await encrypt(accessToken);
+        await serviceClient
+          .from('analytics_accounts')
+          .update({
+            access_token_encrypted: newAccessEncrypted,
+            token_expires_at: new Date(
+              Date.now() + (newTokens.expires_in || 3600) * 1000
+            ).toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', accountId);
+      }
+    } catch {
+      return { error: json({ error: 'Token refresh failed' }, 500, origin) };
+    }
+  }
+
+  return { token: accessToken };
+}
 
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin");
@@ -58,10 +136,28 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { siteUrl, accessToken, startDate, endDate, dimensions, rowLimit } = await req.json();
+    const body = await req.json();
+    const { siteUrl, accessToken, accountId, startDate, endDate, dimensions, rowLimit } = body;
 
-    if (!siteUrl || !accessToken) {
-      return json({ error: "Missing siteUrl or accessToken" }, 400, origin);
+    if (!siteUrl) {
+      return json({ error: "Missing siteUrl" }, 400, origin);
+    }
+
+    // Resolve access token: prefer accountId lookup, fall back to direct token
+    let resolvedToken = accessToken;
+
+    if (!resolvedToken && accountId) {
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) {
+        return json({ error: 'Missing authorization header (required for accountId mode)' }, 401, origin);
+      }
+      const result = await resolveAccessToken(accountId, authHeader, origin);
+      if ('error' in result) return result.error;
+      resolvedToken = result.token;
+    }
+
+    if (!resolvedToken) {
+      return json({ error: "Missing accessToken or accountId" }, 400, origin);
     }
 
     // Default to last 28 days
@@ -78,13 +174,13 @@ Deno.serve(async (req: Request) => {
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          'Authorization': `Bearer ${resolvedToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           startDate: start,
           endDate: end,
-          dimensions: dimensions || ['page', 'query'],
+          dimensions: dimensions || ['query'],
           rowLimit: rowLimit || 1000,
           dimensionFilterGroups: [],
         }),
@@ -101,51 +197,14 @@ Deno.serve(async (req: Request) => {
 
     const gscData = await gscResponse.json();
 
-    // Process and return data
+    // Return raw rows — let the frontend transform as needed
     const rows = (gscData.rows || []).map((row: any) => ({
-      page: row.keys?.[0] || '',
-      query: row.keys?.[1] || '',
+      keys: row.keys || [],
+      query: row.keys?.[0] || '',
       clicks: row.clicks || 0,
       impressions: row.impressions || 0,
-      ctr: Math.round((row.ctr || 0) * 10000) / 100, // Convert to percentage
+      ctr: row.ctr || 0,
       position: Math.round((row.position || 0) * 10) / 10,
-    }));
-
-    // Aggregate per-page metrics
-    const pageMetrics = new Map<string, {
-      clicks: number;
-      impressions: number;
-      avgPosition: number;
-      positionCount: number;
-      topQueries: { query: string; impressions: number; position: number }[];
-    }>();
-
-    for (const row of rows) {
-      if (!pageMetrics.has(row.page)) {
-        pageMetrics.set(row.page, {
-          clicks: 0, impressions: 0, avgPosition: 0, positionCount: 0, topQueries: [],
-        });
-      }
-      const pm = pageMetrics.get(row.page)!;
-      pm.clicks += row.clicks;
-      pm.impressions += row.impressions;
-      pm.avgPosition += row.position;
-      pm.positionCount++;
-      pm.topQueries.push({ query: row.query, impressions: row.impressions, position: row.position });
-    }
-
-    // Finalize averages and sort queries
-    const pages = [...pageMetrics.entries()].map(([url, metrics]) => ({
-      url,
-      clicks: metrics.clicks,
-      impressions: metrics.impressions,
-      avgPosition: Math.round((metrics.avgPosition / Math.max(metrics.positionCount, 1)) * 10) / 10,
-      ctr: metrics.impressions > 0
-        ? Math.round((metrics.clicks / metrics.impressions) * 10000) / 100
-        : 0,
-      topQueries: metrics.topQueries
-        .sort((a, b) => b.impressions - a.impressions)
-        .slice(0, 10),
     }));
 
     return json({
@@ -153,7 +212,7 @@ Deno.serve(async (req: Request) => {
       siteUrl,
       dateRange: { start, end },
       totalRows: rows.length,
-      pages: pages.sort((a: any, b: any) => b.impressions - a.impressions),
+      rows,
     }, 200, origin);
 
   } catch (error: any) {

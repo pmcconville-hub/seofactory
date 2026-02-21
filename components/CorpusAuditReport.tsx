@@ -584,8 +584,8 @@ export const CorpusAuditReport: React.FC<CorpusAuditReportProps> = ({
                         {page.wordCount}
                       </td>
                       <td className="py-2 text-gray-400">{page.headings.length}</td>
-                      <td className="py-2 text-gray-400">{page.internalLinks.length}</td>
-                      <td className="py-2 text-gray-400">{page.externalLinks.length}</td>
+                      <td className="py-2 text-gray-400">{page.internalLinks?.length ?? 0}</td>
+                      <td className="py-2 text-gray-400">{page.externalLinks?.length ?? 0}</td>
                     </tr>
                   ))}
                 </tbody>

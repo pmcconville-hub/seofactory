@@ -67,7 +67,7 @@ export type {
   WordPressConnectionStatus,
   WordPressPublication,
   PublishOptions,
-  PublicationStatus,
+  WPPublicationStatus,
   WordPressMedia,
   WordPressMediaType,
   MediaUploadInput,

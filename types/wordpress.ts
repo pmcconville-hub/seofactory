@@ -44,7 +44,7 @@ export interface WordPressConnectionInput {
 // Publication Types
 // ============================================================================
 
-export type PublicationStatus =
+export type WPPublicationStatus =
   | 'draft'           // Pushed as WP draft
   | 'pending_review'  // Awaiting approval in WP
   | 'scheduled'       // Scheduled for future
@@ -65,7 +65,7 @@ export interface WordPressPublication {
   wp_post_type: 'post' | 'page';  // Whether this is a WP post or page
 
   // Publication status
-  status: PublicationStatus;
+  status: WPPublicationStatus;
 
   // Scheduling
   scheduled_at?: string;
@@ -482,7 +482,7 @@ export interface TopicPublicationInfo {
     site_name?: string;
     wp_post_id: number;
     wp_post_url?: string;
-    status: PublicationStatus;
+    status: WPPublicationStatus;
     published_at?: string;
     has_wp_changes: boolean;
     last_pushed_at?: string;
@@ -502,7 +502,7 @@ export interface CalendarEntry {
     connection_id: string;
     site_url: string;
     wp_post_url?: string;
-    status: PublicationStatus;
+    status: WPPublicationStatus;
   };
 }
 

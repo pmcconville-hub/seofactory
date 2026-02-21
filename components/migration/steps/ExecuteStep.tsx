@@ -136,7 +136,7 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
     topicId: string | null;
     topicTitle: string | null;
     action: ActionType | undefined;
-    priority: string | undefined;
+    priority: string | number | undefined;
     status: TransitionStatus;
     execStatus: ExecutionStatus;
     isCreateNew: boolean;
@@ -180,7 +180,7 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
           url: item.url,
           topicId: item.mapped_topic_id,
           topicTitle: mappedTopic?.title || null,
-          action: effectiveAction,
+          action: effectiveAction as ActionType | undefined,
           priority: item.action_priority,
           status: item.status,
           execStatus: getExecutionStatus(item.status),
@@ -733,8 +733,8 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
                             })()}
                           </td>
                           <td className="px-4 py-3">
-                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${getPriorityClasses(item.priority)}`}>
-                              {item.priority ? item.priority.charAt(0).toUpperCase() + item.priority.slice(1) : 'Unset'}
+                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${getPriorityClasses(String(item.priority))}`}>
+                              {item.priority ? String(item.priority).charAt(0).toUpperCase() + String(item.priority).slice(1) : 'Unset'}
                             </span>
                           </td>
                           <td className="px-4 py-3">
@@ -867,8 +867,8 @@ export const ExecuteStep: React.FC<ExecuteStepProps> = ({
                                   </span>
                                 </td>
                                 <td className="px-4 py-3">
-                                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${getPriorityClasses(item.priority)}`}>
-                                    {item.priority ? item.priority.charAt(0).toUpperCase() + item.priority.slice(1) : 'Unset'}
+                                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${getPriorityClasses(String(item.priority))}`}>
+                                    {item.priority ? String(item.priority).charAt(0).toUpperCase() + String(item.priority).slice(1) : 'Unset'}
                                   </span>
                                 </td>
                                 <td className="px-4 py-3">

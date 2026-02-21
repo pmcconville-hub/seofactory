@@ -420,7 +420,7 @@ const App: React.FC = () => {
                     const GLOBAL_SETTINGS_FIELDS = [
                         'aiProvider', 'aiModel',
                         'geminiApiKey', 'openAiApiKey', 'anthropicApiKey', 'perplexityApiKey', 'openRouterApiKey',
-                        'dataforseoLogin', 'dataforseoPassword', 'apifyToken', 'infranodusApiKey',
+                        'dataforseoLogin', 'dataforseoPassword', 'apifyToken',
                         'jinaApiKey', 'firecrawlApiKey', 'apitemplateApiKey',
                         'neo4jUri', 'neo4jUser', 'neo4jPassword',
                         'cloudinaryCloudName', 'cloudinaryApiKey', 'cloudinaryUploadPreset', 'markupGoApiKey',
@@ -467,7 +467,7 @@ const App: React.FC = () => {
     const GLOBAL_SETTINGS_FIELDS = [
         'aiProvider', 'aiModel',
         'geminiApiKey', 'openAiApiKey', 'anthropicApiKey', 'perplexityApiKey', 'openRouterApiKey',
-        'dataforseoLogin', 'dataforseoPassword', 'apifyToken', 'infranodusApiKey',
+        'dataforseoLogin', 'dataforseoPassword', 'apifyToken',
         'jinaApiKey', 'firecrawlApiKey', 'apitemplateApiKey',
         'neo4jUri', 'neo4jUser', 'neo4jPassword',
         'cloudinaryCloudName', 'cloudinaryApiKey', 'cloudinaryUploadPreset', 'markupGoApiKey',

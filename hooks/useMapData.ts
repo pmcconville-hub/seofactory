@@ -4,7 +4,7 @@ import { AppAction } from '../state/appState';
 import { getSupabaseClient } from '../services/supabaseClient';
 import { sanitizeTopicFromDb, sanitizeBriefFromDb } from '../utils/parsers';
 import { batchedIn } from '../utils/supabaseBatchQuery';
-import { BusinessInfo, ContentBrief, TopicalMap } from '../types';
+import { BusinessInfo, ContentBrief, TopicalMap, PublicationPlan } from '../types';
 import { PipelineState, pipelineActions } from '../state/slices/pipelineSlice';
 
 export const useMapData = (
@@ -41,7 +41,7 @@ export const useMapData = (
                 dispatch({ type: 'SET_TOPICAL_AUTHORITY_SCORE', payload: analysis_state.topicalAuthorityScore });
             }
             if (analysis_state.publicationPlan) {
-                dispatch({ type: 'SET_PUBLICATION_PLAN', payload: analysis_state.publicationPlan });
+                dispatch({ type: 'SET_PUBLICATION_PLAN', payload: analysis_state.publicationPlan as unknown as PublicationPlan });
             }
             if (analysis_state.gscOpportunities) {
                 dispatch({ type: 'SET_GSC_OPPORTUNITIES', payload: analysis_state.gscOpportunities });

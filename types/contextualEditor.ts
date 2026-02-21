@@ -100,7 +100,7 @@ export interface RewriteResult {
 // ============================================================================
 
 // Three-tier image classification system for photographic-first visual semantics
-export type ImageStyle =
+export type ContextualImageStyle =
   // Tier 1: Photographic (no text)
   | 'photograph'      // Generic photo (legacy, maps to SCENE)
   | 'scene'           // Environmental/contextual photography
@@ -122,7 +122,7 @@ export type ImageTier = 'photographic' | 'minimal-diagram' | 'captioned';
 
 /** Mapping from image style to tier and prompt configuration */
 export interface ImageTypeMapping {
-  style: ImageStyle;
+  style: ContextualImageStyle;
   tier: ImageTier;
   readonly promptModifiers: string[];
   readonly avoidTerms: string[];
@@ -144,7 +144,7 @@ export interface PlacementSuggestion {
 
 export interface ImagePromptResult {
   prompt: string;
-  suggestedStyle: ImageStyle;
+  suggestedStyle: ContextualImageStyle;
   suggestedAspectRatio: AspectRatio;
   altTextSuggestion: string;
   placementSuggestion: PlacementSuggestion;

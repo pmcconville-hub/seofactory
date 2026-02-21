@@ -122,14 +122,13 @@ const createMockPillars = (overrides: Partial<SEOPillars> = {}): SEOPillars => (
 
 const createMockRules = (overrides: Partial<InternalLinkingRules> = {}): InternalLinkingRules => ({
   maxLinksPerPage: 150,
+  maxAnchorRepetitionPerTarget: 3,
   maxAnchorTextRepetition: 3,
   prioritizeMainContentLinks: true,
   useDescriptiveAnchorText: true,
-  avoidGenericAnchors: ['click here', 'read more', 'learn more'],
-  contextualBridgeRequired: true,
-  delayLowRelevanceLinks: true,
-  hubSpokeFlowDirection: 'spoke_to_hub',
-  linkToQualityNodesFirst: true,
+  genericAnchorsToAvoid: ['click here', 'read more', 'learn more'],
+  requireAnnotationText: true,
+  forbidFirstSentenceLinks: true,
   qualityNodeThreshold: 70,
   ...overrides,
 });

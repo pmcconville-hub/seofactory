@@ -51,7 +51,7 @@ const Deno = (globalThis as any).Deno;
 
 const keysToEncrypt = [
     'dataforseoLogin', 'dataforseoPassword', 'apifyToken',
-    'infranodusApiKey', 'jinaApiKey', 'firecrawlApiKey',
+    'jinaApiKey', 'firecrawlApiKey',
     'apitemplateApiKey', 'geminiApiKey', 'openAiApiKey', 'anthropicApiKey',
     'perplexityApiKey', 'openRouterApiKey', 'neo4jUri',
     'neo4jUser', 'neo4jPassword', 'cloudinaryApiKey', 'markupGoApiKey'

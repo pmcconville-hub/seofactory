@@ -32,7 +32,7 @@ export type {
   TemplatePlaceholders,
   HashtagStrategy,
   CharacterLimits,
-  ImageSpecs,
+  SocialImageSpecs,
   EntityHashtagMapping,
   EntityHashtagMappingInput,
   PlatformPostingGuide,

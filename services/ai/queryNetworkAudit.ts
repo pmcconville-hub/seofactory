@@ -14,7 +14,9 @@ import type {
   QueryNetworkRecommendation,
   QueryNetworkAuditConfig,
   QueryNetworkAuditProgress,
-  AttributeCategory
+  AttributeCategory,
+  GscInsight,
+  GscRow,
 } from '../../types';
 
 import { GoogleGenAI } from "@google/genai";
@@ -726,11 +728,126 @@ export function generateRecommendations(
     }
   }
 
+  // GSC-specific recommendations
+  if (result.gscInsights?.length) {
+    const quickWins = result.gscInsights.filter(i => i.type === 'quick_win');
+    const lowCtr = result.gscInsights.filter(i => i.type === 'low_ctr');
+
+    if (quickWins.length > 0) {
+      const topQuickWins = quickWins.slice(0, 5);
+      recommendations.push({
+        type: 'content_gap',
+        priority: 'critical',
+        title: `${quickWins.length} Quick Win Opportunities (GSC Data)`,
+        description: `You're ranking positions 4-20 for ${quickWins.length} queries with real search traffic. These are the fastest wins.`,
+        affectedQueries: topQuickWins.map(q => q.query),
+        estimatedImpact: 'High - Moving from page 2 to page 1 can 10x traffic',
+        suggestedAction: `Prioritize content optimization for: ${topQuickWins.map(q => q.query).join(', ')}`,
+      });
+    }
+
+    if (lowCtr.length > 0) {
+      recommendations.push({
+        type: 'density_improvement',
+        priority: 'high',
+        title: `${lowCtr.length} Low-CTR Queries Need Better Titles`,
+        description: `You rank in top 5 for ${lowCtr.length} queries but CTR is below 3%. Users see your listing but don't click.`,
+        affectedQueries: lowCtr.map(q => q.query),
+        estimatedImpact: 'High - Improving CTR at these positions can double organic traffic',
+        suggestedAction: `Review and improve title tags and meta descriptions for these queries.`,
+      });
+    }
+  }
+
   // Sort by priority
   const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
   recommendations.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
 
   return recommendations;
+}
+
+/**
+ * Enrich query network nodes with real GSC search volume data
+ */
+export function enrichQueryNetworkWithGsc(
+  queryNetwork: QueryNetworkNode[],
+  gscData: GscRow[],
+): QueryNetworkNode[] {
+  const gscByQuery = new Map<string, GscRow>();
+  for (const row of gscData) {
+    const key = row.query.toLowerCase().trim();
+    const existing = gscByQuery.get(key);
+    if (!existing || row.impressions > existing.impressions) {
+      gscByQuery.set(key, row);
+    }
+  }
+
+  return queryNetwork.map(node => {
+    const match = gscByQuery.get(node.query.toLowerCase().trim());
+    if (match) {
+      return {
+        ...node,
+        searchVolume: match.impressions,
+        difficulty: match.position <= 3 ? 20 : match.position <= 10 ? 50 : 80,
+      };
+    }
+    return node;
+  });
+}
+
+/**
+ * Extract GSC-based insights: quick wins, low CTR, zero-click queries
+ */
+export function extractGscInsights(gscData: GscRow[]): GscInsight[] {
+  const insights: GscInsight[] = [];
+
+  for (const row of gscData) {
+    // Quick wins: positions 4-20 with decent impressions
+    if (row.position >= 4 && row.position <= 20 && row.impressions >= 50) {
+      insights.push({
+        type: 'quick_win',
+        query: row.query,
+        impressions: row.impressions,
+        clicks: row.clicks,
+        ctr: row.ctr,
+        position: row.position,
+        recommendation: row.position <= 10
+          ? `Position ${Math.round(row.position)} — optimize on-page content to reach top 3`
+          : `Position ${Math.round(row.position)} — build topical depth to break into page 1`,
+      });
+    }
+
+    // Low CTR: ranking well but users aren't clicking
+    if (row.position <= 5 && row.impressions >= 100 && row.ctr < 0.03) {
+      insights.push({
+        type: 'low_ctr',
+        query: row.query,
+        impressions: row.impressions,
+        clicks: row.clicks,
+        ctr: row.ctr,
+        position: row.position,
+        recommendation: `Top ${Math.round(row.position)} position but only ${(row.ctr * 100).toFixed(1)}% CTR — improve title tag and meta description`,
+      });
+    }
+
+    // Zero clicks despite impressions
+    if (row.clicks === 0 && row.impressions >= 200) {
+      insights.push({
+        type: 'zero_clicks',
+        query: row.query,
+        impressions: row.impressions,
+        clicks: 0,
+        ctr: 0,
+        position: row.position,
+        recommendation: `${row.impressions} impressions with zero clicks — featured snippet may be capturing all traffic, or title needs improvement`,
+      });
+    }
+  }
+
+  // Sort by impressions (highest opportunity first)
+  insights.sort((a, b) => b.impressions - a.impressions);
+
+  return insights;
 }
 
 /**
@@ -760,7 +877,8 @@ export async function runQueryNetworkAudit(
 
   const maxQueries = config.maxQueries || 10;
   const maxCompetitors = config.maxCompetitors || 5;
-  const totalSteps = 5;
+  const hasGsc = !!(config.gscData && config.gscData.length > 0);
+  const totalSteps = hasGsc ? 6 : 5;
 
   // Sanitize external config inputs at the system boundary
   config = {
@@ -772,11 +890,16 @@ export async function runQueryNetworkAudit(
   try {
     // Step 1: Generate Query Network
     updateProgress('generating_network', 'Generating query network...', 0, totalSteps);
-    const queryNetwork = await generateQueryNetwork(
+    let queryNetwork = await generateQueryNetwork(
       config.seedKeyword,
       businessInfo,
       maxQueries
     );
+
+    // Enrich query network with GSC search volume data
+    if (hasGsc) {
+      queryNetwork = enrichQueryNetworkWithGsc(queryNetwork, config.gscData!);
+    }
 
     // Step 2: Fetch SERP Results
     updateProgress('fetching_serps', 'Fetching SERP results...', 1, totalSteps);
@@ -923,6 +1046,13 @@ export async function runQueryNetworkAudit(
       );
     }
 
+    // Step 5.5: Enrich with GSC insights (if GSC data available)
+    let gscInsights: GscInsight[] | undefined;
+    if (hasGsc) {
+      updateProgress('enriching_gsc', 'Analyzing search performance data...', hasGsc ? 5 : 4, totalSteps);
+      gscInsights = extractGscInsights(config.gscData!);
+    }
+
     // Build result
     const result: QueryNetworkAnalysisResult = {
       seedKeyword: config.seedKeyword,
@@ -940,13 +1070,15 @@ export async function runQueryNetworkAudit(
       },
       headingAnalysis,
       recommendations: [],
+      gscInsights,
+      hasGscData: hasGsc,
       timestamp: new Date().toISOString()
     };
 
-    // Generate recommendations
+    // Generate recommendations (includes GSC-specific ones)
     result.recommendations = generateRecommendations(result);
 
-    updateProgress('complete', 'Audit complete', 5, totalSteps);
+    updateProgress('complete', 'Audit complete', totalSteps, totalSteps);
 
     return result;
   } catch (error) {

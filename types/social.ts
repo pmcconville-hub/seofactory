@@ -245,7 +245,7 @@ export interface CharacterLimits {
 /**
  * Image specifications
  */
-export interface ImageSpecs {
+export interface SocialImageSpecs {
   aspect_ratio: string;
   width: number;
   height: number;
@@ -272,7 +272,7 @@ export interface SocialPostTemplate {
   hashtag_strategy?: HashtagStrategy;
   cta_templates?: string[];
   character_limits?: CharacterLimits;
-  image_specs?: ImageSpecs;
+  image_specs?: SocialImageSpecs;
 
   is_default: boolean;
   created_at: string;

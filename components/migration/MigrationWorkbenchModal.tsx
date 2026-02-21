@@ -469,11 +469,13 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
         for (const action of allFixableActions) {
             const fix = action.structuredFix!;
             if (!fix.searchText || !fix.replacementText) continue;
+            const searchText = fix.searchText as string;
+            const replacementText = fix.replacementText as string;
 
             // Try exact match first
-            const idx = content.indexOf(fix.searchText);
+            const idx = content.indexOf(searchText);
             if (idx !== -1) {
-                content = content.slice(0, idx) + fix.replacementText + content.slice(idx + fix.searchText.length);
+                content = content.slice(0, idx) + replacementText + content.slice(idx + searchText.length);
                 updateActionStructuredFix(action.id, { ...fix, applied: true });
                 appliedCount++;
                 continue;
@@ -482,13 +484,13 @@ export const MigrationWorkbenchModal: React.FC<MigrationWorkbenchModalProps> = (
             // Fallback: normalized whitespace matching
             const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
             const normContent = normalize(content);
-            const normSearch = normalize(fix.searchText);
+            const normSearch = normalize(searchText);
             const normIdx = normContent.indexOf(normSearch);
 
             if (normIdx !== -1) {
                 const origStart = mapNormalizedPosToOriginal(content, normIdx);
                 const origEnd = mapNormalizedPosToOriginal(content, normIdx + normSearch.length);
-                content = content.slice(0, origStart) + fix.replacementText + content.slice(origEnd);
+                content = content.slice(0, origStart) + replacementText + content.slice(origEnd);
                 updateActionStructuredFix(action.id, { ...fix, applied: true });
                 appliedCount++;
             } else {

@@ -10,7 +10,7 @@ import { BusinessInfo } from '../../../types';
 import {
   ImagePromptRequest,
   ImagePromptResult,
-  ImageStyle,
+  ContextualImageStyle,
   AspectRatio,
   PlacementSuggestion,
   ImageTier,
@@ -65,7 +65,7 @@ function getColorKeyword(hex?: string): string {
  * Suggest image style based on content analysis
  * Uses photographic-first routing - only suggests diagrams for explicitly technical content
  */
-export function suggestImageStyle(contextText: string, personalityId?: string): ImageStyle {
+export function suggestImageStyle(contextText: string, personalityId?: string): ContextualImageStyle {
   const { imageType } = routeContentToImageType(contextText);
   return imageType;
 }
@@ -73,7 +73,7 @@ export function suggestImageStyle(contextText: string, personalityId?: string): 
 /**
  * Get the image tier for a given style
  */
-export function getImageTier(style: ImageStyle): ImageTier {
+export function getImageTier(style: ContextualImageStyle): ImageTier {
   const mapping = IMAGE_TYPE_PROMPTS[style];
   return mapping?.tier || 'photographic';
 }
@@ -162,7 +162,7 @@ async function buildImagePrompt(params: {
   contextText: string;
   sectionHeading: string;
   articleTitle: string;
-  style: ImageStyle;
+  style: ContextualImageStyle;
   businessInfo: BusinessInfo;
   dispatch: React.Dispatch<any>;
   personalityId?: string;

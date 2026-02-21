@@ -129,24 +129,12 @@ export interface AuthorProfile {
 /**
  * Image style preferences for AI image generation
  */
-export enum ImageStyle {
-  PHOTOREALISTIC = 'photorealistic',
-  ILLUSTRATION = 'illustration',
-  CARTOON = 'cartoon',
-  MINIMAL = 'minimal',
-  ARTISTIC = 'artistic',
-  TECHNICAL = 'technical',
-}
+export type ImageStyle = 'photorealistic' | 'illustration' | 'cartoon' | 'minimal' | 'artistic' | 'technical';
 
 /**
  * Preferred image generation provider
  */
-export enum ImageProviderPreference {
-  AUTO = 'auto',
-  MARKUPGO = 'markupgo',
-  GEMINI = 'gemini',
-  DALL_E = 'dall-e',
-}
+export type ImageProviderPreference = 'auto' | 'markupgo' | 'gemini' | 'dall-e';
 
 /**
  * Image generation settings for the brand
@@ -236,6 +224,8 @@ export interface SEOPillars {
   // Full arrays for multi-value persistence
   csiPredicates?: string[];
   scPriorities?: string[];
+
+  contentAreas?: string[];
 }
 
 // ============================================================================
@@ -277,7 +267,6 @@ export interface BusinessInfo {
   dataforseoLogin?: string;
   dataforseoPassword?: string;
   apifyToken?: string;
-  infranodusApiKey?: string;
   jinaApiKey?: string;
   firecrawlApiKey?: string;
   apitemplateApiKey?: string;
@@ -311,4 +300,8 @@ export interface BusinessInfo {
 
   // Knowledge Panel Strategy
   entityIdentity?: EntityIdentity;
+
+  // Admin & Editor Features
+  verboseLogging?: boolean;       // Used by admin dashboard
+  offerings?: string[];           // Used by contextual editor
 }

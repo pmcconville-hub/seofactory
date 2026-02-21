@@ -252,6 +252,9 @@ export interface SitemapView {
 export interface InternalLinkingRules {
   maxLinksPerPage: number;           // Default: 150
   maxAnchorRepetitionPerTarget: number; // Default: 3
+  maxAnchorTextRepetition?: number;  // Max repetition of same anchor text across pages
+  prioritizeMainContentLinks?: boolean; // Prioritize links within main content
+  useDescriptiveAnchorText?: boolean;  // Prefer descriptive anchor text
   requireAnnotationText: boolean;    // Require context around anchors
   forbidFirstSentenceLinks: boolean; // Links before entity defined
   genericAnchorsToAvoid: string[];   // "click here", "read more", etc.
@@ -269,3 +272,164 @@ export const DEFAULT_INTERNAL_LINKING_RULES: InternalLinkingRules = {
   genericAnchorsToAvoid: ['click here', 'read more', 'learn more', 'this article', 'here'],
   qualityNodeThreshold: 70
 };
+
+// ============================================================================
+// IMPORTS FOR LinkingAuditContext
+// ============================================================================
+
+import type { EnrichedTopic, ContentBrief } from './content';
+import type { SEOPillars } from './business';
+
+// Type aliases for backward compatibility
+type EnrichedTopicFull = EnrichedTopic;
+type ContentBriefRef = ContentBrief;
+type SEOPillarsRef = SEOPillars;
+
+// ============================================================================
+// TABLE OF CONTENTS TYPES
+// ============================================================================
+
+/**
+ * TOC Entry for Table of Contents generation
+ */
+export interface TOCEntry {
+  id: string;
+  heading: string;
+  level: number;
+  slug: string;           // URL-safe #hash
+  children: TOCEntry[];
+}
+
+/**
+ * Generated Table of Contents result
+ */
+export interface GeneratedTOC {
+  entries: TOCEntry[];
+  htmlOutput: string;
+  markdownOutput: string;
+  passageHints: string[];
+  totalHeadings: number;
+  maxDepth: number;
+}
+
+// ============================================================================
+// HREFLANG TYPES
+// ============================================================================
+
+/**
+ * Hreflang entry for multilingual support
+ */
+export interface HreflangEntry {
+  language: string;       // ISO 639-1 (e.g., 'en', 'nl', 'de')
+  region?: string;        // ISO 3166-1 Alpha-2 (e.g., 'US', 'NL')
+  url: string;
+  isDefault?: boolean;
+}
+
+/**
+ * Hreflang configuration for international SEO
+ */
+export interface HreflangConfig {
+  enabled: boolean;
+  entries: HreflangEntry[];
+  defaultLanguage: string;
+  validateSymmetry: boolean;
+}
+
+/**
+ * Hreflang validation result
+ */
+export interface HreflangValidationResult {
+  isValid: boolean;
+  symmetryIssues: { sourceUrl: string; missingReturnLinks: string[] }[];
+  duplicateIssues: string[];
+  formatIssues: string[];
+  suggestions: string[];
+  score: number;
+}
+
+// ============================================================================
+// NAVIGATION ENHANCEMENT TYPES
+// ============================================================================
+
+/**
+ * DOM size estimation for navigation elements
+ * Used for Cost of Retrieval optimization
+ */
+export interface NavigationDOMEstimate {
+  estimatedNodes: number;
+  breakdown: {
+    headerNav: number;
+    footerSections: number;
+    legalLinks: number;
+    napData: number;
+    wrappers: number;
+  };
+  corScore: number;    // Cost of Retrieval (0-100, lower is better)
+  status: 'optimal' | 'warning' | 'critical';
+  recommendations: string[];
+}
+
+/**
+ * N-gram analysis for navigation entity reinforcement
+ */
+export interface NavigationNGramAnalysis {
+  linksWithCentralEntity: NavigationLink[];
+  linksWithoutCentralEntity: NavigationLink[];
+  entityReinforcement: number; // 0-100 score
+  centralEntityWords: string[];
+  suggestions: string[];
+}
+
+/**
+ * Anchor text repetition analysis result
+ */
+export interface AnchorRepetitionResult {
+  violations: {
+    targetId: string;
+    targetTitle: string;
+    anchor: string;
+    count: number;
+    sources: string[];
+    riskLevel: 'warning' | 'critical';
+  }[];
+  diversificationSuggestions: {
+    currentAnchor: string;
+    targetTitle: string;
+    alternatives: string[];
+  }[];
+  overallScore: number;
+  summary: string;
+}
+
+/**
+ * Link bridge analysis for contextual navigation
+ */
+export interface LinkBridgeAnalysis {
+  linkId: string;
+  targetTopicId?: string;
+  targetTitle: string;
+  needsBridge: boolean;
+  relevanceScore: number;
+  suggestedBridge?: string;
+  reasons: string[];
+}
+
+// ============================================================================
+// LINKING AUDIT CONTEXT
+// ============================================================================
+
+/**
+ * Input context for linking audit passes
+ */
+export interface LinkingAuditContext {
+  mapId: string;
+  topics: EnrichedTopicFull[];
+  briefs: Record<string, ContentBriefRef>;
+  foundationPages: FoundationPage[];
+  navigation: NavigationStructure | null;
+  pillars: SEOPillarsRef;
+  rules: InternalLinkingRules;
+  domain?: string;           // For competitor link detection
+  competitors?: string[];    // Competitor domains from topical map
+}

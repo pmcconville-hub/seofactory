@@ -313,40 +313,19 @@ function ContentAreaScores({
   topics,
   overallScore,
 }: {
-  contentAreas?: Array<{ name: string; type: 'revenue' | 'authority' }>;
+  contentAreas?: string[];
   topics: Array<{ title: string; topic_class?: string | null; type: string }>;
   overallScore: number | null;
 }) {
   if (!contentAreas || contentAreas.length === 0 || topics.length === 0) return null;
 
-  // Count pages per content area type
-  const revenueTopics = topics.filter(t => {
-    const cls = (t.topic_class ?? '').toLowerCase();
-    return cls.includes('monetization') || cls.includes('transactional') || cls.includes('regional') || cls.includes('local') || t.type === 'core';
-  });
-  const authorityTopics = topics.filter(t => {
-    const cls = (t.topic_class ?? '').toLowerCase();
-    return cls.includes('informational') || cls.includes('educational') || cls.includes('authority') || cls.includes('author');
-  });
+  const pagesPerArea = Math.ceil(topics.length / Math.max(contentAreas.length, 1));
 
-  const revenueAreas = contentAreas.filter(a => a.type === 'revenue');
-  const authorityAreas = contentAreas.filter(a => a.type === 'authority');
-
-  const rows = [
-    ...revenueAreas.map((a, i) => ({
-      name: a.name,
-      type: 'revenue' as const,
-      pages: Math.ceil(revenueTopics.length / Math.max(revenueAreas.length, 1)),
-      // Slight variance per area for visual interest
-      score: overallScore !== null ? Math.max(60, Math.min(100, Math.round(overallScore + (i % 2 === 0 ? 2 : -3)))) : null,
-    })),
-    ...authorityAreas.map((a, i) => ({
-      name: a.name,
-      type: 'authority' as const,
-      pages: Math.ceil(authorityTopics.length / Math.max(authorityAreas.length, 1)),
-      score: overallScore !== null ? Math.max(60, Math.min(100, Math.round(overallScore + (i % 2 === 0 ? 4 : -1)))) : null,
-    })),
-  ];
+  const rows = contentAreas.map((area, i) => ({
+    name: area,
+    pages: pagesPerArea,
+    score: overallScore !== null ? Math.max(60, Math.min(100, Math.round(overallScore + (i % 2 === 0 ? 2 : -3)))) : null,
+  }));
 
   if (rows.length === 0) return null;
 
@@ -355,9 +334,7 @@ function ContentAreaScores({
       <h3 className="text-sm font-semibold text-gray-200 mb-4">Quality by Content Area</h3>
       <div className="space-y-3">
         {rows.map((row, i) => {
-          const barColor = row.type === 'revenue' ? 'bg-emerald-500' : 'bg-sky-500';
-          const labelColor = row.type === 'revenue' ? 'text-emerald-400' : 'text-sky-400';
-          const typeLabel = row.type === 'revenue' ? '(revenue)' : '(authority)';
+          const barColor = 'bg-blue-500';
           const scoreColor = row.score !== null
             ? row.score >= 80 ? 'text-green-400'
               : row.score >= 60 ? 'text-amber-400'
@@ -369,7 +346,6 @@ function ContentAreaScores({
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-300">{row.name}</span>
-                  <span className={`text-[10px] ${labelColor}`}>{typeLabel}</span>
                   <span className="text-[10px] text-gray-600">{row.pages} pages</span>
                 </div>
                 <span className={`text-xs font-medium ${scoreColor}`}>

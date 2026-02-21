@@ -33,7 +33,6 @@ These are credentials for services that provide knowledge graph capabilities or 
 
 | Key                 | Type                 | Description                                                                 |
 | :------------------ | :------------------- | :-------------------------------------------------------------------------- |
-| `infranodusApiKey`  | `string` (encrypted) | The API key for Infranodus, used for text-to-graph visualization.         |
 | `jinaApiKey`        | `string` (encrypted) | The API key for Jina AI, which can be used for multimodal embedding tasks.  |
 | `apitemplateApiKey` | `string` (encrypted) | The API key for APITemplate.io, used for generating PDFs or images.       |
 | `neo4jUri`          | `string` (encrypted) | The connection URI for a Neo4j graph database instance (e.g., `neo4j+s://...`). |

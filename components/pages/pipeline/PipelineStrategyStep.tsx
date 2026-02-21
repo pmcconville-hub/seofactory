@@ -217,19 +217,15 @@ function BusinessContextCard({ businessInfo }: {
 // ──── Content Areas Preview (Decision 4: Hybrid Naming) ────
 
 function ContentAreasPreview({ contentAreas, onUpdate, industry }: {
-  contentAreas: Array<{ name: string; type: 'revenue' | 'authority' }>;
-  onUpdate: (areas: Array<{ name: string; type: 'revenue' | 'authority' }>) => void;
+  contentAreas: string[];
+  onUpdate: (areas: string[]) => void;
   industry?: string;
 }) {
   const [newAreaName, setNewAreaName] = useState('');
-  const [newAreaType, setNewAreaType] = useState<'revenue' | 'authority'>('revenue');
-
-  const revenueAreas = contentAreas.filter(a => a.type === 'revenue');
-  const authorityAreas = contentAreas.filter(a => a.type === 'authority');
 
   const handleAddArea = () => {
     if (!newAreaName.trim()) return;
-    onUpdate([...contentAreas, { name: newAreaName.trim(), type: newAreaType }]);
+    onUpdate([...contentAreas, newAreaName.trim()]);
     setNewAreaName('');
   };
 
@@ -253,66 +249,19 @@ function ContentAreasPreview({ contentAreas, onUpdate, industry }: {
       </p>
 
       {hasAreas ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Revenue column */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CS</span>
-              <span className="text-xs font-medium text-emerald-300">Revenue pages</span>
-              <span className="text-[10px] text-gray-600">{revenueAreas.length} areas</span>
+        <div className="space-y-1.5">
+          {contentAreas.map((area, i) => (
+            <div key={i} className="flex items-center gap-2 bg-gray-900 border-l-4 border-blue-500 rounded-r-md px-3 py-2 group">
+              <span className="text-sm text-gray-200 flex-1">{area}</span>
+              <button
+                type="button"
+                onClick={() => handleRemoveArea(i)}
+                className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+              >
+                &times;
+              </button>
             </div>
-            <div className="space-y-1.5">
-              {revenueAreas.map((area) => {
-                const globalIdx = contentAreas.findIndex(a => a === area);
-                return (
-                  <div key={globalIdx} className="flex items-center gap-2 bg-gray-900 border-l-4 border-emerald-500 rounded-r-md px-3 py-2 group">
-                    <span className="text-sm text-gray-200 flex-1">{area.name}</span>
-                    <span className="text-[10px] text-emerald-400/60">(revenue)</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveArea(globalIdx)}
-                      className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
-                    >
-                      &times;
-                    </button>
-                  </div>
-                );
-              })}
-              {revenueAreas.length === 0 && (
-                <p className="text-xs text-gray-600 italic py-2">No revenue areas yet</p>
-              )}
-            </div>
-          </div>
-
-          {/* Authority column */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="bg-sky-600/20 text-sky-300 border border-sky-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">AS</span>
-              <span className="text-xs font-medium text-sky-300">Authority pages</span>
-              <span className="text-[10px] text-gray-600">{authorityAreas.length} areas</span>
-            </div>
-            <div className="space-y-1.5">
-              {authorityAreas.map((area) => {
-                const globalIdx = contentAreas.findIndex(a => a === area);
-                return (
-                  <div key={globalIdx} className="flex items-center gap-2 bg-gray-900 border-l-4 border-sky-500 rounded-r-md px-3 py-2 group">
-                    <span className="text-sm text-gray-200 flex-1">{area.name}</span>
-                    <span className="text-[10px] text-sky-400/60">(authority)</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveArea(globalIdx)}
-                      className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
-                    >
-                      &times;
-                    </button>
-                  </div>
-                );
-              })}
-              {authorityAreas.length === 0 && (
-                <p className="text-xs text-gray-600 italic py-2">No authority areas yet</p>
-              )}
-            </div>
-          </div>
+          ))}
         </div>
       ) : (
         /* Empty state — show the general CS/AS explanation */
@@ -348,14 +297,6 @@ function ContentAreasPreview({ contentAreas, onUpdate, industry }: {
           placeholder="Add content area..."
           className="flex-1 bg-gray-900 border border-gray-600 rounded-md px-3 py-1.5 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
-        <select
-          value={newAreaType}
-          onChange={(e) => setNewAreaType(e.target.value as 'revenue' | 'authority')}
-          className="bg-gray-900 border border-gray-600 rounded-md px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="revenue">Revenue</option>
-          <option value="authority">Authority</option>
-        </select>
         <button
           type="button"
           onClick={handleAddArea}
@@ -377,7 +318,7 @@ function FiveComponentsSummaryCard({ ceName, scType, scPriorities, csiPredicates
   scPriorities: string[];
   csiPredicates: string[];
   csiText: string;
-  contentAreas: Array<{ name: string; type: 'revenue' | 'authority' }>;
+  contentAreas: string[];
   businessInfo: {
     authorProfile?: { name?: string; credentials?: string };
     valueProp?: string;
@@ -471,38 +412,29 @@ function FiveComponentsSummaryCard({ ceName, scType, scPriorities, csiPredicates
         </div>
 
         {/* Content Areas */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-gray-900 border-l-4 border-emerald-500 rounded-r-md px-4 py-3">
-            <span className="bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CS</span>
-            <p className="text-xs text-gray-300 mt-1.5">Revenue pages</p>
-            {contentAreas.filter(a => a.type === 'revenue').length > 0 ? (
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {contentAreas.filter(a => a.type === 'revenue').map((a, i) => (
-                  <span key={i} className="bg-emerald-900/20 text-emerald-400 border border-emerald-700/30 rounded px-1.5 py-0.5 text-[10px]">
-                    {a.name}
-                  </span>
-                ))}
-              </div>
-            ) : (
+        {contentAreas.length > 0 ? (
+          <div className="bg-gray-900 border-l-4 border-blue-500 rounded-r-md px-4 py-3">
+            <p className="text-xs text-gray-300 mb-1.5">Content Areas</p>
+            <div className="flex flex-wrap gap-1">
+              {contentAreas.map((area, i) => (
+                <span key={i} className="bg-blue-900/20 text-blue-400 border border-blue-700/30 rounded px-1.5 py-0.5 text-[10px]">
+                  {area}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-gray-900 border-l-4 border-emerald-500 rounded-r-md px-4 py-3">
+              <span className="bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">CS</span>
               <p className="text-[10px] text-gray-500 mt-0.5">Revenue-driving content for {industryLabel}</p>
-            )}
-          </div>
-          <div className="bg-gray-900 border-l-4 border-sky-500 rounded-r-md px-4 py-3">
-            <span className="bg-sky-600/20 text-sky-300 border border-sky-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">AS</span>
-            <p className="text-xs text-gray-300 mt-1.5">Authority pages</p>
-            {contentAreas.filter(a => a.type === 'authority').length > 0 ? (
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {contentAreas.filter(a => a.type === 'authority').map((a, i) => (
-                  <span key={i} className="bg-sky-900/20 text-sky-400 border border-sky-700/30 rounded px-1.5 py-0.5 text-[10px]">
-                    {a.name}
-                  </span>
-                ))}
-              </div>
-            ) : (
+            </div>
+            <div className="bg-gray-900 border-l-4 border-sky-500 rounded-r-md px-4 py-3">
+              <span className="bg-sky-600/20 text-sky-300 border border-sky-500/30 rounded px-1.5 py-0.5 text-[10px] font-semibold">AS</span>
               <p className="text-[10px] text-gray-500 mt-0.5">Expertise &amp; E-E-A-T signals for {industryLabel}</p>
-            )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -542,7 +474,7 @@ const PipelineStrategyStep: React.FC = () => {
       : existingPillars?.auxiliary_verb ? [existingPillars.auxiliary_verb] : []
   );
 
-  const [contentAreas, setContentAreas] = useState<Array<{ name: string; type: 'revenue' | 'authority' }>>(
+  const [contentAreas, setContentAreas] = useState<string[]>(
     existingPillars?.contentAreas ?? []
   );
 
@@ -614,7 +546,7 @@ const PipelineStrategyStep: React.FC = () => {
         setScPriorities(result.scPriorities);
       }
       if (result.contentAreas.length > 0) {
-        setContentAreas(result.contentAreas);
+        setContentAreas(result.contentAreas.map(a => a.name));
       }
       setAiSuggested(true);
       setSuggestionReasoning(result.reasoning);

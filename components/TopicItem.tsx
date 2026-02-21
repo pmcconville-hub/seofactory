@@ -8,7 +8,7 @@ import { safeString } from '../utils/parsers';
 import TopicDetailPanel from './ui/TopicDetailPanel';
 import { BriefHealthIndicator } from './ui/BriefHealthBadge';
 import { calculateBriefQualityScore } from '../utils/briefQualityScore';
-import { PublicationStatus } from '../types/wordpress';
+import { WPPublicationStatus } from '../types/wordpress';
 import { TopicPipelineIndicator } from './ui/TopicPipelineIndicator';
 import { useAppState } from '../state/appState';
 import { AuditButton } from './audit/AuditButton';
@@ -44,7 +44,7 @@ interface TopicItemProps {
   /** Business info for competitive intelligence analysis */
   businessInfo?: BusinessInfo;
   /** Publication status from WordPress if published */
-  publicationStatus?: PublicationStatus | null;
+  publicationStatus?: WPPublicationStatus | null;
   /** URL of the published post in WordPress */
   wpPostUrl?: string | null;
 }
@@ -249,7 +249,7 @@ const TopicItem: React.FC<TopicItemProps> = ({
     const renderPublicationBadge = () => {
         if (!publicationStatus) return null;
 
-        const statusConfig: Record<PublicationStatus, { color: string; label: string; icon: string }> = {
+        const statusConfig: Record<WPPublicationStatus, { color: string; label: string; icon: string }> = {
             published: { color: 'bg-green-500/20 text-green-400 border-green-500/30', label: 'Published', icon: '✓' },
             draft: { color: 'bg-gray-500/20 text-gray-400 border-gray-500/30', label: 'WP Draft', icon: '○' },
             scheduled: { color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', label: 'Scheduled', icon: '⏰' },

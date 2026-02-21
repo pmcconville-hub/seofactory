@@ -8,6 +8,7 @@ import {
   TopicalMap,
   EnrichedTopic,
   TopicMergeDecision,
+  SEOPillars,
 } from '../types';
 import { verifiedInsert, verifiedBulkInsert, verifiedDelete, verifiedBulkDelete } from './verifiedDatabaseService';
 
@@ -150,7 +151,7 @@ export async function executeMerge(
     name: input.newMapName,
     created_at: new Date().toISOString(),
     business_info: input.resolvedContext.businessInfo,
-    pillars: input.resolvedContext.pillars || undefined,
+    pillars: (input.resolvedContext.pillars || undefined) as SEOPillars | undefined,
     eavs: input.resolvedEavs,
     competitors: input.resolvedCompetitors,
     topics: finalTopics.map(t => ({ ...t, _originalIds: undefined })) as EnrichedTopic[],

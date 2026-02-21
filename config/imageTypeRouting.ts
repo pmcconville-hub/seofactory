@@ -15,7 +15,7 @@
  * - Captioned: Reserved for future use (currently avoided)
  */
 
-import { ImageStyle, ImageTier, ImageTypeMapping } from '../types/contextualEditor';
+import { ContextualImageStyle, ImageTier, ImageTypeMapping } from '../types/contextualEditor';
 
 // ============================================================================
 // CONTENT PATTERN ROUTES
@@ -27,7 +27,7 @@ export interface ContentPatternRoute {
   /** Higher priority patterns are matched first (100 = highest) */
   priority: number;
   /** The image type to use when pattern matches */
-  imageType: ImageStyle;
+  imageType: ContextualImageStyle;
   /** The tier classification for this image type */
   tier: ImageTier;
   /** Human-readable explanation for this routing rule */
@@ -186,7 +186,7 @@ export const DEFAULT_IMAGE_ROUTE: ContentPatternRoute = {
  * These configurations ensure AI image generators produce appropriate
  * results without unwanted text or labels.
  */
-export const IMAGE_TYPE_PROMPTS: Record<ImageStyle, ImageTypeMapping> = {
+export const IMAGE_TYPE_PROMPTS: Record<ContextualImageStyle, ImageTypeMapping> = {
   // Tier 1: Photographic types
   photograph: {
     style: 'photograph',
@@ -455,7 +455,7 @@ export function routeContentToImageType(content: string): ContentPatternRoute {
  * @param imageType - The image style to get modifiers for
  * @returns Array of prompt modifier strings
  */
-export function getPromptModifiers(imageType: ImageStyle): readonly string[] {
+export function getPromptModifiers(imageType: ContextualImageStyle): readonly string[] {
   return IMAGE_TYPE_PROMPTS[imageType]?.promptModifiers ?? IMAGE_TYPE_PROMPTS.scene.promptModifiers;
 }
 
@@ -465,7 +465,7 @@ export function getPromptModifiers(imageType: ImageStyle): readonly string[] {
  * @param imageType - The image style to get avoid terms for
  * @returns Array of terms that should be avoided in prompts
  */
-export function getAvoidTerms(imageType: ImageStyle): readonly string[] {
+export function getAvoidTerms(imageType: ContextualImageStyle): readonly string[] {
   return IMAGE_TYPE_PROMPTS[imageType]?.avoidTerms ?? IMAGE_TYPE_PROMPTS.scene.avoidTerms;
 }
 
@@ -488,7 +488,7 @@ export function getAvoidTerms(imageType: ImageStyle): readonly string[] {
  * // around the shapes."
  * ```
  */
-export function buildNoTextInstruction(imageType: ImageStyle): string {
+export function buildNoTextInstruction(imageType: ContextualImageStyle): string {
   const mapping = IMAGE_TYPE_PROMPTS[imageType] ?? IMAGE_TYPE_PROMPTS.scene;
 
   if (mapping.tier === 'photographic') {
@@ -509,7 +509,7 @@ export function buildNoTextInstruction(imageType: ImageStyle): string {
  * @param imageType - The image style to get mapping for
  * @returns The complete ImageTypeMapping configuration
  */
-export function getImageTypeMapping(imageType: ImageStyle): ImageTypeMapping {
+export function getImageTypeMapping(imageType: ContextualImageStyle): ImageTypeMapping {
   return IMAGE_TYPE_PROMPTS[imageType] ?? IMAGE_TYPE_PROMPTS.scene;
 }
 
@@ -519,7 +519,7 @@ export function getImageTypeMapping(imageType: ImageStyle): ImageTypeMapping {
  * @param imageType - The image style to check
  * @returns True if the image type is photographic
  */
-export function isPhotographicType(imageType: ImageStyle): boolean {
+export function isPhotographicType(imageType: ContextualImageStyle): boolean {
   return (IMAGE_TYPE_PROMPTS[imageType]?.tier ?? 'photographic') === 'photographic';
 }
 
@@ -529,7 +529,7 @@ export function isPhotographicType(imageType: ImageStyle): boolean {
  * @param imageType - The image style to check
  * @returns True if the image type is a minimal diagram
  */
-export function isDiagramType(imageType: ImageStyle): boolean {
+export function isDiagramType(imageType: ContextualImageStyle): boolean {
   return IMAGE_TYPE_PROMPTS[imageType]?.tier === 'minimal-diagram';
 }
 
@@ -539,7 +539,7 @@ export function isDiagramType(imageType: ImageStyle): boolean {
  * @param imageType - The image style (may be legacy)
  * @returns The modern equivalent image style
  */
-export function normalizeImageType(imageType: ImageStyle): ImageStyle {
+export function normalizeImageType(imageType: ContextualImageStyle): ContextualImageStyle {
   switch (imageType) {
     case 'photograph':
       return 'scene';

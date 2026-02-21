@@ -382,10 +382,8 @@ async function generateSectionWithRetry(
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       // Extract EAVs mapped to this section via brief.mapped_eavs
-      const sectionEavs = briefSection.mapped_eavs && brief.eavs
+      const sectionEavs = briefSection.mapped_eavs && briefSection.mapped_eavs.length > 0
         ? briefSection.mapped_eavs
-            .filter(idx => idx >= 0 && idx < brief.eavs!.length)
-            .map(idx => brief.eavs![idx])
         : [];
 
       // Build SectionGenerationContext

@@ -8,7 +8,7 @@ import {
   getAvoidTerms,
   normalizeImageType
 } from '../../../../config/imageTypeRouting';
-import { ImageStyle } from '../../../../types/contextualEditor';
+import { ContextualImageStyle } from '../../../../types/contextualEditor';
 
 const DEFAULT_TIMEOUT_MS = 60000; // 60 seconds for image generation
 
@@ -322,7 +322,7 @@ function buildImagePrompt(
   const parts: string[] = [];
   const isHero = placeholder.type === 'HERO';
 
-  const normalizedType = normalizeImageType(placeholder.type as ImageStyle);
+  const normalizedType = normalizeImageType(placeholder.type as ContextualImageStyle);
   const mapping = IMAGE_TYPE_PROMPTS[normalizedType];
   const avoidTerms = getAvoidTerms(normalizedType);
   const entity = businessInfo.seedKeyword || '';
