@@ -40,6 +40,10 @@ export interface ExternalDataProviders {
   searchAuthorCitations?: (
     authorName: string
   ) => Promise<Array<{ url: string; title: string }>>;
+  /** Fetch URL Inspection data (Google Search Console URL Inspection API) */
+  inspectUrl?: (
+    url: string
+  ) => Promise<{ verdict: string; indexingState: string; lastCrawlTime?: string; pageFetchState?: string }>;
 }
 
 export interface ExternalDataInput {
@@ -58,6 +62,13 @@ export interface ExternalDataInput {
   fragmentTargets?: string[];
   /** All internal link hrefs from the page */
   internalLinks?: string[];
+  /** URL Inspection API result (can be used to populate gscStatus) */
+  urlInspectionResult?: {
+    verdict: string;
+    indexingState: string;
+    lastCrawlTime?: string;
+    pageFetchState?: string;
+  };
 }
 
 export interface ExternalDataIssue {
@@ -103,6 +114,21 @@ export class ExternalDataRuleEngine {
   validate(input: ExternalDataInput): ExternalDataIssue[] {
     const issues: ExternalDataIssue[] = [];
 
+    // If urlInspectionResult is available but gscStatus is not, convert it
+    if (!input.gscStatus && input.urlInspectionResult) {
+      input = {
+        ...input,
+        gscStatus: {
+          indexed: input.urlInspectionResult.verdict === 'PASS' ||
+                   input.urlInspectionResult.indexingState === 'INDEXING_ALLOWED',
+          lastCrawled: input.urlInspectionResult.lastCrawlTime,
+          coverage: input.urlInspectionResult.verdict === 'PASS'
+            ? 'Submitted and indexed'
+            : input.urlInspectionResult.pageFetchState || input.urlInspectionResult.verdict,
+        },
+      };
+    }
+
     this.checkAuthorCitations(input, issues);
     this.checkGscIndexed(input, issues);
     this.checkGscCrawlRecency(input, issues);
@@ -132,7 +158,14 @@ export class ExternalDataRuleEngine {
     // Clone the input so we can augment it without mutating the caller's object
     const augmented: ExternalDataInput = { ...input };
 
-    // Fetch missing GSC status
+    // Fetch missing GSC status (try URL Inspection API first, fall back to GSC index status)
+    if (!augmented.gscStatus && !augmented.urlInspectionResult && providers.inspectUrl) {
+      try {
+        augmented.urlInspectionResult = await providers.inspectUrl(augmented.url);
+      } catch {
+        // Silently skip
+      }
+    }
     if (!augmented.gscStatus && providers.getGscIndexStatus) {
       try {
         augmented.gscStatus = await providers.getGscIndexStatus(

@@ -21,6 +21,13 @@ export const ENDPOINTS = {
   APIFY: 'https://api.apify.com/v2',
   FIRECRAWL_SCRAPE: 'https://api.firecrawl.dev/v1/scrape',
   FIRECRAWL_SCRAPE_V0: 'https://api.firecrawl.dev/v0/scrape',
+  // Google APIs
+  GOOGLE_KNOWLEDGE_GRAPH: 'https://kgsearch.googleapis.com/v1/entities:search',
+  GOOGLE_URL_INSPECTION: 'https://searchconsole.googleapis.com/v1/urlInspection/index:inspect',
+  GOOGLE_CLOUD_NLP: 'https://language.googleapis.com/v2/documents:analyzeEntities',
+  GOOGLE_GA4_REPORTING: 'https://analyticsdata.googleapis.com/v1beta/properties',
+  // SerpAPI
+  SERPAPI_TRENDS: 'https://serpapi.com/search.json',
 } as const;
 
 // ============================================================================
@@ -86,6 +93,15 @@ export const PRICING_RATES: Record<string, { inputPer1k: number; outputPer1k: nu
   'perplexity:sonar-pro':                         { inputPer1k: 0.003,  outputPer1k: 0.015 },
   'perplexity:llama-3.1-sonar-large-128k-online':  { inputPer1k: 0.001,  outputPer1k: 0.001 },
   'perplexity:llama-3.1-sonar-small-128k-online':  { inputPer1k: 0.0002, outputPer1k: 0.0002 },
+
+  // Google API Services (non-AI)
+  'google:knowledge-graph-search': { inputPer1k: 0, outputPer1k: 0 },
+  'google:url-inspection':         { inputPer1k: 0, outputPer1k: 0 },
+  'google:cloud-nlp-entity':       { inputPer1k: 0.001, outputPer1k: 0 },
+  'google:ga4-reporting':          { inputPer1k: 0, outputPer1k: 0 },
+
+  // SerpAPI
+  'serpapi:google-trends':         { inputPer1k: 0, outputPer1k: 0.005 },
 };
 
 /**

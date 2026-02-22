@@ -20,7 +20,7 @@
 // ============================================================================
 
 export type AIProvider = 'anthropic' | 'gemini' | 'openai' | 'perplexity' | 'openrouter';
-export type ServiceName = 'dataforseo' | 'spaceserp' | 'apify' | 'firecrawl' | 'jina' | 'cloudinary' | 'markupgo' | 'google';
+export type ServiceName = 'dataforseo' | 'spaceserp' | 'apify' | 'firecrawl' | 'jina' | 'cloudinary' | 'markupgo' | 'google' | 'serpapi';
 
 export interface ProviderModels {
   /** All valid model IDs accepted by this provider */
@@ -338,10 +338,27 @@ const google: ServiceConfig = {
   endpoints: {
     pageSpeedInsights: 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed',
     cruxApi: 'https://chromeuxreport.googleapis.com/v1/records:queryRecord',
+    knowledgeGraph: 'https://kgsearch.googleapis.com/v1/entities:search',
+    urlInspection: 'https://searchconsole.googleapis.com/v1/urlInspection/index:inspect',
+    cloudNlp: 'https://language.googleapis.com/v2/documents:analyzeEntities',
+    ga4Reporting: 'https://analyticsdata.googleapis.com/v1beta/properties',
   },
   pricing: {
-    'pagespeed-insights': { in: 0, out: 0 },  // Free API (25K requests/day with key)
-    'crux-api': { in: 0, out: 0 },             // Free API
+    'pagespeed-insights': { in: 0, out: 0 },       // Free API (25K requests/day with key)
+    'crux-api': { in: 0, out: 0 },                  // Free API
+    'knowledge-graph-search': { in: 0, out: 0 },    // Free (100 queries/day with key)
+    'url-inspection': { in: 0, out: 0 },             // Free (2,000 req/day via GSC OAuth)
+    'cloud-nlp-entity': { in: 0.001, out: 0 },      // ~$1/1000 docs (5K free/month)
+    'ga4-reporting': { in: 0, out: 0 },              // Free (OAuth-based)
+  },
+};
+
+const serpapi: ServiceConfig = {
+  endpoints: {
+    trends: 'https://serpapi.com/search.json',
+  },
+  pricing: {
+    'google-trends': { in: 0, out: 0.005 },  // ~$0.005/query
   },
 };
 
@@ -408,6 +425,7 @@ export const SERVICE_REGISTRY = {
     cloudinary,
     markupgo,
     google,
+    serpapi,
   } as Record<ServiceName, ServiceConfig>,
 
   limits,
@@ -585,6 +603,16 @@ export function buildFlatPricingTable(): Record<string, PricingRate> {
     table[`apify/${operation}`] = rate;
   }
 
+  // Google service operations
+  for (const [operation, rate] of Object.entries(SERVICE_REGISTRY.services.google.pricing)) {
+    table[`google/${operation}`] = rate;
+  }
+
+  // SerpAPI operations
+  for (const [operation, rate] of Object.entries(SERVICE_REGISTRY.services.serpapi.pricing)) {
+    table[`serpapi/${operation}`] = rate;
+  }
+
   // Fallback
   table['default'] = { in: 0.001, out: 0.002 };
 
@@ -635,5 +663,12 @@ export function buildApiEndpoints(): Record<string, string> {
     // Media & Assets
     CLOUDINARY: cloudinary.endpoints.upload,
     MARKUPGO: markupgo.endpoints.image,
+    // Google APIs
+    GOOGLE_KNOWLEDGE_GRAPH: google.endpoints.knowledgeGraph,
+    GOOGLE_URL_INSPECTION: google.endpoints.urlInspection,
+    GOOGLE_CLOUD_NLP: google.endpoints.cloudNlp,
+    GOOGLE_GA4_REPORTING: google.endpoints.ga4Reporting,
+    // SerpAPI
+    SERPAPI_TRENDS: serpapi.endpoints.trends,
   };
 }

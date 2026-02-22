@@ -1219,6 +1219,25 @@ export interface QueryNetworkAuditConfig {
   includeOwnContent?: boolean;
   /** GSC search analytics rows to enrich analysis with real data */
   gscData?: import('../types').GscRow[];
+  /** Crawled site inventory from the Discover step — used to build comprehensive own-content EAVs */
+  siteInventory?: Array<{
+    url: string;
+    title?: string;
+    word_count?: number;
+    headings?: { level: number; text: string }[];
+    page_h1?: string;
+    meta_description?: string;
+  }>;
+  /** Google URL Inspection API results */
+  urlInspectionResults?: Array<{ url: string; verdict: string; indexingState: string; lastCrawlTime?: string; pageFetchState?: string }>;
+  /** Google Cloud NLP entity salience results */
+  entitySalienceResults?: Array<{ name: string; type: string; salience: number; mentions: any[] }>;
+  /** Google Trends data via SerpAPI */
+  trendsData?: { interestOverTime: Array<{ date: string; value: number }>; relatedQueries: any[]; risingQueries: any[] };
+  /** GA4 page metrics */
+  ga4Metrics?: Array<{ pagePath: string; sessions: number; totalUsers: number; pageviews: number; bounceRate: number; avgSessionDuration: number }>;
+  /** Knowledge Graph entity data */
+  knowledgeGraphEntity?: any;
 }
 
 /**

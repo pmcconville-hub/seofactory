@@ -79,7 +79,7 @@ PILLAR SUGGESTIONS — must be in the DETECTED language (not English, unless the
 
 4. **SC Attribute Priorities**: Key authority attributes in the website's language.
 
-5. **Content Areas**: 5-7 content groups for the topical map, each labeled with a business-recognizable name and classified as either "revenue" (service/product pages driving conversions) or "authority" (informational/expertise pages building E-E-A-T). Names should be in the website's language and reflect the actual business service lines or topic areas.
+5. **Content Areas**: 5-7 content themes derived from the CSI predicates. Each theme represents a DISTINCT ATTRIBUTE FACET of the Central Entity — a fundamentally different way users interact with or understand the CE. Classify each as "revenue" (Core Section — monetization pages driving conversions: services, products, pricing) or "authority" (Author Section — expertise/educational pages building E-E-A-T: guides, knowledge base, case studies). Names must be in the website's language and reflect actual business service lines or topic areas.
 
 Return JSON:
 {

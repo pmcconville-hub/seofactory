@@ -21,6 +21,7 @@ import type { SourceContext, ContentSpecification } from '../rules/SourceContext
 import { CentralEntityPositionChecker } from '../rules/CentralEntityPositionChecker';
 import { AuthorEntityChecker } from '../rules/AuthorEntityChecker';
 import { ContextQualifierDetector } from '../rules/ContextQualifierDetector';
+import { EntitySalienceValidator } from '../rules/EntitySalienceValidator';
 
 /**
  * Map centralEntityAnalyzer severity to AuditFinding severity.
@@ -127,6 +128,28 @@ export class StrategicFoundationPhase extends AuditPhase {
       }
     }
 
+    // Rules 371-372: Entity salience via NLP analysis
+    if (contentData?.centralEntity && contentData?.entitySalienceResults?.length) {
+      totalChecks += 2; // top-3 rank, salience threshold
+      const salienceValidator = new EntitySalienceValidator();
+      const salienceIssues = salienceValidator.validate({
+        centralEntity: contentData.centralEntity,
+        entities: contentData.entitySalienceResults,
+      });
+      for (const issue of salienceIssues) {
+        findings.push(this.createFinding({
+          ruleId: issue.ruleId,
+          severity: issue.severity,
+          title: issue.title,
+          description: issue.description,
+          affectedElement: issue.affectedElement,
+          exampleFix: issue.exampleFix,
+          whyItMatters: 'Entity salience measures how prominently the Central Entity is recognized by NLP algorithms, directly affecting topical association.',
+          category: 'Strategic Foundation',
+        }));
+      }
+    }
+
     // Central Entity consistency analysis — requires HTML + centralEntity
     if (contentData?.html && contentData?.centralEntity) {
       totalChecks += 7; // H1, title, intro, schema, heading ratio, distribution, drift
@@ -147,6 +170,7 @@ export class StrategicFoundationPhase extends AuditPhase {
     contentSpec?: ContentSpecification;
     sourceContextAttributes?: string[];
     csiPredicates?: string[];
+    entitySalienceResults?: Array<{ name: string; type: string; salience: number }>;
   } | null {
     if (!content) return null;
     if (typeof content === 'string') return { text: content };
@@ -160,6 +184,7 @@ export class StrategicFoundationPhase extends AuditPhase {
         contentSpec: c.contentSpec as ContentSpecification | undefined,
         sourceContextAttributes: c.sourceContextAttributes as string[] | undefined,
         csiPredicates: c.csiPredicates as string[] | undefined,
+        entitySalienceResults: c.entitySalienceResults as Array<{ name: string; type: string; salience: number }> | undefined,
       };
     }
     return null;

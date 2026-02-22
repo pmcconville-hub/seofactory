@@ -96,6 +96,50 @@ export class CostOfRetrievalPhase extends AuditPhase {
       }
     }
 
+    // GA4 behavioral signals — high bounce rate / low engagement as CoR indicators
+    if (contentData?.ga4BounceRate !== undefined) {
+      totalChecks++;
+      if (contentData.ga4BounceRate > 70) {
+        findings.push(this.createFinding({
+          ruleId: 'rule-373',
+          severity: contentData.ga4BounceRate > 85 ? 'high' : 'medium',
+          title: `High bounce rate (${contentData.ga4BounceRate.toFixed(1)}%)`,
+          description:
+            `GA4 reports a bounce rate of ${contentData.ga4BounceRate.toFixed(1)}% for this page. ` +
+            'A bounce rate above 70% suggests users are not finding the content they expected, ' +
+            'which is a behavioral signal of high retrieval cost — the information is present but not ' +
+            'efficiently delivered to the user.',
+          affectedElement: `Bounce rate: ${contentData.ga4BounceRate.toFixed(1)}%`,
+          exampleFix:
+            'Improve above-the-fold content with a clear answer in the first 400 characters. ' +
+            'Add a table of contents for long content. Ensure the page loads quickly (LCP < 2.5s).',
+          whyItMatters: 'Bounce rate is a behavioral signal that correlates with user satisfaction and content relevance.',
+          category: 'Cost of Retrieval',
+        }));
+      }
+    }
+
+    if (contentData?.ga4AvgSessionDuration !== undefined) {
+      totalChecks++;
+      if (contentData.ga4AvgSessionDuration < 10) {
+        findings.push(this.createFinding({
+          ruleId: 'rule-374',
+          severity: 'medium',
+          title: `Very low session duration (${contentData.ga4AvgSessionDuration.toFixed(0)}s)`,
+          description:
+            `GA4 reports an average session duration of ${contentData.ga4AvgSessionDuration.toFixed(0)} seconds. ` +
+            'Sessions under 10 seconds suggest users immediately leave, indicating the content fails ' +
+            'to engage or answer the search intent.',
+          affectedElement: `Avg session: ${contentData.ga4AvgSessionDuration.toFixed(0)}s`,
+          exampleFix:
+            'Add engaging elements: featured snippet answer in the intro, relevant images, ' +
+            'internal links to related content, and structured data for rich results.',
+          whyItMatters: 'Low dwell time is a behavioral signal that may affect search ranking through engagement metrics.',
+          category: 'Cost of Retrieval',
+        }));
+      }
+    }
+
     return this.buildResult(findings, totalChecks);
   }
 
@@ -104,6 +148,8 @@ export class CostOfRetrievalPhase extends AuditPhase {
     ttfbMs?: number;
     contentEncoding?: string;
     httpHeaders?: Record<string, string>;
+    ga4BounceRate?: number;
+    ga4AvgSessionDuration?: number;
     cwvMetrics?: {
       lcp?: number;
       fid?: number;
@@ -130,6 +176,8 @@ export class CostOfRetrievalPhase extends AuditPhase {
         ttfbMs: c.ttfbMs as number | undefined,
         contentEncoding: c.contentEncoding as string | undefined,
         httpHeaders: c.httpHeaders as Record<string, string> | undefined,
+        ga4BounceRate: c.ga4BounceRate as number | undefined,
+        ga4AvgSessionDuration: c.ga4AvgSessionDuration as number | undefined,
         cwvMetrics: c.cwvMetrics as Record<string, number | undefined> | undefined,
       };
     }

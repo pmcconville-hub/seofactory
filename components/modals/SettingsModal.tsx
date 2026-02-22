@@ -231,6 +231,54 @@ const ServiceSettings: React.FC<{ settings: Partial<BusinessInfo>, handleChange:
             </div>
         </div>
 
+        <h3 className="text-lg font-semibold text-emerald-400 pt-4 border-t border-gray-700">Google API Services</h3>
+        <p className="text-sm text-gray-400 -mt-3">Configure Google APIs for enhanced SEO analysis. All services are optional — the system works without them.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="md:col-span-2">
+                <Label htmlFor="googleApiKey">Google API Key</Label>
+                <Input id="googleApiKey" name="googleApiKey" value={settings.googleApiKey || ''} onChange={handleChange} type="password" placeholder="Google API Key" />
+                <p className="text-xs text-gray-500 mt-1">Enables: Knowledge Graph Search, PageSpeed Insights, CrUX API. Free: 100 KG queries/day, 25K PageSpeed/day.</p>
+            </div>
+            <div>
+                <Label htmlFor="googleCloudNlpApiKey">Google Cloud NLP API Key</Label>
+                <Input id="googleCloudNlpApiKey" name="googleCloudNlpApiKey" value={settings.googleCloudNlpApiKey || ''} onChange={handleChange} type="password" placeholder="Cloud NLP API Key" />
+                <p className="text-xs text-gray-500 mt-1">Entity salience analysis — measures Central Entity prominence. ~$1/1000 docs, 5K free/month.</p>
+            </div>
+            <div>
+                <Label htmlFor="serpApiKey">SerpAPI Key</Label>
+                <Input id="serpApiKey" name="serpApiKey" value={settings.serpApiKey || ''} onChange={handleChange} type="password" placeholder="SerpAPI Key" />
+                <p className="text-xs text-gray-500 mt-1">Google Trends data — seasonal patterns and rising queries. 100 free searches/month.</p>
+            </div>
+            <div className="flex items-center gap-3 pt-2">
+                <input
+                    type="checkbox"
+                    id="enableUrlInspection"
+                    name="enableUrlInspection"
+                    checked={settings.enableUrlInspection || false}
+                    onChange={(e) => setSettings(prev => ({ ...prev, enableUrlInspection: e.target.checked }))}
+                    className="h-4 w-4 rounded border-gray-600 bg-gray-700 text-emerald-500 focus:ring-emerald-500"
+                />
+                <div>
+                    <Label htmlFor="enableUrlInspection" className="!mb-0">Enable URL Inspection API</Label>
+                    <p className="text-xs text-gray-500">Checks index status of your pages via GSC OAuth. Free: 2,000/day.</p>
+                </div>
+            </div>
+            <div className="flex items-center gap-3 pt-2">
+                <input
+                    type="checkbox"
+                    id="enableGa4Integration"
+                    name="enableGa4Integration"
+                    checked={settings.enableGa4Integration || false}
+                    onChange={(e) => setSettings(prev => ({ ...prev, enableGa4Integration: e.target.checked }))}
+                    className="h-4 w-4 rounded border-gray-600 bg-gray-700 text-emerald-500 focus:ring-emerald-500"
+                />
+                <div>
+                    <Label htmlFor="enableGa4Integration" className="!mb-0">Enable GA4 Integration</Label>
+                    <p className="text-xs text-gray-500">Fetches traffic and engagement data for content performance analysis.</p>
+                </div>
+            </div>
+        </div>
+
         <h3 className="text-lg font-semibold text-gray-400 pt-4 border-t border-gray-700">Neo4j Database (Optional)</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="md:col-span-2">
@@ -266,11 +314,6 @@ const ServiceSettings: React.FC<{ settings: Partial<BusinessInfo>, handleChange:
             <div>
                 <Label htmlFor="markupGoApiKey">MarkupGo API Key</Label>
                 <Input id="markupGoApiKey" name="markupGoApiKey" value={settings.markupGoApiKey || ''} onChange={handleChange} type="password" placeholder="MarkupGo API Key for image generation" />
-            </div>
-            <div>
-                <Label htmlFor="googleApiKey">Google API Key (PageSpeed / CrUX)</Label>
-                <Input id="googleApiKey" name="googleApiKey" value={settings.googleApiKey || ''} onChange={handleChange} type="password" placeholder="Google API Key for Core Web Vitals analysis" />
-                <p className="text-xs text-gray-500 mt-1">Optional. Enables Core Web Vitals analysis via PageSpeed Insights. Free tier: 25,000 requests/day.</p>
             </div>
         </div>
     </div>

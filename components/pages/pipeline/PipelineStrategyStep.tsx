@@ -216,21 +216,32 @@ function BusinessContextCard({ businessInfo }: {
 
 // ──── Content Areas Preview (Decision 4: Hybrid Naming) ────
 
-function ContentAreasPreview({ contentAreas, onUpdate, industry }: {
+function ContentAreasPreview({ contentAreas, contentAreaTypes, onUpdate, onUpdateTypes, industry }: {
   contentAreas: string[];
+  contentAreaTypes?: Array<'revenue' | 'authority'>;
   onUpdate: (areas: string[]) => void;
+  onUpdateTypes: (types: Array<'revenue' | 'authority'>) => void;
   industry?: string;
 }) {
   const [newAreaName, setNewAreaName] = useState('');
+  const [newAreaType, setNewAreaType] = useState<'revenue' | 'authority'>('authority');
 
   const handleAddArea = () => {
     if (!newAreaName.trim()) return;
     onUpdate([...contentAreas, newAreaName.trim()]);
+    onUpdateTypes([...(contentAreaTypes ?? []), newAreaType]);
     setNewAreaName('');
   };
 
   const handleRemoveArea = (index: number) => {
     onUpdate(contentAreas.filter((_, i) => i !== index));
+    onUpdateTypes((contentAreaTypes ?? []).filter((_, i) => i !== index));
+  };
+
+  const handleToggleType = (index: number) => {
+    const types = [...(contentAreaTypes ?? [])];
+    types[index] = types[index] === 'revenue' ? 'authority' : 'revenue';
+    onUpdateTypes(types);
   };
 
   const industryLabel = industry || 'your business';
@@ -245,23 +256,44 @@ function ContentAreasPreview({ contentAreas, onUpdate, industry }: {
         )}
       </div>
       <p className="text-xs text-gray-500 mb-4">
-        Your content will be organized into these business areas. Each becomes a cluster in the topical map.
+        Each represents a distinct facet of your Central Entity. Core Section themes drive conversions; Author Section themes build authority.
       </p>
 
       {hasAreas ? (
         <div className="space-y-1.5">
-          {contentAreas.map((area, i) => (
-            <div key={i} className="flex items-center gap-2 bg-gray-900 border-l-4 border-blue-500 rounded-r-md px-3 py-2 group">
-              <span className="text-sm text-gray-200 flex-1">{area}</span>
-              <button
-                type="button"
-                onClick={() => handleRemoveArea(i)}
-                className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
-              >
-                &times;
-              </button>
-            </div>
-          ))}
+          {contentAreas.map((area, i) => {
+            const areaType = contentAreaTypes?.[i] ?? 'authority';
+            const isRevenue = areaType === 'revenue';
+            const borderColor = isRevenue ? 'border-emerald-500' : 'border-sky-500';
+            const badgeClasses = isRevenue
+              ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/30'
+              : 'bg-sky-600/20 text-sky-300 border-sky-500/30';
+            const badgeLabel = isRevenue ? 'CS' : 'AS';
+            const typeLabel = isRevenue ? 'Core Section' : 'Author Section';
+            return (
+              <div key={i} className={`flex items-center gap-2 bg-gray-900 border-l-4 ${borderColor} rounded-r-md px-3 py-2 group`}>
+                <button
+                  type="button"
+                  onClick={() => handleToggleType(i)}
+                  title={`Click to toggle — ${typeLabel}`}
+                  className={`${badgeClasses} border rounded px-1.5 py-0.5 text-[10px] font-semibold flex-shrink-0 hover:opacity-80 transition-opacity`}
+                >
+                  {badgeLabel}
+                </button>
+                <span className="text-sm text-gray-200 flex-1">{area}</span>
+                <span className={`text-[10px] ${isRevenue ? 'text-emerald-400/60' : 'text-sky-400/60'} hidden sm:inline`}>
+                  {typeLabel}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveArea(i)}
+                  className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                >
+                  &times;
+                </button>
+              </div>
+            );
+          })}
         </div>
       ) : (
         /* Empty state — show the general CS/AS explanation */
@@ -289,6 +321,14 @@ function ContentAreasPreview({ contentAreas, onUpdate, industry }: {
 
       {/* Add area input */}
       <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-700/50">
+        <select
+          value={newAreaType}
+          onChange={(e) => setNewAreaType(e.target.value as 'revenue' | 'authority')}
+          className="bg-gray-900 border border-gray-600 rounded-md px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+          <option value="authority">AS</option>
+          <option value="revenue">CS</option>
+        </select>
         <input
           type="text"
           value={newAreaName}
@@ -312,13 +352,14 @@ function ContentAreasPreview({ contentAreas, onUpdate, industry }: {
 
 // ──── Five Components Summary Card ────
 
-function FiveComponentsSummaryCard({ ceName, scType, scPriorities, csiPredicates, csiText, contentAreas, businessInfo, ceFromCrawl, aiSuggested }: {
+function FiveComponentsSummaryCard({ ceName, scType, scPriorities, csiPredicates, csiText, contentAreas, contentAreaTypes, businessInfo, ceFromCrawl, aiSuggested }: {
   ceName: string;
   scType: string;
   scPriorities: string[];
   csiPredicates: string[];
   csiText: string;
   contentAreas: string[];
+  contentAreaTypes?: Array<'revenue' | 'authority'>;
   businessInfo: {
     authorProfile?: { name?: string; credentials?: string };
     valueProp?: string;
@@ -415,12 +456,20 @@ function FiveComponentsSummaryCard({ ceName, scType, scPriorities, csiPredicates
         {contentAreas.length > 0 ? (
           <div className="bg-gray-900 border-l-4 border-blue-500 rounded-r-md px-4 py-3">
             <p className="text-xs text-gray-300 mb-1.5">Content Areas</p>
-            <div className="flex flex-wrap gap-1">
-              {contentAreas.map((area, i) => (
-                <span key={i} className="bg-blue-900/20 text-blue-400 border border-blue-700/30 rounded px-1.5 py-0.5 text-[10px]">
-                  {area}
-                </span>
-              ))}
+            <div className="flex flex-wrap gap-1.5">
+              {contentAreas.map((area, i) => {
+                const areaType = contentAreaTypes?.[i] ?? 'authority';
+                const isRevenue = areaType === 'revenue';
+                const badgeBg = isRevenue
+                  ? 'bg-emerald-900/20 text-emerald-400 border-emerald-700/30'
+                  : 'bg-sky-900/20 text-sky-400 border-sky-700/30';
+                const badgeLabel = isRevenue ? 'CS' : 'AS';
+                return (
+                  <span key={i} className={`${badgeBg} border rounded px-1.5 py-0.5 text-[10px] inline-flex items-center gap-1`}>
+                    <span className="font-semibold">{badgeLabel}</span> {area}
+                  </span>
+                );
+              })}
             </div>
           </div>
         ) : (
@@ -477,6 +526,9 @@ const PipelineStrategyStep: React.FC = () => {
   const [contentAreas, setContentAreas] = useState<string[]>(
     existingPillars?.contentAreas ?? []
   );
+  const [contentAreaTypes, setContentAreaTypes] = useState<Array<'revenue' | 'authority'>>(
+    existingPillars?.contentAreaTypes ?? []
+  );
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -504,6 +556,7 @@ const PipelineStrategyStep: React.FC = () => {
           : existingPillars.auxiliary_verb ? [existingPillars.auxiliary_verb] : []
       );
       setContentAreas(existingPillars.contentAreas ?? []);
+      setContentAreaTypes(existingPillars.contentAreaTypes ?? []);
     }
   }, [activeMap?.id]);
 
@@ -547,6 +600,7 @@ const PipelineStrategyStep: React.FC = () => {
       }
       if (result.contentAreas.length > 0) {
         setContentAreas(result.contentAreas.map(a => a.name));
+        setContentAreaTypes(result.contentAreas.map(a => a.type));
       }
       setAiSuggested(true);
       setSuggestionReasoning(result.reasoning);
@@ -601,6 +655,7 @@ const PipelineStrategyStep: React.FC = () => {
       csiPredicates: csiPredicates,
       scPriorities: scPriorities,
       contentAreas: contentAreas,
+      contentAreaTypes: contentAreaTypes,
     };
 
     // Dispatch to global state
@@ -711,6 +766,7 @@ const PipelineStrategyStep: React.FC = () => {
         csiPredicates={csiPredicates}
         csiText={csiText}
         contentAreas={contentAreas}
+        contentAreaTypes={contentAreaTypes}
         businessInfo={state.businessInfo}
         ceFromCrawl={ceFromCrawl}
         aiSuggested={aiSuggested}
@@ -904,7 +960,9 @@ const PipelineStrategyStep: React.FC = () => {
       {/* Content Areas (Decision 4: Hybrid Naming) */}
       <ContentAreasPreview
         contentAreas={contentAreas}
+        contentAreaTypes={contentAreaTypes}
         onUpdate={setContentAreas}
+        onUpdateTypes={setContentAreaTypes}
         industry={state.businessInfo.industry}
       />
 

@@ -111,6 +111,13 @@ Deno.serve(async (req: Request) => {
     const tokens = await exchangeGoogleCode(code, effectiveRedirectUri);
 
     // ----------------------------------------------------------------
+    // 3b. Warn if no refresh_token (Google only provides it on first consent)
+    // ----------------------------------------------------------------
+    if (!tokens.refresh_token) {
+      console.warn('[google-oauth-callback] No refresh_token received — token will expire in ~1 hour and cannot be auto-refreshed. User may need to revoke app access at https://myaccount.google.com/permissions and re-link.');
+    }
+
+    // ----------------------------------------------------------------
     // 4. Fetch the Google account email
     // ----------------------------------------------------------------
     const email = await fetchGoogleEmail(tokens.access_token);

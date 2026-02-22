@@ -80,6 +80,17 @@ export interface EntityPresenceData {
   hasAboutPage?: boolean;
   /** Website has Contact page? */
   hasContactPage?: boolean;
+  /** Google Knowledge Graph result (from googleKnowledgeGraphService) */
+  knowledgeGraphResult?: {
+    found: boolean;
+    authorityScore: number;
+    name?: string;
+    description?: string;
+    detailedDescription?: { url: string };
+    resultScore?: number;
+  };
+  /** NLP entity salience score for the central entity (0-1) */
+  nlpSalience?: number;
 }
 
 export class KnowledgePanelBuilder {
@@ -144,9 +155,19 @@ export class KnowledgePanelBuilder {
 
   private static scoreKnowledgeBase(data: EntityPresenceData): number {
     let score = 0;
-    if (data.hasWikidata) score += 50;
-    if (data.hasWikipedia) score += 50;
-    if (data.wikidataQid) score += 10; // Bonus for known QID
+    if (data.hasWikidata) score += 40;
+    if (data.hasWikipedia) score += 40;
+    if (data.wikidataQid) score += 5; // Bonus for known QID
+
+    // Knowledge Graph presence is a strong signal
+    if (data.knowledgeGraphResult?.found) {
+      score += 15;
+      // High KG result score is a notable entity
+      if ((data.knowledgeGraphResult.resultScore ?? 0) > 100) {
+        score += 5;
+      }
+    }
+
     return Math.min(100, score);
   }
 
@@ -185,10 +206,17 @@ export class KnowledgePanelBuilder {
 
   private static scoreAuthoritySignals(data: EntityPresenceData): number {
     let score = 0;
-    if (data.hasAboutPage) score += 25;
-    if (data.hasContactPage) score += 25;
-    if (data.hasWikipedia) score += 25;
-    if ((data.citationCount || 0) >= 10) score += 25;
+    if (data.hasAboutPage) score += 20;
+    if (data.hasContactPage) score += 20;
+    if (data.hasWikipedia) score += 20;
+    if ((data.citationCount || 0) >= 10) score += 20;
+
+    // NLP salience indicates strong entity recognition
+    if (data.nlpSalience !== undefined) {
+      if (data.nlpSalience >= 0.3) score += 20;
+      else if (data.nlpSalience >= 0.15) score += 10;
+    }
+
     return Math.min(100, score);
   }
 
@@ -316,6 +344,17 @@ export class KnowledgePanelBuilder {
         category: 'authoritySignals',
         action: 'Create a Contact page with verifiable contact information.',
         impact: 'low',
+        status: 'missing',
+      });
+    }
+
+    // Knowledge Graph
+    if (!data.knowledgeGraphResult?.found) {
+      items.push({
+        priority: 2,
+        category: 'knowledgeBase',
+        action: 'Entity not recognized by Google Knowledge Graph. Build recognition through structured data, authoritative mentions, and consistent naming.',
+        impact: 'high',
         status: 'missing',
       });
     }

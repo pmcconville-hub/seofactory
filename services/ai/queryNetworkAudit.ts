@@ -876,7 +876,7 @@ export async function runQueryNetworkAudit(
   };
 
   const maxQueries = config.maxQueries || 10;
-  const maxCompetitors = config.maxCompetitors || 5;
+  const maxCompetitors = config.maxCompetitors || 8;
   const hasGsc = !!(config.gscData && config.gscData.length > 0);
   const totalSteps = hasGsc ? 6 : 5;
 
@@ -905,7 +905,7 @@ export async function runQueryNetworkAudit(
     updateProgress('fetching_serps', 'Fetching SERP results...', 1, totalSteps);
     const serpResults = new Map<string, SerpCompetitorData[]>();
 
-    for (const query of queryNetwork.slice(0, Math.min(5, queryNetwork.length))) {
+    for (const query of queryNetwork.slice(0, maxQueries)) {
       const competitors = await fetchCompetitorData(query.query, businessInfo, maxCompetitors);
       serpResults.set(query.query, competitors);
 
@@ -921,7 +921,7 @@ export async function runQueryNetworkAudit(
     // Get unique competitor URLs
     const uniqueUrls = new Set<string>();
     for (const competitors of serpResults.values()) {
-      for (const comp of competitors.slice(0, 3)) { // Top 3 per query
+      for (const comp of competitors.slice(0, 5)) { // Top 5 per query
         uniqueUrls.add(comp.url);
       }
     }
@@ -967,17 +967,16 @@ export async function runQueryNetworkAudit(
     updateProgress('analyzing_gaps', 'Analyzing content gaps...', 3, totalSteps);
     let ownEAVs: CompetitorEAV[] | undefined;
 
-    if (config.includeOwnContent && config.targetDomain && businessInfo.jinaApiKey) {
+    // Strategy A: Use crawled site inventory from Discover step (comprehensive)
+    if (config.siteInventory && config.siteInventory.length > 0 && businessInfo.jinaApiKey) {
       try {
-        // Find own content in SERP results
-        for (const competitors of serpResults.values()) {
-          const ownResult = competitors.find(c =>
-            c.domain.includes(config.targetDomain!)
-          );
-
-          if (ownResult) {
+        ownEAVs = [];
+        // Analyze up to 10 pages from the inventory for broad coverage
+        const inventoryPages = config.siteInventory.slice(0, 10);
+        for (const page of inventoryPages) {
+          try {
             const content = await extractPageContent(
-              ownResult.url,
+              page.url,
               businessInfo.jinaApiKey,
               {
                 supabaseUrl: businessInfo.supabaseUrl,
@@ -985,14 +984,68 @@ export async function runQueryNetworkAudit(
               }
             );
 
-            ownEAVs = await extractCompetitorEAVs(
-              ownResult.url,
+            const pageEavs = await extractCompetitorEAVs(
+              page.url,
               content.content,
               businessInfo,
               config.seedKeyword
             );
-            break;
+            ownEAVs.push(...pageEavs);
+
+            // Also analyze heading structure for own pages
+            const hierarchy = await analyzePageStructure(page.url, businessInfo);
+            if (hierarchy) {
+              headingAnalysis.push(hierarchy);
+            }
+          } catch (pageError) {
+            console.warn(`[QueryNetworkAudit] Error analyzing own page ${page.url}:`, pageError);
           }
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+        if (ownEAVs.length === 0) ownEAVs = undefined;
+      } catch (error) {
+        console.error('[QueryNetworkAudit] Error analyzing site inventory:', error);
+      }
+    }
+    // Strategy B: Fall back to finding own content in SERP results (legacy)
+    else if (config.includeOwnContent && config.targetDomain && businessInfo.jinaApiKey) {
+      try {
+        // Collect ALL own pages found in SERPs (not just the first one)
+        const ownUrls = new Set<string>();
+        for (const competitors of serpResults.values()) {
+          for (const c of competitors) {
+            if (c.domain.includes(config.targetDomain!)) {
+              ownUrls.add(c.url);
+            }
+          }
+        }
+
+        if (ownUrls.size > 0) {
+          ownEAVs = [];
+          for (const url of [...ownUrls].slice(0, 5)) {
+            try {
+              const content = await extractPageContent(
+                url,
+                businessInfo.jinaApiKey,
+                {
+                  supabaseUrl: businessInfo.supabaseUrl,
+                  supabaseAnonKey: businessInfo.supabaseAnonKey
+                }
+              );
+
+              const pageEavs = await extractCompetitorEAVs(
+                url,
+                content.content,
+                businessInfo,
+                config.seedKeyword
+              );
+              ownEAVs.push(...pageEavs);
+            } catch (pageError) {
+              console.warn(`[QueryNetworkAudit] Error analyzing own SERP page ${url}:`, pageError);
+            }
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+          if (ownEAVs.length === 0) ownEAVs = undefined;
         }
       } catch (error) {
         console.error('[QueryNetworkAudit] Error analyzing own content:', error);
@@ -1053,6 +1106,28 @@ export async function runQueryNetworkAudit(
       gscInsights = extractGscInsights(config.gscData!);
     }
 
+    // Build site inventory summary (when available)
+    let siteInventorySummary: QueryNetworkAnalysisResult['siteInventorySummary'];
+    if (config.siteInventory && config.siteInventory.length > 0) {
+      const pages = config.siteInventory;
+      const wordCounts = pages.filter(p => p.word_count).map(p => p.word_count!);
+      const avgWordCount = wordCounts.length > 0 ? Math.round(wordCounts.reduce((s, w) => s + w, 0) / wordCounts.length) : 0;
+      const pagesWithH1 = pages.filter(p => p.page_h1 || (p.headings && p.headings.some(h => h.level === 1))).length;
+      // Extract topics from H1/titles
+      const topicsCovered = [...new Set(
+        pages
+          .map(p => p.page_h1 || p.title || '')
+          .filter(Boolean)
+      )];
+      siteInventorySummary = {
+        totalPages: pages.length,
+        totalTopics: topicsCovered.length,
+        avgWordCount,
+        pagesWithH1,
+        topicsCovered,
+      };
+    }
+
     // Build result
     const result: QueryNetworkAnalysisResult = {
       seedKeyword: config.seedKeyword,
@@ -1072,6 +1147,7 @@ export async function runQueryNetworkAudit(
       recommendations: [],
       gscInsights,
       hasGscData: hasGsc,
+      siteInventorySummary,
       timestamp: new Date().toISOString()
     };
 

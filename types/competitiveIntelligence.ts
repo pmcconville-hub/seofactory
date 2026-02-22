@@ -1287,6 +1287,22 @@ export interface QueryNetworkAnalysisResult {
   gscInsights?: GscInsight[];
   /** Whether real GSC data was used in this analysis */
   hasGscData?: boolean;
+  /** Summary of crawled site inventory (when available from Discover step) */
+  siteInventorySummary?: {
+    totalPages: number;
+    totalTopics: number;
+    avgWordCount: number;
+    pagesWithH1: number;
+    topicsCovered: string[];
+  };
+  /** Google API enrichment data from pipeline gap analysis */
+  googleApiEnrichment?: {
+    urlInspection?: { indexed: number; blocked: number; errors: number; total: number };
+    entitySalience?: { centralEntitySalience: number; rank: number; totalEntities: number };
+    trends?: { peakMonths: number[]; seasonalityStrength: number };
+    ga4?: { totalSessions: number; avgBounceRate: number; topPages: string[] };
+    knowledgeGraph?: { found: boolean; authorityScore: number };
+  };
   timestamp: string;
 }
 

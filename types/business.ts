@@ -226,6 +226,8 @@ export interface SEOPillars {
   scPriorities?: string[];
 
   contentAreas?: string[];
+  /** Parallel array: 'revenue' (Core Section) or 'authority' (Author Section) per content area */
+  contentAreaTypes?: Array<'revenue' | 'authority'>;
 }
 
 // ============================================================================
@@ -297,6 +299,12 @@ export interface BusinessInfo {
 
   // Entity Authority & Knowledge Graph
   googleKnowledgeGraphApiKey?: string;
+
+  // Google API Services
+  googleCloudNlpApiKey?: string;    // Google Cloud NLP (entity salience)
+  serpApiKey?: string;               // SerpAPI for Google Trends
+  enableUrlInspection?: boolean;     // Opt-in (uses existing GSC OAuth)
+  enableGa4Integration?: boolean;    // Opt-in (may need GA4 OAuth scope)
 
   // Knowledge Panel Strategy
   entityIdentity?: EntityIdentity;

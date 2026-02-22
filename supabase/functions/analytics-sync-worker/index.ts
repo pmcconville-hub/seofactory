@@ -311,9 +311,18 @@ async function fetchGa4Data(
   propertyId: string,
   supabase: any,
   propertyDbId: string,
-  syncLogId: string
+  syncLogId: string,
+  dateRange: '7d' | '28d' | '90d' = '7d'
 ): Promise<{ rows: any[]; rowCount: number }> {
-  // Fetch last 7 days of traffic data
+  // Map dateRange to GA4 date format
+  const dateRangeMap: Record<string, string> = {
+    '7d': '7daysAgo',
+    '28d': '28daysAgo',
+    '90d': '90daysAgo',
+  };
+  const startDate = dateRangeMap[dateRange] || '7daysAgo';
+
+  // Fetch traffic data with enhanced metrics
   const response = await fetch(
     `${GA4_API_BASE}/${propertyId}:runReport`,
     {
@@ -323,7 +332,7 @@ async function fetchGa4Data(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        dateRanges: [{ startDate: '7daysAgo', endDate: 'today' }],
+        dateRanges: [{ startDate, endDate: 'today' }],
         dimensions: [
           { name: 'pagePath' },
           { name: 'date' },
@@ -334,6 +343,9 @@ async function fetchGa4Data(
           { name: 'screenPageViews' },
           { name: 'averageSessionDuration' },
           { name: 'bounceRate' },
+          { name: 'engagedSessions' },
+          { name: 'eventCount' },
+          { name: 'conversions' },
         ],
         limit: '5000',
       }),
@@ -375,6 +387,9 @@ async function fetchGa4Data(
           pageviews: parseInt(row.metricValues?.[2]?.value || '0', 10),
           avg_session_duration: parseFloat(row.metricValues?.[3]?.value || '0'),
           bounce_rate: parseFloat(row.metricValues?.[4]?.value || '0'),
+          engaged_sessions: parseInt(row.metricValues?.[5]?.value || '0', 10),
+          event_count: parseInt(row.metricValues?.[6]?.value || '0', 10),
+          conversions: parseInt(row.metricValues?.[7]?.value || '0', 10),
         };
       });
 

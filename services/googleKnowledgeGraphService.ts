@@ -4,8 +4,10 @@
 import type { KnowledgeGraphEntityResult, EntityAuthorityResult, WikipediaEntityResult, WikidataEntityResult } from '../types';
 import { verifyEntity as verifyWikipediaEntity } from './wikipediaService';
 import { resolveEntity as resolveWikidataEntity } from './wikidataService';
+import { getServiceEndpoint } from '../config/serviceRegistry';
+import { logAiUsage } from './telemetryService';
 
-const KNOWLEDGE_GRAPH_API_URL = 'https://kgsearch.googleapis.com/v1/entities:search';
+const KNOWLEDGE_GRAPH_API_URL = getServiceEndpoint('google', 'knowledgeGraph');
 
 export interface KGProxyConfig {
   supabaseUrl: string;
@@ -119,7 +121,7 @@ export async function searchKnowledgeGraph(
       return [];
     }
 
-    return data.itemListElement.map(item => {
+    const results = data.itemListElement.map(item => {
       const entity = item.result;
       const types = Array.isArray(entity['@type'])
         ? entity['@type']
@@ -136,6 +138,19 @@ export async function searchKnowledgeGraph(
         resultScore: item.resultScore
       };
     });
+
+    // Log usage for telemetry
+    logAiUsage({
+      provider: 'google',
+      model: 'knowledge-graph-search',
+      operation: 'entity-search',
+      operationDetail: `query="${query}"`,
+      tokensIn: 0,
+      tokensOut: results.length,
+      success: true,
+    }).catch(() => {});
+
+    return results;
   } catch (error) {
     console.error('[KnowledgeGraphService] Search error:', error);
     return [];

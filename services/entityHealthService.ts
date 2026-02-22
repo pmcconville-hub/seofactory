@@ -432,6 +432,14 @@ export function markAsProprietary(record: EntityHealthRecord): EntityHealthRecor
  * 5. Build summary
  * 6. Return EntityHealthAnalysisResult
  */
+/**
+ * NLP entity salience data that can be injected to enrich health analysis.
+ * When provided, salience scores are factored into entity criticality.
+ */
+export interface NlpSalienceData {
+  entities: Array<{ name: string; type: string; salience: number }>;
+}
+
 export async function analyzeEntityHealth(
   eavs: SemanticTriple[],
   centralEntity: string,
@@ -439,7 +447,8 @@ export async function analyzeEntityHealth(
   config?: EntityHealthConfig,
   onProgress?: (progress: EntityHealthProgress) => void,
   googleApiKey?: string,
-  proxyConfig?: KGProxyConfig
+  proxyConfig?: KGProxyConfig,
+  nlpSalience?: NlpSalienceData
 ): Promise<EntityHealthAnalysisResult> {
   const cfg = { ...DEFAULT_CONFIG, ...config };
 
@@ -475,14 +484,25 @@ export async function analyzeEntityHealth(
       criticality: EntityCriticalityResult;
     }> = [];
 
+    // Build NLP salience lookup for enrichment
+    const salienceLookup = new Map<string, number>();
+    if (nlpSalience?.entities?.length) {
+      for (const e of nlpSalience.entities) {
+        salienceLookup.set(e.name.toLowerCase(), e.salience);
+      }
+    }
+
     for (const extracted of extractedEntities) {
+      // Look up NLP salience for this entity (boosts criticality)
+      const nlpScore = salienceLookup.get(extracted.entityName.toLowerCase()) ?? 0;
+
       const input: EntityCriticalityInput = {
         entityName: extracted.entityName,
         isCentralEntity: extracted.isCentralEntity,
         attributeCategory: extracted.attributeCategory,
         isCoreSectionEntity: extracted.isCoreSectionEntity,
         topicCount: extracted.topicCount,
-        betweennessCentrality: 0, // Defaults to 0 until knowledge graph betweenness is computed
+        betweennessCentrality: nlpScore, // NLP salience as proxy for graph centrality
       };
 
       const criticality = calculateCriticalityScore(input);

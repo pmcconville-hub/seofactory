@@ -77,7 +77,7 @@ function ClusterCardsView({ coreTopics, outerTopics, contentAreas }: {
       <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
         <h3 className="text-sm font-semibold text-gray-200 mb-2">Content Structure</h3>
         <p className="text-xs text-gray-500 text-center pt-2">
-          Generate topical map to see your content organized into clusters
+          Generate topical map to see your content organized into hub topics
         </p>
       </div>
     );
@@ -90,7 +90,7 @@ function ClusterCardsView({ coreTopics, outerTopics, contentAreas }: {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-200">Content Structure</h3>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-500">{hubs.length} clusters, {outerTopics.length} articles</span>
+          <span className="text-xs text-gray-500">{hubs.length} hub topics, {outerTopics.length} supporting articles</span>
           <button
             type="button"
             onClick={() => setShowTree(!showTree)}
@@ -196,7 +196,7 @@ function ClusterCardsView({ coreTopics, outerTopics, contentAreas }: {
       {unassigned.length > 0 && (
         <div className="bg-gray-800 border border-gray-700 rounded-md px-4 py-3">
           <p className="text-xs text-gray-500">
-            {unassigned.length} topics without cluster assignment
+            {unassigned.length} topics without hub assignment
           </p>
         </div>
       )}
@@ -297,9 +297,9 @@ function LinkingFlowDiagram({ coreTopics, outerTopics }: {
   const otherHubs = hubs.filter(h => !asHubs.includes(h) && !csHubs.includes(h));
 
   const rules = [
-    { code: 'Article \u2192 Hub', description: 'Every article links back to its main cluster page' },
+    { code: 'Article \u2192 Hub', description: 'Every article links back to its hub topic page' },
     { code: 'Hub \u2192 Articles (max 15)', description: 'Main page links to all its articles, max 15 contextual links' },
-    { code: 'No cross-cluster', description: 'Articles don\u2019t link directly to articles in other clusters' },
+    { code: 'No cross-hub', description: 'Articles don\u2019t link directly to articles in other hub topics' },
     { code: 'Authority \u2192 Revenue', description: 'Authority pages link to revenue pages, building their ranking power' },
   ];
 
@@ -458,7 +458,7 @@ function AnchorTextStrategyCard({ coreTopics, contentAreas }: {
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
       <h3 className="text-sm font-semibold text-gray-200 mb-1">Anchor Text Strategy</h3>
       <p className="text-xs text-gray-500 mb-4">
-        Recommended link text between clusters — authority pages pass ranking power to revenue pages
+        Recommended link text between hub topics — authority pages pass ranking power to revenue pages
       </p>
 
       <div className="space-y-2">
@@ -570,7 +570,7 @@ function ContextualBridgesPanel({ coreTopics, eavs, contentAreas }: {
       let businessConcept = '';
       if (shared.length > 0) {
         const mainTerm = shared[0];
-        businessConcept = `${labelA} connects to ${labelB} through ${mainTerm}. When discussing ${mainTerm}, link to both clusters.`;
+        businessConcept = `${labelA} connects to ${labelB} through ${mainTerm}. When discussing ${mainTerm}, link to both hub topics.`;
       }
 
       if (shared.length > 0) {
@@ -1150,7 +1150,7 @@ const PipelineMapStep: React.FC = () => {
       <div>
         <h2 className="text-lg font-semibold text-gray-200">Content Plan</h2>
         <p className="text-sm text-gray-400 mt-1">
-          Your content organized into clusters with internal linking and publishing strategy
+          Your content organized into hub topics with internal linking and publishing strategy
         </p>
       </div>
 
@@ -1186,7 +1186,7 @@ const PipelineMapStep: React.FC = () => {
 
       {/* Metric Cards */}
       <div className="grid grid-cols-3 gap-4">
-        <MetricCard label="Clusters" value={clusterCount} color={clusterCount > 0 ? 'blue' : 'gray'} />
+        <MetricCard label="Hub Topics" value={clusterCount} color={clusterCount > 0 ? 'blue' : 'gray'} />
         <MetricCard label="Total Pages" value={totalTopics} color={totalTopics > 0 ? 'green' : 'gray'} />
         <MetricCard label="Internal Links" value={internalLinksEstimate > 0 ? `~${internalLinksEstimate}` : 0} color={internalLinksEstimate > 0 ? 'amber' : 'gray'} />
       </div>
@@ -1221,7 +1221,7 @@ const PipelineMapStep: React.FC = () => {
         <div>
           <p className="text-[10px] uppercase tracking-widest text-gray-600 mb-2">All Pages</p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <TopicList topics={coreTopics} label="Hub Pages (main cluster pages)" allCoreTopics={coreTopics} />
+            <TopicList topics={coreTopics} label="Hub Pages (main hub topic pages)" allCoreTopics={coreTopics} />
             <TopicList topics={outerTopics} label="Articles (supporting pages)" allCoreTopics={coreTopics} />
           </div>
         </div>
@@ -1287,7 +1287,7 @@ const PipelineMapStep: React.FC = () => {
           onRevise={() => reviseStep('map_planning')}
           onToggleAutoApprove={toggleAutoApprove}
           summaryMetrics={[
-            { label: 'Clusters', value: clusterCount, color: clusterCount > 0 ? 'green' : 'gray' },
+            { label: 'Hub Topics', value: clusterCount, color: clusterCount > 0 ? 'green' : 'gray' },
             { label: 'Total Pages', value: totalTopics, color: totalTopics > 0 ? 'green' : 'gray' },
             { label: 'Internal Links', value: internalLinksEstimate > 0 ? `~${internalLinksEstimate}` : 0, color: internalLinksEstimate > 0 ? 'amber' : 'gray' },
           ]}

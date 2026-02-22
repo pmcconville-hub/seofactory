@@ -89,7 +89,7 @@ async function resolveAccessToken(
 
   if (fetchError || !account) {
     console.error('[gsc] Account fetch failed:', fetchError?.message, 'accountId=', accountId, 'userId=', user.id);
-    return { error: json({ error: 'Account not found or access denied', detail: fetchError?.message }, 404, origin) };
+    return { error: json({ error: 'Account not found or access denied', code: 'ACCOUNT_NOT_FOUND', detail: fetchError?.message, relink: true }, 404, origin) };
   }
   console.log('[gsc] Account found:', account.id, 'email=', account.account_email, 'expires=', account.token_expires_at);
 
@@ -104,7 +104,7 @@ async function resolveAccessToken(
 
   if (!accessToken) {
     console.error('[gsc] Decrypted token is null/empty');
-    return { error: json({ error: 'No access token available' }, 500, origin) };
+    return { error: json({ error: 'No access token available — please re-link your Google account', code: 'TOKEN_INVALID', relink: true }, 401, origin) };
   }
   console.log('[gsc] Token decrypted successfully, length=', accessToken.length);
 
@@ -113,32 +113,43 @@ async function resolveAccessToken(
   const isExpired = tokenExpiry && tokenExpiry.getTime() < Date.now() + 60000;
   console.log('[gsc] Token expiry check: expires=', tokenExpiry?.toISOString(), 'isExpired=', isExpired);
 
-  if (isExpired && account.refresh_token_encrypted) {
+  if (isExpired) {
+    if (!account.refresh_token_encrypted) {
+      console.error('[gsc] Token expired and no refresh token available');
+      return { error: json({ error: 'Token expired — please re-link your Google account to get a fresh token', code: 'TOKEN_EXPIRED', relink: true }, 401, origin) };
+    }
     console.log('[gsc] Token expired, refreshing...');
     try {
       const refreshToken = await decrypt(account.refresh_token_encrypted);
-      if (refreshToken) {
-        const newTokens = await refreshGoogleToken(refreshToken);
-        accessToken = newTokens.access_token;
-        console.log('[gsc] Token refreshed successfully, new expiry in', newTokens.expires_in, 'seconds');
-
-        const newAccessEncrypted = await encrypt(accessToken);
-        await serviceClient
-          .from('analytics_accounts')
-          .update({
-            access_token_encrypted: newAccessEncrypted,
-            token_expires_at: new Date(
-              Date.now() + (newTokens.expires_in || 3600) * 1000
-            ).toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', accountId);
-      } else {
+      if (!refreshToken) {
         console.error('[gsc] Refresh token decryption returned null');
+        return { error: json({ error: 'Refresh token invalid — please re-link your Google account', code: 'REFRESH_TOKEN_INVALID', relink: true }, 401, origin) };
       }
+      const newTokens = await refreshGoogleToken(refreshToken);
+      accessToken = newTokens.access_token;
+      console.log('[gsc] Token refreshed successfully, new expiry in', newTokens.expires_in, 'seconds');
+
+      const newAccessEncrypted = await encrypt(accessToken);
+      await serviceClient
+        .from('analytics_accounts')
+        .update({
+          access_token_encrypted: newAccessEncrypted,
+          token_expires_at: new Date(
+            Date.now() + (newTokens.expires_in || 3600) * 1000
+          ).toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', accountId);
     } catch (e: any) {
       console.error('[gsc] Token refresh failed:', e?.message);
-      return { error: json({ error: 'Token refresh failed', detail: e?.message }, 500, origin) };
+      const isAuthError = e?.message?.includes('invalid_grant') || e?.message?.includes('Token has been expired or revoked');
+      return { error: json({
+        error: isAuthError
+          ? 'Google authorization revoked — please re-link your Google account'
+          : `Token refresh failed: ${e?.message}`,
+        code: isAuthError ? 'AUTH_REVOKED' : 'REFRESH_FAILED',
+        relink: isAuthError,
+      }, isAuthError ? 401 : 500, origin) };
     }
   }
 

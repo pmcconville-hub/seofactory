@@ -16,6 +16,7 @@ import type {
   GscInsight,
   GscRow,
 } from '../../../types';
+import { fetchAllGoogleApiData, type GoogleApiEnrichment } from '../../../services/googleApiOrchestrator';
 
 // ──── Helper Functions ────
 
@@ -31,50 +32,75 @@ function computeGapScores(results: QueryNetworkAnalysisResult): {
   contentQuality: number;
   pageStructure: number;
   informationDensity: number;
+  topicCoverage: number;
 } {
-  let contentQuality = 100;
-  const highGaps = results.contentGaps.filter(g => g.priority === 'high');
-  const medGaps = results.contentGaps.filter(g => g.priority === 'medium');
-  contentQuality -= Math.min(highGaps.length * 5, 40);
-  contentQuality -= Math.min(medGaps.length * 2, 20);
   const ownDensity = results.informationDensity.own;
   const compAvgDensity = results.informationDensity.competitorAverage;
-  if (ownDensity && compAvgDensity && ownDensity.densityScore < compAvgDensity.densityScore) {
-    const diff = compAvgDensity.densityScore - ownDensity.densityScore;
-    const penalty = Math.min(Math.round((diff / compAvgDensity.densityScore) * 20), 20);
-    contentQuality -= penalty;
-  }
-  if (!ownDensity) {
-    contentQuality = Math.min(contentQuality, 50);
-  }
-  contentQuality = Math.max(0, contentQuality);
 
+  // Content Quality: ratio-based (your EAV count / market average EAV count)
+  let contentQuality: number;
+  if (ownDensity && compAvgDensity.totalEAVs > 0) {
+    contentQuality = Math.min(100, Math.round((ownDensity.totalEAVs / compAvgDensity.totalEAVs) * 100));
+  } else if (ownDensity) {
+    contentQuality = Math.min(100, Math.round(ownDensity.densityScore));
+  } else {
+    // No own content analyzed — low score
+    contentQuality = 20;
+  }
+
+  // Page Structure: average heading hierarchy score across own pages
   let pageStructure = -1;
   if (results.headingAnalysis.length > 0) {
     const total = results.headingAnalysis.reduce((sum, h) => sum + h.hierarchyScore, 0);
     pageStructure = Math.round(total / results.headingAnalysis.length);
   }
 
+  // Information Density: ratio of your facts/sentence vs competitor average
   let informationDensity: number;
-  if (ownDensity) {
+  if (ownDensity && compAvgDensity.factsPerSentence > 0) {
+    const ratio = ownDensity.factsPerSentence / compAvgDensity.factsPerSentence;
+    informationDensity = Math.min(100, Math.round(ratio * 100));
+  } else if (ownDensity) {
     informationDensity = Math.round(ownDensity.densityScore);
   } else {
-    informationDensity = Math.round(compAvgDensity.densityScore);
+    informationDensity = 15; // No own content
   }
 
+  // Topic Coverage: (topics you cover / total topics in market) × 100
+  let topicCoverage: number;
+  const totalGaps = results.contentGaps.length;
+  const ownEavEntities = new Set(results.ownContentEAVs?.map(e => e.entity.toLowerCase()) ?? []);
+  const competitorEntities = new Set(results.competitorEAVs.map(e => e.entity.toLowerCase()));
+  const totalMarketTopics = competitorEntities.size;
+  if (totalMarketTopics > 0 && ownEavEntities.size > 0) {
+    topicCoverage = Math.min(100, Math.round((ownEavEntities.size / totalMarketTopics) * 100));
+  } else if (totalGaps > 0) {
+    // More gaps = lower coverage
+    topicCoverage = Math.max(10, 100 - totalGaps * 8);
+  } else {
+    topicCoverage = ownEavEntities.size > 0 ? 60 : 20;
+  }
+
+  // Overall Health: weighted average of ALL sub-scores (not starting at 100)
   let totalWeight = 0;
   let weightedSum = 0;
-  weightedSum += contentQuality * 40;
-  totalWeight += 40;
-  if (pageStructure >= 0) {
-    weightedSum += pageStructure * 30;
-    totalWeight += 30;
-  }
-  weightedSum += informationDensity * 30;
+
+  weightedSum += contentQuality * 30;
   totalWeight += 30;
 
+  if (pageStructure >= 0) {
+    weightedSum += pageStructure * 20;
+    totalWeight += 20;
+  }
+
+  weightedSum += informationDensity * 25;
+  totalWeight += 25;
+
+  weightedSum += topicCoverage * 25;
+  totalWeight += 25;
+
   const overallHealth = totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
-  return { overallHealth, contentQuality, pageStructure, informationDensity };
+  return { overallHealth, contentQuality, pageStructure, informationDensity, topicCoverage };
 }
 
 function deriveEntityType(
@@ -121,7 +147,7 @@ function deriveEntityType(
 interface AnalysisEvent {
   id: string;
   message: string;
-  type: 'scanning' | 'found' | 'detected' | 'analyzing' | 'complete' | 'warning' | 'error' | 'gsc';
+  type: 'scanning' | 'found' | 'detected' | 'analyzing' | 'complete' | 'warning' | 'error' | 'gsc' | 'ga4' | 'inspection' | 'nlp' | 'trends' | 'kg';
   detail?: string;
   timestamp: number;
 }
@@ -146,6 +172,11 @@ function AnalysisNarrativeFeed({ events, isActive }: { events: AnalysisEvent[]; 
     warning: { icon: '!', color: 'text-amber-400' },
     error: { icon: '\u2717', color: 'text-red-400' },
     gsc: { icon: '\u2606', color: 'text-teal-400' },
+    ga4: { icon: '\u2261', color: 'text-blue-400' },
+    inspection: { icon: '\u2315', color: 'text-teal-400' },
+    nlp: { icon: '\u2699', color: 'text-purple-400' },
+    trends: { icon: '\u2197', color: 'text-green-400' },
+    kg: { icon: '\u25CE', color: 'text-amber-400' },
   };
 
   return (
@@ -228,11 +259,15 @@ function GscConnectionPanel({
   onConnect,
   onLoadData,
   gscData,
+  gscError,
+  gscNeedsRelink,
 }: {
   gscState: GscConnectionState;
   onConnect: () => void;
   onLoadData: () => void;
   gscData: GscRow[] | null;
+  gscError?: string | null;
+  gscNeedsRelink?: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(!gscState.isConnected);
 
@@ -302,6 +337,22 @@ function GscConnectionPanel({
               </button>
             )}
           </div>
+
+          {/* GSC error display */}
+          {gscError && (
+            <div className="bg-red-900/20 border border-red-700/40 rounded p-3">
+              <p className="text-xs text-red-300">{gscError}</p>
+              {gscNeedsRelink && (
+                <button
+                  type="button"
+                  onClick={onConnect}
+                  className="mt-2 text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-1 rounded transition-colors"
+                >
+                  Re-link Google Account
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Loaded data summary */}
           {gscData && gscData.length > 0 && (
@@ -516,6 +567,115 @@ function GapItem({ gap }: { gap: ContentGap }) {
               </span>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ──── Google API Insights Panel ────
+
+function GoogleApiInsightsPanel({ enrichment }: { enrichment: NonNullable<QueryNetworkAnalysisResult['googleApiEnrichment']> }) {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  const items: Array<{ label: string; value: string; detail?: string; color: string; icon: string }> = [];
+
+  if (enrichment.urlInspection) {
+    const { indexed, blocked, errors, total } = enrichment.urlInspection;
+    items.push({
+      label: 'Indexation Status',
+      value: `${indexed}/${total} pages indexed`,
+      detail: blocked > 0 ? `${blocked} blocked by robots.txt` : errors > 0 ? `${errors} errors` : 'All pages accessible',
+      color: indexed === total ? 'text-green-400' : blocked > 0 ? 'text-amber-400' : 'text-red-400',
+      icon: '\u2315',
+    });
+  }
+
+  if (enrichment.entitySalience) {
+    const { centralEntitySalience, rank, totalEntities } = enrichment.entitySalience;
+    const pct = (centralEntitySalience * 100).toFixed(0);
+    items.push({
+      label: 'Entity Salience',
+      value: `Central Entity salience: ${pct}% (rank #${rank} of ${totalEntities})`,
+      detail: rank === 1 ? 'Most salient entity — strong signal' : rank <= 3 ? 'Top-3 salience — good signal' : 'Consider strengthening CE prominence',
+      color: rank === 1 ? 'text-green-400' : rank <= 3 ? 'text-blue-400' : 'text-amber-400',
+      icon: '\u2699',
+    });
+  }
+
+  if (enrichment.trends) {
+    const { peakMonths, seasonalityStrength } = enrichment.trends;
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const peakStr = peakMonths.length > 0
+      ? peakMonths.map(m => monthNames[m - 1] || m).join(', ')
+      : 'None';
+    items.push({
+      label: 'Search Trends',
+      value: seasonalityStrength > 0.3 ? `Seasonal (strength: ${(seasonalityStrength * 100).toFixed(0)}%)` : 'Evergreen topic',
+      detail: peakMonths.length > 0 ? `Peak months: ${peakStr}` : 'Consistent interest throughout the year',
+      color: seasonalityStrength > 0.5 ? 'text-amber-400' : 'text-green-400',
+      icon: '\u2197',
+    });
+  }
+
+  if (enrichment.ga4) {
+    const { totalSessions, avgBounceRate, topPages } = enrichment.ga4;
+    items.push({
+      label: 'GA4 Highlights',
+      value: `${totalSessions.toLocaleString()} sessions/week`,
+      detail: `Avg bounce rate: ${avgBounceRate}%${topPages.length > 0 ? `, top page: ${topPages[0]}` : ''}`,
+      color: avgBounceRate < 50 ? 'text-green-400' : avgBounceRate < 70 ? 'text-amber-400' : 'text-red-400',
+      icon: '\u2261',
+    });
+  }
+
+  if (enrichment.knowledgeGraph) {
+    const { found, authorityScore } = enrichment.knowledgeGraph;
+    items.push({
+      label: 'Knowledge Graph',
+      value: found ? `Entity verified (score: ${authorityScore}/100)` : 'Entity not found',
+      detail: found ? 'Entity recognized by Google Knowledge Graph' : 'Build authority through structured data and mentions',
+      color: found ? 'text-green-400' : 'text-amber-400',
+      icon: '\u25CE',
+    });
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-700/30 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
+          </svg>
+          <h3 className="text-sm font-semibold text-gray-200">Google API Insights</h3>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/30 text-emerald-400 border border-emerald-700/30">
+            {items.length} source{items.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+        <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {isExpanded && (
+        <div className="px-4 pb-4 space-y-3">
+          {items.map((item, i) => (
+            <div key={i} className="flex items-start gap-3 py-2 border-t border-gray-700/50 first:border-0">
+              <span className={`text-sm mt-0.5 ${item.color}`}>{item.icon}</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">{item.label}</span>
+                </div>
+                <p className={`text-sm font-medium ${item.color}`}>{item.value}</p>
+                {item.detail && <p className="text-xs text-gray-500 mt-0.5">{item.detail}</p>}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -926,9 +1086,74 @@ function GapAnalysisContent({
         <AnalysisNarrativeFeed events={events} isActive={false} />
       )}
 
+      {/* Site Inventory Summary (show what you have FIRST) */}
+      {results?.siteInventorySummary && (
+        <div className="bg-gray-800 border border-blue-700/40 rounded-lg p-6">
+          <h3 className="text-sm font-semibold text-gray-200 mb-3">Your Content Inventory</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div className="text-center">
+              <p className="text-2xl font-bold text-blue-400">{results.siteInventorySummary.totalPages}</p>
+              <p className="text-[10px] text-gray-500 uppercase">Pages Found</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-blue-400">{results.siteInventorySummary.totalTopics}</p>
+              <p className="text-[10px] text-gray-500 uppercase">Topics Covered</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-blue-400">{results.siteInventorySummary.avgWordCount.toLocaleString()}</p>
+              <p className="text-[10px] text-gray-500 uppercase">Avg Words/Page</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-blue-400">{results.siteInventorySummary.pagesWithH1}</p>
+              <p className="text-[10px] text-gray-500 uppercase">Pages with H1</p>
+            </div>
+          </div>
+          {results.siteInventorySummary.topicsCovered.length > 0 && (
+            <div className="border-t border-gray-700/50 pt-3">
+              <p className="text-xs text-gray-400 mb-2">Topics covered by your pages:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {results.siteInventorySummary.topicsCovered.slice(0, 12).map((topic, i) => (
+                  <span key={i} className="text-[10px] bg-blue-900/20 text-blue-300 border border-blue-700/30 rounded px-1.5 py-0.5">
+                    {topic}
+                  </span>
+                ))}
+                {results.siteInventorySummary.topicsCovered.length > 12 && (
+                  <span className="text-[10px] text-gray-500">+{results.siteInventorySummary.topicsCovered.length - 12} more</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Market Benchmark */}
+      {results && results.competitorEAVs.length > 0 && (
+        <div className="bg-gray-800 border border-amber-700/40 rounded-lg p-6">
+          <h3 className="text-sm font-semibold text-gray-200 mb-3">Market Benchmark</h3>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="text-center">
+              <p className="text-2xl font-bold text-amber-400">
+                {new Set(results.competitorEAVs.map(e => e.entity)).size}
+              </p>
+              <p className="text-[10px] text-gray-500 uppercase">Entities in Market</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-amber-400">
+                {new Set(results.competitorEAVs.map(e => e.source)).size}
+              </p>
+              <p className="text-[10px] text-gray-500 uppercase">Competitors Analyzed</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-amber-400">{results.competitorEAVs.length}</p>
+              <p className="text-[10px] text-gray-500 uppercase">Competitor EAVs</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Score Cards */}
       {(results || !isGenerating) && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <ScoreCard
             label="Overall Health"
             value={scores ? `${scores.overallHealth}/100` : '--'}
@@ -949,12 +1174,22 @@ function GapAnalysisContent({
             value={scores ? `${scores.informationDensity}/100` : '--'}
             color={scores ? scoreColor(scores.informationDensity) : 'gray'}
           />
+          <ScoreCard
+            label="Topic Coverage"
+            value={scores ? `${scores.topicCoverage}/100` : '--'}
+            color={scores ? scoreColor(scores.topicCoverage) : 'gray'}
+          />
         </div>
       )}
 
       {/* GSC Insights (if available) */}
       {results?.gscInsights && results.gscInsights.length > 0 && (
         <GscInsightsPanel insights={results.gscInsights} />
+      )}
+
+      {/* Google API Insights */}
+      {results?.googleApiEnrichment && Object.keys(results.googleApiEnrichment).length > 0 && (
+        <GoogleApiInsightsPanel enrichment={results.googleApiEnrichment} />
       )}
 
       {/* Query Network Summary */}
@@ -976,9 +1211,17 @@ function GapAnalysisContent({
             {results && allGaps.length > 0 ? (
               allGaps.map((gap, i) => <GapItem key={i} gap={gap} />)
             ) : results && allGaps.length === 0 ? (
-              <div className="flex items-center gap-3 text-sm text-green-400">
-                <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-                <span>No gaps found — good coverage</span>
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 text-sm text-green-400">
+                  <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                  <span>No EAV-level gaps detected against analyzed competitors</span>
+                </div>
+                {!results.ownContentEAVs && (
+                  <p className="text-xs text-amber-400 pl-5">
+                    Note: Own content could not be analyzed (no pages found in SERPs or site inventory).
+                    Gaps are only detected when your content is compared against competitors.
+                  </p>
+                )}
               </div>
             ) : (
               <>
@@ -1155,6 +1398,8 @@ const PipelineGapStep: React.FC = () => {
     isLoading: true,
   });
   const [gscData, setGscData] = useState<GscRow[] | null>(null);
+  const [gscError, setGscError] = useState<string | null>(null);
+  const [gscNeedsRelink, setGscNeedsRelink] = useState(false);
 
   const eventIdCounter = useRef(0);
   const addEvent = useCallback((type: AnalysisEvent['type'], message: string, detail?: string) => {
@@ -1167,6 +1412,23 @@ const PipelineGapStep: React.FC = () => {
       timestamp: Date.now(),
     }]);
   }, []);
+
+  // Helper: resolve GSC account ID for Google API orchestrator
+  const getGscAccountId = useCallback(async (): Promise<string | undefined> => {
+    if (!gscState.propertyUrl || !state.activeProjectId) return undefined;
+    try {
+      const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+      const { data } = await (supabase as any)
+        .from('analytics_properties')
+        .select('account_id')
+        .eq('property_id', gscState.propertyUrl)
+        .eq('project_id', state.activeProjectId)
+        .limit(1);
+      return data?.[0]?.account_id || undefined;
+    } catch {
+      return undefined;
+    }
+  }, [gscState.propertyUrl, state.activeProjectId, state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey]);
 
   // Check GSC connection on mount
   useEffect(() => {
@@ -1289,6 +1551,15 @@ const PipelineGapStep: React.FC = () => {
 
       if (fnError) throw fnError;
 
+      // Check for structured error responses from the edge function
+      if (data?.error) {
+        const needsRelink = !!data.relink;
+        setGscNeedsRelink(needsRelink);
+        setGscError(data.error);
+        setGscState(prev => ({ ...prev, isLoading: false }));
+        return;
+      }
+
       const rows: GscRow[] = (data?.rows || []).map((row: any) => ({
         query: row.keys?.[0] || row.query || '',
         clicks: row.clicks || 0,
@@ -1297,10 +1568,15 @@ const PipelineGapStep: React.FC = () => {
         position: row.position || 0,
       }));
 
+      setGscError(null);
+      setGscNeedsRelink(false);
       setGscData(rows);
       setGscState(prev => ({ ...prev, queryCount: rows.length, isLoading: false }));
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[GapStep] Failed to load GSC data:', err);
+      // Try to parse structured error from edge function
+      const message = err?.message || 'Failed to load GSC data';
+      setGscError(message);
       setGscState(prev => ({ ...prev, isLoading: false }));
     }
   }, [gscState.propertyUrl, state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey, state.activeProjectId]);
@@ -1331,15 +1607,84 @@ const PipelineGapStep: React.FC = () => {
       addEvent('gsc', `Loading ${gscData.length} GSC queries for enrichment`, `${gscData.reduce((s, r) => s + r.impressions, 0).toLocaleString()} total impressions`);
     }
 
+    // Load site inventory: try analysis_state first, then Supabase site_inventory table
+    let siteInventory: any[] = (activeMap?.analysis_state as any)?.site_inventory
+      ?? (activeMap?.analysis_state as any)?.crawl?.pages
+      ?? [];
+
+    // Fallback: load from site_inventory table if not in analysis_state
+    if (siteInventory.length === 0 && state.activeProjectId && businessInfo.supabaseUrl && businessInfo.supabaseAnonKey) {
+      try {
+        const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+        const { data: inventoryData } = await supabase
+          .from('site_inventory')
+          .select('url, title, word_count, page_h1, meta_description, headings')
+          .eq('project_id', state.activeProjectId)
+          .limit(50);
+        if (inventoryData && inventoryData.length > 0) {
+          siteInventory = inventoryData;
+          addEvent('found', `Loaded ${inventoryData.length} pages from site inventory`);
+        }
+      } catch {
+        // Non-fatal — continue without inventory
+      }
+    }
+
+    // Fetch all available Google API data in parallel (before main audit)
+    let googleEnrichment: GoogleApiEnrichment = {};
+    try {
+      const gscAccountId = gscState.isConnected
+        ? (await getGscAccountId())
+        : undefined;
+      const supabase = businessInfo.supabaseUrl && businessInfo.supabaseAnonKey
+        ? getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey)
+        : undefined;
+
+      googleEnrichment = await fetchAllGoogleApiData({
+        businessInfo,
+        siteUrl: gscState.propertyUrl || `https://${businessInfo.domain}`,
+        siteInventory: siteInventory.length > 0 ? siteInventory : undefined,
+        projectId: state.activeProjectId || '',
+        accountId: gscAccountId,
+        supabase,
+        onProgress: (event) => {
+          addEvent(
+            (event.type as AnalysisEvent['type']) || 'analyzing',
+            event.message,
+            event.detail
+          );
+        },
+      });
+    } catch (e) {
+      addEvent('warning', 'Google API enrichment partially failed', (e as Error).message);
+    }
+
     const config: QueryNetworkAuditConfig = {
       seedKeyword: centralEntity,
       targetDomain: businessInfo.domain,
       maxQueries: 10,
-      maxCompetitors: 5,
+      maxCompetitors: 8,
       includeOwnContent: !!businessInfo.domain,
       includeEntityValidation: false,
       language: businessInfo.language || 'en',
       gscData: gscData || undefined,
+      siteInventory: siteInventory.length > 0 ? siteInventory : undefined,
+      urlInspectionResults: googleEnrichment.urlInspection?.results,
+      entitySalienceResults: googleEnrichment.entitySalience?.entities,
+      trendsData: googleEnrichment.trends?.data ? {
+        interestOverTime: googleEnrichment.trends.data.interestOverTime,
+        relatedQueries: googleEnrichment.trends.data.relatedQueries,
+        risingQueries: googleEnrichment.trends.data.risingQueries,
+      } : undefined,
+      ga4Metrics: googleEnrichment.ga4?.metrics?.map(m => ({
+        pagePath: m.pagePath,
+        sessions: m.sessions,
+        totalUsers: m.totalUsers,
+        pageviews: m.pageviews,
+        bounceRate: m.bounceRate,
+        avgSessionDuration: m.avgSessionDuration,
+      })),
+      knowledgeGraphEntity: googleEnrichment.knowledgeGraph?.entity,
     };
 
     try {
@@ -1390,6 +1735,33 @@ const PipelineGapStep: React.FC = () => {
       }
       addEvent('complete', 'Analysis complete — review findings below');
 
+      // Attach Google API enrichment summary to result
+      if (Object.keys(googleEnrichment).length > 0) {
+        result.googleApiEnrichment = {
+          urlInspection: googleEnrichment.urlInspection?.summary,
+          entitySalience: googleEnrichment.entitySalience?.prominence
+            ? {
+                centralEntitySalience: googleEnrichment.entitySalience.prominence.salience,
+                rank: googleEnrichment.entitySalience.prominence.rank,
+                totalEntities: googleEnrichment.entitySalience.prominence.totalEntities,
+              }
+            : undefined,
+          trends: googleEnrichment.trends?.seasonality
+            ? {
+                peakMonths: googleEnrichment.trends.seasonality.peakMonths,
+                seasonalityStrength: googleEnrichment.trends.seasonality.seasonalityStrength,
+              }
+            : undefined,
+          ga4: googleEnrichment.ga4?.summary,
+          knowledgeGraph: googleEnrichment.knowledgeGraph
+            ? {
+                found: googleEnrichment.knowledgeGraph.found,
+                authorityScore: googleEnrichment.knowledgeGraph.authorityScore,
+              }
+            : undefined,
+        };
+      }
+
       setResults(result);
 
       // Persist to map state
@@ -1426,13 +1798,13 @@ const PipelineGapStep: React.FC = () => {
     ? [
         { label: 'Overall Health', value: `${scores.overallHealth}/100`, color: scoreColor(scores.overallHealth) },
         { label: 'Content Quality', value: `${scores.contentQuality}/100`, color: scoreColor(scores.contentQuality) },
-        { label: 'Page Structure', value: scores.pageStructure >= 0 ? `${scores.pageStructure}/100` : 'N/A', color: scores.pageStructure >= 0 ? scoreColor(scores.pageStructure) : 'gray' },
+        { label: 'Topic Coverage', value: `${scores.topicCoverage}/100`, color: scoreColor(scores.topicCoverage) },
         { label: 'Info Density', value: `${scores.informationDensity}/100`, color: scoreColor(scores.informationDensity) },
       ]
     : [
         { label: 'Overall Health', value: '--', color: 'gray' },
         { label: 'Content Quality', value: '--', color: 'gray' },
-        { label: 'Page Structure', value: '--', color: 'gray' },
+        { label: 'Topic Coverage', value: '--', color: 'gray' },
         { label: 'Info Density', value: '--', color: 'gray' },
       ];
 
@@ -1459,6 +1831,8 @@ const PipelineGapStep: React.FC = () => {
             onConnect={handleGscConnect}
             onLoadData={handleLoadGscData}
             gscData={gscData}
+            gscError={gscError}
+            gscNeedsRelink={gscNeedsRelink}
           />
 
           <GapAnalysisContent
