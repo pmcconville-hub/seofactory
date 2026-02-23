@@ -49,3 +49,13 @@ tmp/
 
 # Test output
 playwright-output.txt
+vitest-output*.txt
+vitest-stderr.txt
+vitest_out*.txt
+
+# Build diagnostic artifacts
+build_out.txt
+build_output.txt
+build_result.txt
+tsc_out.txt
+tsc_result.txt
