@@ -31,26 +31,48 @@ export async function getOrCreateCatalog(
   mapId: string,
   userId: string
 ): Promise<ProductCatalog> {
-  // Try to fetch existing catalog
-  const { data: existing } = await supabase
+  // Try to fetch existing catalog — use maybeSingle() to avoid 406 when RLS
+  // blocks access (returns null instead of throwing)
+  const { data: existing, error: fetchError } = await supabase
     .from('product_catalogs')
     .select('*')
     .eq('map_id', mapId)
-    .single();
+    .maybeSingle();
 
   if (existing) return existing as ProductCatalog;
 
-  // Create new catalog
-  const result = await verifiedInsert<Record<string, unknown>>(
-    supabase,
-    { table: 'product_catalogs', operationDescription: 'Create product catalog' },
-    { map_id: mapId, user_id: userId, name: 'Product Catalog', source_type: 'manual' }
-  );
-
-  if (!result.success || !result.data) {
-    throw new Error(result.error || 'Failed to create catalog');
+  // If fetch returned a permission/RLS error (not just "no rows"), don't try to insert
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    throw new Error(`Cannot access catalog: ${fetchError.message}`);
   }
-  return result.data as unknown as ProductCatalog;
+
+  // Create new catalog
+  try {
+    const result = await verifiedInsert<Record<string, unknown>>(
+      supabase,
+      { table: 'product_catalogs', operationDescription: 'Create product catalog' },
+      { map_id: mapId, user_id: userId, name: 'Product Catalog', source_type: 'manual' }
+    );
+
+    if (!result.success || !result.data) {
+      throw new Error(result.error || 'Failed to create catalog');
+    }
+    return result.data as unknown as ProductCatalog;
+  } catch (err: unknown) {
+    // Handle duplicate key error (409) — another user or concurrent request
+    // already created the catalog. Re-fetch it.
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('duplicate key') || message.includes('23505') || message.includes('409')) {
+      const { data: retryData } = await supabase
+        .from('product_catalogs')
+        .select('*')
+        .eq('map_id', mapId)
+        .maybeSingle();
+
+      if (retryData) return retryData as ProductCatalog;
+    }
+    throw err;
+  }
 }
 
 export async function getCatalog(
@@ -61,10 +83,12 @@ export async function getCatalog(
     .from('product_catalogs')
     .select('*')
     .eq('map_id', mapId)
-    .single();
+    .maybeSingle();
 
-  // Gracefully handle 406 (PostgREST schema cache stale) and PGRST116 (no rows)
-  if (error && (error.code === 'PGRST116' || error.message?.includes('406'))) {
+  // maybeSingle() returns null (not an error) when no rows match.
+  // Still handle unexpected errors gracefully.
+  if (error) {
+    console.warn('[getCatalog] Error fetching catalog:', error.message);
     return null;
   }
   return data as ProductCatalog | null;
