@@ -157,6 +157,14 @@ const App: React.FC = () => {
                     console.warn('[App] Session error, clearing stale data:', error.message);
                     clearSupabaseAuthStorage();
                 } else if (session?.user) {
+                    // Validate session against Auth server (getSession only reads cache)
+                    const { error: userError } = await supabase.auth.getUser();
+                    if (userError) {
+                        console.warn('[App] Session expired server-side, clearing stale session:', userError.message);
+                        await supabase.auth.signOut({ scope: 'local' });
+                        clearSupabaseAuthStorage();
+                        return;
+                    }
                     console.log('[App] Valid session found for:', session.user.email);
                     dispatch({ type: 'SET_USER', payload: session.user });
                     dispatch({ type: 'SET_STEP', payload: AppStep.PROJECT_SELECTION });
@@ -415,7 +423,16 @@ const App: React.FC = () => {
 
                 // Fetch Settings (global credentials only)
                 const { data: settingsData, error: settingsError } = await supabase.functions.invoke('get-settings');
-                if (settingsError) throw settingsError;
+                if (settingsError) {
+                    // If the error is auth-related (stale session), sign out gracefully
+                    const errMsg = settingsData?.error || settingsError?.message || '';
+                    if (errMsg.includes('Authentication failed') || errMsg.includes('auth')) {
+                        console.warn('[App] Settings fetch failed due to auth error, signing out');
+                        await supabase.auth.signOut({ scope: 'local' });
+                        return;
+                    }
+                    throw settingsError;
+                }
                 if (settingsData) {
                     const GLOBAL_SETTINGS_FIELDS = [
                         'aiProvider', 'aiModel',
