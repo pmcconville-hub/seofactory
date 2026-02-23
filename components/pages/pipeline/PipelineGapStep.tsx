@@ -17,6 +17,7 @@ import type {
   GscRow,
 } from '../../../types';
 import { fetchAllGoogleApiData, type GoogleApiEnrichment } from '../../../services/googleApiOrchestrator';
+import { GapAnalysisExportDropdown } from '../../pipeline/GapAnalysisExportDropdown';
 
 // ──── Helper Functions ────
 
@@ -261,6 +262,7 @@ function GscConnectionPanel({
   gscData,
   gscError,
   gscNeedsRelink,
+  ga4Enabled,
 }: {
   gscState: GscConnectionState;
   onConnect: () => void;
@@ -268,6 +270,7 @@ function GscConnectionPanel({
   gscData: GscRow[] | null;
   gscError?: string | null;
   gscNeedsRelink?: boolean;
+  ga4Enabled?: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(!gscState.isConnected);
 
@@ -378,12 +381,16 @@ function GscConnectionPanel({
             </div>
           )}
 
-          {/* Other data sources — future */}
-          <div className="flex items-center justify-between opacity-50">
+          {/* Google Analytics 4 */}
+          <div className={`flex items-center justify-between ${ga4Enabled ? '' : 'opacity-50'}`}>
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-gray-600" />
-              <span className="text-sm text-gray-400">Google Analytics 4</span>
-              <span className="text-[9px] text-gray-600 px-1.5 py-0.5 rounded border border-gray-700">Coming soon</span>
+              <div className={`w-2 h-2 rounded-full ${ga4Enabled ? 'bg-green-500' : 'bg-gray-600'}`} />
+              <span className="text-sm text-gray-300">Google Analytics 4</span>
+              {ga4Enabled ? (
+                <span className="text-[9px] text-green-400 px-1.5 py-0.5 rounded border border-green-700/40 bg-green-900/20">Enabled</span>
+              ) : (
+                <span className="text-[9px] text-gray-500 px-1.5 py-0.5 rounded border border-gray-700">Enable in Settings</span>
+              )}
             </div>
           </div>
 
@@ -1182,6 +1189,13 @@ function GapAnalysisContent({
         </div>
       )}
 
+      {/* Export dropdown */}
+      {results && scores && (
+        <div className="flex justify-end">
+          <GapAnalysisExportDropdown results={results} scores={scores} businessDomain={businessDomain} />
+        </div>
+      )}
+
       {/* GSC Insights (if available) */}
       {results?.gscInsights && results.gscInsights.length > 0 && (
         <GscInsightsPanel insights={results.gscInsights} />
@@ -1549,16 +1563,19 @@ const PipelineGapStep: React.FC = () => {
         },
       });
 
-      if (fnError) throw fnError;
-
-      // Check for structured error responses from the edge function
+      // Check for structured error responses from the edge function.
+      // When the edge function returns a non-2xx status, supabase.functions.invoke()
+      // sets fnError to a generic message but data still contains the actual error details.
       if (data?.error) {
         const needsRelink = !!data.relink;
         setGscNeedsRelink(needsRelink);
-        setGscError(data.error);
+        const detail = data.detail ? ` (${data.detail})` : '';
+        setGscError(`${data.error}${detail}`);
         setGscState(prev => ({ ...prev, isLoading: false }));
         return;
       }
+
+      if (fnError) throw fnError;
 
       const rows: GscRow[] = (data?.rows || []).map((row: any) => ({
         query: row.keys?.[0] || row.query || '',
@@ -1833,6 +1850,7 @@ const PipelineGapStep: React.FC = () => {
             gscData={gscData}
             gscError={gscError}
             gscNeedsRelink={gscNeedsRelink}
+            ga4Enabled={!!state.businessInfo.enableGa4Integration}
           />
 
           <GapAnalysisContent
