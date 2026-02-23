@@ -151,8 +151,17 @@ Deno.serve(async (req: Request) => {
             })
             .eq('id', accountId);
         } catch (refreshErr: any) {
+          const isAuthRevoked = refreshErr.message?.includes('invalid_grant') ||
+            refreshErr.message?.includes('Token has been expired or revoked');
           return json(
-            { ok: false, error: 'Token refresh failed', detail: refreshErr.message },
+            {
+              ok: false,
+              error: isAuthRevoked
+                ? 'Google authorization expired — please re-connect your Google account'
+                : 'Token refresh failed',
+              detail: refreshErr.message,
+              relink: isAuthRevoked,
+            },
             200,
             origin
           );
@@ -172,6 +181,7 @@ Deno.serve(async (req: Request) => {
       // Parse Google API error for a human-readable message
       let friendlyError = `GSC API error (${gscResponse.status})`;
       let detail = errBody.substring(0, 500);
+      let relink = false;
       try {
         const parsed = JSON.parse(errBody);
         const gErr = parsed?.error;
@@ -181,7 +191,13 @@ Deno.serve(async (req: Request) => {
         }
       } catch { /* keep raw body as detail */ }
 
-      return json({ ok: false, error: friendlyError, detail }, 200, origin);
+      // If Google returns 401/403, the token is likely revoked
+      if (gscResponse.status === 401 || gscResponse.status === 403) {
+        friendlyError = 'Google authorization expired — please re-connect your Google account';
+        relink = true;
+      }
+
+      return json({ ok: false, error: friendlyError, detail, relink }, 200, origin);
     }
 
     const gscData = await gscResponse.json();

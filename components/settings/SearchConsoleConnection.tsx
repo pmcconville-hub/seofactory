@@ -54,6 +54,7 @@ export const SearchConsoleConnection: React.FC<SearchConsoleConnectionProps> = (
   // Linked properties for the active project
   const [linkedProperties, setLinkedProperties] = useState<LinkedPropertyRow[]>([]);
   const [linkingInProgress, setLinkingInProgress] = useState<string | null>(null);
+  const [relinkNeeded, setRelinkNeeded] = useState<Record<string, boolean>>({});
 
   const getClient = useCallback(() => {
     if (!supabaseUrl || !supabaseAnonKey) return null;
@@ -183,20 +184,27 @@ export const SearchConsoleConnection: React.FC<SearchConsoleConnectionProps> = (
       if (fnError) {
         // Try to extract the response body from the FunctionsHttpError context
         let detail = '';
+        let relink = false;
         try {
           if (fnError.context && typeof fnError.context.json === 'function') {
             const body = await fnError.context.json();
             detail = body?.detail ? `${body.error || 'Error'}: ${body.detail}` : body?.error || '';
+            relink = !!body?.relink;
           }
         } catch { /* ignore parse errors */ }
         setError(detail || fnError.message || 'Failed to load properties');
-        setPropertiesMap(prev => ({ ...prev, [accountId]: [] }));
+        setRelinkNeeded(prev => ({ ...prev, [accountId]: relink }));
+        if (!relink) setPropertiesMap(prev => ({ ...prev, [accountId]: [] }));
       } else if (!data?.ok) {
-        const msg = data?.detail
-          ? `${data?.error || 'Error'}: ${data.detail}`
-          : data?.error || 'Failed to load properties';
+        const relink = !!data?.relink;
+        const msg = relink
+          ? (data?.error || 'Google authorization expired — please re-connect your Google account')
+          : data?.detail
+            ? `${data?.error || 'Error'}: ${data.detail}`
+            : data?.error || 'Failed to load properties';
         setError(msg);
-        setPropertiesMap(prev => ({ ...prev, [accountId]: [] }));
+        setRelinkNeeded(prev => ({ ...prev, [accountId]: relink }));
+        if (!relink) setPropertiesMap(prev => ({ ...prev, [accountId]: [] }));
       } else {
         setPropertiesMap(prev => ({ ...prev, [accountId]: data.properties || [] }));
       }
@@ -457,6 +465,20 @@ export const SearchConsoleConnection: React.FC<SearchConsoleConnectionProps> = (
                           </p>
                         )}
                       </>
+                    ) : relinkNeeded[account.id] ? (
+                      <div className="p-2 bg-red-900/20 border border-red-700/40 rounded">
+                        <p className="text-sm text-red-300">
+                          Google authorization expired — please re-connect your account.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleConnect}
+                          disabled={isConnecting}
+                          className="mt-2 text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-1 rounded transition-colors disabled:opacity-50"
+                        >
+                          {isConnecting ? 'Connecting...' : 'Re-connect Google Account'}
+                        </button>
+                      </div>
                     ) : properties ? (
                       <div className="p-2 text-sm text-gray-500">
                         No Search Console properties found for this account.
