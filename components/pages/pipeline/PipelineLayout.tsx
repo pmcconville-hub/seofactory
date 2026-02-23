@@ -35,7 +35,20 @@ const PipelineLayout: React.FC = () => {
 
   const basePath = `/p/${projectId}/m/${mapId}/pipeline`;
 
-  // ──── Inactive pipeline state ────
+  // ──── Loading / Inactive pipeline state ────
+
+  // If maps are still loading or the map has pipeline_state that hasn't been restored yet,
+  // show a loading state instead of "Pipeline not started" to avoid flicker.
+  const mapsStillLoading = state.topicalMaps.length === 0;
+  const pendingRestore = !isActive && activeMap?.pipeline_state && (activeMap.pipeline_state as any).isActive;
+
+  if (!isActive && (mapsStillLoading || pendingRestore)) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
+        <div className="text-gray-500 text-sm">Loading pipeline...</div>
+      </div>
+    );
+  }
 
   if (!isActive) {
     return (
