@@ -56,7 +56,15 @@ export interface GoogleApiEnrichment {
 export interface OrchestratorConfig {
   businessInfo: BusinessInfo;
   siteUrl: string;
-  siteInventory?: Array<{ url: string; title?: string }>;
+  siteInventory?: Array<{
+    url: string;
+    title?: string;
+    page_h1?: string;
+    meta_description?: string;
+    headings?: Array<{ level: number; text: string } | string>;
+  }>;
+  /** Resolved Central Entity from pillars, falls back to seedKeyword */
+  centralEntity?: string;
   projectId: string;
   accountId?: string;
   supabase?: any;
@@ -121,10 +129,17 @@ export async function fetchAllGoogleApiData(config: OrchestratorConfig): Promise
     promises.push((async () => {
       emit(onProgress, 'nlp', 'Analyzing entity salience via Cloud NLP...', undefined);
       try {
-        // Use page titles as a proxy for site content
+        // Use page titles, H1s, meta descriptions, and headings for richer content signal
         const sampleText = siteInventory
           .slice(0, 20)
-          .map(p => p.title || '')
+          .map(p => {
+            const parts: string[] = [p.title, p.page_h1, p.meta_description].filter(Boolean) as string[];
+            const headings = p.headings;
+            if (Array.isArray(headings)) {
+              parts.push(...headings.map((h: any) => typeof h === 'string' ? h : h.text).filter(Boolean));
+            }
+            return parts.join('. ');
+          })
           .filter(Boolean)
           .join('. ');
 
@@ -141,10 +156,11 @@ export async function fetchAllGoogleApiData(config: OrchestratorConfig): Promise
           businessInfo.googleCloudNlpApiKey
         );
 
+        const entityToMeasure = config.centralEntity || businessInfo.seedKeyword || '';
         const prominence = entities.length > 0
           ? await measureCentralEntityProminence(
               sampleText,
-              businessInfo.seedKeyword || '',
+              entityToMeasure,
               businessInfo.language || 'en',
               businessInfo.supabaseUrl,
               businessInfo.supabaseAnonKey,
@@ -168,8 +184,9 @@ export async function fetchAllGoogleApiData(config: OrchestratorConfig): Promise
     promises.push((async () => {
       emit(onProgress, 'trends', 'Fetching Google Trends data...', undefined);
       try {
+        const trendsQuery = config.centralEntity || businessInfo.seedKeyword || '';
         const data = await getTrendsData(
-          businessInfo.seedKeyword || '',
+          trendsQuery,
           businessInfo.region,
           undefined,
           businessInfo.supabaseUrl,
@@ -226,8 +243,9 @@ export async function fetchAllGoogleApiData(config: OrchestratorConfig): Promise
       emit(onProgress, 'kg', 'Searching Google Knowledge Graph...', undefined);
       try {
         const apiKey = businessInfo.googleKnowledgeGraphApiKey || businessInfo.googleApiKey || '';
+        const kgSearchTerm = config.centralEntity || businessInfo.seedKeyword || '';
         const entity = await getKnowledgeGraphEntity(
-          businessInfo.seedKeyword || '',
+          kgSearchTerm,
           apiKey,
           businessInfo.industry,
           undefined,

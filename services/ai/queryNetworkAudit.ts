@@ -27,6 +27,8 @@ import { sanitizeTextInput, validateUrl } from '../../utils/inputValidation';
 import { API_ENDPOINTS } from '../../config/apiEndpoints';
 import { getDefaultModel } from '../../config/serviceRegistry';
 import { CompetitorTracker } from '../competitorTracker';
+import { detectIndustryType, getHighPriorityMissing, getMissingPredicates } from './eavService';
+import type { IndustryType } from './eavService';
 export type { CompetitorSnapshot, CompetitorComparisonReport } from '../competitorTracker';
 
 // Progress callback type
@@ -176,19 +178,58 @@ async function executePrompt(prompt: string, businessInfo: BusinessInfo): Promis
 export async function generateQueryNetwork(
   seedKeyword: string,
   businessInfo: BusinessInfo,
-  maxQueries: number = 20
+  maxQueries: number = 20,
+  pillars?: QueryNetworkAuditConfig['pillars'],
+  existingEavs?: QueryNetworkAuditConfig['existingEavs']
 ): Promise<QueryNetworkNode[]> {
   // Sanitize external seed keyword input
   seedKeyword = sanitizeTextInput(seedKeyword, 200);
 
-  const prompt = `Generate a comprehensive query network for the seed keyword: "${seedKeyword}"
+  const centralEntity = pillars?.centralEntity || seedKeyword;
+  const contentAreaBlock = pillars?.contentAreas?.length
+    ? `\n## Content Areas\n${pillars.contentAreas.map((ca, i) => `- ${ca} (${pillars.contentAreaTypes?.[i] === 'revenue' ? 'Core Section' : 'Author Section'})`).join('\n')}`
+    : '';
+  const eavBlock = existingEavs?.length
+    ? `\n## Known Entity Facts (EAV Triples)\n${existingEavs.slice(0, 20).map(e => `- ${e.subject} → ${e.predicate}: ${e.object}`).join('\n')}`
+    : '';
 
-Context:
+  const prompt = `You are a Semantic SEO specialist using the Cost of Retrieval framework.
+Analyze the competitive landscape for this business entity.
+
+## Business Entity
+- Central Entity (CE): "${centralEntity}"
+- Source Context (SC): "${pillars?.sourceContext || businessInfo.valueProp || ''}"
+  (How this business creates value / monetizes)
+- Central Search Intent (CSI): "${pillars?.centralSearchIntent || ''}"
+  (The core action connecting the entity to its audience)
+${pillars?.csiPredicates?.length ? `- CSI Predicates: ${pillars.csiPredicates.join(', ')}` : ''}
 - Industry: ${businessInfo.industry}
 - Target Market: ${businessInfo.targetMarket}
 - Language: ${businessInfo.language}
+${contentAreaBlock}
+${eavBlock}
 
-Generate ${maxQueries} related search queries that users might search for when researching this topic.
+## Task
+Generate ${maxQueries} search queries representing the COMPETITIVE LANDSCAPE.
+These are queries where competitors rank and this business needs to compete.
+
+Query categories (at least 2 per category):
+1. **Attribute queries** — queries about specific attributes competitors publish
+   (pricing, specifications, materials, certifications, service areas)
+2. **Process expertise** — queries proving domain mastery
+   (how-to, installation, troubleshooting, maintenance)
+3. **Comparison/commercial** — queries from buyers comparing options
+   ("[entity] vs [alternative]", "best [industry] in [region]", "[service] reviews")
+4. **CSI-aligned** — queries matching the Central Search Intent predicates
+   ${pillars?.csiPredicates?.length ? `(${pillars.csiPredicates.join(', ')})` : '(action verbs connecting entity to audience)'}
+5. **Trust/authority** — queries signaling expertise
+   (certifications, case studies, team credentials, warranties)
+
+RULES:
+- Do NOT generate basic "What is X?" definitional queries
+- Every query must represent a CONTENT OPPORTUNITY the business can act on
+- All queries in ${businessInfo.language}
+- Include intent classification per query
 
 For each query, provide:
 1. The query text
@@ -204,14 +245,7 @@ Return as JSON array:
     "relatedQueries": ["variation 1", "variation 2"],
     "questions": ["question 1?", "question 2?"]
   }
-]
-
-Focus on queries that would help understand:
-- Core definitional queries (what is X)
-- Comparative queries (X vs Y)
-- Commercial queries (best X, X reviews)
-- Process queries (how to X)
-- Attribute queries (X specifications, X features)`;
+]`;
 
   try {
     const response = await executePrompt(prompt, businessInfo);
@@ -248,6 +282,8 @@ export async function classifyQueryIntent(
   query = sanitizeTextInput(query, 200);
 
   const prompt = `Classify the search intent of this query: "${query}"
+
+Context: Industry is "${businessInfo.industry || 'general'}", target market is "${businessInfo.targetMarket || 'general'}".
 
 Return ONLY one of these values:
 - informational (user wants to learn/understand)
@@ -387,21 +423,30 @@ export async function extractCompetitorEAVs(
   url: string,
   content: string,
   businessInfo: BusinessInfo,
-  seedEntity: string
+  seedEntity: string,
+  pillars?: QueryNetworkAuditConfig['pillars']
 ): Promise<CompetitorEAV[]> {
-  const prompt = `Extract Entity-Attribute-Value (EAV) semantic triples from this content.
+  const centralEntity = pillars?.centralEntity || seedEntity;
+  const prompt = `Extract Entity-Attribute-Value (EAV) semantic triples from this competitor content.
 
-Focus on facts about: "${seedEntity}"
+Central Entity being analyzed: "${centralEntity}"
+${pillars?.sourceContext ? `Source Context: "${pillars.sourceContext}"` : ''}
 
 Content:
 ${content.substring(0, 8000)}
+
+Extract factual claims as triples. Focus on:
+- ROOT attributes (essential definitions: what it is, where, who)
+- UNIQUE attributes (differentiators specific to this source)
+- SPECIFICATION attributes (measurable facts: price, size, duration)
 
 For each fact found, extract:
 1. Entity: The subject being described
 2. Attribute: The property or characteristic
 3. Value: The specific value or description
 4. Confidence: 0-1 based on how explicit the information is
-5. Category: UNIQUE (only this source has it), RARE (few sources), COMMON (many sources), ROOT (fundamental)
+
+Do NOT assign categories — return "UNCLASSIFIED" for category. Categories will be computed from cross-page frequency.
 
 Return as JSON array:
 [
@@ -410,7 +455,7 @@ Return as JSON array:
     "attribute": "attribute name",
     "value": "the value",
     "confidence": 0.9,
-    "category": "COMMON"
+    "category": "UNCLASSIFIED"
   }
 ]
 
@@ -447,19 +492,30 @@ Extract 10-20 EAVs focusing on factual, specific information.`;
 }
 
 /**
- * Calculate information density score for content
+ * Calculate information density score for content.
+ * When content is empty, uses a per-source sentence estimate to avoid inflated scores.
  */
 export function calculateInformationDensity(
   content: string,
-  eavs: CompetitorEAV[]
+  eavs: CompetitorEAV[],
+  estimatedSentenceCount?: number
 ): InformationDensityScore {
-  // Count sentences (rough approximation)
-  const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 10);
-  const sentenceCount = Math.max(1, sentences.length);
-
   // Count unique entities and attributes
   const uniqueEntities = new Set(eavs.map(e => e.entity.toLowerCase()));
   const uniqueAttributes = new Set(eavs.map(e => e.attribute.toLowerCase()));
+
+  // Determine sentence count
+  let sentenceCount: number;
+  if (content && content.trim().length > 0) {
+    const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 10);
+    sentenceCount = Math.max(1, sentences.length);
+  } else if (estimatedSentenceCount && estimatedSentenceCount > 0) {
+    sentenceCount = estimatedSentenceCount;
+  } else {
+    // Estimate: ~2 EAVs per page on average, ~50 sentences per page typical
+    const sourceCount = new Set(eavs.map(e => e.source)).size;
+    sentenceCount = Math.max(1, sourceCount * 50);
+  }
 
   // Calculate facts per sentence
   const factsPerSentence = eavs.length / sentenceCount;
@@ -482,15 +538,77 @@ export function calculateInformationDensity(
 }
 
 /**
- * Identify content gaps between own content and competitors
+ * Assign EAV categories algorithmically based on unique source count per attribute.
+ * Categories cannot be determined from a single page — only from distribution across sources.
+ * Uses unique source count (not raw frequency) to avoid skew from pages with many EAVs for one attribute.
+ */
+function assignEavCategories(allEavs: CompetitorEAV[]): CompetitorEAV[] {
+  // Count unique sources per attribute (not raw frequency)
+  const attrSourceCount = new Map<string, Set<string>>();
+  for (const eav of allEavs) {
+    const key = eav.attribute.toLowerCase();
+    if (!attrSourceCount.has(key)) {
+      attrSourceCount.set(key, new Set());
+    }
+    attrSourceCount.get(key)!.add(eav.source);
+  }
+  const totalSources = new Set(allEavs.map(e => e.source)).size;
+
+  return allEavs.map(eav => {
+    if (eav.category && (eav.category as string) !== 'PENDING' && eav.category !== 'UNCLASSIFIED') return eav;
+    const sourceCount = attrSourceCount.get(eav.attribute.toLowerCase())?.size || 0;
+    const ratio = totalSources > 0 ? sourceCount / totalSources : 0;
+    let category: AttributeCategory;
+    if (ratio >= 0.7) category = 'ROOT';       // 70%+ of competitors have this
+    else if (ratio >= 0.3) category = 'COMMON'; // 30-70% of competitors
+    else if (sourceCount >= 2) category = 'RARE'; // At least 2 sources
+    else category = 'UNIQUE';                     // Only 1 source
+    return { ...eav, category };
+  });
+}
+
+/**
+ * Normalize text into comparable tokens for semantic matching
+ */
+function normalizeTokens(text: string): string[] {
+  return text.toLowerCase()
+    .replace(/[^a-z0-9\sàáâãäåæçèéêëìíîïñòóôõöùúûüý]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 2);
+}
+
+/**
+ * Check if two entity:attribute keys have semantic overlap (not just exact match)
+ */
+function hasSemanticOverlap(ownKey: string, compKey: string): boolean {
+  const ownTokens = normalizeTokens(ownKey);
+  const compTokens = normalizeTokens(compKey);
+  if (ownTokens.length === 0 || compTokens.length === 0) return false;
+  const overlap = ownTokens.filter(t => compTokens.some(ct =>
+    ct === t || ct.startsWith(t) || t.startsWith(ct)
+  ));
+  return overlap.length / Math.min(ownTokens.length, compTokens.length) >= 0.5;
+}
+
+/**
+ * Identify content gaps between own content and competitors.
+ * Uses semantic token overlap instead of exact string matching.
+ * Optionally matches against user's strategic EAVs.
  */
 export function identifyContentGaps(
   ownEAVs: CompetitorEAV[],
-  competitorEAVs: CompetitorEAV[]
+  competitorEAVs: CompetitorEAV[],
+  strategicEavs?: Array<{ subject: string; predicate: string; object: string; category?: string }>
 ): ContentGap[] {
-  const ownAttributes = new Set(
-    ownEAVs.map(e => `${e.entity.toLowerCase()}:${e.attribute.toLowerCase()}`)
-  );
+  // Build own attribute keys (from crawled content)
+  const ownKeys = ownEAVs.map(e => `${e.entity.toLowerCase()}:${e.attribute.toLowerCase()}`);
+
+  // Also include user's strategic EAVs if provided
+  if (strategicEavs?.length) {
+    for (const eav of strategicEavs) {
+      ownKeys.push(`${eav.subject.toLowerCase()}:${eav.predicate.toLowerCase()}`);
+    }
+  }
 
   // Group competitor EAVs by entity:attribute
   const competitorAttributeMap = new Map<string, CompetitorEAV[]>();
@@ -506,58 +624,78 @@ export function identifyContentGaps(
   const gaps: ContentGap[] = [];
 
   for (const [key, eavs] of competitorAttributeMap) {
-    if (!ownAttributes.has(key)) {
-      const [entity, attribute] = key.split(':');
-      const sources = [...new Set(eavs.map(e => e.source))];
-      const frequency = sources.length;
+    // Check semantic overlap against all own keys (not just exact match)
+    const hasMatch = ownKeys.some(ownKey => ownKey === key || hasSemanticOverlap(ownKey, key));
+    if (hasMatch) continue;
 
-      // Determine priority based on frequency
-      let priority: 'high' | 'medium' | 'low';
-      if (frequency >= 5) {
-        priority = 'high';
-      } else if (frequency >= 2) {
-        priority = 'medium';
-      } else {
-        priority = 'low';
-      }
+    const [entity, attribute] = key.split(':');
+    const sources = [...new Set(eavs.map(e => e.source))];
+    const frequency = sources.length;
 
-      gaps.push({
-        missingAttribute: `${entity} - ${attribute}`,
-        foundInCompetitors: sources,
-        frequency,
-        priority,
-        suggestedContent: eavs[0]?.value
-      });
+    // Category-weighted priority: ROOT/UNIQUE always important
+    const category = eavs[0]?.category || 'COMMON';
+    let priority: 'high' | 'medium' | 'low';
+    if (category === 'ROOT' || category === 'UNIQUE') {
+      priority = frequency >= 2 ? 'high' : 'medium';
+    } else if (frequency >= 5) {
+      priority = 'high';
+    } else if (frequency >= 2) {
+      priority = 'medium';
+    } else {
+      priority = 'low';
     }
+
+    gaps.push({
+      missingAttribute: `${entity} - ${attribute}`,
+      foundInCompetitors: sources,
+      frequency,
+      priority,
+      suggestedContent: eavs[0]?.value
+    });
   }
 
-  // Sort by frequency (most common gaps first)
-  gaps.sort((a, b) => b.frequency - a.frequency);
+  // Sort by priority then frequency
+  const priorityOrder = { high: 0, medium: 1, low: 2 };
+  gaps.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority] || b.frequency - a.frequency);
 
   return gaps;
 }
 
 /**
- * Generate actionable recommendations from analysis
+ * Generate actionable recommendations from analysis.
+ * References EAV categories and framework concepts (CE, SC, CSI).
  */
 export function generateRecommendations(
-  result: Partial<QueryNetworkAnalysisResult>
+  result: Partial<QueryNetworkAnalysisResult>,
+  pillars?: QueryNetworkAuditConfig['pillars'],
+  businessInfo?: BusinessInfo,
+  existingEavs?: QueryNetworkAuditConfig['existingEavs']
 ): QueryNetworkRecommendation[] {
   const recommendations: QueryNetworkRecommendation[] = [];
+  const ce = pillars?.centralEntity || result.seedKeyword || 'your entity';
 
   // Content gap recommendations (when own content was analyzed)
   if (result.contentGaps?.length) {
     const highPriorityGaps = result.contentGaps.filter(g => g.priority === 'high');
 
     if (highPriorityGaps.length > 0) {
+      // Categorize gaps by type for more specific advice
+      const rootGaps = highPriorityGaps.filter(g => {
+        const attr = g.missingAttribute.toLowerCase();
+        return attr.includes('price') || attr.includes('location') || attr.includes('service') || attr.includes('hour');
+      });
+      const description = rootGaps.length > 0
+        ? `${highPriorityGaps.length} critical gaps found. ${rootGaps.length} are ROOT attributes (essential facts about "${ce}" that most competitors publish).`
+        : `${highPriorityGaps.length} attributes covered by most competitors are missing from your content about "${ce}".`;
+
       recommendations.push({
         type: 'content_gap',
         priority: 'critical',
-        title: 'Address Critical Content Gaps',
-        description: `${highPriorityGaps.length} attributes covered by most competitors are missing from your content.`,
+        title: 'Address Critical EAV Gaps',
+        description,
         affectedQueries: [],
-        estimatedImpact: 'High - These are standard expectations for this topic',
-        suggestedAction: `Add content covering: ${highPriorityGaps.slice(0, 5).map(g => g.missingAttribute).join(', ')}`
+        estimatedImpact: 'High - ROOT attributes are expected by search engines for entity comprehension',
+        suggestedAction: `Add EAV triples for: ${highPriorityGaps.slice(0, 5).map(g => g.missingAttribute).join(', ')}`
       });
     }
 
@@ -566,10 +704,10 @@ export function generateRecommendations(
       recommendations.push({
         type: 'content_gap',
         priority: 'high',
-        title: 'Fill Secondary Content Gaps',
-        description: `${mediumPriorityGaps.length} attributes found in some competitors could differentiate your content.`,
+        title: 'Fill RARE/UNIQUE Attribute Gaps',
+        description: `${mediumPriorityGaps.length} differentiating attributes found in some competitors. These are opportunities to build topical authority for "${ce}".`,
         affectedQueries: [],
-        estimatedImpact: 'Medium - Opportunity for differentiation',
+        estimatedImpact: 'Medium - UNIQUE attributes reduce Cost of Retrieval for your entity',
         suggestedAction: `Consider adding: ${mediumPriorityGaps.slice(0, 5).map(g => g.missingAttribute).join(', ')}`
       });
     }
@@ -577,33 +715,20 @@ export function generateRecommendations(
 
   // Competitor insights recommendations (always generate based on competitor data)
   if (result.competitorEAVs?.length) {
-    // Identify most common attributes across competitors
-    const attributeFrequency = new Map<string, { count: number; example: string }>();
-    for (const eav of result.competitorEAVs) {
-      const key = `${eav.entity}:${eav.attribute}`;
-      const existing = attributeFrequency.get(key);
-      if (existing) {
-        existing.count++;
-      } else {
-        attributeFrequency.set(key, { count: 1, example: eav.value });
-      }
-    }
+    // Identify ROOT attributes across competitors
+    const rootEAVs = result.competitorEAVs.filter(e => e.category === 'ROOT');
+    const commonEAVs = result.competitorEAVs.filter(e => e.category === 'COMMON');
 
-    // Find high-frequency attributes (covered by multiple competitors)
-    const commonAttributes = [...attributeFrequency.entries()]
-      .filter(([_, data]) => data.count >= 2)
-      .sort((a, b) => b[1].count - a[1].count)
-      .slice(0, 10);
-
-    if (commonAttributes.length > 0) {
+    if (rootEAVs.length > 0) {
+      const rootAttributes = [...new Set(rootEAVs.map(e => e.attribute))].slice(0, 5);
       recommendations.push({
         type: 'content_gap',
         priority: 'high',
-        title: 'Cover Key Competitor Topics',
-        description: `${commonAttributes.length} attributes are covered by multiple competitors. Ensure your content addresses these.`,
+        title: 'Ensure ROOT Attribute Coverage',
+        description: `${rootAttributes.length} ROOT attributes are published by 70%+ of competitors. These are essential facts about "${ce}" that search engines expect.`,
         affectedQueries: [],
-        estimatedImpact: 'High - These represent industry-standard content expectations',
-        suggestedAction: `Key topics to cover: ${commonAttributes.slice(0, 5).map(([key]) => key.split(':')[1]).join(', ')}`
+        estimatedImpact: 'High - Missing ROOT attributes signals incomplete entity coverage',
+        suggestedAction: `Verify your content includes: ${rootAttributes.join(', ')}`
       });
     }
 
@@ -614,13 +739,39 @@ export function generateRecommendations(
       recommendations.push({
         type: 'new_topic',
         priority: 'medium',
-        title: 'Differentiation Opportunities',
-        description: `Found ${uniqueEAVs.length} unique/rare attributes from competitors that could help differentiate your content.`,
+        title: 'UNIQUE Attribute Opportunities',
+        description: `Found ${uniqueEAVs.length} unique/rare attributes from competitors. Publishing these about "${ce}" builds authority that competitors lack.`,
         affectedQueries: [],
-        estimatedImpact: 'Medium - Unique content improves authority',
+        estimatedImpact: 'Medium - UNIQUE attributes are the highest-value differentiators',
         suggestedAction: `Consider covering: ${uniqueAttributes.join(', ')}`
       });
     }
+
+    if (commonEAVs.length > 0 && rootEAVs.length === 0) {
+      const commonAttributes = [...new Set(commonEAVs.map(e => e.attribute))].slice(0, 5);
+      recommendations.push({
+        type: 'content_gap',
+        priority: 'high',
+        title: 'Cover Key Competitor Attributes',
+        description: `${commonAttributes.length} COMMON attributes are covered by multiple competitors for "${ce}".`,
+        affectedQueries: [],
+        estimatedImpact: 'High - These represent industry-standard content expectations',
+        suggestedAction: `Key attributes to cover: ${commonAttributes.join(', ')}`
+      });
+    }
+  }
+
+  // Source Context recommendation
+  if (pillars?.sourceContext && result.competitorEAVs?.length) {
+    recommendations.push({
+      type: 'new_topic',
+      priority: 'medium',
+      title: 'Align Content with Source Context',
+      description: `Your Source Context is "${pillars.sourceContext}". Ensure gap-filling content reinforces how "${ce}" creates value for its audience.`,
+      affectedQueries: [],
+      estimatedImpact: 'Medium - Source Context alignment improves relevance for commercial queries',
+      suggestedAction: `Frame new content through the lens of: ${pillars.sourceContext}`
+    });
   }
 
   // Information density recommendations
@@ -632,19 +783,18 @@ export function generateRecommendations(
       recommendations.push({
         type: 'density_improvement',
         priority: 'high',
-        title: 'Increase Information Density',
-        description: `Your content density score (${own.densityScore}) is below competitor average (${avg.densityScore}).`,
+        title: 'Increase Semantic Density',
+        description: `Your content density score (${own.densityScore}) is below competitor average (${avg.densityScore}). This means competitors pack more facts per sentence about "${ce}".`,
         affectedQueries: [],
-        estimatedImpact: 'High - More facts per sentence improves perceived expertise',
-        suggestedAction: 'Add more specific facts, statistics, and detailed specifications to your content.'
+        estimatedImpact: 'High - Higher fact density reduces Cost of Retrieval for search engines',
+        suggestedAction: 'Add more specific EAV triples: prices, specifications, measurements, certifications, and process details.'
       });
     } else if (!own) {
-      // No own content analyzed - provide general density guidance
       recommendations.push({
         type: 'density_improvement',
         priority: 'medium',
-        title: 'Target Competitor Information Density',
-        description: `Top competitors average ${avg.totalEAVs} facts with ${avg.factsPerSentence} facts per sentence. Use this as your benchmark.`,
+        title: 'Target Competitor Semantic Density',
+        description: `Top competitors average ${avg.totalEAVs} EAV triples with ${avg.factsPerSentence} facts per sentence. Use this as your content benchmark.`,
         affectedQueries: [],
         estimatedImpact: 'Medium - Matching competitor density establishes baseline',
         suggestedAction: `Aim for at least ${avg.totalEAVs} distinct facts in your content with ~${avg.factsPerSentence} facts per sentence.`
@@ -725,6 +875,48 @@ export function generateRecommendations(
         estimatedImpact: 'Medium - Aligning content with dominant intent improves relevance',
         suggestedAction: intentStrategies[dominantIntent[0]]
       });
+    }
+  }
+
+  // Industry-specific recommendations using eavService
+  if (businessInfo) {
+    try {
+      const industryType = detectIndustryType(businessInfo);
+      // Convert existing EAVs to SemanticTriple format for eavService compatibility
+      const semanticTriples = (existingEavs || []).map(eav => ({
+        subject: { label: eav.subject, type: 'Entity' as const },
+        predicate: { relation: eav.predicate, type: 'Property' as const, category: (eav.category || 'COMMON') as any },
+        object: { value: eav.object, type: 'Value' as const },
+      }));
+
+      const highPriorityMissing = getHighPriorityMissing(semanticTriples, industryType);
+      if (highPriorityMissing.length > 0) {
+        recommendations.push({
+          type: 'content_gap',
+          priority: 'high',
+          title: `${highPriorityMissing.length} Industry-Standard Attributes Missing`,
+          description: `For ${industryType} businesses, these attributes are essential but not in your EAV set — and no competitor covers them either. This is a differentiation opportunity.`,
+          affectedQueries: [],
+          estimatedImpact: 'High - Industry-standard attributes are expected by search engines and users',
+          suggestedAction: `Add these attributes for "${ce}": ${highPriorityMissing.slice(0, 5).map(p => p.relation.replace(/_/g, ' ')).join(', ')}`,
+        });
+      }
+
+      const allMissing = getMissingPredicates(semanticTriples, industryType);
+      const lowPriorityMissing = allMissing.filter(p => p.priority !== 'high' && !highPriorityMissing.includes(p));
+      if (lowPriorityMissing.length > 0 && highPriorityMissing.length === 0) {
+        recommendations.push({
+          type: 'new_topic',
+          priority: 'medium',
+          title: `${lowPriorityMissing.length} Optional Industry Attributes`,
+          description: `Additional ${industryType} attributes that could deepen your entity coverage for "${ce}".`,
+          affectedQueries: [],
+          estimatedImpact: 'Medium - Deeper attribute coverage builds topical authority',
+          suggestedAction: `Consider adding: ${lowPriorityMissing.slice(0, 5).map(p => p.relation.replace(/_/g, ' ')).join(', ')}`,
+        });
+      }
+    } catch {
+      // Non-fatal — continue without industry recommendations
     }
   }
 
@@ -893,7 +1085,9 @@ export async function runQueryNetworkAudit(
     let queryNetwork = await generateQueryNetwork(
       config.seedKeyword,
       businessInfo,
-      maxQueries
+      maxQueries,
+      config.pillars,
+      config.existingEavs
     );
 
     // Enrich query network with GSC search volume data
@@ -946,7 +1140,8 @@ export async function runQueryNetworkAudit(
             url,
             content.content,
             businessInfo,
-            config.seedKeyword
+            config.seedKeyword,
+            config.pillars
           );
           allCompetitorEAVs.push(...eavs);
 
@@ -962,6 +1157,12 @@ export async function runQueryNetworkAudit(
 
       await new Promise(resolve => setTimeout(resolve, 300));
     }
+
+    // Assign EAV categories algorithmically based on cross-page frequency
+    const categorizedCompetitorEAVs = assignEavCategories(allCompetitorEAVs);
+    // Replace the mutable array contents with categorized versions
+    allCompetitorEAVs.length = 0;
+    allCompetitorEAVs.push(...categorizedCompetitorEAVs);
 
     // Step 4: Analyze own content (if configured)
     updateProgress('analyzing_gaps', 'Analyzing content gaps...', 3, totalSteps);
@@ -988,7 +1189,8 @@ export async function runQueryNetworkAudit(
               page.url,
               content.content,
               businessInfo,
-              config.seedKeyword
+              config.seedKeyword,
+              config.pillars
             );
             ownEAVs.push(...pageEavs);
 
@@ -1037,7 +1239,8 @@ export async function runQueryNetworkAudit(
                 url,
                 content.content,
                 businessInfo,
-                config.seedKeyword
+                config.seedKeyword,
+                config.pillars
               );
               ownEAVs.push(...pageEavs);
             } catch (pageError) {
@@ -1081,9 +1284,9 @@ export async function runQueryNetworkAudit(
       eavsByUrl.get(topCompetitorUrl) || []
     );
 
-    // Identify content gaps
+    // Identify content gaps (semantic matching + user's strategic EAVs)
     const contentGaps = ownEAVs
-      ? identifyContentGaps(ownEAVs, allCompetitorEAVs)
+      ? identifyContentGaps(ownEAVs, allCompetitorEAVs, config.existingEavs)
       : [];
 
     // Step 5: Entity validation (if configured)
@@ -1151,8 +1354,8 @@ export async function runQueryNetworkAudit(
       timestamp: new Date().toISOString()
     };
 
-    // Generate recommendations (includes GSC-specific ones)
-    result.recommendations = generateRecommendations(result);
+    // Generate recommendations (includes GSC-specific ones + framework context + industry EAVs)
+    result.recommendations = generateRecommendations(result, config.pillars, businessInfo, config.existingEavs);
 
     updateProgress('complete', 'Audit complete', totalSteps, totalSteps);
 

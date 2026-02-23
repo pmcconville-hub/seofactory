@@ -5,10 +5,10 @@ export interface GapAnalysisExportDropdownProps {
   results: QueryNetworkAnalysisResult;
   scores: {
     overallHealth: number;
-    contentQuality: number;
-    pageStructure: number;
-    informationDensity: number;
-    topicCoverage: number;
+    eavCompleteness: number;
+    pageStructure: number | null;
+    semanticDensity: number | null;
+    topicalCoverage: number;
   };
   businessDomain?: string;
 }
@@ -48,8 +48,8 @@ function buildCsv(results: QueryNetworkAnalysisResult, scores: GapAnalysisExport
 
   // Scores
   lines.push('Section: Scores');
-  lines.push('Overall Health,Content Quality,Page Structure,Info Density,Topic Coverage');
-  lines.push(`${scores.overallHealth},${scores.contentQuality},${scores.pageStructure},${scores.informationDensity},${scores.topicCoverage}`);
+  lines.push('Competitive Position,EAV Completeness,Page Structure,Semantic Density,Topical Coverage');
+  lines.push(`${scores.overallHealth},${scores.eavCompleteness},${scores.pageStructure ?? 'N/A'},${scores.semanticDensity ?? 'N/A'},${scores.topicalCoverage}`);
   lines.push('');
 
   // Content Gaps
@@ -158,11 +158,11 @@ function buildHtml(results: QueryNetworkAnalysisResult, scores: GapAnalysisExpor
 <h1>Gap Analysis Report</h1>
 <p class="subtitle">${domain || 'Unknown domain'} &mdash; ${new Date().toLocaleDateString()}</p>
 <div class="scores">
-  <div class="score-card"><div class="value" style="color:${scoreColor(scores.overallHealth)}">${scores.overallHealth}</div><div class="label">Overall Health</div></div>
-  <div class="score-card"><div class="value" style="color:${scoreColor(scores.contentQuality)}">${scores.contentQuality}</div><div class="label">Content Quality</div></div>
-  <div class="score-card"><div class="value" style="color:${scoreColor(scores.pageStructure)}">${scores.pageStructure >= 0 ? scores.pageStructure : 'N/A'}</div><div class="label">Page Structure</div></div>
-  <div class="score-card"><div class="value" style="color:${scoreColor(scores.informationDensity)}">${scores.informationDensity}</div><div class="label">Info Density</div></div>
-  <div class="score-card"><div class="value" style="color:${scoreColor(scores.topicCoverage)}">${scores.topicCoverage}</div><div class="label">Topic Coverage</div></div>
+  <div class="score-card"><div class="value" style="color:${scoreColor(scores.overallHealth)}">${scores.overallHealth}</div><div class="label">Competitive Position</div></div>
+  <div class="score-card"><div class="value" style="color:${scoreColor(scores.eavCompleteness)}">${scores.eavCompleteness}</div><div class="label">EAV Completeness</div></div>
+  <div class="score-card"><div class="value" style="color:${scores.pageStructure !== null ? scoreColor(scores.pageStructure) : '#6b7280'}">${scores.pageStructure !== null ? scores.pageStructure : 'N/A'}</div><div class="label">Page Structure</div></div>
+  <div class="score-card"><div class="value" style="color:${scores.semanticDensity !== null ? scoreColor(scores.semanticDensity) : '#6b7280'}">${scores.semanticDensity !== null ? scores.semanticDensity : 'N/A'}</div><div class="label">Semantic Density</div></div>
+  <div class="score-card"><div class="value" style="color:${scoreColor(scores.topicalCoverage)}">${scores.topicalCoverage}</div><div class="label">Topical Coverage</div></div>
 </div>
 ${enrichHtml}
 <h2>Content Gaps (${results.contentGaps.length})</h2>

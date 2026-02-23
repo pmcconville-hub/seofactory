@@ -1217,6 +1217,17 @@ export interface QueryNetworkAuditConfig {
   maxCompetitors?: number;
   includeEntityValidation?: boolean;
   includeOwnContent?: boolean;
+  /** SEO Pillars — Central Entity, Source Context, CSI, content areas */
+  pillars?: {
+    centralEntity?: string;
+    sourceContext?: string;
+    centralSearchIntent?: string;
+    csiPredicates?: string[];
+    contentAreas?: string[];
+    contentAreaTypes?: Array<'revenue' | 'authority'>;
+  };
+  /** User's strategic EAVs from the topical map */
+  existingEavs?: Array<{ subject: string; predicate: string; object: string; category?: string }>;
   /** GSC search analytics rows to enrich analysis with real data */
   gscData?: import('../types').GscRow[];
   /** Crawled site inventory from the Discover step — used to build comprehensive own-content EAVs */

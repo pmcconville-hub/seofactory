@@ -30,78 +30,81 @@ function scoreColor(score: number): 'green' | 'blue' | 'amber' | 'red' {
 
 function computeGapScores(results: QueryNetworkAnalysisResult): {
   overallHealth: number;
-  contentQuality: number;
-  pageStructure: number;
-  informationDensity: number;
-  topicCoverage: number;
+  eavCompleteness: number;
+  pageStructure: number | null;
+  semanticDensity: number | null;
+  topicalCoverage: number;
 } {
   const ownDensity = results.informationDensity.own;
   const compAvgDensity = results.informationDensity.competitorAverage;
+  const hasOwnContent = !!ownDensity;
 
-  // Content Quality: ratio-based (your EAV count / market average EAV count)
-  let contentQuality: number;
-  if (ownDensity && compAvgDensity.totalEAVs > 0) {
-    contentQuality = Math.min(100, Math.round((ownDensity.totalEAVs / compAvgDensity.totalEAVs) * 100));
-  } else if (ownDensity) {
-    contentQuality = Math.min(100, Math.round(ownDensity.densityScore));
+  // EAV Completeness: ratio-based (your EAV count / market average EAV count)
+  let eavCompleteness: number;
+  if (hasOwnContent && compAvgDensity.totalEAVs > 0) {
+    const ratio = Math.min(100, Math.round((ownDensity!.totalEAVs / compAvgDensity.totalEAVs) * 100));
+    const gapPenalty = Math.min(40, (results.contentGaps.filter(g => g.priority === 'high').length) * 8 +
+      (results.contentGaps.filter(g => g.priority === 'medium').length) * 3);
+    eavCompleteness = Math.max(0, ratio - gapPenalty);
+  } else if (hasOwnContent) {
+    eavCompleteness = Math.min(100, Math.round(ownDensity!.densityScore));
   } else {
-    // No own content analyzed — low score
-    contentQuality = 20;
+    // Competitor-only analysis — compute from gap count against market
+    const totalCompAttrs = new Set(results.competitorEAVs.map(e => `${e.entity}:${e.attribute}`)).size;
+    eavCompleteness = totalCompAttrs > 0 ? Math.max(0, Math.round(100 - (results.contentGaps.length / totalCompAttrs) * 100)) : 0;
   }
 
   // Page Structure: average heading hierarchy score across own pages
-  let pageStructure = -1;
+  let pageStructure: number | null = null;
   if (results.headingAnalysis.length > 0) {
     const total = results.headingAnalysis.reduce((sum, h) => sum + h.hierarchyScore, 0);
     pageStructure = Math.round(total / results.headingAnalysis.length);
   }
 
-  // Information Density: ratio of your facts/sentence vs competitor average
-  let informationDensity: number;
-  if (ownDensity && compAvgDensity.factsPerSentence > 0) {
-    const ratio = ownDensity.factsPerSentence / compAvgDensity.factsPerSentence;
-    informationDensity = Math.min(100, Math.round(ratio * 100));
-  } else if (ownDensity) {
-    informationDensity = Math.round(ownDensity.densityScore);
-  } else {
-    informationDensity = 15; // No own content
+  // Semantic Density: null if no own content analyzed
+  let semanticDensity: number | null = null;
+  if (hasOwnContent && compAvgDensity.factsPerSentence > 0) {
+    const ratio = ownDensity!.factsPerSentence / compAvgDensity.factsPerSentence;
+    semanticDensity = Math.min(100, Math.round(ratio * 100));
+  } else if (hasOwnContent) {
+    semanticDensity = Math.round(ownDensity!.densityScore);
   }
 
-  // Topic Coverage: (topics you cover / total topics in market) × 100
-  let topicCoverage: number;
-  const totalGaps = results.contentGaps.length;
+  // Topical Coverage: (topics you cover / total topics in market) × 100
+  let topicalCoverage: number;
   const ownEavEntities = new Set(results.ownContentEAVs?.map(e => e.entity.toLowerCase()) ?? []);
   const competitorEntities = new Set(results.competitorEAVs.map(e => e.entity.toLowerCase()));
   const totalMarketTopics = competitorEntities.size;
   if (totalMarketTopics > 0 && ownEavEntities.size > 0) {
-    topicCoverage = Math.min(100, Math.round((ownEavEntities.size / totalMarketTopics) * 100));
-  } else if (totalGaps > 0) {
-    // More gaps = lower coverage
-    topicCoverage = Math.max(10, 100 - totalGaps * 8);
+    topicalCoverage = Math.min(100, Math.round((ownEavEntities.size / totalMarketTopics) * 100));
+  } else if (results.contentGaps.length > 0 && hasOwnContent) {
+    topicalCoverage = Math.max(10, 100 - results.contentGaps.length * 8);
   } else {
-    topicCoverage = ownEavEntities.size > 0 ? 60 : 20;
+    topicalCoverage = hasOwnContent ? Math.min(100, Math.max(10, ownEavEntities.size * 10)) : 0;
   }
 
-  // Overall Health: weighted average of ALL sub-scores (not starting at 100)
+  // Competitive Position: weighted average of non-null scores
   let totalWeight = 0;
   let weightedSum = 0;
 
-  weightedSum += contentQuality * 30;
+  weightedSum += eavCompleteness * 30;
   totalWeight += 30;
 
-  if (pageStructure >= 0) {
+  if (pageStructure !== null) {
     weightedSum += pageStructure * 20;
     totalWeight += 20;
   }
 
-  weightedSum += informationDensity * 25;
-  totalWeight += 25;
+  if (semanticDensity !== null) {
+    weightedSum += semanticDensity * 25;
+    totalWeight += 25;
+  }
 
-  weightedSum += topicCoverage * 25;
+  weightedSum += topicalCoverage * 25;
   totalWeight += 25;
 
   const overallHealth = totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
-  return { overallHealth, contentQuality, pageStructure, informationDensity, topicCoverage };
+  return { overallHealth, eavCompleteness, pageStructure, semanticDensity, topicalCoverage };
 }
 
 function deriveEntityType(
@@ -504,10 +507,11 @@ function GscInsightsPanel({ insights }: { insights: GscInsight[] }) {
 
 // ──── Existing UI Components (preserved) ────
 
-function ScoreCard({ label, value, color = 'gray' }: {
+function ScoreCard({ label, value, color = 'gray', subtitle }: {
   label: string;
   value: string | number;
   color?: 'green' | 'blue' | 'amber' | 'red' | 'gray';
+  subtitle?: string;
 }) {
   const colorMap: Record<string, string> = {
     green: 'text-green-400',
@@ -521,6 +525,7 @@ function ScoreCard({ label, value, color = 'gray' }: {
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 text-center">
       <p className={`text-3xl font-bold ${colorMap[color]}`}>{value}</p>
       <p className="text-xs text-gray-400 mt-1">{label}</p>
+      {subtitle && <p className="text-[10px] text-gray-500 mt-0.5">{subtitle}</p>}
     </div>
   );
 }
@@ -611,10 +616,15 @@ function GoogleApiInsightsPanel({ enrichment }: { enrichment: NonNullable<QueryN
   if (enrichment.entitySalience) {
     const { centralEntitySalience, rank, totalEntities } = enrichment.entitySalience;
     const pct = (centralEntitySalience * 100).toFixed(0);
+    const salienceDetail = rank === 1
+      ? 'Most salient entity — strong signal for search engines'
+      : rank <= 3
+      ? 'Top-3 salience — good signal. Strengthen with more CE mentions in titles and H1s'
+      : 'Strengthen CE prominence: use exact CE name in page titles, H1 headings, and first paragraphs across all pages';
     items.push({
       label: 'Entity Salience',
       value: `Central Entity salience: ${pct}% (rank #${rank} of ${totalEntities})`,
-      detail: rank === 1 ? 'Most salient entity — strong signal' : rank <= 3 ? 'Top-3 salience — good signal' : 'Consider strengthening CE prominence',
+      detail: salienceDetail,
       color: rank === 1 ? 'text-green-400' : rank <= 3 ? 'text-blue-400' : 'text-amber-400',
       icon: '\u2699',
     });
@@ -648,10 +658,13 @@ function GoogleApiInsightsPanel({ enrichment }: { enrichment: NonNullable<QueryN
 
   if (enrichment.knowledgeGraph) {
     const { found, authorityScore } = enrichment.knowledgeGraph;
+    const kgDetail = found
+      ? `Entity recognized by Google Knowledge Graph with authority score ${authorityScore}/100`
+      : 'No Knowledge Graph panel yet. Build one with: consistent CE naming across pages, Schema.org Organization/LocalBusiness markup, Google Business Profile, and mentions on authoritative directories';
     items.push({
       label: 'Knowledge Graph',
       value: found ? `Entity verified (score: ${authorityScore}/100)` : 'Entity not found',
-      detail: found ? 'Entity recognized by Google Knowledge Graph' : 'Build authority through structured data and mentions',
+      detail: kgDetail,
       color: found ? 'text-green-400' : 'text-amber-400',
       icon: '\u25CE',
     });
@@ -995,6 +1008,7 @@ function GapAnalysisContent({
   businessDomain,
   hasGscData,
   currentPhase,
+  frameworkContext,
 }: {
   results: QueryNetworkAnalysisResult | null;
   isGenerating: boolean;
@@ -1004,6 +1018,14 @@ function GapAnalysisContent({
   businessDomain?: string;
   hasGscData?: boolean;
   currentPhase?: string;
+  frameworkContext?: {
+    centralEntity?: string;
+    sourceContext?: string;
+    centralSearchIntent?: string;
+    contentAreas?: string[];
+    eavCount?: number;
+    crawledPages?: number;
+  };
 }) {
   const [showAllEntities, setShowAllEntities] = useState(false);
 
@@ -1048,6 +1070,70 @@ function GapAnalysisContent({
       {error && (
         <div className="bg-red-900/20 border border-red-700 rounded-lg p-4">
           <p className="text-sm text-red-300">{error}</p>
+        </div>
+      )}
+
+      {/* Framework Context summary — shows BEFORE analysis so user can verify */}
+      {!results && !isGenerating && frameworkContext?.centralEntity && (
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+          <h3 className="text-sm font-semibold text-gray-200 mb-3">Your Framework Context</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-xs">
+            <div>
+              <span className="text-gray-500">Central Entity: </span>
+              <span className="text-gray-200 font-medium">{frameworkContext.centralEntity}</span>
+            </div>
+            {frameworkContext.sourceContext && (
+              <div>
+                <span className="text-gray-500">Source Context: </span>
+                <span className="text-gray-300">{frameworkContext.sourceContext}</span>
+              </div>
+            )}
+            {frameworkContext.centralSearchIntent && (
+              <div>
+                <span className="text-gray-500">Central Search Intent: </span>
+                <span className="text-gray-300">{frameworkContext.centralSearchIntent}</span>
+              </div>
+            )}
+            {frameworkContext.contentAreas && frameworkContext.contentAreas.length > 0 && (
+              <div>
+                <span className="text-gray-500">Content Areas: </span>
+                <span className="text-gray-300">{frameworkContext.contentAreas.join(', ')}</span>
+              </div>
+            )}
+            {(frameworkContext.eavCount !== undefined && frameworkContext.eavCount > 0) && (
+              <div>
+                <span className="text-gray-500">Defined EAVs: </span>
+                <span className="text-gray-300">{frameworkContext.eavCount} triples</span>
+              </div>
+            )}
+            {(frameworkContext.crawledPages !== undefined && frameworkContext.crawledPages > 0) && (
+              <div>
+                <span className="text-gray-500">Crawled Pages: </span>
+                <span className="text-gray-300">{frameworkContext.crawledPages} pages</span>
+              </div>
+            )}
+          </div>
+          {!frameworkContext.sourceContext && !frameworkContext.centralSearchIntent && (
+            <p className="text-xs text-amber-400/80 mt-3">
+              Define Source Context and Central Search Intent in your SEO Pillars for more targeted query generation and gap detection.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* No-own-content banner — shown at top of results when domain empty or no inventory */}
+      {results && !results.ownContentEAVs && (
+        <div className="bg-amber-900/10 border border-amber-700/30 rounded-lg p-4 flex items-start gap-3">
+          <svg className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+          </svg>
+          <div>
+            <p className="text-sm text-amber-300 font-medium">Competitor-only analysis</p>
+            <p className="text-xs text-gray-400 mt-1">
+              Your site hasn't been crawled yet. Scores below reflect what competitors publish.
+              Complete a Site Crawl in the Discover step to compare your content and get specific EAV gap findings.
+            </p>
+          </div>
         </div>
       )}
 
@@ -1172,29 +1258,31 @@ function GapAnalysisContent({
       {(results || !isGenerating) && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <ScoreCard
-            label="Overall Health"
+            label="Competitive Position"
             value={scores ? `${scores.overallHealth}/100` : '--'}
             color={scores ? scoreColor(scores.overallHealth) : 'gray'}
           />
           <ScoreCard
-            label="Content Quality"
-            value={scores ? `${scores.contentQuality}/100` : '--'}
-            color={scores ? scoreColor(scores.contentQuality) : 'gray'}
+            label="EAV Completeness"
+            value={scores ? `${scores.eavCompleteness}/100` : '--'}
+            color={scores ? scoreColor(scores.eavCompleteness) : 'gray'}
           />
           <ScoreCard
             label="Page Structure"
-            value={scores ? (scores.pageStructure >= 0 ? `${scores.pageStructure}/100` : 'N/A') : '--'}
-            color={scores ? (scores.pageStructure >= 0 ? scoreColor(scores.pageStructure) : 'gray') : 'gray'}
+            value={scores ? (scores.pageStructure !== null ? `${scores.pageStructure}/100` : 'N/A') : '--'}
+            color={scores ? (scores.pageStructure !== null ? scoreColor(scores.pageStructure) : 'gray') : 'gray'}
+            subtitle={scores && scores.pageStructure === null ? 'Needs site content' : undefined}
           />
           <ScoreCard
-            label="Info Density"
-            value={scores ? `${scores.informationDensity}/100` : '--'}
-            color={scores ? scoreColor(scores.informationDensity) : 'gray'}
+            label="Semantic Density"
+            value={scores ? (scores.semanticDensity !== null ? `${scores.semanticDensity}/100` : 'N/A') : '--'}
+            color={scores ? (scores.semanticDensity !== null ? scoreColor(scores.semanticDensity) : 'gray') : 'gray'}
+            subtitle={scores && scores.semanticDensity === null ? 'Needs site content' : undefined}
           />
           <ScoreCard
-            label="Topic Coverage"
-            value={scores ? `${scores.topicCoverage}/100` : '--'}
-            color={scores ? scoreColor(scores.topicCoverage) : 'gray'}
+            label="Topical Coverage"
+            value={scores ? `${scores.topicalCoverage}/100` : '--'}
+            color={scores ? scoreColor(scores.topicalCoverage) : 'gray'}
           />
         </div>
       )}
@@ -1236,30 +1324,39 @@ function GapAnalysisContent({
               allGaps.map((gap, i) => <GapItem key={i} gap={gap} />)
             ) : results && allGaps.length === 0 ? (
               <div className="space-y-2">
-                <div className="flex items-center gap-3 text-sm text-green-400">
-                  <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-                  <span>No EAV-level gaps detected against analyzed competitors</span>
-                </div>
-                {!results.ownContentEAVs && (
-                  <p className="text-xs text-amber-400 pl-5">
-                    Note: Own content could not be analyzed (no pages found in SERPs or site inventory).
-                    Gaps are only detected when your content is compared against competitors.
-                  </p>
+                {!results.ownContentEAVs ? (
+                  <div className="bg-amber-900/10 border border-amber-700/30 rounded-md p-4">
+                    <p className="text-sm text-amber-300 font-medium mb-1">Gap detection requires site content</p>
+                    <p className="text-xs text-gray-400">
+                      Run a site crawl in the Discover step to compare your content against competitors.
+                      Without your own pages, gaps cannot be identified.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3 text-sm text-green-400">
+                      <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                      <span>Strong coverage across {new Set(results.competitorEAVs.map(e => e.source)).size} competitor pages</span>
+                    </div>
+                    <p className="text-xs text-gray-400 pl-5">
+                      Consider adding UNIQUE attributes to differentiate your content from competitors.
+                    </p>
+                  </div>
                 )}
               </div>
             ) : (
               <>
                 <div className="flex items-center gap-3 text-sm text-gray-500">
                   <div className="w-2 h-2 rounded-full bg-gray-600 flex-shrink-0" />
-                  <span>Run gap analysis to identify issues</span>
+                  <span>Run gap analysis to compare your EAV coverage against competitors</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm text-gray-500">
                   <div className="w-2 h-2 rounded-full bg-gray-600 flex-shrink-0" />
-                  <span>Missing content clusters will appear here</span>
+                  <span>Missing ROOT and UNIQUE attributes will be flagged by priority</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm text-gray-500">
                   <div className="w-2 h-2 rounded-full bg-gray-600 flex-shrink-0" />
-                  <span>Competitor coverage gaps will be highlighted</span>
+                  <span>Each gap includes the EAV category, competitor sources, and suggested content</span>
                 </div>
               </>
             )}
@@ -1705,6 +1802,7 @@ const PipelineGapStep: React.FC = () => {
 
       googleEnrichment = await fetchAllGoogleApiData({
         businessInfo,
+        centralEntity,
         siteUrl: gscState.propertyUrl || `https://${businessInfo.domain}`,
         siteInventory: siteInventory.length > 0 ? siteInventory : undefined,
         projectId: state.activeProjectId || '',
@@ -1730,6 +1828,20 @@ const PipelineGapStep: React.FC = () => {
       includeOwnContent: !!businessInfo.domain,
       includeEntityValidation: false,
       language: businessInfo.language || 'en',
+      pillars: pillars ? {
+        centralEntity: pillars.centralEntity,
+        sourceContext: pillars.sourceContext,
+        centralSearchIntent: pillars.centralSearchIntent,
+        csiPredicates: pillars.csiPredicates,
+        contentAreas: pillars.contentAreas,
+        contentAreaTypes: pillars.contentAreaTypes,
+      } : undefined,
+      existingEavs: activeMap?.eavs?.map((eav: any) => ({
+        subject: eav.subject?.label || '',
+        predicate: eav.predicate?.relation || '',
+        object: eav.object?.value || '',
+        category: eav.predicate?.category,
+      })).filter((e: any) => e.subject && e.predicate),
       gscData: gscData || undefined,
       siteInventory: siteInventory.length > 0 ? siteInventory : undefined,
       urlInspectionResults: googleEnrichment.urlInspection?.results,
@@ -1859,16 +1971,16 @@ const PipelineGapStep: React.FC = () => {
   const scores = results ? computeGapScores(results) : null;
   const summaryMetrics: Array<{ label: string; value: string | number; color?: MetricColor }> = scores
     ? [
-        { label: 'Overall Health', value: `${scores.overallHealth}/100`, color: scoreColor(scores.overallHealth) },
-        { label: 'Content Quality', value: `${scores.contentQuality}/100`, color: scoreColor(scores.contentQuality) },
-        { label: 'Topic Coverage', value: `${scores.topicCoverage}/100`, color: scoreColor(scores.topicCoverage) },
-        { label: 'Info Density', value: `${scores.informationDensity}/100`, color: scoreColor(scores.informationDensity) },
+        { label: 'Competitive Position', value: `${scores.overallHealth}/100`, color: scoreColor(scores.overallHealth) },
+        { label: 'EAV Completeness', value: `${scores.eavCompleteness}/100`, color: scoreColor(scores.eavCompleteness) },
+        { label: 'Topical Coverage', value: `${scores.topicalCoverage}/100`, color: scoreColor(scores.topicalCoverage) },
+        { label: 'Semantic Density', value: scores.semanticDensity !== null ? `${scores.semanticDensity}/100` : 'N/A', color: scores.semanticDensity !== null ? scoreColor(scores.semanticDensity) : 'gray' },
       ]
     : [
-        { label: 'Overall Health', value: '--', color: 'gray' },
-        { label: 'Content Quality', value: '--', color: 'gray' },
-        { label: 'Topic Coverage', value: '--', color: 'gray' },
-        { label: 'Info Density', value: '--', color: 'gray' },
+        { label: 'Competitive Position', value: '--', color: 'gray' },
+        { label: 'EAV Completeness', value: '--', color: 'gray' },
+        { label: 'Topical Coverage', value: '--', color: 'gray' },
+        { label: 'Semantic Density', value: '--', color: 'gray' },
       ];
 
   return (
@@ -1910,6 +2022,15 @@ const PipelineGapStep: React.FC = () => {
             businessDomain={state.businessInfo.domain}
             hasGscData={!!(gscData && gscData.length > 0)}
             currentPhase={currentPhase}
+            frameworkContext={{
+              centralEntity: activeMap?.pillars?.centralEntity || state.businessInfo.seedKeyword,
+              sourceContext: activeMap?.pillars?.sourceContext,
+              centralSearchIntent: activeMap?.pillars?.centralSearchIntent,
+              contentAreas: activeMap?.pillars?.contentAreas,
+              eavCount: activeMap?.eavs?.length,
+              crawledPages: ((activeMap?.analysis_state as any)?.site_inventory
+                ?? (activeMap?.analysis_state as any)?.crawl?.pages)?.length,
+            }}
           />
 
           {/* Approval Gate */}

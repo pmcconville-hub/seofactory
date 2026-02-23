@@ -172,7 +172,7 @@ Business Context:
 - Target Audience: ${info.audience}
 - Unique Value Proposition: ${info.valueProp}
 - Stated Expertise Level: ${info.expertise}
-- Main Topic / Seed Keyword: ${info.seedKeyword}
+- Central Entity: ${info.seedKeyword}
 - Target Market: ${info.targetMarket}
 - Language: ${regionalVariant}
 - Region/Location: ${info.region || 'Not specified'}
