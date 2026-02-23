@@ -108,14 +108,14 @@ serve(async (req: Request) => {
     }
 
     // Create Supabase client with user's auth
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = Deno.env.get("PROJECT_URL") || Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     // Use service role to fetch connection (bypasses RLS for this lookup)
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
     // First verify the user owns this connection using their JWT
-    const supabaseUser = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    const supabaseUser = createClient(supabaseUrl, Deno.env.get("ANON_KEY") || Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: authHeader } }
     });
 

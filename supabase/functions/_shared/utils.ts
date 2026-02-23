@@ -27,22 +27,9 @@ export function corsHeaders(requestOrigin?: string | null) {
   };
 }
 
-// Map legacy custom secret names to auto-injected SUPABASE_* equivalents.
-// Supabase auto-injects SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
-// into all edge functions. Custom secrets may become stale after key rotations.
-const ENV_VAR_PREFERRED: Record<string, string> = {
-  'PROJECT_URL': 'SUPABASE_URL',
-  'ANON_KEY': 'SUPABASE_ANON_KEY',
-  'SERVICE_ROLE_KEY': 'SUPABASE_SERVICE_ROLE_KEY',
-};
-
 export function getEnvVar(name: string): string {
   const Deno = (globalThis as any).Deno;
-  // For known aliases, prefer the auto-injected SUPABASE_* var (always correct)
-  const preferred = ENV_VAR_PREFERRED[name];
-  const value = preferred
-    ? (Deno.env.get(preferred) || Deno.env.get(name))
-    : Deno.env.get(name);
+  const value = Deno.env.get(name);
   if (!value) {
     console.warn(`Environment variable ${name} is not set.`);
   }
@@ -50,8 +37,7 @@ export function getEnvVar(name: string): string {
 }
 
 export function getSupabaseUrl(req: Request): string {
-  // Prefer auto-injected SUPABASE_URL (via getEnvVar alias mapping)
-  const envUrl = getEnvVar("SUPABASE_URL") || getEnvVar("PROJECT_URL");
+  const envUrl = getEnvVar("PROJECT_URL");
   if (envUrl) return envUrl;
   
   // Fallback for client-side headers if needed, though env var is better.

@@ -67,9 +67,9 @@ serve(async (req: Request) => {
         );
       }
 
-      const supabaseUrl = Deno.env.get("SUPABASE_URL") || Deno.env.get("PROJECT_URL")!;
-      const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("ANON_KEY")!;
-      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SERVICE_ROLE_KEY")!;
+      const supabaseUrl = Deno.env.get("PROJECT_URL") || Deno.env.get("SUPABASE_URL")!;
+      const supabaseAnonKey = Deno.env.get("ANON_KEY") || Deno.env.get("SUPABASE_ANON_KEY")!;
+      const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
       const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
         global: { headers: { Authorization: authHeader } }
