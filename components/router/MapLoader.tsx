@@ -43,6 +43,18 @@ const MapLoader: React.FC = () => {
         }
     }
 
+    // Auto-redirect to pipeline if the map has an active pipeline and user is on the index route
+    if (mapId && state.topicalMaps.length > 0) {
+        const map = state.topicalMaps.find(m => m.id === mapId);
+        if (map?.pipeline_state?.isActive) {
+            const mapBasePath = `/p/${state.activeProjectId}/m/${mapId}`;
+            const isOnMapIndex = location.pathname === mapBasePath || location.pathname === `${mapBasePath}/`;
+            if (isOnMapIndex) {
+                return <Navigate to={`${mapBasePath}/pipeline`} replace />;
+            }
+        }
+    }
+
     return <Outlet />;
 };
 
