@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { usePipeline } from '../../../hooks/usePipeline';
 import { useAppState } from '../../../state/appState';
 import ApprovalGate from '../../pipeline/ApprovalGate';
@@ -1825,13 +1825,32 @@ const PipelineGapStep: React.FC = () => {
     setCurrentStep('strategy');
   };
 
+  // Merge per-map business_info overrides with global state (per-map takes precedence)
+  const effectiveBusinessInfo = useMemo(() => {
+    const mapBI = activeMap?.business_info;
+    return mapBI ? { ...state.businessInfo, ...mapBI } : state.businessInfo;
+  }, [state.businessInfo, activeMap?.business_info]);
+
+  // Resolve Central Entity from all available sources (priority order):
+  // 1. Explicit CE from Strategy step (pillars)
+  // 2. Per-map seedKeyword from Crawl step (business_info on the map)
+  // 3. Global seedKeyword from state (set during Crawl but lost on refresh)
+  // 4. Map name as last resort
+  const resolvedCentralEntity = useMemo(() => {
+    return activeMap?.pillars?.centralEntity
+      || activeMap?.business_info?.seedKeyword
+      || state.businessInfo.seedKeyword
+      || activeMap?.name
+      || '';
+  }, [activeMap?.pillars?.centralEntity, activeMap?.business_info?.seedKeyword, state.businessInfo.seedKeyword, activeMap?.name]);
+
   const handleRunAnalysis = async () => {
-    const businessInfo = state.businessInfo;
+    const businessInfo = effectiveBusinessInfo;
     const pillars = activeMap?.pillars;
-    const centralEntity = pillars?.centralEntity || businessInfo.seedKeyword;
+    const centralEntity = resolvedCentralEntity;
 
     if (!centralEntity) {
-      setError('Central Entity or Seed Keyword is required. Complete the Crawl step with business context first.');
+      setError('Central Entity is required. Define it in the Strategy step (SEO Pillars) before running gap analysis.');
       return;
     }
 
@@ -2124,7 +2143,7 @@ const PipelineGapStep: React.FC = () => {
             gscData={gscData}
             gscError={gscError}
             gscNeedsRelink={gscNeedsRelink}
-            ga4Enabled={!!state.businessInfo.enableGa4Integration}
+            ga4Enabled={!!effectiveBusinessInfo.enableGa4Integration}
             ga4Connected={ga4Connected}
             ga4PropertyName={ga4PropertyName}
           />
@@ -2135,11 +2154,11 @@ const PipelineGapStep: React.FC = () => {
             events={events}
             error={error}
             onRunAnalysis={handleRunAnalysis}
-            businessDomain={state.businessInfo.domain}
+            businessDomain={effectiveBusinessInfo.domain}
             hasGscData={!!(gscData && gscData.length > 0)}
             currentPhase={currentPhase}
             frameworkContext={{
-              centralEntity: activeMap?.pillars?.centralEntity || state.businessInfo.seedKeyword,
+              centralEntity: resolvedCentralEntity,
               sourceContext: activeMap?.pillars?.sourceContext,
               centralSearchIntent: activeMap?.pillars?.centralSearchIntent,
               contentAreas: activeMap?.pillars?.contentAreas,
