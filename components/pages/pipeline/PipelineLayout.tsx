@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useParams, Link } from 'react-router-dom';
+import { useAppState } from '../../../state/appState';
+import { PipelineState, pipelineActions } from '../../../state/slices/pipelineSlice';
 import { usePipeline } from '../../../hooks/usePipeline';
 import PipelineStepBar from '../../pipeline/PipelineStepBar';
 
@@ -10,6 +12,7 @@ import PipelineStepBar from '../../pipeline/PipelineStepBar';
  */
 const PipelineLayout: React.FC = () => {
   const { projectId, mapId } = useParams<{ projectId: string; mapId: string }>();
+  const { state, dispatch } = useAppState();
   const {
     isActive,
     steps,
@@ -21,6 +24,14 @@ const PipelineLayout: React.FC = () => {
     activeMap,
   } = usePipeline();
   const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  // Restore pipeline state from the map when navigating directly to the pipeline route.
+  // useMapData (which normally does this) only runs from the Dashboard, not here.
+  useEffect(() => {
+    if (!isActive && activeMap?.pipeline_state && (activeMap.pipeline_state as any).isActive) {
+      dispatch(pipelineActions.restoreState(activeMap.pipeline_state as PipelineState));
+    }
+  }, [activeMap?.id, isActive, dispatch]);
 
   const basePath = `/p/${projectId}/m/${mapId}/pipeline`;
 
