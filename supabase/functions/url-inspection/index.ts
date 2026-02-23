@@ -28,7 +28,7 @@ const ALLOWED_ORIGINS = [
 ];
 
 const URL_INSPECTION_ENDPOINT = 'https://searchconsole.googleapis.com/v1/urlInspection/index:inspect';
-const MAX_URLS_PER_INVOCATION = 50;
+const MAX_URLS_PER_INVOCATION = 10;
 const DELAY_BETWEEN_CALLS_MS = 100;
 
 function corsHeaders(requestOrigin?: string | null) {

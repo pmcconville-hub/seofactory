@@ -27,8 +27,11 @@ export interface IndexationSummary {
   total: number;
 }
 
+const BATCH_SIZE = 10; // Keep batches small to avoid edge function timeouts
+
 /**
  * Inspect a batch of URLs via the URL Inspection API edge function.
+ * Automatically chunks large batches to avoid gateway timeouts.
  */
 export async function inspectUrls(
   urls: string[],
@@ -41,27 +44,33 @@ export async function inspectUrls(
     return [];
   }
 
-  try {
-    const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
-    const { data, error } = await supabase.functions.invoke('url-inspection', {
-      body: { urls, siteUrl, accountId },
-    });
+  const supabase = getSupabaseClient(supabaseUrl, supabaseAnonKey);
+  const allResults: UrlInspectionResult[] = [];
 
-    if (error) {
-      console.warn('[UrlInspectionService] Edge function error:', error);
-      return [];
+  // Process in small batches to avoid edge function timeouts (504)
+  for (let i = 0; i < urls.length; i += BATCH_SIZE) {
+    const batch = urls.slice(i, i + BATCH_SIZE);
+    try {
+      const { data, error } = await supabase.functions.invoke('url-inspection', {
+        body: { urls: batch, siteUrl, accountId },
+      });
+
+      if (error) {
+        console.warn(`[UrlInspectionService] Batch ${i / BATCH_SIZE + 1} error:`, error);
+        continue;
+      }
+
+      if (data?.ok && data?.results) {
+        allResults.push(...data.results);
+      } else {
+        console.warn(`[UrlInspectionService] Batch ${i / BATCH_SIZE + 1} unexpected response:`, data);
+      }
+    } catch (error) {
+      console.warn(`[UrlInspectionService] Batch ${i / BATCH_SIZE + 1} failed:`, error);
     }
-
-    if (!data?.ok || !data?.results) {
-      console.warn('[UrlInspectionService] Unexpected response:', data);
-      return [];
-    }
-
-    return data.results;
-  } catch (error) {
-    console.warn('[UrlInspectionService] Failed:', error);
-    return [];
   }
+
+  return allResults;
 }
 
 /**
