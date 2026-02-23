@@ -260,7 +260,7 @@ export async function fetchAllGoogleApiData(config: OrchestratorConfig): Promise
         if (found) {
           emit(onProgress, 'kg', `Knowledge Graph entity found: "${entity!.name}"`, `Score: ${authorityScore}/100`);
         } else {
-          emit(onProgress, 'kg', 'Entity not found in Knowledge Graph', 'Build authority through structured data and authoritative mentions');
+          emit(onProgress, 'kg', 'Knowledge Graph presence not yet established', 'This is normal for local businesses. Build presence via: Google Business Profile, Schema.org LocalBusiness, consistent entity naming, directory mentions');
         }
       } catch (e) {
         emit(onProgress, 'warning', 'Knowledge Graph search failed', (e as Error).message);

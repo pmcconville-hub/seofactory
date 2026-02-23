@@ -96,8 +96,8 @@ export const QueryNetworkAudit: React.FC<QueryNetworkAuditProps> = ({
       recommendations: stored.recommendations || [],
       informationDensity: {
         own: undefined,
-        competitorAverage: { densityScore: 0, factsPerSentence: 0, uniqueEntitiesCount: 0, uniqueAttributesCount: 0, totalEAVs: 0 },
-        topCompetitor: { densityScore: 0, factsPerSentence: 0, uniqueEntitiesCount: 0, uniqueAttributesCount: 0, totalEAVs: 0 },
+        competitorAverage: { densityScore: 0, eavsPerPage: 0, uniqueEntitiesCount: 0, uniqueAttributesCount: 0, totalEAVs: 0 },
+        topCompetitor: { densityScore: 0, eavsPerPage: 0, uniqueEntitiesCount: 0, uniqueAttributesCount: 0, totalEAVs: 0 },
       },
       headingAnalysis: [],
       timestamp: stored.created_at,
@@ -302,15 +302,15 @@ export const QueryNetworkAudit: React.FC<QueryNetworkAuditProps> = ({
                   </td>
                 </tr>
                 <tr className="border-b border-slate-700/50">
-                  <td className="py-2 text-slate-300">Facts per Sentence</td>
+                  <td className="py-2 text-slate-300">EAVs per Page</td>
                   <td className="text-right py-2 text-slate-300">
-                    {result.informationDensity.own?.factsPerSentence ?? 'N/A'}
+                    {result.informationDensity.own?.eavsPerPage ?? 'N/A'}
                   </td>
                   <td className="text-right py-2 text-slate-300">
-                    {result.informationDensity.competitorAverage.factsPerSentence}
+                    {result.informationDensity.competitorAverage.eavsPerPage}
                   </td>
                   <td className="text-right py-2 text-slate-300">
-                    {result.informationDensity.topCompetitor.factsPerSentence}
+                    {result.informationDensity.topCompetitor.eavsPerPage}
                   </td>
                 </tr>
                 <tr className="border-b border-slate-700/50">

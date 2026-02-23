@@ -1135,14 +1135,14 @@ export interface CompetitorEAV {
 }
 
 /**
- * Information density metrics for a piece of content
+ * Information density metrics based on weighted EAVs per page
  */
 export interface InformationDensityScore {
-  factsPerSentence: number;
+  eavsPerPage: number;
   uniqueEntitiesCount: number;
   uniqueAttributesCount: number;
   totalEAVs: number;
-  densityScore: number; // 0-100
+  densityScore: number; // 0-98 (asymptotic cap)
   benchmark?: number; // Industry/competitor average
 }
 
@@ -1294,6 +1294,8 @@ export interface QueryNetworkAnalysisResult {
     avgWordCount: number;
     pagesWithH1: number;
     topicsCovered: string[];
+    /** Whether actual H1/heading data was extracted (vs title/URL fallback) */
+    h1DataAvailable?: boolean;
   };
   /** Google API enrichment data from pipeline gap analysis */
   googleApiEnrichment?: {

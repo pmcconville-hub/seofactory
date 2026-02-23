@@ -492,48 +492,52 @@ Extract 10-20 EAVs focusing on factual, specific information.`;
 }
 
 /**
- * Calculate information density score for content.
- * When content is empty, uses a per-source sentence estimate to avoid inflated scores.
+ * Category weights for EAV density calculation.
+ * Higher weights for more valuable attribute categories.
+ */
+const EAV_CATEGORY_WEIGHTS: Record<string, number> = {
+  UNIQUE: 3,
+  RARE: 2.5,
+  ROOT: 2,
+  COMMON: 1,
+  UNCLASSIFIED: 1,
+  PENDING: 1,
+};
+
+/**
+ * Calculate information density score from EAVs using weighted EAVs per page.
+ * Uses logarithmic scoring curve so 100/100 is asymptotically unreachable.
  */
 export function calculateInformationDensity(
-  content: string,
   eavs: CompetitorEAV[],
-  estimatedSentenceCount?: number
 ): InformationDensityScore {
   // Count unique entities and attributes
   const uniqueEntities = new Set(eavs.map(e => e.entity.toLowerCase()));
   const uniqueAttributes = new Set(eavs.map(e => e.attribute.toLowerCase()));
 
-  // Determine sentence count
-  let sentenceCount: number;
-  if (content && content.trim().length > 0) {
-    const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 10);
-    sentenceCount = Math.max(1, sentences.length);
-  } else if (estimatedSentenceCount && estimatedSentenceCount > 0) {
-    sentenceCount = estimatedSentenceCount;
-  } else {
-    // Estimate: ~2 EAVs per page on average, ~50 sentences per page typical
-    const sourceCount = new Set(eavs.map(e => e.source)).size;
-    sentenceCount = Math.max(1, sourceCount * 50);
+  // Count unique pages (sources) — minimum 1 to avoid division by zero
+  const pageCount = Math.max(1, new Set(eavs.map(e => e.source)).size);
+
+  // Calculate category-weighted EAV total
+  let weightedTotal = 0;
+  for (const eav of eavs) {
+    const weight = EAV_CATEGORY_WEIGHTS[eav.category || 'COMMON'] || 1;
+    weightedTotal += weight;
   }
 
-  // Calculate facts per sentence
-  const factsPerSentence = eavs.length / sentenceCount;
+  // Weighted EAVs per page
+  const eavsPerPage = weightedTotal / pageCount;
 
-  // Calculate density score (0-100)
-  // Target: ~0.5 facts per sentence is optimal
-  let densityScore = Math.min(100, factsPerSentence * 200);
-
-  // Bonus for unique information
-  const uniqueEAVs = eavs.filter(e => e.category === 'UNIQUE' || e.category === 'RARE');
-  densityScore += Math.min(20, uniqueEAVs.length * 2);
+  // Logarithmic scoring curve: score = min(98, 100 * (1 - e^(-weightedPerPage / 25)))
+  // → 10 weighted EAVs/page ≈ 33, 20 ≈ 55, 40 ≈ 80, 60 ≈ 91, 100+ ≈ 98
+  const densityScore = Math.min(98, Math.round(100 * (1 - Math.exp(-eavsPerPage / 25))));
 
   return {
-    factsPerSentence: Math.round(factsPerSentence * 100) / 100,
+    eavsPerPage: Math.round(eavsPerPage * 100) / 100,
     uniqueEntitiesCount: uniqueEntities.size,
     uniqueAttributesCount: uniqueAttributes.size,
     totalEAVs: eavs.length,
-    densityScore: Math.min(100, Math.round(densityScore))
+    densityScore,
   };
 }
 
@@ -655,6 +659,53 @@ export function identifyContentGaps(
   }
 
   // Sort by priority then frequency
+  const priorityOrder = { high: 0, medium: 1, low: 2 };
+  gaps.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority] || b.frequency - a.frequency);
+
+  return gaps;
+}
+
+/**
+ * When no own content or strategic EAVs exist, ALL competitor attributes are gaps.
+ * Groups by entity:attribute and assigns priority based on frequency and category.
+ */
+function generateAllGapsFromCompetitors(competitorEAVs: CompetitorEAV[]): ContentGap[] {
+  const attributeMap = new Map<string, CompetitorEAV[]>();
+
+  for (const eav of competitorEAVs) {
+    const key = `${eav.entity.toLowerCase()}:${eav.attribute.toLowerCase()}`;
+    if (!attributeMap.has(key)) {
+      attributeMap.set(key, []);
+    }
+    attributeMap.get(key)!.push(eav);
+  }
+
+  const gaps: ContentGap[] = [];
+
+  for (const [key, eavs] of attributeMap) {
+    const [entity, attribute] = key.split(':');
+    const sources = [...new Set(eavs.map(e => e.source))];
+    const frequency = sources.length;
+    const category = eavs[0]?.category || 'COMMON';
+
+    let priority: 'high' | 'medium' | 'low';
+    if (category === 'ROOT' || frequency >= 3) {
+      priority = 'high';
+    } else if (category === 'UNIQUE' || frequency >= 2) {
+      priority = 'medium';
+    } else {
+      priority = 'low';
+    }
+
+    gaps.push({
+      missingAttribute: `${entity} - ${attribute}`,
+      foundInCompetitors: sources,
+      frequency,
+      priority,
+      suggestedContent: eavs[0]?.value,
+    });
+  }
+
   const priorityOrder = { high: 0, medium: 1, low: 2 };
   gaps.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority] || b.frequency - a.frequency);
 
@@ -784,7 +835,7 @@ export function generateRecommendations(
         type: 'density_improvement',
         priority: 'high',
         title: 'Increase Semantic Density',
-        description: `Your content density score (${own.densityScore}) is below competitor average (${avg.densityScore}). This means competitors pack more facts per sentence about "${ce}".`,
+        description: `Your content density score (${own.densityScore}) is below competitor average (${avg.densityScore}). Competitors publish more EAV attributes per page about "${ce}".`,
         affectedQueries: [],
         estimatedImpact: 'High - Higher fact density reduces Cost of Retrieval for search engines',
         suggestedAction: 'Add more specific EAV triples: prices, specifications, measurements, certifications, and process details.'
@@ -794,10 +845,10 @@ export function generateRecommendations(
         type: 'density_improvement',
         priority: 'medium',
         title: 'Target Competitor Semantic Density',
-        description: `Top competitors average ${avg.totalEAVs} EAV triples with ${avg.factsPerSentence} facts per sentence. Use this as your content benchmark.`,
+        description: `Top competitors average ${avg.totalEAVs} EAV triples with ${avg.eavsPerPage} EAVs per page. Use this as your content benchmark.`,
         affectedQueries: [],
         estimatedImpact: 'Medium - Matching competitor density establishes baseline',
-        suggestedAction: `Aim for at least ${avg.totalEAVs} distinct facts in your content with ~${avg.factsPerSentence} facts per sentence.`
+        suggestedAction: `Aim for at least ${avg.totalEAVs} distinct facts in your content with ~${avg.eavsPerPage} EAVs per page.`
       });
     }
 
@@ -1256,10 +1307,7 @@ export async function runQueryNetworkAudit(
     }
 
     // Calculate information density
-    const competitorAvgDensity = calculateInformationDensity(
-      '', // Content not needed for average
-      allCompetitorEAVs
-    );
+    const competitorAvgDensity = calculateInformationDensity(allCompetitorEAVs);
 
     // Find top competitor by EAV count
     const eavsByUrl = new Map<string, CompetitorEAV[]>();
@@ -1280,14 +1328,30 @@ export async function runQueryNetworkAudit(
     }
 
     const topCompetitorDensity = calculateInformationDensity(
-      '',
       eavsByUrl.get(topCompetitorUrl) || []
     );
 
-    // Identify content gaps (semantic matching + user's strategic EAVs)
-    const contentGaps = ownEAVs
-      ? identifyContentGaps(ownEAVs, allCompetitorEAVs, config.existingEavs)
-      : [];
+    // Identify content gaps with three-tier fallback:
+    // 1. Own EAVs exist → normal gap detection
+    // 2. Own EAVs empty but user has strategic EAVs → compare strategic EAVs vs competitors
+    // 3. Neither → ALL competitor attributes become gaps
+    let contentGaps;
+    if (ownEAVs && ownEAVs.length > 0) {
+      contentGaps = identifyContentGaps(ownEAVs, allCompetitorEAVs, config.existingEavs);
+    } else if (config.existingEavs && config.existingEavs.length > 0) {
+      // Convert strategic EAVs to CompetitorEAV format for comparison
+      const strategicAsOwn: CompetitorEAV[] = config.existingEavs.map(eav => ({
+        entity: eav.subject,
+        attribute: eav.predicate,
+        value: eav.object,
+        source: 'strategic_eavs',
+        confidence: 1.0,
+        category: (eav.category || 'COMMON') as AttributeCategory,
+      }));
+      contentGaps = identifyContentGaps(strategicAsOwn, allCompetitorEAVs);
+    } else {
+      contentGaps = generateAllGapsFromCompetitors(allCompetitorEAVs);
+    }
 
     // Step 5: Entity validation (if configured)
     updateProgress('validating_entities', 'Validating entity authority...', 4, totalSteps);
@@ -1315,11 +1379,23 @@ export async function runQueryNetworkAudit(
       const pages = config.siteInventory;
       const wordCounts = pages.filter(p => p.word_count).map(p => p.word_count!);
       const avgWordCount = wordCounts.length > 0 ? Math.round(wordCounts.reduce((s, w) => s + w, 0) / wordCounts.length) : 0;
-      const pagesWithH1 = pages.filter(p => p.page_h1 || (p.headings && p.headings.some(h => h.level === 1))).length;
-      // Extract topics from H1/titles
+      // Count pages with H1: from page_h1, headings array, or title as soft indicator
+      const pagesWithH1 = pages.filter(p =>
+        p.page_h1 || (p.headings && p.headings.some((h: any) => h.level === 1)) || p.title
+      ).length;
+      const h1DataAvailable = pages.some(p => p.page_h1 || (p.headings && p.headings.length > 0));
+
+      // Extract topics from H1/titles/URL slugs (URL slug as final fallback)
+      const extractTopicFromUrl = (url: string): string => {
+        try {
+          const pathname = new URL(url).pathname;
+          const slug = pathname.split('/').filter(Boolean).pop() || '';
+          return slug.replace(/[-_]/g, ' ').replace(/\.[^.]+$/, '').trim();
+        } catch { return ''; }
+      };
       const topicsCovered = [...new Set(
         pages
-          .map(p => p.page_h1 || p.title || '')
+          .map(p => p.page_h1 || p.title || extractTopicFromUrl(p.url) || '')
           .filter(Boolean)
       )];
       siteInventorySummary = {
@@ -1328,6 +1404,7 @@ export async function runQueryNetworkAudit(
         avgWordCount,
         pagesWithH1,
         topicsCovered,
+        h1DataAvailable,
       };
     }
 
@@ -1341,7 +1418,7 @@ export async function runQueryNetworkAudit(
       contentGaps,
       informationDensity: {
         own: ownEAVs
-          ? calculateInformationDensity('', ownEAVs)
+          ? calculateInformationDensity(ownEAVs)
           : undefined,
         competitorAverage: competitorAvgDensity,
         topCompetitor: topCompetitorDensity
