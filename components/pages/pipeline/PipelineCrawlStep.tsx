@@ -7,6 +7,7 @@ import { researchBusiness, BusinessResearchResult } from '../../../services/ai/b
 import { getSupabaseClient } from '../../../services/supabaseClient';
 import BusinessInfoForm from '../../BusinessInfoForm';
 import { BusinessInfo, WEBSITE_TYPE_CONFIG } from '../../../types';
+import { batchAnalyzePages } from '../../../services/structuralAnalysisService';
 
 // ──── Discovery Event Types ────
 
@@ -320,6 +321,8 @@ const PipelineCrawlStep: React.FC = () => {
 
   // Ref to prevent double-runs
   const discoveryRunningRef = useRef(false);
+  // Ref to store discovered URLs for post-crawl structural analysis
+  const discoveredUrlsRef = useRef<string[]>([]);
 
   // ──── Event helper ────
   const addEvent = useCallback((message: string, type: DiscoveryEvent['type'], detail?: string) => {
@@ -423,6 +426,9 @@ const PipelineCrawlStep: React.FC = () => {
         );
         addEvent('Page inventory saved', 'complete');
 
+        // Store URLs for post-crawl structural analysis
+        discoveredUrlsRef.current = discoveredUrls;
+
         return crawledPages;
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Crawl failed';
@@ -505,6 +511,41 @@ const PipelineCrawlStep: React.FC = () => {
     setDiscoveryPhase('done');
     setStepStatus('crawl', 'in_progress');
     discoveryRunningRef.current = false;
+
+    // ── Post-discovery: structural analysis (non-blocking background) ──
+    // Analyze a sample of discovered pages for HTML structure.
+    // Uses the edge function which fetches HTML from URLs directly.
+    // Results are cached in site_analysis_pages.structural_analysis.
+    const projectId = state.activeProjectId;
+    const discoveredUrls = discoveredUrlsRef.current;
+    if (projectId && discoveredUrls.length > 0) {
+      // Sample up to 10 pages for structural analysis to avoid overwhelming the edge function
+      const MAX_STRUCTURAL_SAMPLE = 10;
+      const sampleUrls = discoveredUrls.slice(0, MAX_STRUCTURAL_SAMPLE);
+
+      // Derive central entity and language from research data if available
+      const centralEntity = researchData?.suggestions?.seedKeyword || '';
+      const language = researchData?.suggestions?.language || state.businessInfo.language || 'en';
+
+      // Fire and forget — do not block the user flow
+      batchAnalyzePages(
+        projectId,
+        sampleUrls.map(u => ({ url: u })),
+        centralEntity,
+        language,
+        (completed, total) => {
+          if (completed === 1) {
+            addEvent('Analyzing HTML structure...', 'analyzing', `${total} pages sampled`);
+          }
+          if (completed === total) {
+            addEvent(`Structural analysis complete (${completed} pages)`, 'complete');
+          }
+        }
+      ).catch((err) => {
+        console.warn('[PipelineCrawlStep] Background structural analysis failed:', err);
+        // Non-fatal — structural analysis is optional
+      });
+    }
   }, [url, state.activeProjectId, state.businessInfo, dispatch, setStepStatus, addEvent, addProfileField]);
 
   // ──── Save business context ────

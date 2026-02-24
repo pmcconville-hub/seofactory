@@ -496,6 +496,9 @@ export const mergeExtractionData = (extracted: ExtractedPageData): {
 
   // Images (merged)
   images: { src: string; alt: string; width?: number; height?: number }[];
+
+  // Raw HTML for structural analysis (from Apify technical extraction)
+  rawHtml?: string;
 } => {
   const { technical, semantic, url, contentHash } = extracted;
 
@@ -574,6 +577,9 @@ export const mergeExtractionData = (extracted: ExtractedPageData): {
 
     // Images
     images,
+
+    // Raw HTML for downstream structural analysis
+    rawHtml: technical?.html || undefined,
   };
 };
 
