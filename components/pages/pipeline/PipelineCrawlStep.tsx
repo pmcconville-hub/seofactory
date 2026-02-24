@@ -444,6 +444,7 @@ const PipelineCrawlStep: React.FC = () => {
         const fieldMap: Array<{ key: keyof BusinessInfo; label: string }> = [
           { key: 'seedKeyword', label: 'Main Topic' },
           { key: 'industry', label: 'Industry' },
+          { key: 'websiteType', label: 'Website Type' },
           { key: 'language', label: 'Language' },
           { key: 'region', label: 'Region' },
           { key: 'targetMarket', label: 'Target Market' },
@@ -466,6 +467,9 @@ const PipelineCrawlStep: React.FC = () => {
               addEvent(`Detected language: ${val}`, 'detected');
             } else if (key === 'industry') {
               addEvent(`Detected industry: ${val}`, 'detected');
+            } else if (key === 'websiteType') {
+              const typeLabel = WEBSITE_TYPE_CONFIG[val as keyof typeof WEBSITE_TYPE_CONFIG]?.label || val;
+              addEvent(`Detected website type: ${typeLabel}`, 'detected');
             } else if (key === 'seedKeyword') {
               addEvent(`Main topic: ${val}`, 'detected');
             } else if (key === 'region') {
@@ -690,7 +694,7 @@ const PipelineCrawlStep: React.FC = () => {
               pagesFound={pagesFound}
               language={researchResult?.suggestions?.language || existingBizInfo?.language}
               industry={researchResult?.suggestions?.industry || existingBizInfo?.industry}
-              websiteType={existingBizInfo?.websiteType}
+              websiteType={researchResult?.suggestions?.websiteType || existingBizInfo?.websiteType}
             />
           )}
 

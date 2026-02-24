@@ -213,7 +213,7 @@ Deno.serve(async (req: Request) => {
           startDate: start,
           endDate: end,
           dimensions: dimensions || ['query'],
-          rowLimit: rowLimit || 1000,
+          rowLimit: Math.min(rowLimit || 5000, 25000),
           dimensionFilterGroups: [],
         }),
       }

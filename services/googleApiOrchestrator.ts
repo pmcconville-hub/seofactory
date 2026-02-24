@@ -62,6 +62,7 @@ export interface OrchestratorConfig {
     page_h1?: string;
     meta_description?: string;
     headings?: Array<{ level: number; text: string } | string>;
+    content_markdown?: string;
   }>;
   /** Resolved Central Entity from pillars, falls back to seedKeyword */
   centralEntity?: string;
@@ -103,7 +104,7 @@ export async function fetchAllGoogleApiData(config: OrchestratorConfig): Promise
     return enrichment;
   }
 
-  emit(onProgress, 'analyzing', `Fetching data from ${availableServices.length} Google API service${availableServices.length > 1 ? 's' : ''}`, availableServices.join(', '));
+  emit(onProgress, 'analyzing', `Enriching analysis with ${availableServices.length} data source${availableServices.length > 1 ? 's' : ''} (running in parallel)`, availableServices.join(', '));
 
   // Build parallel promises
   const promises: Array<Promise<void>> = [];
@@ -111,7 +112,7 @@ export async function fetchAllGoogleApiData(config: OrchestratorConfig): Promise
   // 1. URL Inspection
   if (hasUrlInspection && siteInventory?.length) {
     promises.push((async () => {
-      emit(onProgress, 'inspection', 'Inspecting URL index status...', `${Math.min(siteInventory.length, 50)} URLs`);
+      emit(onProgress, 'inspection', 'Checking which pages Google has indexed...', `${Math.min(siteInventory.length, 50)} URLs`);
       try {
         const urls = siteInventory.slice(0, 50).map(p => p.url);
         const results = await inspectUrls(urls, siteUrl, accountId!, businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
@@ -127,12 +128,18 @@ export async function fetchAllGoogleApiData(config: OrchestratorConfig): Promise
   // 2. Entity Salience (Cloud NLP)
   if (hasCloudNlpKey && siteInventory?.length) {
     promises.push((async () => {
-      emit(onProgress, 'nlp', 'Analyzing entity salience via Cloud NLP...', undefined);
+      emit(onProgress, 'nlp', 'Measuring how prominently your main topic appears in your content...', undefined);
       try {
-        // Use page titles, H1s, meta descriptions, and headings for richer content signal
-        const sampleText = siteInventory
-          .slice(0, 20)
+        // Use actual page content (content_markdown) when available, fall back to metadata
+        const samplePages = siteInventory.slice(0, 20);
+        const sampleText = samplePages
           .map(p => {
+            // Prefer full content_markdown from crawl data
+            if (p.content_markdown && p.content_markdown.length > 50) {
+              // Truncate each page to ~2000 chars to stay within API limits
+              return p.content_markdown.slice(0, 2000);
+            }
+            // Fallback: assemble from metadata
             const parts: string[] = [p.title, p.page_h1, p.meta_description].filter(Boolean) as string[];
             const headings = p.headings;
             if (Array.isArray(headings)) {
@@ -141,10 +148,10 @@ export async function fetchAllGoogleApiData(config: OrchestratorConfig): Promise
             return parts.join('. ');
           })
           .filter(Boolean)
-          .join('. ');
+          .join('\n\n');
 
         if (sampleText.length < 50) {
-          emit(onProgress, 'warning', 'Insufficient content for entity salience analysis');
+          emit(onProgress, 'warning', 'No crawled page content available — run the Discover step first to enable entity salience analysis');
           return;
         }
 
@@ -182,7 +189,7 @@ export async function fetchAllGoogleApiData(config: OrchestratorConfig): Promise
   // 3. Google Trends
   if (hasSerpApiKey) {
     promises.push((async () => {
-      emit(onProgress, 'trends', 'Fetching Google Trends data...', undefined);
+      emit(onProgress, 'trends', 'Checking seasonal search interest patterns...', undefined);
       try {
         const trendsQuery = config.centralEntity || businessInfo.seedKeyword || '';
         const data = await getTrendsData(
@@ -213,7 +220,7 @@ export async function fetchAllGoogleApiData(config: OrchestratorConfig): Promise
   // 4. GA4 Analytics
   if (hasGa4 && supabase) {
     promises.push((async () => {
-      emit(onProgress, 'ga4', 'Loading GA4 analytics data...', undefined);
+      emit(onProgress, 'ga4', 'Loading page traffic and engagement data from GA4...', undefined);
       try {
         // Find the GA4 property ID — look for linked ga4 property
         const { data: properties } = await supabase
@@ -240,7 +247,7 @@ export async function fetchAllGoogleApiData(config: OrchestratorConfig): Promise
   // 5. Knowledge Graph
   if (hasGoogleApiKey) {
     promises.push((async () => {
-      emit(onProgress, 'kg', 'Searching Google Knowledge Graph...', undefined);
+      emit(onProgress, 'kg', 'Checking if Google recognizes your main topic as a known entity...', undefined);
       try {
         const apiKey = businessInfo.googleKnowledgeGraphApiKey || businessInfo.googleApiKey || '';
         const kgSearchTerm = config.centralEntity || businessInfo.seedKeyword || '';

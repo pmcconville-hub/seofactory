@@ -1110,7 +1110,7 @@ function GapAnalysisContent({
           <h3 className="text-sm font-semibold text-gray-200 mb-3">Your Framework Context</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-xs">
             <div>
-              <span className="text-gray-500">Central Entity: </span>
+              <span className="text-gray-500">{frameworkContext.sourceContext ? 'Central Entity' : 'Main Topic'}: </span>
               <span className="text-gray-200 font-medium">{frameworkContext.centralEntity}</span>
             </div>
             {frameworkContext.sourceContext && (
@@ -1145,8 +1145,8 @@ function GapAnalysisContent({
             )}
           </div>
           {!frameworkContext.sourceContext && !frameworkContext.centralSearchIntent && (
-            <p className="text-xs text-amber-400/80 mt-3">
-              Define Source Context and Central Search Intent in your SEO Pillars for more targeted query generation and gap detection.
+            <p className="text-xs text-gray-500 mt-3">
+              The Strategy step (next) will refine this into your Central Entity, Source Context, and Central Search Intent for deeper analysis.
             </p>
           )}
         </div>
@@ -1752,8 +1752,8 @@ const PipelineGapStep: React.FC = () => {
     window.open(authUrl, 'gsc-oauth', 'width=600,height=700,left=200,top=100');
   }, [state.activeProjectId]);
 
-  const handleLoadGscData = useCallback(async () => {
-    if (!gscState.propertyUrl) return;
+  const handleLoadGscData = useCallback(async (): Promise<GscRow[] | null> => {
+    if (!gscState.propertyUrl) return null;
 
     setGscState(prev => ({ ...prev, isLoading: true }));
 
@@ -1782,7 +1782,7 @@ const PipelineGapStep: React.FC = () => {
           startDate: new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0],
           endDate: new Date().toISOString().split('T')[0],
           dimensions: ['query'],
-          rowLimit: 500,
+          rowLimit: 5000,
         },
       });
 
@@ -1795,7 +1795,7 @@ const PipelineGapStep: React.FC = () => {
         const detail = data.detail ? ` (${data.detail})` : '';
         setGscError(`${data.error}${detail}`);
         setGscState(prev => ({ ...prev, isLoading: false }));
-        return;
+        return null;
       }
 
       if (fnError) throw fnError;
@@ -1812,12 +1812,14 @@ const PipelineGapStep: React.FC = () => {
       setGscNeedsRelink(false);
       setGscData(rows);
       setGscState(prev => ({ ...prev, queryCount: rows.length, isLoading: false }));
+      return rows;
     } catch (err: any) {
       console.warn('[GapStep] Failed to load GSC data:', err);
       // Try to parse structured error from edge function
       const message = err?.message || 'Failed to load GSC data';
       setGscError(message);
       setGscState(prev => ({ ...prev, isLoading: false }));
+      return null;
     }
   }, [gscState.propertyUrl, state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey, state.activeProjectId]);
 
@@ -1850,7 +1852,7 @@ const PipelineGapStep: React.FC = () => {
     const centralEntity = resolvedCentralEntity;
 
     if (!centralEntity) {
-      setError('Central Entity is required. Define it in the Strategy step (SEO Pillars) before running gap analysis.');
+      setError('A main topic is required. Go back to the Discover step and enter your seed keyword, or define a Central Entity in the Strategy step.');
       return;
     }
 
@@ -1861,9 +1863,24 @@ const PipelineGapStep: React.FC = () => {
     setStepStatus('gap_analysis', 'in_progress');
 
     // Initial narrative events
-    addEvent('scanning', 'Starting comprehensive gap analysis...', `Seed: "${centralEntity}"`);
-    if (gscData && gscData.length > 0) {
-      addEvent('gsc', `Loading ${gscData.length} GSC queries for enrichment`, `${gscData.reduce((s, r) => s + r.impressions, 0).toLocaleString()} total impressions`);
+    addEvent('scanning', 'Starting comprehensive gap analysis...', `Main topic: "${centralEntity}"`);
+
+    // Auto-load GSC data if connected but not yet loaded
+    let effectiveGscData = gscData;
+    if (gscState.isConnected && gscState.propertyUrl && (!gscData || gscData.length === 0)) {
+      addEvent('gsc', 'Loading your search queries from Google Search Console...');
+      try {
+        const loaded = await handleLoadGscData();
+        if (loaded && loaded.length > 0) {
+          effectiveGscData = loaded;
+        }
+      } catch {
+        addEvent('warning', 'Could not load GSC data — continuing without it');
+      }
+    }
+
+    if (effectiveGscData && effectiveGscData.length > 0) {
+      addEvent('gsc', `Using ${effectiveGscData.length} search queries from GSC`, `${effectiveGscData.reduce((s, r) => s + r.impressions, 0).toLocaleString()} total impressions`);
     }
 
     // Load site inventory: try analysis_state first, then Supabase site_inventory table
@@ -1895,7 +1912,7 @@ const PipelineGapStep: React.FC = () => {
         const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
         const { data: analysisPages } = await supabase
           .from('site_analysis_pages')
-          .select('url, h1, headings, title')
+          .select('url, h1, headings, title, content_markdown')
           .eq('project_id', state.activeProjectId)
           .limit(200);
         if (analysisPages && analysisPages.length > 0) {
@@ -1913,6 +1930,9 @@ const PipelineGapStep: React.FC = () => {
               }
               if (!page.title && analysisPage.title) {
                 page.title = analysisPage.title;
+              }
+              if (!page.content_markdown && analysisPage.content_markdown) {
+                page.content_markdown = analysisPage.content_markdown;
               }
             }
           }
@@ -1977,7 +1997,7 @@ const PipelineGapStep: React.FC = () => {
         object: eav.object?.value || '',
         category: eav.predicate?.category,
       })).filter((e: any) => e.subject && e.predicate),
-      gscData: gscData || undefined,
+      gscData: effectiveGscData || undefined,
       siteInventory: siteInventory.length > 0 ? siteInventory : undefined,
       urlInspectionResults: googleEnrichment.urlInspection?.results,
       entitySalienceResults: googleEnrichment.entitySalience?.entities,

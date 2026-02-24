@@ -354,6 +354,7 @@ const callPerplexityForResearch = async (
   const schema = {
     seedKeyword: String,
     industry: String,
+    websiteType: String,
     valueProp: String,
     audience: String,
     language: String,

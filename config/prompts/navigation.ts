@@ -630,10 +630,31 @@ ${inputType === 'name' || inputType === 'description' || inputType === 'mixed' ?
 
 ${jsonResponseInstruction}
 
+WEBSITE TYPE DETECTION:
+Classify the website into ONE of these types based on its content, services, and business model:
+- ECOMMERCE: Online stores selling products
+- SAAS: Software-as-a-service platforms
+- SERVICE_B2B: B2B service providers (consulting, agencies, contractors)
+- INFORMATIONAL: Educational/informational content sites
+- AFFILIATE_REVIEW: Affiliate or review sites
+- LEAD_GENERATION: Lead generation focused sites
+- REAL_ESTATE: Real estate agencies or property sites
+- MARKETPLACE: Multi-vendor marketplaces
+- RECRUITMENT: Job boards or recruitment agencies
+- HEALTHCARE: Healthcare providers or medical sites
+- EDUCATION: Educational institutions or e-learning
+- HOSPITALITY: Hotels, restaurants, tourism
+- EVENTS: Event management or venues
+- NEWS_MEDIA: News outlets or media publications
+- DIRECTORY: Business or service directories
+- COMMUNITY: Forums, communities, social platforms
+- NONPROFIT: Non-profit organizations or charities
+
 Return a JSON object with these fields:
 {
   "seedKeyword": "Main topic or primary keyword (e.g., 'contract management software', 'organic skincare')",
   "industry": "Business industry/vertical (e.g., 'SaaS', 'E-commerce', 'Healthcare')",
+  "websiteType": "One of the website type codes above (e.g., 'SERVICE_B2B', 'SAAS', 'ECOMMERCE')",
   "valueProp": "Unique value proposition - what makes this business special (2-3 sentences)",
   "audience": "Target audience description (e.g., 'Small business owners', 'Enterprise legal teams')",
   "language": "Language code (e.g., 'en', 'nl', 'de', 'es')",
