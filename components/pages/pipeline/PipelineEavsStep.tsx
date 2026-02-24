@@ -1,13 +1,13 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { usePipeline } from '../../../hooks/usePipeline';
 import { useAppState } from '../../../state/appState';
 import ApprovalGate from '../../pipeline/ApprovalGate';
 import {
   detectIndustryType,
-  getPredicateSuggestions,
-  generateEavTemplate,
   calculateIndustryCoverage,
+  generateEavsWithAI,
 } from '../../../services/ai/eavService';
+import type { EavGenerationContext } from '../../../services/ai/eavService';
 import type { SemanticTriple } from '../../../types';
 import { getSupabaseClient } from '../../../services/supabaseClient';
 
@@ -25,18 +25,33 @@ interface EavWithConfidence {
   confirmed: boolean;
 }
 
+const PENDING_MARKER = '\u{1F4CB}'; // 📋
+
+function isPendingValue(eav: Partial<SemanticTriple>): boolean {
+  const val = eav.object?.value;
+  return !val || (typeof val === 'string' && val.includes(PENDING_MARKER));
+}
+
 function getConfidence(eav: Partial<SemanticTriple>): ConfidenceLevel {
-  const hasValue = !!eav.object?.value;
+  if (isPendingValue(eav)) return 'low';
+  const source = (eav as any).source;
   const category = eav.predicate?.category ?? 'COMMON';
 
-  if (hasValue && (category === 'UNIQUE' || category === 'ROOT')) return 'high';
-  if (hasValue) return 'medium';
-  return 'low';
+  // AI-populated values with good categories get medium (need user review)
+  if (source === 'ai') {
+    if (category === 'UNIQUE' || category === 'ROOT') return 'medium';
+    return 'medium';
+  }
+
+  // User-confirmed or crawled values
+  if (category === 'UNIQUE' || category === 'ROOT') return 'high';
+  return 'medium';
 }
 
 function getConfidenceSource(eav: Partial<SemanticTriple>): string {
-  const hasValue = !!eav.object?.value;
-  if (!hasValue) return 'Needs value — fill in from your business data';
+  if (isPendingValue(eav)) return 'Needs value — fill in from your business data';
+  const source = (eav as any).source;
+  if (source === 'ai') return 'AI-suggested — review and confirm';
   const category = eav.predicate?.category ?? 'COMMON';
   if (category === 'UNIQUE') return 'Core business differentiator';
   if (category === 'ROOT') return 'Primary business attribute';
@@ -576,6 +591,12 @@ const PipelineEavsStep: React.FC = () => {
   } = usePipeline();
   const { state, dispatch } = useAppState();
 
+  // Merge per-map businessInfo overrides with global state (per-map takes precedence)
+  const effectiveBusinessInfo = useMemo(() => {
+    const mapBI = activeMap?.business_info;
+    return mapBI ? { ...state.businessInfo, ...mapBI } : state.businessInfo;
+  }, [state.businessInfo, activeMap?.business_info]);
+
   const stepState = getStepState('eavs');
   const gate = stepState?.gate;
 
@@ -588,6 +609,7 @@ const PipelineEavsStep: React.FC = () => {
   const [confirmedIds, setConfirmedIds] = useState<Set<string>>(new Set());
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [dismissedGaps, setDismissedGaps] = useState<Set<string>>(new Set());
+  const [autoGenerateAttempted, setAutoGenerateAttempted] = useState(false);
 
   // J1: Adaptive display — summary when data exists, editor when adjusting
   const hasEavData = existingEavs.length > 0;
@@ -600,6 +622,7 @@ const PipelineEavsStep: React.FC = () => {
   const hasCrawlData = !!(activeMap?.analysis_state as any)?.crawl || !!(activeMap?.analysis_state as any)?.discovery;
   const getEavDataSource = (eav: Partial<SemanticTriple>, id: string): DataSource => {
     if (id.startsWith('eav-gap-')) return 'competitor';
+    if ((eav as any).source === 'ai') return 'ai';
     if (hasEavData && hasCrawlData) return 'website';
     return 'ai';
   };
@@ -789,7 +812,6 @@ const PipelineEavsStep: React.FC = () => {
   }, []);
 
   const handleGenerateEavs = async () => {
-    const businessInfo = state.businessInfo;
     const pillars = activeMap?.pillars;
 
     if (!pillars?.centralEntity) {
@@ -804,33 +826,37 @@ const PipelineEavsStep: React.FC = () => {
     setDismissedIds(new Set());
 
     try {
-      const industryType = detectIndustryType(businessInfo);
-      const suggestions = getPredicateSuggestions(industryType);
-      const highAndMedium = suggestions.filter(s => s.priority === 'high' || s.priority === 'medium');
-      const templates = highAndMedium.map(s => generateEavTemplate(s, pillars.centralEntity));
+      // Build context from pillars + gap analysis
+      const gapAnalysis = (activeMap?.analysis_state as any)?.gap_analysis;
+      const ctx: EavGenerationContext = {
+        pillars: {
+          centralEntity: pillars.centralEntity,
+          sourceContext: pillars.sourceContext,
+          centralSearchIntent: pillars.centralSearchIntent,
+          csiPredicates: pillars.csiPredicates,
+          scPriorities: pillars.scPriorities,
+          contentAreas: pillars.contentAreas,
+        },
+        competitorEAVs: gapAnalysis?.competitorEAVs,
+        contentGaps: gapAnalysis?.contentGaps,
+      };
 
-      setGeneratedEavs(templates);
+      const result = await generateEavsWithAI(effectiveBusinessInfo, ctx, dispatch);
 
-      // Persist if no existing EAVs
-      if (state.activeMapId && existingEavs.length === 0) {
-        const partialTriples = templates.map((t, i) => ({
-          id: `eav-${i}`,
-          ...t,
-          subject: t.subject ?? { label: pillars.centralEntity, type: 'Entity' as const },
-          predicate: t.predicate ?? { relation: '', type: 'Property' as const, category: 'COMMON' as const },
-          object: t.object ?? { value: '', type: 'Value' as const },
-        })) as SemanticTriple[];
+      setGeneratedEavs(result.eavs);
 
+      // Persist to state + Supabase
+      if (state.activeMapId) {
         dispatch({
           type: 'UPDATE_MAP_DATA',
-          payload: { mapId: state.activeMapId, data: { eavs: partialTriples } },
+          payload: { mapId: state.activeMapId, data: { eavs: result.eavs } },
         });
 
         try {
-          const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+          const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
           await supabase
             .from('topical_maps')
-            .update({ eavs: partialTriples } as any)
+            .update({ eavs: result.eavs } as any)
             .eq('id', state.activeMapId);
         } catch (err) {
           console.warn('[EAVs] Supabase save failed:', err);
@@ -862,7 +888,7 @@ const PipelineEavsStep: React.FC = () => {
     });
 
     try {
-      const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+      const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
       await supabase
         .from('topical_maps')
         .update({ eavs: updatedEavs } as any)
@@ -872,23 +898,44 @@ const PipelineEavsStep: React.FC = () => {
     }
 
     setStepStatus('eavs', 'pending_approval');
-  }, [rawEavs, dismissedIds, state.activeMapId, state.businessInfo, dispatch, setStepStatus]);
+  }, [rawEavs, dismissedIds, state.activeMapId, effectiveBusinessInfo, dispatch, setStepStatus]);
 
   // Industry coverage
-  const businessInfo = state.businessInfo;
-  const industryType = detectIndustryType(businessInfo);
+  const industryType = detectIndustryType(effectiveBusinessInfo);
   const coverage = rawEavs.length > 0
     ? calculateIndustryCoverage(rawEavs as SemanticTriple[], industryType)
     : null;
 
   const totalTriples = rawEavs.length - dismissedIds.size;
-  const withValues = rawEavs.filter(e => e.object?.value).length;
-  const needValue = totalTriples - withValues;
+  const withValues = rawEavs.filter(e => e.object?.value && !isPendingValue(e)).length;
+  const needValue = rawEavs.filter(e => isPendingValue(e)).length;
+  const needReview = withValues - confirmedCount;
+
+  // Layer grouping for UI
+  const ceEavs = sortedEavs.filter(e => {
+    const id = (e.eav as any).id || '';
+    return id.startsWith('eav-ce-') || (!id.startsWith('eav-sc-') && !id.startsWith('eav-gap-'));
+  });
+  const scEavs = sortedEavs.filter(e => {
+    const id = (e.eav as any).id || '';
+    return id.startsWith('eav-sc-');
+  });
 
   // Map real index from sorted items back to rawEavs index
   const getRealIndex = (item: EavWithConfidence): number => {
     return rawEavs.indexOf(item.eav);
   };
+
+  // Auto-trigger generation when step loads with pillars but no EAV data
+  const hasPillars = !!activeMap?.pillars?.centralEntity;
+  const handleGenerateRef = useRef(handleGenerateEavs);
+  handleGenerateRef.current = handleGenerateEavs;
+  useEffect(() => {
+    if (!hasEavData && hasPillars && !autoGenerateAttempted && !isGenerating) {
+      setAutoGenerateAttempted(true);
+      handleGenerateRef.current();
+    }
+  }, [hasEavData, hasPillars, autoGenerateAttempted, isGenerating]);
 
   return (
     <div className="space-y-8">
@@ -923,8 +970,8 @@ const PipelineEavsStep: React.FC = () => {
       <div className="grid grid-cols-4 gap-4">
         <MetricCard label="Total Facts" value={totalTriples} color={totalTriples > 0 ? 'blue' : 'gray'} />
         <MetricCard label="Confirmed" value={confirmedCount} color={confirmedCount > 0 ? 'green' : 'gray'} />
-        <MetricCard label="With Values" value={withValues} color={withValues > 0 ? 'green' : 'gray'} />
-        <MetricCard label="Need Input" value={needValue} color={needValue > 0 ? 'amber' : 'green'} />
+        <MetricCard label="Need Review" value={needReview > 0 ? needReview : 0} color={needReview > 0 ? 'amber' : 'green'} />
+        <MetricCard label="Need Input" value={needValue} color={needValue > 0 ? 'red' : 'green'} />
       </div>
 
       {/* Industry coverage */}
@@ -993,56 +1040,75 @@ const PipelineEavsStep: React.FC = () => {
             )}
           </div>
 
-          {/* EAV Rows */}
-          <div className="space-y-2">
-            {/* Confirmed rows */}
-            {sortedEavs.filter(e => e.confirmed).map((item) => {
-              const realIdx = getRealIndex(item);
-              return (
-                <EavRow
-                  key={(item.eav as any).id || `eav-${realIdx}`}
-                  item={item}
-                  onConfirm={() => handleConfirm(realIdx)}
-                  onUpdateValue={(v) => handleUpdateValue(realIdx, v)}
-                  onDismiss={() => handleDismiss(realIdx)}
+          {/* Contradiction rows (E6) */}
+          {contradictions.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 pt-2">
+                <div className="h-px flex-1 bg-amber-700/30" />
+                <span className="text-[10px] text-amber-400 font-medium uppercase tracking-wider">
+                  {contradictions.length} contradiction{contradictions.length > 1 ? 's' : ''} found
+                </span>
+                <div className="h-px flex-1 bg-amber-700/30" />
+              </div>
+              {contradictions.map((c) => (
+                <ContradictionRow
+                  key={`contradiction-${c.predicate}`}
+                  contradiction={c}
+                  onResolve={(idx) => handleResolveContradiction(c, idx)}
                 />
-              );
-            })}
+              ))}
+            </div>
+          )}
 
-            {/* Contradiction rows (E6) */}
-            {contradictions.length > 0 && (
-              <>
-                <div className="flex items-center gap-2 pt-2">
-                  <div className="h-px flex-1 bg-amber-700/30" />
-                  <span className="text-[10px] text-amber-400 font-medium uppercase tracking-wider">
-                    {contradictions.length} contradiction{contradictions.length > 1 ? 's' : ''} found
-                  </span>
-                  <div className="h-px flex-1 bg-amber-700/30" />
-                </div>
-                {contradictions.map((c) => (
-                  <ContradictionRow
-                    key={`contradiction-${c.predicate}`}
-                    contradiction={c}
-                    onResolve={(idx) => handleResolveContradiction(c, idx)}
+          {/* Layer 1: Central Entity Facts */}
+          {ceEavs.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="h-px flex-1 bg-blue-700/30" />
+                <span className="text-[10px] text-blue-400 font-medium uppercase tracking-wider">
+                  Central Entity Facts ({ceEavs.length})
+                </span>
+                <div className="h-px flex-1 bg-blue-700/30" />
+              </div>
+              {ceEavs.map((item) => {
+                const realIdx = getRealIndex(item);
+                return (
+                  <EavRow
+                    key={(item.eav as any).id || `eav-${realIdx}`}
+                    item={item}
+                    onConfirm={() => handleConfirm(realIdx)}
+                    onUpdateValue={(v) => handleUpdateValue(realIdx, v)}
+                    onDismiss={() => handleDismiss(realIdx)}
                   />
-                ))}
-              </>
-            )}
+                );
+              })}
+            </div>
+          )}
 
-            {/* Unconfirmed rows */}
-            {sortedEavs.filter(e => !e.confirmed).map((item) => {
-              const realIdx = getRealIndex(item);
-              return (
-                <EavRow
-                  key={(item.eav as any).id || `eav-${realIdx}`}
-                  item={item}
-                  onConfirm={() => handleConfirm(realIdx)}
-                  onUpdateValue={(v) => handleUpdateValue(realIdx, v)}
-                  onDismiss={() => handleDismiss(realIdx)}
-                />
-              );
-            })}
-          </div>
+          {/* Layer 2: Business Facts (Source Context) */}
+          {scEavs.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="h-px flex-1 bg-purple-700/30" />
+                <span className="text-[10px] text-purple-400 font-medium uppercase tracking-wider">
+                  Business Facts ({scEavs.length})
+                </span>
+                <div className="h-px flex-1 bg-purple-700/30" />
+              </div>
+              {scEavs.map((item) => {
+                const realIdx = getRealIndex(item);
+                return (
+                  <EavRow
+                    key={(item.eav as any).id || `eav-${realIdx}`}
+                    item={item}
+                    onConfirm={() => handleConfirm(realIdx)}
+                    onUpdateValue={(v) => handleUpdateValue(realIdx, v)}
+                    onDismiss={() => handleDismiss(realIdx)}
+                  />
+                );
+              })}
+            </div>
+          )}
 
           {/* Competitor Gap Rows (E2+G2) */}
           {activeCompetitorGaps.length > 0 && (
@@ -1131,7 +1197,7 @@ const PipelineEavsStep: React.FC = () => {
           onToggleAutoApprove={toggleAutoApprove}
           summaryMetrics={[
             { label: 'Total Facts', value: totalTriples, color: totalTriples > 0 ? 'green' : 'gray' },
-            { label: 'Confirmed', value: confirmedCount, color: confirmedCount > 0 ? 'green' : 'amber' },
+            { label: 'With Values', value: withValues, color: withValues > 0 ? 'green' : 'gray' },
             { label: 'Need Input', value: needValue, color: needValue > 0 ? 'amber' : 'green' },
           ]}
         />

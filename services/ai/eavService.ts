@@ -354,6 +354,10 @@ export const getEavTraversal = (triples: SemanticTriple[]): EavTraversal => {
   return new EavTraversal(triples);
 };
 
+// Re-export AI-powered dual-layer EAV generation
+export { generateEavsWithAI } from './eavGeneration';
+export type { EavGenerationContext, EavGenerationResult } from './eavGeneration';
+
 export default {
   detectIndustryType,
   getPredicateSuggestions,
