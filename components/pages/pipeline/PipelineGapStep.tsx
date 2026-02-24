@@ -1912,7 +1912,7 @@ const PipelineGapStep: React.FC = () => {
         const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
         const { data: analysisPages } = await supabase
           .from('site_analysis_pages')
-          .select('url, h1, headings, title, content_markdown')
+          .select('url, h1, headings, title, content_markdown, structural_analysis')
           .eq('project_id', state.activeProjectId)
           .limit(200);
         if (analysisPages && analysisPages.length > 0) {
@@ -1933,6 +1933,9 @@ const PipelineGapStep: React.FC = () => {
               }
               if (!page.content_markdown && analysisPage.content_markdown) {
                 page.content_markdown = analysisPage.content_markdown;
+              }
+              if (analysisPage?.structural_analysis) {
+                (page as any).structural_analysis = analysisPage.structural_analysis;
               }
             }
           }

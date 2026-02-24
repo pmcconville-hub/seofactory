@@ -63,6 +63,7 @@ export interface OrchestratorConfig {
     meta_description?: string;
     headings?: Array<{ level: number; text: string } | string>;
     content_markdown?: string;
+    structural_analysis?: any;  // StructuralAnalysis from html-structure-analyzer
   }>;
   /** Resolved Central Entity from pillars, falls back to seedKeyword */
   centralEntity?: string;
@@ -180,6 +181,25 @@ export async function fetchAllGoogleApiData(config: OrchestratorConfig): Promise
           ? `salience: ${(prominence.salience * 100).toFixed(0)}% (rank #${prominence.rank}/${prominence.totalEntities})`
           : `${entities.length} entities found`;
         emit(onProgress, 'nlp', `Entity salience analysis complete`, salienceMsg);
+
+        // Add structural prominence reporting if available
+        const structuralPages = samplePages.filter(
+          (p: any) => p.structural_analysis?.entityProminence?.totalMentions > 0
+        );
+
+        if (structuralPages.length > 0) {
+          const avgHeadingRate = structuralPages.reduce(
+            (sum: number, p: any) => sum + (p.structural_analysis.entityProminence.headingMentionRate || 0),
+            0
+          ) / structuralPages.length;
+
+          const pagesWithCeInH1 = structuralPages.filter(
+            (p: any) => p.structural_analysis.entityProminence.inH1
+          ).length;
+
+          emit(onProgress, 'nlp', 'Structural entity prominence data available',
+            `CE in H1: ${pagesWithCeInH1}/${structuralPages.length} pages, heading mention rate: ${Math.round(avgHeadingRate * 100)}%`);
+        }
       } catch (e) {
         emit(onProgress, 'warning', 'Entity salience analysis failed', (e as Error).message);
       }
