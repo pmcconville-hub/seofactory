@@ -29,10 +29,11 @@ export class HtmlTechnicalPhase extends AuditPhase {
       const altIssues = this.checkAltText(html);
       findings.push(...altIssues);
 
-      // Rules 242, 243, 251, 252: HTML nesting checks
+      // Rules 242, 243, 251, 252, CoR-dom: HTML nesting checks
       totalChecks += 4;
       const nestingValidator = new HtmlNestingValidator();
-      const nestingIssues = nestingValidator.validate(html);
+      const sa = this.extractStructuralAnalysis(content);
+      const nestingIssues = nestingValidator.validate(html, sa);
       for (const issue of nestingIssues) {
         findings.push(this.createFinding({
           ruleId: issue.ruleId,
@@ -139,6 +140,11 @@ export class HtmlTechnicalPhase extends AuditPhase {
       return (content as Record<string, unknown>).html as string;
     }
     return null;
+  }
+
+  private extractStructuralAnalysis(content: unknown): import('../../../types').StructuralAnalysis | undefined {
+    if (!content || typeof content !== 'object') return undefined;
+    return (content as Record<string, unknown>).structuralAnalysis as import('../../../types').StructuralAnalysis | undefined;
   }
 
   /**

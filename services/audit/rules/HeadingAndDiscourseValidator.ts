@@ -8,6 +8,7 @@
  *   143 - Heading semantic progression (intro -> core -> details -> conclusion)
  *   147 - Heading parallelism (sibling headings should use same grammatical pattern)
  *   149 - Heading uniqueness across sections (no near-duplicate headings at same level)
+ *   252b - Thin section detection via heading tree (structural analysis)
  *
  * Discourse Rules:
  *   150 - Section transitions (each section should begin with a transitional sentence)
@@ -15,6 +16,8 @@
  *   152 - Conclusion signals (final section should contain conclusion markers)
  *   153 - Introduction-conclusion alignment (intro themes revisited in conclusion)
  */
+
+import type { StructuralAnalysis, HeadingNode } from '../../../types';
 
 export interface HeadingDiscourseIssue {
   ruleId: string;
@@ -32,6 +35,8 @@ export interface HeadingDiscourseInput {
   headings: Array<{ level: number; text: string }>;
   /** Optional: sections split by headings */
   sections?: string[];
+  /** Optional: structural analysis with heading tree for enhanced validation */
+  structuralAnalysis?: StructuralAnalysis;
 }
 
 const STOP_WORDS = new Set([
@@ -78,6 +83,11 @@ export class HeadingAndDiscourseValidator {
       this.checkHeadingSemanticProgression(input.headings, issues);   // Rule 143
       this.checkHeadingParallelism(input.headings, issues);           // Rule 147
       this.checkHeadingUniqueness(input.headings, issues);            // Rule 149
+    }
+
+    // Rule 252b: Thin section detection via structural analysis heading tree
+    if (input.structuralAnalysis?.headingTree) {
+      this.validateHeadingTree(input.structuralAnalysis.headingTree, issues);
     }
 
     // Discourse rules
@@ -406,6 +416,26 @@ export class HeadingAndDiscourseValidator {
         description: `Only ${matchedNouns.length} of ${introNouns.length} key themes from the introduction reappear in the conclusion (${Math.round(alignmentRatio * 100)}%). Aim for at least 30%.`,
         exampleFix: 'Revisit key themes from the introduction in your conclusion to create a cohesive narrative arc.',
       });
+    }
+  }
+
+  /**
+   * Rule 252b: Thin section detection using structural analysis heading tree.
+   * Flags sections with fewer than 30 words under H2+ headings.
+   */
+  private validateHeadingTree(tree: HeadingNode[], issues: HeadingDiscourseIssue[]): void {
+    for (const node of tree) {
+      if (node.wordCountBelow < 30 && node.level >= 2) {
+        issues.push({
+          ruleId: 'rule-252b',
+          severity: 'low',
+          title: `Thin section under "${node.text}"`,
+          description: `Only ${node.wordCountBelow} words under this H${node.level}. Consider expanding or merging with adjacent sections.`,
+        });
+      }
+      if (node.children.length > 0) {
+        this.validateHeadingTree(node.children, issues);
+      }
     }
   }
 

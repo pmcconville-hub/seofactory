@@ -11,11 +11,14 @@
  *      [role="complementary"], [role="banner"], [role="contentinfo"] for boilerplate.
  *   2. Heuristic fallback: when no semantic markers exist, treat the first and
  *      last 15% of text content as likely boilerplate.
+ *   3. When StructuralAnalysis is available, use pre-computed region data instead.
  *
  * Rules implemented:
  *   BP-1 - Low main-content ratio (< 40% of page text is unique content)
  *   BP-2 - No semantic landmark elements found (heuristic fallback used)
  */
+
+import type { StructuralAnalysis } from '../../../types';
 
 export interface BoilerplateIssue {
   ruleId: string;
@@ -89,7 +92,13 @@ export class BoilerplateDetector {
   /**
    * Run detection and return any audit issues found.
    */
-  validate(html: string): BoilerplateIssue[] {
+  validate(html: string, structuralAnalysis?: StructuralAnalysis): BoilerplateIssue[] {
+    // When structural analysis is available, use pre-computed regions data
+    if (structuralAnalysis?.regions) {
+      return this.validateWithStructural(structuralAnalysis);
+    }
+
+    // Fallback to regex-based detection
     const issues: BoilerplateIssue[] = [];
     const result = this.detect(html);
 
@@ -121,6 +130,45 @@ export class BoilerplateDetector {
           `Only ${Math.round(result.mainContentRatio * 100)}% of page text is main content. ` +
           'A ratio below 40% suggests excessive boilerplate (navigation, footers, sidebars) ' +
           'relative to unique content, which can dilute topical relevance signals.',
+        affectedElement: '<body>',
+        exampleFix:
+          'Reduce boilerplate text or increase unique main-content length. ' +
+          'Consider consolidating navigation and trimming footer content.',
+      });
+    }
+
+    return issues;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Structural analysis path (preferred when available)
+  // ---------------------------------------------------------------------------
+
+  private validateWithStructural(sa: StructuralAnalysis): BoilerplateIssue[] {
+    const issues: BoilerplateIssue[] = [];
+
+    if (!sa.regions.main.exists) {
+      issues.push({
+        ruleId: 'rule-bp-2',
+        severity: 'medium',
+        title: 'No semantic main content landmark',
+        description:
+          'Page lacks <main>, <article>, or role="main". Add semantic landmarks for better content extraction.',
+        affectedElement: '<body>',
+        exampleFix:
+          'Wrap primary content in <main> or <article> and navigation in <nav>. ' +
+          'Use <header> for site header and <footer> for site footer.',
+      });
+    }
+
+    if (sa.regions.main.percentage < 40) {
+      issues.push({
+        ruleId: 'rule-bp-1',
+        severity: 'high',
+        title: 'Low main-content ratio',
+        description:
+          `Main content is only ${sa.regions.main.percentage}% of page ` +
+          `(${sa.mainContentWordCount} words in main content). Target: >50%.`,
         affectedElement: '<body>',
         exampleFix:
           'Reduce boilerplate text or increase unique main-content length. ' +

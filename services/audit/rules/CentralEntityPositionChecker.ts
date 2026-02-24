@@ -6,12 +6,14 @@
  * Index (CSI) predicates.
  *
  * Rules implemented:
- *   rule-4  - CE must appear in the first 2 sentences
- *   rule-5  - CE should appear in the very first sentence
+ *   rule-4  - CE must appear in the first 2 sentences (or first 5% of main content via structural analysis)
+ *   rule-5  - CE should appear in the very first sentence (or H1 via structural analysis)
  *   rule-7  - Source Context attribute coverage (>= 50%)
  *   rule-8  - CS/AS classification signals (general + specific)
  *   rule-11 - CSI predicate coverage (>= 30%)
  */
+
+import type { StructuralAnalysis } from '../../../types';
 
 export interface CePositionIssue {
   ruleId: string;
@@ -32,37 +34,69 @@ export class CentralEntityPositionChecker {
     centralEntity: string;
     sourceContextAttributes?: string[];
     csiPredicates?: string[];
+    structuralAnalysis?: StructuralAnalysis;
   }): CePositionIssue[] {
     const issues: CePositionIssue[] = [];
     const sentences = this.splitSentences(content.text);
     const ce = content.centralEntity.toLowerCase();
 
-    // Rule 4: CE in first 2 sentences
-    const first2 = sentences.slice(0, 2).join(' ').toLowerCase();
-    if (!first2.includes(ce)) {
-      issues.push({
-        ruleId: 'rule-4',
-        severity: 'high',
-        title: 'CE not in first 2 sentences',
-        description:
-          `"${content.centralEntity}" does not appear in the first two sentences. ` +
-          'The Central Entity should be introduced early to establish topical focus for both readers and search engines.',
-        exampleFix: 'Mention the Central Entity within the first two sentences.',
-      });
-    }
+    const ep = content.structuralAnalysis?.entityProminence;
+    if (ep) {
+      // Enhanced Rule 4: CE position using structural analysis
+      if (ep.firstMentionPosition > 0.05) {
+        issues.push({
+          ruleId: 'rule-4',
+          severity: 'high',
+          title: 'CE not near start of main content',
+          description:
+            `"${content.centralEntity}" first appears at ${Math.round(ep.firstMentionPosition * 100)}% into main content. Target: within first 5%.`,
+          exampleFix: 'Move the Central Entity mention to the beginning of the main content area.',
+        });
+      }
 
-    // Rule 5: CE in first sentence (stricter)
-    const first1 = (sentences[0] || '').toLowerCase();
-    if (!first1.includes(ce)) {
-      issues.push({
-        ruleId: 'rule-5',
-        severity: 'medium',
-        title: 'CE not in first sentence',
-        description:
-          `"${content.centralEntity}" does not appear in the very first sentence. ` +
-          'Leading with the Central Entity signals immediate relevance.',
-        exampleFix: 'Start the article with a sentence containing the Central Entity.',
-      });
+      // Enhanced Rule 5: CE in H1
+      if (!ep.inH1) {
+        issues.push({
+          ruleId: 'rule-5',
+          severity: 'medium',
+          title: 'CE not in H1',
+          description:
+            `"${content.centralEntity}" is not in the page's H1 heading. The H1 is the strongest on-page relevance signal.`,
+          exampleFix: 'Include the Central Entity in the H1 heading.',
+        });
+      }
+
+      // Skip the text-based rules 4/5 since we have structural data
+    } else {
+      // Fallback: text-based rules 4 and 5
+
+      // Rule 4: CE in first 2 sentences
+      const first2 = sentences.slice(0, 2).join(' ').toLowerCase();
+      if (!first2.includes(ce)) {
+        issues.push({
+          ruleId: 'rule-4',
+          severity: 'high',
+          title: 'CE not in first 2 sentences',
+          description:
+            `"${content.centralEntity}" does not appear in the first two sentences. ` +
+            'The Central Entity should be introduced early to establish topical focus for both readers and search engines.',
+          exampleFix: 'Mention the Central Entity within the first two sentences.',
+        });
+      }
+
+      // Rule 5: CE in first sentence (stricter)
+      const first1 = (sentences[0] || '').toLowerCase();
+      if (!first1.includes(ce)) {
+        issues.push({
+          ruleId: 'rule-5',
+          severity: 'medium',
+          title: 'CE not in first sentence',
+          description:
+            `"${content.centralEntity}" does not appear in the very first sentence. ` +
+            'Leading with the Central Entity signals immediate relevance.',
+          exampleFix: 'Start the article with a sentence containing the Central Entity.',
+        });
+      }
     }
 
     // Rule 7: SC attribute priority — if source context attributes provided, check coverage

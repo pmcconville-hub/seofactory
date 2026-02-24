@@ -72,7 +72,8 @@ export class LinkStructurePhase extends AuditPhase {
     if (contentData?.html) {
       totalChecks += 3;
       const boilerplateDetector = new BoilerplateDetector();
-      const bpIssues = boilerplateDetector.validate(contentData.html);
+      const sa = this.extractStructuralAnalysis(content);
+      const bpIssues = boilerplateDetector.validate(contentData.html, sa);
       for (const issue of bpIssues) {
         findings.push(this.createFinding({
           ruleId: issue.ruleId,
@@ -104,5 +105,10 @@ export class LinkStructurePhase extends AuditPhase {
       };
     }
     return null;
+  }
+
+  private extractStructuralAnalysis(content: unknown): import('../../../types').StructuralAnalysis | undefined {
+    if (!content || typeof content !== 'object') return undefined;
+    return (content as Record<string, unknown>).structuralAnalysis as import('../../../types').StructuralAnalysis | undefined;
   }
 }

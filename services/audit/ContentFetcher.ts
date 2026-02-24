@@ -1,4 +1,5 @@
 import type { FetchedContent, FetchOptions } from './types';
+import type { StructuralAnalysis } from '../../types';
 
 export interface ContentFetcherConfig {
   jinaApiKey?: string;
@@ -53,6 +54,18 @@ export class ContentFetcher {
       }
     }
     throw lastError || new Error(`All providers failed for ${url}`);
+  }
+
+  /**
+   * Enrich a FetchedContent result with structural analysis data.
+   * Typically called after loading structural_analysis from site_analysis_pages.
+   */
+  enrichWithStructuralAnalysis(
+    content: FetchedContent,
+    structuralAnalysis: StructuralAnalysis | null | undefined
+  ): FetchedContent {
+    if (!structuralAnalysis) return content;
+    return { ...content, structuralAnalysis };
   }
 
   private async fetchWithProvider(

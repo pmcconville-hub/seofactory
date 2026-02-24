@@ -1,3 +1,5 @@
+import type { StructuralAnalysis } from '../../types';
+
 export type AuditPhaseName =
   | 'strategicFoundation'
   | 'eavSystem'
@@ -138,6 +140,8 @@ export interface FetchedContent {
   statusCode?: number;
   responseTimeMs?: number;
   httpHeaders?: Record<string, string>;
+  // Structural analysis (from html-structure-analyzer edge function)
+  structuralAnalysis?: StructuralAnalysis;
 }
 
 export interface FetchOptions {

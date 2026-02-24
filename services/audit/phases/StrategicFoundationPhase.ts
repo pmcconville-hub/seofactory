@@ -75,6 +75,7 @@ export class StrategicFoundationPhase extends AuditPhase {
         centralEntity: contentData.centralEntity,
         sourceContextAttributes: contentData.sourceContextAttributes,
         csiPredicates: contentData.csiPredicates,
+        structuralAnalysis: contentData.structuralAnalysis,
       });
       for (const issue of ceIssues) {
         findings.push(this.createFinding({
@@ -171,6 +172,7 @@ export class StrategicFoundationPhase extends AuditPhase {
     sourceContextAttributes?: string[];
     csiPredicates?: string[];
     entitySalienceResults?: Array<{ name: string; type: string; salience: number }>;
+    structuralAnalysis?: import('../../../types').StructuralAnalysis;
   } | null {
     if (!content) return null;
     if (typeof content === 'string') return { text: content };
@@ -185,6 +187,7 @@ export class StrategicFoundationPhase extends AuditPhase {
         sourceContextAttributes: c.sourceContextAttributes as string[] | undefined,
         csiPredicates: c.csiPredicates as string[] | undefined,
         entitySalienceResults: c.entitySalienceResults as Array<{ name: string; type: string; salience: number }> | undefined,
+        structuralAnalysis: c.structuralAnalysis as import('../../../types').StructuralAnalysis | undefined,
       };
     }
     return null;

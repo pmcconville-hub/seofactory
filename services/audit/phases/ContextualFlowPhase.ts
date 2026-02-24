@@ -83,6 +83,7 @@ export class ContextualFlowPhase extends AuditPhase {
       const discourseIssues = discourseValidator.validate({
         text: contentData.text,
         headings,
+        structuralAnalysis: contentData.structuralAnalysis,
       });
       for (const issue of discourseIssues) {
         findings.push(this.createFinding({
@@ -158,6 +159,7 @@ export class ContextualFlowPhase extends AuditPhase {
     keyAttributes?: string[];
     headings?: { level: number; text: string }[];
     relatedPages?: Array<{ url: string; topic: string; anchorText?: string }>;
+    structuralAnalysis?: import('../../../types').StructuralAnalysis;
   } | null {
     if (!content) return null;
     if (typeof content === 'string') return { text: content };
@@ -169,6 +171,7 @@ export class ContextualFlowPhase extends AuditPhase {
         keyAttributes: c.keyAttributes as string[] | undefined,
         headings: c.headings as { level: number; text: string }[] | undefined,
         relatedPages: c.relatedPages as Array<{ url: string; topic: string; anchorText?: string }> | undefined,
+        structuralAnalysis: c.structuralAnalysis as import('../../../types').StructuralAnalysis | undefined,
       };
     }
     return null;

@@ -9,7 +9,10 @@
  *   243 - Block-level elements must not be nested inside <p>
  *   251 - Only one <h1> per page
  *   252 - No heading-level skips (e.g. h1 -> h3 without h2)
+ *   CoR-dom - Low content-to-DOM ratio (structural analysis)
  */
+
+import type { StructuralAnalysis } from '../../../types';
 
 export interface NestingIssue {
   ruleId: string;
@@ -45,13 +48,30 @@ export class HtmlNestingValidator {
    * Run all nesting checks against the provided HTML string.
    * Returns an array of issues found (empty array = clean).
    */
-  validate(html: string): NestingIssue[] {
+  validate(html: string, structuralAnalysis?: StructuralAnalysis): NestingIssue[] {
     const issues: NestingIssue[] = [];
 
     this.checkFigureInP(html, issues);
     this.checkBlockInP(html, issues);
     this.checkMultipleH1(html, issues);
     this.checkHeadingSkip(html, issues);
+
+    // Rule CoR-dom: Low content-to-DOM ratio (when structural analysis available)
+    if (structuralAnalysis?.domMetrics) {
+      const dm = structuralAnalysis.domMetrics;
+      const contentRatio = dm.totalNodes > 0 ? dm.mainContentNodes / dm.totalNodes : 0;
+
+      if (contentRatio < 0.3 && dm.totalNodes > 500) {
+        issues.push({
+          ruleId: 'rule-CoR-dom',
+          severity: 'medium',
+          title: 'Low content-to-DOM ratio',
+          description:
+            `Only ${Math.round(contentRatio * 100)}% of DOM nodes (${dm.mainContentNodes}/${dm.totalNodes}) ` +
+            'are in main content. High overhead increases Cost of Retrieval.',
+        });
+      }
+    }
 
     return issues;
   }
