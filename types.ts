@@ -53,3 +53,4 @@ export * from './types/brandExtraction';
 export * from './types/catalog';
 export * from './types/wave';
 export * from './types/dialogue';
+export * from './types/actionPlan';

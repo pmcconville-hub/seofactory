@@ -14,6 +14,7 @@ import type { SemanticTriple } from './semantic';
 import type { EnrichedTopic, ContentBrief, SemanticAnalysisResult, ContextualCoverageMetrics, TopicalAuthorityScore, GscOpportunity } from './content';
 import type { ValidationResult, InternalLinkAuditResult } from './audit';
 import type { FoundationPage, NavigationStructure } from './navigation';
+import type { ActionPlan } from './actionPlan';
 
 // ============================================================================
 // APPLICATION STATE ENUMS
@@ -272,6 +273,7 @@ export interface TopicalMap {
   styleguide_data?: import('../services/styleguide-generator/types').BrandStyleguideData | null;
   pipeline_state?: import('../state/slices/pipelineSlice').PipelineState | null;
   dialogue_context?: import('./dialogue').DialogueContext;
+  action_plan?: ActionPlan | null;
 }
 
 /**

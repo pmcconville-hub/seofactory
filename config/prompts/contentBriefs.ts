@@ -37,7 +37,7 @@ ${jsonResponseInstruction}
 Respond with a JSON object containing "responseCode" and "reasoning".
 `;
 
-export const GENERATE_CONTENT_BRIEF_PROMPT = (info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, knowledgeGraph: KnowledgeGraph, responseCode: ResponseCode, marketPatterns?: MarketPatterns, eavs?: SemanticTriple[]): string => {
+export const GENERATE_CONTENT_BRIEF_PROMPT = (info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, knowledgeGraph: KnowledgeGraph, responseCode: ResponseCode, marketPatterns?: MarketPatterns, eavs?: SemanticTriple[], actionType?: string): string => {
     // Extract up to 30 topic-relevant nodes from knowledge graph (sorted by relevance to current topic)
     const kgContext = knowledgeGraph
         ? (() => {
@@ -79,6 +79,8 @@ export const GENERATE_CONTENT_BRIEF_PROMPT = (info: BusinessInfo, topic: Enriche
 
     const marketDataSection = getMarketDataPromptSection(marketPatterns);
 
+    const actionContextSection = getActionContextSection(actionType, topic.target_url);
+
     return `
 You are an expert Algorithmic Architect and Holistic SEO Strategist.
 Your goal is to generate a content brief that strictly minimizes the **Cost of Retrieval** for search engines.
@@ -86,6 +88,7 @@ You do not write generic outlines. You engineer data structures for information 
 
 ${languageInstruction}
 ${marketDataSection}
+${actionContextSection}
 
 **Target Topic:** "${topic.title}"
 **Description:** "${topic.description}"
@@ -284,6 +287,47 @@ ${shouldApplyMonetizationEnhancement(topic.topic_class) ? getMonetizationPromptE
 ${jsonResponseInstruction}
 `;
 };
+
+/**
+ * Returns an action context section for the brief prompt based on the action type.
+ * When optimizing or rewriting, the brief prompt should reflect different goals.
+ */
+export function getActionContextSection(actionType?: string, targetUrl?: string): string {
+  if (!actionType) return '';
+
+  switch (actionType) {
+    case 'OPTIMIZE':
+      return `
+**ACTION CONTEXT: OPTIMIZE EXISTING PAGE**
+${targetUrl ? `Target URL: ${targetUrl}` : ''}
+This brief is for OPTIMIZING an existing page, NOT creating from scratch.
+- Focus on identifying gaps in the existing content and proposing improvements
+- Preserve existing heading structure where it aligns with framework rules
+- Prioritize adding missing EAV coverage and semantic depth
+- Strengthen internal linking and contextual bridges
+- Add featured snippet optimization if missing
+`;
+    case 'REWRITE':
+      return `
+**ACTION CONTEXT: FULL REWRITE**
+${targetUrl ? `Current URL: ${targetUrl}` : ''}
+This page needs a COMPLETE REWRITE. The current content is underperforming.
+- Design the outline from scratch following all framework rules
+- Ensure comprehensive EAV coverage
+- Include all required elements: contextual bridge, featured snippet targets, visual semantics
+`;
+    case 'MERGE':
+      return `
+**ACTION CONTEXT: CONTENT MERGE**
+This brief consolidates content from multiple pages into one comprehensive page.
+- Ensure the merged content covers all topics from the source pages
+- Eliminate redundancy while preserving unique information
+- Create a clear, logical structure that serves the merged intent
+`;
+    default:
+      return '';
+  }
+}
 
 export const FIND_MERGE_OPPORTUNITIES_FOR_SELECTION_PROMPT = (info: BusinessInfo, selectedTopics: EnrichedTopic[]): string => `
 You are an expert SEO strategist. Analyze the following selected topics. Determine if they are semantically redundant and should be merged.

@@ -374,6 +374,75 @@ export function assignTopicsToWaves(
 }
 
 // ============================================================================
+// REBALANCE WAVES
+// ============================================================================
+
+/**
+ * Rebalances topics across 4 waves while respecting:
+ * - Pinned topics (stay in their current wave)
+ * - Priority ordering (critical/high topics first)
+ * - Roughly even distribution across waves
+ *
+ * @param entries - Array of entries with topicId, wave, priority, pinned
+ * @returns Map of topicId → new wave number
+ */
+export function rebalanceWaves(
+  entries: Array<{
+    topicId: string;
+    wave: 1 | 2 | 3 | 4;
+    priority: 'critical' | 'high' | 'medium' | 'low';
+    pinned?: boolean;
+  }>
+): Map<string, 1 | 2 | 3 | 4> {
+  const result = new Map<string, 1 | 2 | 3 | 4>();
+
+  // Track capacity per wave (start with pinned items)
+  const waveCounts: Record<1 | 2 | 3 | 4, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  const pinned: typeof entries = [];
+  const unpinned: typeof entries = [];
+
+  for (const entry of entries) {
+    if (entry.pinned) {
+      pinned.push(entry);
+      waveCounts[entry.wave]++;
+      result.set(entry.topicId, entry.wave);
+    } else {
+      unpinned.push(entry);
+    }
+  }
+
+  // Sort unpinned by priority (critical first, then high, medium, low)
+  const priorityOrder: Record<string, number> = {
+    critical: 0,
+    high: 1,
+    medium: 2,
+    low: 3,
+  };
+  unpinned.sort((a, b) => (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3));
+
+  // Target: roughly even distribution
+  const totalUnpinned = unpinned.length;
+  const targetPerWave = Math.ceil(totalUnpinned / 4);
+
+  // Assign unpinned topics to the wave with fewest items
+  for (const entry of unpinned) {
+    // Find the wave with the least items, respecting max target
+    let bestWave: 1 | 2 | 3 | 4 = 1;
+    let minCount = Infinity;
+    for (const w of [1, 2, 3, 4] as const) {
+      if (waveCounts[w] < minCount) {
+        minCount = waveCounts[w];
+        bestWave = w;
+      }
+    }
+    result.set(entry.topicId, bestWave);
+    waveCounts[bestWave]++;
+  }
+
+  return result;
+}
+
+// ============================================================================
 // WAVE PROGRESS
 // ============================================================================
 

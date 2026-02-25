@@ -220,6 +220,9 @@ export const parseTopicalMap = (data: any): TopicalMap => {
         // Pipeline state (persisted JSONB column)
         pipeline_state: data.pipeline_state && typeof data.pipeline_state === 'object' ? data.pipeline_state : undefined,
 
+        // Action plan (persisted JSONB column)
+        action_plan: data.action_plan && typeof data.action_plan === 'object' ? data.action_plan : undefined,
+
         // Default fields must be undefined to trigger data fetching in hooks
         topics: undefined,
         briefs: undefined

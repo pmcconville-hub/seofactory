@@ -457,7 +457,8 @@ export const generateContentBrief = async (
     dispatch: React.Dispatch<any>,
     marketPatterns?: MarketPatterns,  // Optional: competitor-derived market patterns
     eavs?: SemanticTriple[],  // Semantic triples from topical map
-    categoryContext?: CategoryPageContext  // Optional: ecommerce category page data
+    categoryContext?: CategoryPageContext,  // Optional: ecommerce category page data
+    actionType?: string  // Optional: action context (OPTIMIZE, REWRITE, MERGE, etc.) for tailored briefs
 ): Promise<Omit<ContentBrief, 'id' | 'topic_id' | 'articleDraft'>> => {
     // Validate language and region settings before generation
     validateLanguageAndRegion(businessInfo, dispatch);
@@ -489,11 +490,11 @@ export const generateContentBrief = async (
     }
 
     const brief = await dispatchToProvider(businessInfo, {
-        gemini: () => geminiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs),
-        openai: () => openAiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs),
-        anthropic: () => anthropicService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs),
-        perplexity: () => perplexityService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs),
-        openrouter: () => openRouterService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs),
+        gemini: () => geminiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType),
+        openai: () => openAiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType),
+        anthropic: () => anthropicService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType),
+        perplexity: () => perplexityService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType),
+        openrouter: () => openRouterService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType),
     });
 
     // Validate monetization briefs meet minimum requirements
