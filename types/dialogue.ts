@@ -101,6 +101,11 @@ export interface DialogueQuestionsResult {
   introText: string;
   allClear: boolean;
   allClearMessage?: string;
+  preAnalysis?: {
+    healthScore: number;
+    findingCount: number;
+    validatorsRun: string[];
+  };
 }
 
 // ============================================================================

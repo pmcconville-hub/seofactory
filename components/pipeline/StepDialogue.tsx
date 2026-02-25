@@ -81,6 +81,7 @@ const StepDialogue: React.FC<StepDialogueProps> = ({
   const [currentResult, setCurrentResult] = useState<AnswerProcessingResult | null>(null);
   const [editableInterpretation, setEditableInterpretation] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [preAnalysis, setPreAnalysis] = useState<{ healthScore: number; findingCount: number; validatorsRun: string[] } | null>(null);
   const hasInitialized = useRef(false);
 
   // Track the last submitted answer text for reprocessing during edit
@@ -121,6 +122,10 @@ const StepDialogue: React.FC<StepDialogueProps> = ({
         );
 
         if (cancelled) return;
+
+        if (result.preAnalysis) {
+          setPreAnalysis(result.preAnalysis);
+        }
 
         if (result.allClear) {
           setAllClearMessage(result.allClearMessage || '');
@@ -265,6 +270,19 @@ const StepDialogue: React.FC<StepDialogueProps> = ({
           />
         </svg>
         <h3 className="text-blue-300 font-medium text-sm">AI Review</h3>
+        {preAnalysis && (
+          <span
+            className={`ml-auto text-xs font-medium px-2 py-0.5 rounded-full ${
+              preAnalysis.healthScore >= 80
+                ? 'bg-emerald-900/40 text-emerald-300'
+                : preAnalysis.healthScore >= 50
+                ? 'bg-amber-900/40 text-amber-300'
+                : 'bg-red-900/40 text-red-300'
+            }`}
+          >
+            Health: {preAnalysis.healthScore}/100
+          </span>
+        )}
       </div>
 
       {/* Intro text (when active) */}
@@ -301,7 +319,11 @@ const StepDialogue: React.FC<StepDialogueProps> = ({
       {uiState === 'loading' && (
         <div className="flex items-center gap-2 py-4">
           <Spinner />
-          <span className="text-gray-400 text-sm">Analyzing output...</span>
+          <span className="text-gray-400 text-sm">
+            {preAnalysis
+              ? `${preAnalysis.findingCount} issue(s) detected — generating questions...`
+              : 'Running validators...'}
+          </span>
         </div>
       )}
 

@@ -23,6 +23,8 @@ import type {
 import type { AppAction } from '../../state/appState';
 import { dispatchToProvider } from './providerDispatcher';
 import { getLanguageAndRegionInstruction, getLanguageName } from '../../utils/languageUtils';
+import { runPreAnalysis, buildFindingsSection, getQuestionCountGuidance } from './dialoguePreAnalysis';
+import type { PreAnalysisResult } from './dialoguePreAnalysis';
 import * as geminiService from '../geminiService';
 import * as openAiService from '../openAiService';
 import * as anthropicService from '../anthropicService';
@@ -86,7 +88,8 @@ function buildStepQuestionPrompt(
   step: DialogueStep,
   stepOutput: unknown,
   businessInfo: BusinessInfo,
-  dialogueContext: DialogueContext
+  dialogueContext: DialogueContext,
+  preAnalysisResult?: PreAnalysisResult
 ): string {
   const { language, region } = businessInfo;
   const languageInstruction = getLanguageAndRegionInstruction(language, region);
@@ -108,41 +111,59 @@ function buildStepQuestionPrompt(
     ? `\nPREVIOUS DIALOGUE CONTEXT (user-confirmed answers from earlier steps):\n${priorAnswers.join('\n\n')}\n`
     : '';
 
-  // Step-specific analysis focus
-  let stepFocus = '';
-  switch (step) {
-    case 'strategy':
-      stepFocus = `ANALYSIS FOCUS — Strategy Step:
+  // Build analysis section from pre-analysis findings (data-driven) or fall back to generic focus
+  let analysisSection = '';
+  let questionCountGuidance = 'Generate 0-5 questions. Generate 0 questions if the output is complete and unambiguous.';
+
+  if (preAnalysisResult && preAnalysisResult.findings.length > 0) {
+    const findingsText = buildFindingsSection(preAnalysisResult);
+    questionCountGuidance = getQuestionCountGuidance(preAnalysisResult.findings);
+
+    analysisSection = `PRE-ANALYSIS FINDINGS (algorithmic validators detected these specific issues):
+Health Score: ${preAnalysisResult.healthScore}/100
+Validators run: ${preAnalysisResult.validatorsRun.join(', ')}
+
+${findingsText}
+
+IMPORTANT: Generate questions ONLY about the detected findings listed above. Do NOT invent new issues.
+Reformulate each finding into a user-friendly clarification question that helps resolve the issue.
+Reference specific topic names, percentages, and data points from the findings.`;
+  } else {
+    // Fallback to generic focus when no pre-analysis or no findings
+    switch (step) {
+      case 'strategy':
+        analysisSection = `ANALYSIS FOCUS — Strategy Step:
 - Analyze the Central Entity (CE): Is it a clear noun phrase? Is it ambiguous or too broad?
 - Analyze the Source Context (SC): Does it describe the authority type properly? Is it specific enough?
 - Analyze the Central Search Intent (CSI): Are the predicates verbs? Do they cover the main user intents?
 - Check for completeness: Are any required fields missing or generic?
 - Check for scope: Is the CE too narrow or too broad for the business?`;
-      break;
-    case 'eavs':
-      stepFocus = `ANALYSIS FOCUS — EAV Step:
+        break;
+      case 'eavs':
+        analysisSection = `ANALYSIS FOCUS — EAV Step:
 - Find gaps: Are there missing trust signals (certifications, reviews, guarantees)?
 - Check for pending values: Are there clipboard emoji (📋) values that need real business data?
 - Check sub-entity coverage: Are important sub-entities of the CE missing?
 - Check pricing/specification gaps: Are there attributes that competitors would cover?
 - Verify layer balance: Is there a good mix of CE (domain knowledge) and SC (business) triples?`;
-      break;
-    case 'map_planning':
-      stepFocus = `ANALYSIS FOCUS — Map Planning Step:
+        break;
+      case 'map_planning':
+        analysisSection = `ANALYSIS FOCUS — Map Planning Step:
 - Detect overlapping topics: Are there topics that are too similar and risk cannibalization?
 - Check coverage gaps: Are there important aspects of the CE not covered by any topic?
 - Assess depth imbalance: Are some pillars/clusters much deeper than others?
 - Verify intent coverage: Do the topics cover informational, commercial, and navigational intents?
 - Check topic hierarchy: Are parent-child relationships logical?`;
-      break;
+        break;
+    }
   }
 
   return `${languageInstruction}
 
 You are an intelligent SEO dialogue assistant reviewing the output of a pipeline step.
-Your job is to identify ambiguities, gaps, or issues and generate clarification questions.
+Your job is to generate clarification questions about detected issues.
 
-${stepFocus}
+${analysisSection}
 
 BUSINESS CONTEXT:
 - Industry: ${businessInfo.industry || 'not specified'}
@@ -154,10 +175,9 @@ STEP OUTPUT TO REVIEW:
 ${outputStr}
 
 INSTRUCTIONS:
-1. Analyze the step output for ambiguities, gaps, or issues based on the analysis focus above.
-2. Generate 0-5 questions. Generate 0 questions if the output is complete and unambiguous.
-3. Each question must be in ${languageName}.
-4. Prioritize questions that would have the highest impact on downstream quality.
+1. ${questionCountGuidance}
+2. Each question must be in ${languageName}.
+3. Prioritize questions that would have the highest impact on downstream quality.
 
 Return JSON:
 {
@@ -320,7 +340,7 @@ function processQuestionsResponse(raw: any): DialogueQuestionsResult {
   }
 
   return {
-    questions: questions.slice(0, 5), // Max 5 questions
+    questions: questions.slice(0, 12), // Max 12 questions (driven by pre-analysis findings)
     introText: typeof raw.introText === 'string' ? raw.introText : '',
     allClear: allClear && questions.length === 0,
     allClearMessage: typeof raw.allClearMessage === 'string' ? raw.allClearMessage : undefined,
@@ -420,7 +440,32 @@ export async function generateStepQuestions(
   dialogueContext: DialogueContext,
   dispatch: React.Dispatch<AppAction>
 ): Promise<DialogueQuestionsResult> {
-  const prompt = buildStepQuestionPrompt(step, stepOutput, businessInfo, dialogueContext);
+  // Run pre-analysis first — all algorithmic, <200ms
+  let preAnalysisResult: PreAnalysisResult | undefined;
+  try {
+    preAnalysisResult = runPreAnalysis(step, stepOutput, businessInfo, dialogueContext);
+  } catch (err) {
+    console.warn('[dialogueEngine] runPreAnalysis failed, falling through to generic prompt:', err);
+  }
+
+  const preAnalysisMeta = preAnalysisResult ? {
+    healthScore: preAnalysisResult.healthScore,
+    findingCount: preAnalysisResult.findings.length,
+    validatorsRun: preAnalysisResult.validatorsRun,
+  } : undefined;
+
+  // Short-circuit: if pre-analysis ran and found 0 issues, return allClear immediately (no AI call)
+  if (preAnalysisResult && preAnalysisResult.findings.length === 0) {
+    return {
+      questions: [],
+      introText: '',
+      allClear: true,
+      allClearMessage: `All ${preAnalysisResult.validatorsRun.length} validators passed — no issues detected`,
+      preAnalysis: preAnalysisMeta,
+    };
+  }
+
+  const prompt = buildStepQuestionPrompt(step, stepOutput, businessInfo, dialogueContext, preAnalysisResult);
 
   const fallback = {
     questions: [] as any[],
@@ -438,10 +483,11 @@ export async function generateStepQuestions(
       openrouter: () => openRouterService.generateJson(prompt, businessInfo, dispatch, fallback),
     });
 
-    return processQuestionsResponse(result);
+    const processed = processQuestionsResponse(result);
+    return { ...processed, preAnalysis: preAnalysisMeta };
   } catch (err) {
     console.warn('[dialogueEngine] generateStepQuestions failed, returning allClear fallback:', err);
-    return { questions: [], allClear: true, allClearMessage: 'Review complete', introText: '' };
+    return { questions: [], allClear: true, allClearMessage: 'Review complete', introText: '', preAnalysis: preAnalysisMeta };
   }
 }
 
