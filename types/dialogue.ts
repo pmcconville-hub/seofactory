@@ -105,6 +105,7 @@ export interface DialogueQuestionsResult {
     healthScore: number;
     findingCount: number;
     validatorsRun: string[];
+    frameworkIssueCount: number;
   };
 }
 

@@ -4,6 +4,7 @@ import {
   calculateHealthScore,
   buildFindingsSection,
   getQuestionCountGuidance,
+  partitionFindings,
 } from '../dialoguePreAnalysis';
 import type { PreAnalysisFinding } from '../dialoguePreAnalysis';
 import type { BusinessInfo } from '../../../types';
@@ -68,10 +69,10 @@ describe('calculateHealthScore', () => {
 
   it('applies penalties correctly', () => {
     const findings: PreAnalysisFinding[] = [
-      { category: 'title_cannibalization', severity: 'critical', title: '', details: '', affectedItems: [], suggestedAction: '' },
-      { category: 'depth_imbalance', severity: 'high', title: '', details: '', affectedItems: [], suggestedAction: '' },
-      { category: 'missing_frame', severity: 'medium', title: '', details: '', affectedItems: [], suggestedAction: '' },
-      { category: 'eav_pending_values', severity: 'low', title: '', details: '', affectedItems: [], suggestedAction: '' },
+      { category: 'title_cannibalization', severity: 'critical', title: '', details: '', affectedItems: [], suggestedAction: '', autoFixable: true },
+      { category: 'depth_imbalance', severity: 'high', title: '', details: '', affectedItems: [], suggestedAction: '', autoFixable: true },
+      { category: 'missing_frame', severity: 'medium', title: '', details: '', affectedItems: [], suggestedAction: '', autoFixable: true },
+      { category: 'eav_pending_values', severity: 'low', title: '', details: '', affectedItems: [], suggestedAction: '', autoFixable: false },
     ];
     // 100 - 15 - 8 - 4 - 1 = 72
     expect(calculateHealthScore(findings)).toBe(72);
@@ -81,7 +82,7 @@ describe('calculateHealthScore', () => {
     const findings: PreAnalysisFinding[] = Array(10).fill({
       category: 'title_cannibalization' as const,
       severity: 'critical' as const,
-      title: '', details: '', affectedItems: [], suggestedAction: '',
+      title: '', details: '', affectedItems: [], suggestedAction: '', autoFixable: true,
     });
     expect(calculateHealthScore(findings)).toBe(0);
   });
@@ -395,8 +396,8 @@ describe('buildFindingsSection', () => {
   it('groups findings by severity', () => {
     const result = buildFindingsSection({
       findings: [
-        { category: 'title_cannibalization', severity: 'critical', title: 'Test critical', details: 'D', affectedItems: [], suggestedAction: 'Fix it' },
-        { category: 'missing_frame', severity: 'medium', title: 'Test medium', details: 'D', affectedItems: [], suggestedAction: 'Add it' },
+        { category: 'title_cannibalization', severity: 'critical', title: 'Test critical', details: 'D', affectedItems: [], suggestedAction: 'Fix it', autoFixable: true },
+        { category: 'missing_frame', severity: 'medium', title: 'Test medium', details: 'D', affectedItems: [], suggestedAction: 'Add it', autoFixable: true },
       ],
       healthScore: 81,
       validatorsRun: ['a', 'b'],
@@ -413,8 +414,8 @@ describe('buildFindingsSection', () => {
 describe('getQuestionCountGuidance', () => {
   it('returns guidance with capped count', () => {
     const findings: PreAnalysisFinding[] = [
-      { category: 'ce_ambiguity', severity: 'critical', title: '', details: '', affectedItems: [], suggestedAction: '' },
-      { category: 'sc_specificity', severity: 'high', title: '', details: '', affectedItems: [], suggestedAction: '' },
+      { category: 'ce_ambiguity', severity: 'critical', title: '', details: '', affectedItems: [], suggestedAction: '', autoFixable: false },
+      { category: 'sc_specificity', severity: 'high', title: '', details: '', affectedItems: [], suggestedAction: '', autoFixable: false },
     ];
     const guidance = getQuestionCountGuidance(findings);
     expect(guidance).toContain('2 question(s)');
@@ -424,9 +425,119 @@ describe('getQuestionCountGuidance', () => {
     const findings: PreAnalysisFinding[] = Array(20).fill({
       category: 'title_cannibalization' as const,
       severity: 'critical' as const,
-      title: '', details: '', affectedItems: [], suggestedAction: '',
+      title: '', details: '', affectedItems: [], suggestedAction: '', autoFixable: true,
     });
     const guidance = getQuestionCountGuidance(findings);
     expect(guidance).toContain('12 question(s)');
+  });
+});
+
+// ── partitionFindings ──
+
+describe('partitionFindings', () => {
+  it('separates framework issues from user questions', () => {
+    const findings: PreAnalysisFinding[] = [
+      { category: 'title_cannibalization', severity: 'high', title: 'Overlap', details: '', affectedItems: [], suggestedAction: '', autoFixable: true },
+      { category: 'missing_frame', severity: 'medium', title: 'Missing', details: '', affectedItems: [], suggestedAction: '', autoFixable: true },
+      { category: 'ce_ambiguity', severity: 'high', title: 'Ambiguous CE', details: '', affectedItems: [], suggestedAction: '', autoFixable: false },
+      { category: 'eav_pending_values', severity: 'medium', title: 'Pending', details: '', affectedItems: [], suggestedAction: '', autoFixable: false },
+    ];
+
+    const { userQuestions, frameworkIssues } = partitionFindings(findings);
+
+    expect(frameworkIssues).toHaveLength(2);
+    expect(frameworkIssues.every(f => f.autoFixable)).toBe(true);
+    expect(frameworkIssues.map(f => f.category)).toEqual(['title_cannibalization', 'missing_frame']);
+
+    expect(userQuestions).toHaveLength(2);
+    expect(userQuestions.every(f => !f.autoFixable)).toBe(true);
+    expect(userQuestions.map(f => f.category)).toEqual(['ce_ambiguity', 'eav_pending_values']);
+  });
+
+  it('returns all as frameworkIssues when only auto-fixable', () => {
+    const findings: PreAnalysisFinding[] = [
+      { category: 'depth_imbalance', severity: 'high', title: '', details: '', affectedItems: [], suggestedAction: '', autoFixable: true },
+      { category: 'border_violation', severity: 'medium', title: '', details: '', affectedItems: [], suggestedAction: '', autoFixable: true },
+    ];
+
+    const { userQuestions, frameworkIssues } = partitionFindings(findings);
+    expect(userQuestions).toHaveLength(0);
+    expect(frameworkIssues).toHaveLength(2);
+  });
+
+  it('returns all as userQuestions when only user-facing', () => {
+    const findings: PreAnalysisFinding[] = [
+      { category: 'sc_specificity', severity: 'high', title: '', details: '', affectedItems: [], suggestedAction: '', autoFixable: false },
+      { category: 'csi_coverage', severity: 'medium', title: '', details: '', affectedItems: [], suggestedAction: '', autoFixable: false },
+    ];
+
+    const { userQuestions, frameworkIssues } = partitionFindings(findings);
+    expect(userQuestions).toHaveLength(2);
+    expect(frameworkIssues).toHaveLength(0);
+  });
+
+  it('handles empty findings', () => {
+    const { userQuestions, frameworkIssues } = partitionFindings([]);
+    expect(userQuestions).toHaveLength(0);
+    expect(frameworkIssues).toHaveLength(0);
+  });
+});
+
+// ── autoFixable classification on real findings ──
+
+describe('autoFixable classification', () => {
+  const businessInfo = makeBusinessInfo();
+
+  it('marks map_planning findings as autoFixable', () => {
+    const topicsIdentical = [
+      makeTopic({ id: 'a', title: 'complete guide SEO tools review comparison' }),
+      makeTopic({ id: 'b', title: 'complete guide SEO tools review overview' }),
+      makeTopic({ id: 'c', title: 'React Performance Benchmarks' }),
+    ];
+    const result = runPreAnalysis('map_planning', { topics: topicsIdentical }, businessInfo);
+    const mapFindings = result.findings.filter(f =>
+      ['title_cannibalization', 'missing_frame', 'depth_imbalance', 'border_violation', 'page_worthiness'].includes(f.category)
+    );
+    for (const f of mapFindings) {
+      expect(f.autoFixable).toBe(true);
+    }
+  });
+
+  it('marks strategy findings as NOT autoFixable', () => {
+    const result = runPreAnalysis('strategy', {
+      pillars: { centralEntity: '', sourceContext: '', centralSearchIntent: '' },
+    }, businessInfo);
+    const strategyFindings = result.findings.filter(f =>
+      ['ce_ambiguity', 'sc_specificity', 'csi_coverage'].includes(f.category)
+    );
+    expect(strategyFindings.length).toBeGreaterThanOrEqual(3);
+    for (const f of strategyFindings) {
+      expect(f.autoFixable).toBe(false);
+    }
+  });
+
+  it('marks eav_category_gap and eav_pending_values as NOT autoFixable', () => {
+    const eavs = [
+      makeEav({ category: 'COMMON', relation: 'color', value: '📋 fill later' }),
+    ];
+    const result = runPreAnalysis('eavs', { eavs }, businessInfo);
+    const gapFindings = result.findings.filter(f => f.category === 'eav_category_gap');
+    const pendingFindings = result.findings.filter(f => f.category === 'eav_pending_values');
+    for (const f of [...gapFindings, ...pendingFindings]) {
+      expect(f.autoFixable).toBe(false);
+    }
+  });
+
+  it('marks eav_inconsistency as autoFixable', () => {
+    const eavs = [
+      makeEav({ subjectLabel: 'Widget', relation: 'price', value: '100', category: 'ROOT' }),
+      makeEav({ subjectLabel: 'Widget', relation: 'price', value: '200', category: 'ROOT' }),
+      makeEav({ subjectLabel: 'Widget', relation: 'type', value: 'premium', category: 'UNIQUE' }),
+    ];
+    const result = runPreAnalysis('eavs', { eavs }, businessInfo);
+    const inconsistencies = result.findings.filter(f => f.category === 'eav_inconsistency');
+    for (const f of inconsistencies) {
+      expect(f.autoFixable).toBe(true);
+    }
   });
 });

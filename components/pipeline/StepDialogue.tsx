@@ -81,7 +81,7 @@ const StepDialogue: React.FC<StepDialogueProps> = ({
   const [currentResult, setCurrentResult] = useState<AnswerProcessingResult | null>(null);
   const [editableInterpretation, setEditableInterpretation] = useState('');
   const [isEditing, setIsEditing] = useState(false);
-  const [preAnalysis, setPreAnalysis] = useState<{ healthScore: number; findingCount: number; validatorsRun: string[] } | null>(null);
+  const [preAnalysis, setPreAnalysis] = useState<{ healthScore: number; findingCount: number; validatorsRun: string[]; frameworkIssueCount: number } | null>(null);
   const hasInitialized = useRef(false);
 
   // Track the last submitted answer text for reprocessing during edit
@@ -284,6 +284,18 @@ const StepDialogue: React.FC<StepDialogueProps> = ({
           </span>
         )}
       </div>
+
+      {/* Framework issues info line (not shown as questions) */}
+      {preAnalysis && preAnalysis.frameworkIssueCount > 0 && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-900/15 border border-blue-800/20 rounded-lg">
+          <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="text-blue-300/80 text-xs">
+            {preAnalysis.frameworkIssueCount} structural issue{preAnalysis.frameworkIssueCount !== 1 ? 's' : ''} noted for next regeneration
+          </span>
+        </div>
+      )}
 
       {/* Intro text (when active) */}
       {introText && uiState !== 'all_clear' && uiState !== 'complete' && (

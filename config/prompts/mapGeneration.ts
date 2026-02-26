@@ -238,6 +238,28 @@ An **OUTER TOPIC (Spoke)** is a VARIATION, MODIFIER, or SPECIFIC INSTANCE of a C
 - Different problem domains (Detection vs Prevention vs Response)
 - Different functional areas (Assessment vs Implementation vs Support)
 
+**SEMANTIC FRAME COVERAGE (CRITICAL):**
+Your topical map MUST cover these 10 semantic frames across the combined monetization + informational sections. Each frame represents a fundamental information need. Missing frames = incomplete topical authority.
+
+1. Definition — "What is [CE]?" (entity identity, category, distinguishing features)
+2. Components — "What are the parts of [CE]?" (structure, sub-types, hierarchy)
+3. Process — "How does [CE] work?" (steps, procedures, usage)
+4. Comparison — "How does [CE] differ from alternatives?" (vs competitors, trade-offs)
+5. Benefits — "What are the advantages of [CE]?" (outcomes, ROI, value)
+6. Risks — "What are the risks of [CE]?" (problems, concerns, mitigation)
+7. Cost — "How much does [CE] cost?" (pricing, budgets, payment)
+8. Evaluation — "How to choose/evaluate [CE]?" (criteria, standards, benchmarks)
+9. Troubleshooting — "What problems occur with [CE]?" (common issues, solutions)
+10. Future — "What trends affect [CE]?" (evolution, emerging developments)
+
+Some frames map naturally to monetization topics (Comparison, Cost, Evaluation), others to informational topics (Definition, Process, Risks, Troubleshooting, Future). Ensure BOTH sections collectively cover all 10 frames.
+
+**ANTI-CANNIBALIZATION RULE:**
+Before finalizing your topic list, check for pairs of topics whose canonical queries share >70% word overlap. If found, MERGE them into one topic or differentiate their angles. Two topics targeting the same intent waste crawl budget and dilute authority.
+
+**DEPTH BALANCE RULE:**
+All core topic clusters should have roughly equal depth. No cluster should have more than 2x the spokes of the smallest cluster. If one area naturally has more subtopics, split it into two distinct core topics rather than overloading one hub.
+
 **Expansion Strategy (Think in ${getLanguageName(info.language)}):**
 1.  **Monetization Section (Core Section / Money Pages):**
     *   **MANDATORY: Generate a MINIMUM of 6 SEMANTICALLY DISTINCT Core Topics.**
@@ -330,6 +352,10 @@ An **OUTER TOPIC (Spoke)** is a VARIATION, MODIFIER, or SPECIFIC INSTANCE of a C
 - Each Core Topic MUST have 5-7 unique Spokes
 - Spokes should include: location variants, price tiers, urgency levels, comparisons
 
+**FRAME COVERAGE:** Ensure monetization topics collectively cover: Comparison, Cost, Evaluation, Benefits, and Components frames. Each core topic + its spokes should map to at least one frame.
+
+**ANTI-CANNIBALIZATION:** No two topics should share >70% word overlap in their canonical queries. Merge or differentiate if they do.
+
 **For each topic provide:**
 - "title": Topic title in ${regionalLang} (must be distinct attribute, NOT a modifier variant)
 - "description": Brief 1-2 sentence description in ${regionalLang}
@@ -379,6 +405,10 @@ An **OUTER TOPIC (Spoke)** is a specific aspect, sub-question, or variation with
 - Generate 3-5 DISTINCT knowledge domain clusters
 - Each Core Topic should have 3-5 supporting Spokes
 - Focus on: educational content, guides, explanations, industry knowledge
+
+**FRAME COVERAGE:** Ensure informational topics collectively cover: Definition, Process, Risks, Troubleshooting, and Future frames. Each cluster should map to at least one frame.
+
+**ANTI-CANNIBALIZATION:** No two topics should share >70% word overlap in their canonical queries. Merge or differentiate if they do.
 
 **For each topic provide:**
 - "title": Topic title in ${regionalLang} (distinct knowledge domain)

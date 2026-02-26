@@ -43,6 +43,7 @@ export interface PreAnalysisFinding {
   details: string;
   affectedItems: string[];
   suggestedAction: string;
+  autoFixable: boolean;
 }
 
 export interface PreAnalysisResult {
@@ -68,6 +69,32 @@ export function calculateHealthScore(findings: PreAnalysisFinding[]): number {
     0
   );
   return Math.max(0, 100 - totalPenalty);
+}
+
+// ── Auto-fixable classification ──
+
+const AUTO_FIXABLE_CATEGORIES: Record<FindingCategory, boolean> = {
+  title_cannibalization: true,
+  depth_imbalance: true,
+  missing_frame: true,
+  border_violation: true,
+  page_worthiness: true,
+  eav_inconsistency: true,
+  eav_category_gap: false,
+  eav_pending_values: false,
+  ce_ambiguity: false,
+  sc_specificity: false,
+  csi_coverage: false,
+};
+
+export function partitionFindings(findings: PreAnalysisFinding[]): {
+  userQuestions: PreAnalysisFinding[];
+  frameworkIssues: PreAnalysisFinding[];
+} {
+  return {
+    userQuestions: findings.filter(f => !f.autoFixable),
+    frameworkIssues: findings.filter(f => f.autoFixable),
+  };
 }
 
 // ── Jaccard Word Distance (fallback for border validation) ──
@@ -171,6 +198,7 @@ function runTitleCannibalization(
         details: `Jaccard word similarity is ${pct}%. These topics risk cannibalizing each other in search results.`,
         affectedItems: [risk.topicA.id, risk.topicB.id],
         suggestedAction: 'Merge into a single comprehensive page or differentiate their angles',
+        autoFixable: AUTO_FIXABLE_CATEGORIES['title_cannibalization'],
       });
     }
   } catch (err) {
@@ -204,6 +232,7 @@ function runFrameCoverage(
           details: `Missing core elements: ${fr.missingCore.join(', ')}`,
           affectedItems: [fr.frame.name],
           suggestedAction: `Add topics about ${fr.missingCore.slice(0, 3).join(', ')}`,
+          autoFixable: AUTO_FIXABLE_CATEGORIES['missing_frame'],
         });
       }
     }
@@ -250,6 +279,7 @@ function runTmdDetection(
         details: `Shallow clusters: ${shallowList}. Deep clusters: ${deepList}.`,
         affectedItems: [...report.shallowClusters, ...report.deepClusters],
         suggestedAction: report.suggestions[0] || 'Expand shallow clusters or redistribute deep ones',
+        autoFixable: AUTO_FIXABLE_CATEGORIES['depth_imbalance'],
       });
     }
 
@@ -264,6 +294,7 @@ function runTmdDetection(
           details: `This cluster is significantly underdeveloped compared to others.`,
           affectedItems: [cluster.clusterName],
           suggestedAction: `Expand "${cluster.clusterName}" with subtopics or merge into a related cluster`,
+          autoFixable: AUTO_FIXABLE_CATEGORIES['depth_imbalance'],
         });
       }
     }
@@ -307,6 +338,7 @@ function runBorderValidation(
         details: `Topics far from CE: ${outsideTopics.slice(0, 5).join(', ')}${outsideTopics.length > 5 ? ` (+${outsideTopics.length - 5} more)` : ''}`,
         affectedItems: outsideTopics,
         suggestedAction: 'Remove these topics, add bridge content, or create a separate topical map',
+        autoFixable: AUTO_FIXABLE_CATEGORIES['border_violation'],
       });
     }
 
@@ -324,6 +356,7 @@ function runBorderValidation(
           details: `Topics at risk: ${atRiskTopics.slice(0, 5).join(', ')}${atRiskTopics.length > 5 ? ` (+${atRiskTopics.length - 5} more)` : ''}`,
           affectedItems: atRiskTopics,
           suggestedAction: 'Strengthen connection to central entity through bridge content',
+          autoFixable: AUTO_FIXABLE_CATEGORIES['border_violation'],
         });
       }
     }
@@ -378,6 +411,7 @@ function runPageWorthiness(
         details: `Candidates for merging: ${mergeCandidates.slice(0, 5).join(', ')}${mergeCandidates.length > 5 ? ` (+${mergeCandidates.length - 5} more)` : ''}`,
         affectedItems: mergeCandidates,
         suggestedAction: 'Consider merging these topics into their parent pages or converting to FAQ entries',
+        autoFixable: AUTO_FIXABLE_CATEGORIES['page_worthiness'],
       });
     }
   } catch (err) {
@@ -419,6 +453,7 @@ function analyzeEavs(
         details: `${inconsistency.type}: ${inconsistency.suggestion}`,
         affectedItems: [inconsistency.subject, inconsistency.attribute],
         suggestedAction: inconsistency.suggestion,
+        autoFixable: AUTO_FIXABLE_CATEGORIES['eav_inconsistency'],
       });
     }
   } catch (err) {
@@ -445,6 +480,7 @@ function analyzeEavs(
           details: `${required} EAVs are essential for establishing topical authority. Current categories: ${Object.entries(categoryCount).map(([k, v]) => `${k}(${v})`).join(', ')}`,
           affectedItems: [required],
           suggestedAction: `Add ${required} category attributes that define the core identity of the entity`,
+          autoFixable: AUTO_FIXABLE_CATEGORIES['eav_category_gap'],
         });
       }
     }
@@ -473,6 +509,7 @@ function analyzeEavs(
         details: `Attributes needing values: ${pendingAttrs.join(', ')}${pending.length > 5 ? ` (+${pending.length - 5} more)` : ''}`,
         affectedItems: pending.map(e => e.predicate?.relation || 'unknown'),
         suggestedAction: 'Provide actual business data for these attributes',
+        autoFixable: AUTO_FIXABLE_CATEGORIES['eav_pending_values'],
       });
     }
   } catch (err) {
@@ -505,6 +542,7 @@ function analyzeStrategy(
         details: 'Without a Central Entity, no semantic analysis can be performed.',
         affectedItems: ['centralEntity'],
         suggestedAction: 'Define a clear Central Entity — the main noun phrase your site is about',
+        autoFixable: AUTO_FIXABLE_CATEGORIES['ce_ambiguity'],
       });
     } else {
       const trimmed = ce.trim();
@@ -519,6 +557,7 @@ function analyzeStrategy(
           details: 'Single-word CEs often match many unrelated intents. Consider a more specific multi-word entity.',
           affectedItems: ['centralEntity'],
           suggestedAction: `Make "${trimmed}" more specific (e.g., add a qualifier like type, location, or domain)`,
+          autoFixable: AUTO_FIXABLE_CATEGORIES['ce_ambiguity'],
         });
       } else if (startsWithArticle) {
         findings.push({
@@ -528,6 +567,7 @@ function analyzeStrategy(
           details: 'Starting with an article is unusual for a Central Entity and may cause matching issues.',
           affectedItems: ['centralEntity'],
           suggestedAction: `Consider removing the leading article from "${trimmed}"`,
+          autoFixable: AUTO_FIXABLE_CATEGORIES['ce_ambiguity'],
         });
       }
     }
@@ -549,6 +589,7 @@ function analyzeStrategy(
         details: 'Without a Source Context, the AI cannot position the site as an authority.',
         affectedItems: ['sourceContext'],
         suggestedAction: 'Define who or what the site represents (e.g., "certified structural engineer", "organic skincare brand")',
+        autoFixable: AUTO_FIXABLE_CATEGORIES['sc_specificity'],
       });
     } else {
       const trimmed = sc.trim();
@@ -566,6 +607,7 @@ function analyzeStrategy(
           details: 'A more specific Source Context helps differentiate from competitors.',
           affectedItems: ['sourceContext'],
           suggestedAction: 'Add qualifiers: credentials, specialization, unique value proposition',
+          autoFixable: AUTO_FIXABLE_CATEGORIES['sc_specificity'],
         });
       } else if (isGeneric) {
         findings.push({
@@ -575,6 +617,7 @@ function analyzeStrategy(
           details: 'Generic terms like "blog" or "expert" don\'t differentiate from competitors.',
           affectedItems: ['sourceContext'],
           suggestedAction: 'Specify the unique angle: certifications, experience, methodology, niche focus',
+          autoFixable: AUTO_FIXABLE_CATEGORIES['sc_specificity'],
         });
       }
     }
@@ -597,6 +640,7 @@ function analyzeStrategy(
         details: 'Without a CSI, topic generation lacks direction.',
         affectedItems: ['centralSearchIntent'],
         suggestedAction: 'Define the main intent users have when searching for your Central Entity',
+        autoFixable: AUTO_FIXABLE_CATEGORIES['csi_coverage'],
       });
     }
 
@@ -608,6 +652,7 @@ function analyzeStrategy(
         details: 'CSI predicates define the main verbs/actions users want to perform. More predicates = wider topic coverage.',
         affectedItems: ['csiPredicates'],
         suggestedAction: 'Add verb-form predicates like "buy", "compare", "learn", "install", "troubleshoot"',
+        autoFixable: AUTO_FIXABLE_CATEGORIES['csi_coverage'],
       });
     }
   } catch (err) {

@@ -23,7 +23,7 @@ import type {
 import type { AppAction } from '../../state/appState';
 import { dispatchToProvider } from './providerDispatcher';
 import { getLanguageAndRegionInstruction, getLanguageName } from '../../utils/languageUtils';
-import { runPreAnalysis, buildFindingsSection, getQuestionCountGuidance } from './dialoguePreAnalysis';
+import { runPreAnalysis, buildFindingsSection, getQuestionCountGuidance, partitionFindings } from './dialoguePreAnalysis';
 import type { PreAnalysisResult } from './dialoguePreAnalysis';
 import * as geminiService from '../geminiService';
 import * as openAiService from '../openAiService';
@@ -448,24 +448,40 @@ export async function generateStepQuestions(
     console.warn('[dialogueEngine] runPreAnalysis failed, falling through to generic prompt:', err);
   }
 
+  // Partition findings into user-facing questions vs framework issues the AI should have prevented
+  const { userQuestions, frameworkIssues } = preAnalysisResult
+    ? partitionFindings(preAnalysisResult.findings)
+    : { userQuestions: [], frameworkIssues: [] };
+
   const preAnalysisMeta = preAnalysisResult ? {
     healthScore: preAnalysisResult.healthScore,
     findingCount: preAnalysisResult.findings.length,
     validatorsRun: preAnalysisResult.validatorsRun,
+    frameworkIssueCount: frameworkIssues.length,
   } : undefined;
 
-  // Short-circuit: if pre-analysis ran and found 0 issues, return allClear immediately (no AI call)
-  if (preAnalysisResult && preAnalysisResult.findings.length === 0) {
+  // Short-circuit: if pre-analysis ran and found 0 user-facing issues, return allClear (no AI call)
+  if (preAnalysisResult && userQuestions.length === 0) {
     return {
       questions: [],
       introText: '',
       allClear: true,
-      allClearMessage: `All ${preAnalysisResult.validatorsRun.length} validators passed — no issues detected`,
+      allClearMessage: frameworkIssues.length > 0
+        ? `${frameworkIssues.length} framework issue(s) noted — will be addressed in next regeneration`
+        : `All ${preAnalysisResult.validatorsRun.length} validators passed — no issues detected`,
       preAnalysis: preAnalysisMeta,
     };
   }
 
-  const prompt = buildStepQuestionPrompt(step, stepOutput, businessInfo, dialogueContext, preAnalysisResult);
+  // Build a filtered pre-analysis result containing only user-facing findings for the prompt
+  const filteredPreAnalysis: PreAnalysisResult | undefined = preAnalysisResult && userQuestions.length > 0
+    ? {
+        ...preAnalysisResult,
+        findings: userQuestions,
+      }
+    : preAnalysisResult;
+
+  const prompt = buildStepQuestionPrompt(step, stepOutput, businessInfo, dialogueContext, filteredPreAnalysis);
 
   const fallback = {
     questions: [] as any[],
