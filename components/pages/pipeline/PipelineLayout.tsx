@@ -3,6 +3,7 @@ import { Outlet, useParams, Link } from 'react-router-dom';
 import { useAppState } from '../../../state/appState';
 import { PipelineState, pipelineActions } from '../../../state/slices/pipelineSlice';
 import { usePipeline } from '../../../hooks/usePipeline';
+import { useMapData } from '../../../hooks/useMapData';
 import PipelineStepBar from '../../pipeline/PipelineStepBar';
 
 /**
@@ -25,8 +26,12 @@ const PipelineLayout: React.FC = () => {
   } = usePipeline();
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
+  // Hydrate topics + briefs from the database when navigating directly to a pipeline route.
+  // Without this, topics/briefs are undefined after page refresh because parseTopicalMap
+  // intentionally sets them to undefined (they live in separate tables, not JSONB columns).
+  useMapData(state.activeMapId ?? null, activeMap, state.businessInfo, dispatch);
+
   // Restore pipeline state from the map when navigating directly to the pipeline route.
-  // useMapData (which normally does this) only runs from the Dashboard, not here.
   useEffect(() => {
     if (!isActive && activeMap?.pipeline_state && (activeMap.pipeline_state as any).isActive) {
       dispatch(pipelineActions.restoreState(activeMap.pipeline_state as PipelineState));

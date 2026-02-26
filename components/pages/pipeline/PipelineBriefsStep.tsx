@@ -174,22 +174,63 @@ const PipelineBriefsStep: React.FC = () => {
         setLocalBriefs(prev => ({ ...prev, [topic.id]: brief }));
       }
 
-      // Persist
+      // Persist to React state and content_briefs table
       if (state.activeMapId) {
         const mergedBriefs = { ...allBriefs, ...newBriefs };
         dispatch({
-          type: 'UPDATE_MAP_DATA',
-          payload: { mapId: state.activeMapId, data: { briefs: mergedBriefs } },
+          type: 'SET_BRIEFS_FOR_MAP',
+          payload: { mapId: state.activeMapId, briefs: mergedBriefs },
         });
 
+        // Save each new brief to the content_briefs table
         try {
           const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-          const { error: saveError } = await supabase
-            .from('topical_maps')
-            .update({ briefs: mergedBriefs } as any)
-            .eq('id', state.activeMapId);
-          if (saveError) {
-            console.warn(`[Briefs] Save failed (${saveError.code}): ${saveError.message}`);
+
+          for (const [topicId, brief] of Object.entries(newBriefs)) {
+            const briefRecord = {
+              topic_id: topicId,
+              title: brief.title || '',
+              slug: brief.slug,
+              meta_description: brief.metaDescription,
+              key_takeaways: Array.isArray(brief.keyTakeaways) ? brief.keyTakeaways : [],
+              outline: brief.outline,
+              target_keyword: brief.targetKeyword,
+              search_intent: brief.searchIntent,
+              serp_analysis: brief.serpAnalysis as any,
+              visuals: brief.visuals as any,
+              contextual_vectors: brief.contextualVectors as any,
+              contextual_bridge: brief.contextualBridge as any,
+              perspectives: brief.perspectives as any,
+              methodology_note: brief.methodology_note,
+              structured_outline: brief.structured_outline as any,
+              structural_template_hash: brief.structural_template_hash,
+              predicted_user_journey: brief.predicted_user_journey,
+              query_type_format: brief.query_type_format,
+              featured_snippet_target: brief.featured_snippet_target as any,
+              visual_semantics: brief.visual_semantics as any,
+              discourse_anchors: brief.discourse_anchors as any,
+              cta: brief.cta,
+            };
+
+            // Check-then-insert/update (avoids upsert hang issues)
+            const { data: existing } = await supabase
+              .from('content_briefs')
+              .select('id')
+              .eq('topic_id', topicId)
+              .maybeSingle();
+
+            if (existing) {
+              const { error } = await supabase
+                .from('content_briefs')
+                .update({ ...briefRecord, updated_at: new Date().toISOString() })
+                .eq('id', existing.id);
+              if (error) console.warn(`[Briefs] Update failed for topic ${topicId}: ${error.message}`);
+            } else {
+              const { error } = await supabase
+                .from('content_briefs')
+                .insert({ ...briefRecord, created_at: new Date().toISOString() });
+              if (error) console.warn(`[Briefs] Insert failed for topic ${topicId}: ${error.message}`);
+            }
           }
         } catch (err) {
           console.warn('[Briefs] Supabase save failed:', err);

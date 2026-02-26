@@ -8,6 +8,9 @@ import type { EnrichedTopic, SemanticTriple } from '../../../types';
 import type { DialogueContext, ExtractedData, CascadeImpact } from '../../../types/dialogue';
 import { createEmptyDialogueContext } from '../../../services/ai/dialogueEngine';
 import { getSupabaseClient } from '../../../services/supabaseClient';
+import { verifiedBulkInsert } from '../../../services/verifiedDatabaseService';
+import { v4 as uuidv4 } from 'uuid';
+import { slugify, cleanSlug } from '../../../utils/helpers';
 
 // ──── Metric Card ────
 
@@ -1127,33 +1130,96 @@ const PipelineMapStep: React.FC = () => {
 
       const { coreTopics: newCore, outerTopics: newOuter } = result;
 
-      setGeneratedCore(newCore);
-      setGeneratedOuter(newOuter);
+      // Assign real UUIDs and map_id (AI returns temp IDs with map_id='')
+      if (state.activeMapId && state.user) {
+        const topicIdMap = new Map<string, string>(); // temp ID -> real UUID
+        const finalTopics: EnrichedTopic[] = [];
 
-      // Persist to state and Supabase
-      if (state.activeMapId) {
-        const allTopics = [...newCore, ...newOuter];
-        dispatch({
-          type: 'UPDATE_MAP_DATA',
-          payload: {
-            mapId: state.activeMapId,
-            data: { topics: allTopics },
-          },
+        // Process core topics
+        newCore.filter(t => t.title?.trim()).forEach(core => {
+          const realId = uuidv4();
+          topicIdMap.set(core.id, realId);
+          finalTopics.push({
+            ...core,
+            id: realId,
+            map_id: state.activeMapId!,
+            slug: slugify(core.title),
+            parent_topic_id: null,
+            type: 'core',
+            freshness: core.freshness || 'EVERGREEN',
+          } as EnrichedTopic);
         });
 
+        // Process outer topics (resolve parent temp IDs to real UUIDs)
+        newOuter.filter(t => t.title?.trim()).forEach(outer => {
+          const parentRealId = outer.parent_topic_id ? topicIdMap.get(outer.parent_topic_id) : null;
+          const parentTopic = finalTopics.find(t => t.id === parentRealId);
+          const parentSlug = parentTopic ? parentTopic.slug : '';
+          finalTopics.push({
+            ...outer,
+            id: uuidv4(),
+            map_id: state.activeMapId!,
+            slug: `${parentSlug}/${cleanSlug(parentSlug, outer.title)}`.replace(/^\//, ''),
+            parent_topic_id: parentRealId || null,
+            type: 'outer',
+            freshness: outer.freshness || 'STANDARD',
+          } as EnrichedTopic);
+        });
+
+        setGeneratedCore(finalTopics.filter(t => t.type === 'core'));
+        setGeneratedOuter(finalTopics.filter(t => t.type === 'outer'));
+
+        // Update React state with properly ID'd topics
+        dispatch({
+          type: 'SET_TOPICS_FOR_MAP',
+          payload: { mapId: state.activeMapId, topics: finalTopics },
+        });
+
+        // Save to topics table (canonical storage)
         try {
           const supabase = getSupabaseClient(
             businessInfo.supabaseUrl,
             businessInfo.supabaseAnonKey
           );
-          const { error } = await supabase
-            .from('topical_maps')
-            .update({ topics: allTopics } as any)
-            .eq('id', state.activeMapId);
-          if (error) console.warn(`[MapGeneration] topics save failed (${error.code}): ${error.message}`);
+
+          // Delete existing topics for this map before inserting
+          await supabase.from('topics').delete().eq('map_id', state.activeMapId);
+
+          // Map to DB column format
+          const dbTopics = finalTopics.map(t => ({
+            id: t.id,
+            map_id: state.activeMapId,
+            user_id: state.user!.id,
+            parent_topic_id: t.parent_topic_id,
+            title: t.title,
+            slug: t.slug,
+            description: t.description,
+            type: t.type,
+            freshness: t.freshness,
+            metadata: {
+              topic_class: t.topic_class || (t.type === 'core' ? 'monetization' : 'informational'),
+              cluster_role: t.cluster_role,
+              attribute_focus: t.attribute_focus,
+              canonical_query: t.canonical_query,
+            },
+          }));
+
+          const insertResult = await verifiedBulkInsert(
+            supabase,
+            { table: 'topics', operationDescription: `insert ${dbTopics.length} pipeline topics` },
+            dbTopics,
+            'id'
+          );
+
+          if (!insertResult.success) {
+            console.warn(`[PipelineMap] Topic save failed: ${insertResult.error}`);
+          }
         } catch (err) {
-          console.warn('[MapGeneration] Supabase save failed:', err);
+          console.warn('[PipelineMap] Supabase topics save failed:', err);
         }
+      } else {
+        setGeneratedCore(newCore);
+        setGeneratedOuter(newOuter);
       }
 
       setStepStatus('map_planning', 'pending_approval');

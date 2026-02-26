@@ -223,6 +223,9 @@ export const parseTopicalMap = (data: any): TopicalMap => {
         // Action plan (persisted JSONB column)
         action_plan: data.action_plan && typeof data.action_plan === 'object' ? data.action_plan : undefined,
 
+        // Dialogue context (persisted JSONB column)
+        dialogue_context: data.dialogue_context && typeof data.dialogue_context === 'object' ? data.dialogue_context : undefined,
+
         // Default fields must be undefined to trigger data fetching in hooks
         topics: undefined,
         briefs: undefined
