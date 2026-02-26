@@ -56,7 +56,7 @@ export function ActionPlanDashboard({
           <h3 className="text-sm font-semibold text-gray-200">Strategic Action Plan</h3>
           <p className="text-xs text-gray-500 mt-0.5">
             {hasData
-              ? `${stats.total} pages planned across 4 waves`
+              ? `${stats.total} pages planned across ${actionPlan?.waveDefinitions?.length ?? Object.keys(stats.byWave).length} waves`
               : `${topicCount} topics ready for strategic analysis`
             }
           </p>

@@ -31,9 +31,9 @@ export interface ActionPlanEntry {
   topicId: string;
   actionType: ActionType;
   priority: ActionPriority;
-  wave: 1 | 2 | 3 | 4;
+  wave: number;
   rationale: string;
-  suggestedWave?: 1 | 2 | 3 | 4;
+  suggestedWave?: number;
   pinned?: boolean; // User pinned this topic to a specific wave (prevents AI rebalance)
   removed?: boolean; // User removed this topic from the plan
 }
@@ -44,11 +44,21 @@ export interface ActionPlanEntry {
 export interface ActionPlanStats {
   total: number;
   byAction: Record<ActionType, number>;
-  byWave: Record<1 | 2 | 3 | 4, number>;
-  byWaveAndAction: Record<1 | 2 | 3 | 4, Record<ActionType, number>>;
+  byWave: Record<number, number>;
+  byWaveAndAction: Record<number, Record<ActionType, number>>;
   existingPages: number;
   newPages: number;
   removals: number; // PRUNE_410 + REDIRECT_301
+}
+
+/**
+ * AI-generated wave definition describing a publishing phase
+ */
+export interface WaveDefinition {
+  number: number;
+  name: string;
+  description: string;
+  color?: string; // Tailwind color identifier: "emerald", "blue", "amber", etc.
 }
 
 /**
@@ -57,6 +67,7 @@ export interface ActionPlanStats {
 export interface ActionPlan {
   status: ActionPlanStatus;
   entries: ActionPlanEntry[];
+  waveDefinitions?: WaveDefinition[];
   strategicSummary?: string;
   generatedAt?: string;
   approvedAt?: string;

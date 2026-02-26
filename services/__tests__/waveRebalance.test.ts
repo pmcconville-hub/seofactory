@@ -2,20 +2,21 @@ import { describe, it, expect } from 'vitest';
 import { rebalanceWaves } from '../waveAssignmentService';
 
 describe('rebalanceWaves', () => {
-  it('distributes topics evenly across 4 waves', () => {
+  it('distributes topics evenly across discovered waves', () => {
+    // Provide entries across 4 waves so rebalance discovers all 4
     const entries = Array.from({ length: 12 }, (_, i) => ({
       topicId: `t${i}`,
-      wave: 1 as const,
+      wave: (i % 4) + 1,
       priority: 'medium' as const,
     }));
 
     const result = rebalanceWaves(entries);
 
     // Count per wave
-    const waveCounts = { 1: 0, 2: 0, 3: 0, 4: 0 };
-    for (const wave of result.values()) waveCounts[wave]++;
+    const waveCounts: Record<number, number> = {};
+    for (const wave of result.values()) waveCounts[wave] = (waveCounts[wave] ?? 0) + 1;
 
-    // Each wave should have 3 topics
+    // Each wave should have 3 topics (12 / 4 = 3)
     expect(waveCounts[1]).toBe(3);
     expect(waveCounts[2]).toBe(3);
     expect(waveCounts[3]).toBe(3);
@@ -24,9 +25,9 @@ describe('rebalanceWaves', () => {
 
   it('respects pinned topics', () => {
     const entries = [
-      { topicId: 'pinned', wave: 2 as const, priority: 'high' as const, pinned: true },
-      { topicId: 'free1', wave: 1 as const, priority: 'medium' as const },
-      { topicId: 'free2', wave: 1 as const, priority: 'low' as const },
+      { topicId: 'pinned', wave: 2, priority: 'high' as const, pinned: true },
+      { topicId: 'free1', wave: 1, priority: 'medium' as const },
+      { topicId: 'free2', wave: 1, priority: 'low' as const },
     ];
 
     const result = rebalanceWaves(entries);
@@ -38,11 +39,12 @@ describe('rebalanceWaves', () => {
   });
 
   it('sorts by priority (critical first)', () => {
+    // Provide entries spread across 4 waves so rebalance discovers all 4
     const entries = [
-      { topicId: 'low', wave: 1 as const, priority: 'low' as const },
-      { topicId: 'critical', wave: 1 as const, priority: 'critical' as const },
-      { topicId: 'high', wave: 1 as const, priority: 'high' as const },
-      { topicId: 'medium', wave: 1 as const, priority: 'medium' as const },
+      { topicId: 'low', wave: 1, priority: 'low' as const },
+      { topicId: 'critical', wave: 2, priority: 'critical' as const },
+      { topicId: 'high', wave: 3, priority: 'high' as const },
+      { topicId: 'medium', wave: 4, priority: 'medium' as const },
     ];
 
     const result = rebalanceWaves(entries);
@@ -55,5 +57,27 @@ describe('rebalanceWaves', () => {
   it('handles empty input', () => {
     const result = rebalanceWaves([]);
     expect(result.size).toBe(0);
+  });
+
+  it('works with dynamic wave counts (5+ waves)', () => {
+    // Create entries across 5 waves
+    const entries = Array.from({ length: 10 }, (_, i) => ({
+      topicId: `t${i}`,
+      wave: (i % 5) + 1,
+      priority: 'medium' as const,
+    }));
+
+    const result = rebalanceWaves(entries);
+
+    // Count per wave
+    const waveCounts: Record<number, number> = {};
+    for (const wave of result.values()) waveCounts[wave] = (waveCounts[wave] ?? 0) + 1;
+
+    // Each of 5 waves should have 2 topics (10 / 5 = 2)
+    expect(waveCounts[1]).toBe(2);
+    expect(waveCounts[2]).toBe(2);
+    expect(waveCounts[3]).toBe(2);
+    expect(waveCounts[4]).toBe(2);
+    expect(waveCounts[5]).toBe(2);
   });
 });

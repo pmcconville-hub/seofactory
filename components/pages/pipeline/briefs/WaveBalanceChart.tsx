@@ -7,7 +7,8 @@ interface WaveBalanceChartProps {
 }
 
 export function WaveBalanceChart({ stats }: WaveBalanceChartProps) {
-  const data = ([1, 2, 3, 4] as const).map(wave => ({
+  const waveNumbers = Object.keys(stats.byWave).map(Number).sort((a, b) => a - b);
+  const data = waveNumbers.map(wave => ({
     name: `Wave ${wave}`,
     'Create New': stats.byWaveAndAction[wave]?.CREATE_NEW ?? 0,
     'Optimize': stats.byWaveAndAction[wave]?.OPTIMIZE ?? 0,

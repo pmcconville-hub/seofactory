@@ -670,7 +670,8 @@ const PipelineStrategyStep: React.FC = () => {
       dispatch({ type: 'UPDATE_MAP_DATA', payload: { mapId: state.activeMapId, data: { dialogue_context: updated } } });
       try {
         const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
-        await supabase.from('topical_maps').update({ dialogue_context: updated } as any).eq('id', state.activeMapId);
+        const { error } = await supabase.from('topical_maps').update({ dialogue_context: updated } as any).eq('id', state.activeMapId);
+        if (error) console.warn(`[Strategy] dialogue_context save failed (${error.code}): ${error.message}`);
       } catch { /* non-fatal */ }
     }
   }, [state.activeMapId, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey, dispatch]);

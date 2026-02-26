@@ -65,6 +65,7 @@ const PipelineBriefsStep: React.FC = () => {
   // Brief generation state
   const [isBriefGenerating, setIsBriefGenerating] = useState(false);
   const [generatingWave, setGeneratingWave] = useState<number | null>(null);
+  const [generatingTopicId, setGeneratingTopicId] = useState<string | null>(null);
   const [localBriefs, setLocalBriefs] = useState<Record<string, ContentBrief>>(existingBriefs);
   const [error, setError] = useState<string | null>(null);
   const [progressText, setProgressText] = useState('');
@@ -75,21 +76,27 @@ const PipelineBriefsStep: React.FC = () => {
   const waveTopics = useMemo(() => {
     if (actionPlan?.status === 'approved') {
       // Build wave map from action plan
-      const map = new Map<number, EnrichedTopic[]>([[1, []], [2, []], [3, []], [4, []]]);
+      const waveNums = (actionPlan.waveDefinitions ?? []).map(wd => wd.number);
+      const map = new Map<number, EnrichedTopic[]>();
+      for (const n of waveNums) map.set(n, []);
       const topicMap = new Map(topics.map(t => [t.id, t]));
       for (const entry of actionPlan.entries) {
         if (entry.removed) continue;
         const topic = topicMap.get(entry.topicId);
-        if (topic) map.get(entry.wave)!.push(topic);
+        if (topic) {
+          if (!map.has(entry.wave)) map.set(entry.wave, []);
+          map.get(entry.wave)!.push(topic);
+        }
       }
       return map;
     }
 
     // Fallback: use the wave assignment service
     const result = assignTopicsToWavesService(topics, 'monetization_first');
-    const map = new Map<number, EnrichedTopic[]>([[1, []], [2, []], [3, []], [4, []]]);
+    const map = new Map<number, EnrichedTopic[]>();
     const topicMap = new Map(topics.map(t => [t.id, t]));
     for (const wave of result.waves) {
+      if (!map.has(wave.number)) map.set(wave.number, []);
       for (const id of wave.topicIds) {
         const topic = topicMap.get(id);
         if (topic) map.get(wave.number)!.push(topic);
@@ -136,6 +143,7 @@ const PipelineBriefsStep: React.FC = () => {
     try {
       for (let i = 0; i < topicsNeedingBriefs.length; i++) {
         const topic = topicsNeedingBriefs[i];
+        setGeneratingTopicId(topic.id);
         setProgressText(`Generating brief ${i + 1}/${topicsNeedingBriefs.length}: ${topic.title}`);
 
         const { responseCode } = await suggestResponseCode(businessInfo, topic.title, dispatch);
@@ -176,10 +184,13 @@ const PipelineBriefsStep: React.FC = () => {
 
         try {
           const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
-          await supabase
+          const { error: saveError } = await supabase
             .from('topical_maps')
             .update({ briefs: mergedBriefs } as any)
             .eq('id', state.activeMapId);
+          if (saveError) {
+            console.warn(`[Briefs] Save failed (${saveError.code}): ${saveError.message}`);
+          }
         } catch (err) {
           console.warn('[Briefs] Supabase save failed:', err);
         }
@@ -193,6 +204,7 @@ const PipelineBriefsStep: React.FC = () => {
     } finally {
       setIsBriefGenerating(false);
       setGeneratingWave(null);
+      setGeneratingTopicId(null);
       setProgressText('');
     }
   };
@@ -279,6 +291,7 @@ const PipelineBriefsStep: React.FC = () => {
             waveTopics={waveTopics}
             isGenerating={isBriefGenerating}
             generatingWave={generatingWave}
+            generatingTopicId={generatingTopicId}
             onGenerateWave={handleGenerateWave}
             language={effectiveBusinessInfo.language || 'en'}
           />

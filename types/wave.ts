@@ -36,8 +36,8 @@ export interface WaveConfiguration {
 export interface Wave {
   /** Unique identifier for the wave (e.g., 'wave-1') */
   id: string;
-  /** Wave number (1-4) */
-  number: 1 | 2 | 3 | 4;
+  /** Wave number */
+  number: number;
   /** Human-readable wave name (e.g., 'Monetization Hubs') */
   name: string;
   /** Description of the wave's strategic purpose */

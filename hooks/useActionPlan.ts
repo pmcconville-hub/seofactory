@@ -28,7 +28,6 @@ import {
   generateTopicRationales,
   generateStrategicSummary,
 } from '../services/ai/actionPlanService';
-import { assignTopicsToWaves } from '../services/waveAssignmentService';
 import { rebalanceWaves } from '../services/waveAssignmentService';
 
 // ============================================================================
@@ -51,13 +50,13 @@ interface UseActionPlanReturn {
   updateEntry: (topicId: string, updates: Partial<ActionPlanEntry>) => void;
   removeEntry: (topicId: string) => void;
   restoreEntry: (topicId: string) => void;
-  moveToWave: (topicIds: string[], wave: 1 | 2 | 3 | 4) => void;
+  moveToWave: (topicIds: string[], wave: number) => void;
   changeActionType: (topicIds: string[], actionType: ActionType) => void;
   rebalance: () => void;
   updateTitle: (topicId: string, newTitle: string) => void;
 
   // Getters
-  getEntriesByWave: (wave: 1 | 2 | 3 | 4) => ActionPlanEntry[];
+  getEntriesByWave: (wave: number) => ActionPlanEntry[];
   getActiveEntries: () => ActionPlanEntry[];
 }
 
@@ -72,14 +71,17 @@ function computeStats(entries: ActionPlanEntry[]): ActionPlanStats {
     KEEP: 0, OPTIMIZE: 0, REWRITE: 0, MERGE: 0,
     REDIRECT_301: 0, PRUNE_410: 0, CANONICALIZE: 0, CREATE_NEW: 0,
   };
-  const byWave: Record<1 | 2 | 3 | 4, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
-  const byWaveAndAction: Record<1 | 2 | 3 | 4, Record<ActionType, number>> = {
-    1: { ...byAction }, 2: { ...byAction }, 3: { ...byAction }, 4: { ...byAction },
-  };
+  const emptyAction = (): Record<ActionType, number> => ({
+    KEEP: 0, OPTIMIZE: 0, REWRITE: 0, MERGE: 0,
+    REDIRECT_301: 0, PRUNE_410: 0, CANONICALIZE: 0, CREATE_NEW: 0,
+  });
+  const byWave: Record<number, number> = {};
+  const byWaveAndAction: Record<number, Record<ActionType, number>> = {};
 
   for (const entry of active) {
     byAction[entry.actionType]++;
-    byWave[entry.wave]++;
+    byWave[entry.wave] = (byWave[entry.wave] ?? 0) + 1;
+    if (!byWaveAndAction[entry.wave]) byWaveAndAction[entry.wave] = emptyAction();
     byWaveAndAction[entry.wave][entry.actionType]++;
   }
 
@@ -149,10 +151,13 @@ export function useActionPlan(
           businessInfo.supabaseUrl,
           businessInfo.supabaseAnonKey
         );
-        await supabase
+        const { error } = await supabase
           .from('topical_maps')
           .update({ action_plan: plan } as any)
           .eq('id', mapId);
+        if (error) {
+          console.warn(`[useActionPlan] Save failed (${error.code}): ${error.message}`);
+        }
       } catch (err) {
         console.warn('[useActionPlan] Supabase save failed:', err);
       }
@@ -182,29 +187,24 @@ export function useActionPlan(
     setGenerationProgress('Initializing action plan...');
 
     try {
-      // Step 1: Get wave assignments from the proper service
-      const { waves } = assignTopicsToWaves(topics, 'monetization_first');
-      const waveMap = new Map<string, 1 | 2 | 3 | 4>();
-      for (const wave of waves) {
-        for (const topicId of wave.topicIds) {
-          waveMap.set(topicId, wave.number);
-        }
+      // Step 1: Create placeholder entries (wave=1 for all, will be overridden by AI)
+      const placeholderWaveMap = new Map<string, number>();
+      for (const topic of topics) {
+        placeholderWaveMap.set(topic.id, 1);
       }
+      const initialEntries = createInitialEntries(topics, placeholderWaveMap);
 
-      // Step 2: Create initial entries
-      const initialEntries = createInitialEntries(topics, waveMap);
-
-      // Update plan with initial entries (draft state)
+      // Update plan with initial entries (generating state)
       const draftPlan: ActionPlan = {
         status: 'generating',
         entries: initialEntries,
         generatedAt: new Date().toISOString(),
       };
       setActionPlan(draftPlan);
-      setGenerationProgress('Generating AI rationales...');
+      setGenerationProgress('Generating AI rationales and wave structure...');
 
-      // Step 3: Generate AI rationales in batches
-      const rationales = await generateTopicRationales(
+      // Step 2: Generate AI rationales with dynamic wave definitions
+      const { rationales, waveDefinitions } = await generateTopicRationales(
         topics,
         businessInfo,
         pillars,
@@ -212,7 +212,7 @@ export function useActionPlan(
         dispatch
       );
 
-      // Step 4: Merge rationales into entries
+      // Step 3: Merge rationales into entries
       const enrichedEntries = initialEntries.map(entry => {
         const rationale = rationales.find(r => r.topicId === entry.topicId);
         if (rationale) {
@@ -230,19 +230,21 @@ export function useActionPlan(
 
       setGenerationProgress('Generating strategic summary...');
 
-      // Step 5: Generate strategic summary
+      // Step 4: Generate strategic summary
       const summary = await generateStrategicSummary(
         enrichedEntries,
         topics,
         businessInfo,
         pillars,
-        dispatch
+        dispatch,
+        waveDefinitions
       );
 
-      // Step 6: Finalize the plan
+      // Step 5: Finalize the plan with wave definitions
       const finalPlan: ActionPlan = {
         status: 'ready',
         entries: enrichedEntries,
+        waveDefinitions,
         strategicSummary: summary,
         generatedAt: new Date().toISOString(),
       };
@@ -317,7 +319,7 @@ export function useActionPlan(
   }, [updatePlan]);
 
   // ──── CRUD: Move to Wave ────
-  const moveToWave = useCallback((topicIds: string[], wave: 1 | 2 | 3 | 4) => {
+  const moveToWave = useCallback((topicIds: string[], wave: number) => {
     const idSet = new Set(topicIds);
     updatePlan(plan => ({
       ...plan,
@@ -361,7 +363,7 @@ export function useActionPlan(
   }, []);
 
   // ──── Getters ────
-  const getEntriesByWave = useCallback((wave: 1 | 2 | 3 | 4): ActionPlanEntry[] => {
+  const getEntriesByWave = useCallback((wave: number): ActionPlanEntry[] => {
     if (!actionPlan) return [];
     return actionPlan.entries.filter(e => e.wave === wave && !e.removed);
   }, [actionPlan]);

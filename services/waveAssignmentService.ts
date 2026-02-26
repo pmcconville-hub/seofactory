@@ -45,7 +45,7 @@ interface WaveAssignableTopic {
  * Used as defaults when creating waves programmatically.
  */
 export function getDefaultWaveDescriptions(): Record<
-  1 | 2 | 3 | 4,
+  number,
   { name: string; description: string }
 > {
   return {
@@ -80,7 +80,7 @@ export function getDefaultWaveDescriptions(): Record<
  * Creates a Wave object with sensible defaults.
  */
 function createWave(
-  number: 1 | 2 | 3 | 4,
+  number: number,
   name: string,
   description: string,
   topicIds: string[],
@@ -389,22 +389,28 @@ export function assignTopicsToWaves(
 export function rebalanceWaves(
   entries: Array<{
     topicId: string;
-    wave: 1 | 2 | 3 | 4;
+    wave: number;
     priority: 'critical' | 'high' | 'medium' | 'low';
     pinned?: boolean;
   }>
-): Map<string, 1 | 2 | 3 | 4> {
-  const result = new Map<string, 1 | 2 | 3 | 4>();
+): Map<string, number> {
+  const result = new Map<string, number>();
+
+  // Discover unique wave numbers from entries
+  const waveNumbers = [...new Set(entries.map(e => e.wave))].sort((a, b) => a - b);
+  if (waveNumbers.length === 0) return result;
 
   // Track capacity per wave (start with pinned items)
-  const waveCounts: Record<1 | 2 | 3 | 4, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  const waveCounts: Record<number, number> = {};
+  for (const w of waveNumbers) waveCounts[w] = 0;
+
   const pinned: typeof entries = [];
   const unpinned: typeof entries = [];
 
   for (const entry of entries) {
     if (entry.pinned) {
       pinned.push(entry);
-      waveCounts[entry.wave]++;
+      waveCounts[entry.wave] = (waveCounts[entry.wave] ?? 0) + 1;
       result.set(entry.topicId, entry.wave);
     } else {
       unpinned.push(entry);
@@ -420,23 +426,18 @@ export function rebalanceWaves(
   };
   unpinned.sort((a, b) => (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3));
 
-  // Target: roughly even distribution
-  const totalUnpinned = unpinned.length;
-  const targetPerWave = Math.ceil(totalUnpinned / 4);
-
   // Assign unpinned topics to the wave with fewest items
   for (const entry of unpinned) {
-    // Find the wave with the least items, respecting max target
-    let bestWave: 1 | 2 | 3 | 4 = 1;
+    let bestWave = waveNumbers[0];
     let minCount = Infinity;
-    for (const w of [1, 2, 3, 4] as const) {
-      if (waveCounts[w] < minCount) {
-        minCount = waveCounts[w];
+    for (const w of waveNumbers) {
+      if ((waveCounts[w] ?? 0) < minCount) {
+        minCount = waveCounts[w] ?? 0;
         bestWave = w;
       }
     }
     result.set(entry.topicId, bestWave);
-    waveCounts[bestWave]++;
+    waveCounts[bestWave] = (waveCounts[bestWave] ?? 0) + 1;
   }
 
   return result;

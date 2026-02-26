@@ -1146,10 +1146,11 @@ const PipelineMapStep: React.FC = () => {
             businessInfo.supabaseUrl,
             businessInfo.supabaseAnonKey
           );
-          await supabase
+          const { error } = await supabase
             .from('topical_maps')
             .update({ topics: allTopics } as any)
             .eq('id', state.activeMapId);
+          if (error) console.warn(`[MapGeneration] topics save failed (${error.code}): ${error.message}`);
         } catch (err) {
           console.warn('[MapGeneration] Supabase save failed:', err);
         }
@@ -1174,7 +1175,8 @@ const PipelineMapStep: React.FC = () => {
       dispatch({ type: 'UPDATE_MAP_DATA', payload: { mapId: state.activeMapId, data: { dialogue_context: updated } } });
       try {
         const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
-        await supabase.from('topical_maps').update({ dialogue_context: updated } as any).eq('id', state.activeMapId);
+        const { error } = await supabase.from('topical_maps').update({ dialogue_context: updated } as any).eq('id', state.activeMapId);
+        if (error) console.warn(`[MapStep] dialogue_context save failed (${error.code}): ${error.message}`);
       } catch { /* non-fatal */ }
     }
   }, [state.activeMapId, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey, dispatch]);

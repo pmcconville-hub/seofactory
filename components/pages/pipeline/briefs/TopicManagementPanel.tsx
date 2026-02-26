@@ -11,7 +11,7 @@ import {
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { EnrichedTopic } from '../../../../types';
-import type { ActionPlanEntry, ActionPlan, ActionType } from '../../../../types/actionPlan';
+import type { ActionPlanEntry, ActionPlan, ActionType, WaveDefinition } from '../../../../types/actionPlan';
 import { WaveColumn } from './WaveColumn';
 import { BulkActionBar } from './BulkActionBar';
 import { ActionTypeBadge } from './ActionTypeBadge';
@@ -21,7 +21,7 @@ interface TopicManagementPanelProps {
   topics: EnrichedTopic[];
   onUpdate: (topicId: string, updates: Partial<ActionPlanEntry>) => void;
   onRemove: (topicId: string) => void;
-  onMoveToWave: (topicIds: string[], wave: 1 | 2 | 3 | 4) => void;
+  onMoveToWave: (topicIds: string[], wave: number) => void;
   onChangeActionType: (topicIds: string[], actionType: ActionType) => void;
   onRebalance: () => void;
   onApprove: () => void;
@@ -48,18 +48,29 @@ export function TopicManagementPanel({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  // Wave definitions from AI or defaults
+  const waveDefinitions = useMemo<WaveDefinition[]>(() => {
+    if (actionPlan.waveDefinitions?.length) return actionPlan.waveDefinitions;
+    return [
+      { number: 1, name: 'Foundation Hubs', description: '' },
+      { number: 2, name: 'Knowledge Clusters', description: '' },
+      { number: 3, name: 'Extension', description: '' },
+      { number: 4, name: 'Authority Expansion', description: '' },
+    ];
+  }, [actionPlan.waveDefinitions]);
+
   // Active entries by wave
   const entriesByWave = useMemo(() => {
-    const result: Record<1 | 2 | 3 | 4, ActionPlanEntry[]> = {
-      1: [], 2: [], 3: [], 4: [],
-    };
+    const result: Record<number, ActionPlanEntry[]> = {};
+    for (const wd of waveDefinitions) result[wd.number] = [];
     for (const entry of actionPlan.entries) {
       if (!entry.removed) {
+        if (!result[entry.wave]) result[entry.wave] = [];
         result[entry.wave].push(entry);
       }
     }
     return result;
-  }, [actionPlan.entries]);
+  }, [actionPlan.entries, waveDefinitions]);
 
   // Selection handlers
   const handleSelect = useCallback((topicId: string) => {
@@ -74,7 +85,7 @@ export function TopicManagementPanel({
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
   // Bulk actions
-  const handleBulkMoveToWave = useCallback((wave: 1 | 2 | 3 | 4) => {
+  const handleBulkMoveToWave = useCallback((wave: number) => {
     onMoveToWave([...selectedIds], wave);
     clearSelection();
   }, [selectedIds, onMoveToWave, clearSelection]);
@@ -113,8 +124,8 @@ export function TopicManagementPanel({
 
     // Check if dropped on a wave droppable
     if (overId.startsWith('wave-')) {
-      const wave = parseInt(overId.replace('wave-', '')) as 1 | 2 | 3 | 4;
-      if ([1, 2, 3, 4].includes(wave)) {
+      const wave = parseInt(overId.replace('wave-', ''));
+      if (wave >= 1) {
         onUpdate(active.id as string, { wave, pinned: true });
       }
       return;
@@ -181,18 +192,19 @@ export function TopicManagementPanel({
         onDragEnd={handleDragEnd}
       >
         <div className="space-y-3">
-          {([1, 2, 3, 4] as const).map(wave => (
+          {waveDefinitions.map(wd => (
             <WaveColumn
-              key={wave}
-              waveNumber={wave}
-              entries={entriesByWave[wave]}
+              key={wd.number}
+              waveNumber={wd.number}
+              waveName={wd.name}
+              entries={entriesByWave[wd.number] ?? []}
               topics={topics}
               selectedIds={selectedIds}
               onSelect={handleSelect}
               onUpdate={onUpdate}
               onRemove={onRemove}
-              isCollapsed={collapsedWaves.has(wave)}
-              onToggle={() => toggleWave(wave)}
+              isCollapsed={collapsedWaves.has(wd.number)}
+              onToggle={() => toggleWave(wd.number)}
             />
           ))}
         </div>
@@ -215,6 +227,7 @@ export function TopicManagementPanel({
         onChangeAction={handleBulkChangeAction}
         onRemove={handleBulkRemove}
         onClearSelection={clearSelection}
+        waveNumbers={waveDefinitions.map(wd => wd.number)}
       />
     </div>
   );

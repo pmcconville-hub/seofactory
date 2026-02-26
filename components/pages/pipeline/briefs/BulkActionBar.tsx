@@ -4,10 +4,11 @@ import { ACTION_TYPE_CONFIGS } from '../../../../types/actionPlan';
 
 interface BulkActionBarProps {
   selectedCount: number;
-  onMoveToWave: (wave: 1 | 2 | 3 | 4) => void;
+  onMoveToWave: (wave: number) => void;
   onChangeAction: (actionType: ActionType) => void;
   onRemove: () => void;
   onClearSelection: () => void;
+  waveNumbers?: number[];
 }
 
 export function BulkActionBar({
@@ -16,6 +17,7 @@ export function BulkActionBar({
   onChangeAction,
   onRemove,
   onClearSelection,
+  waveNumbers = [1, 2, 3, 4],
 }: BulkActionBarProps) {
   const [showActionMenu, setShowActionMenu] = useState(false);
 
@@ -33,7 +35,7 @@ export function BulkActionBar({
         {/* Move to Wave */}
         <div className="flex items-center gap-1">
           <span className="text-[10px] text-gray-500 mr-1">Move to:</span>
-          {([1, 2, 3, 4] as const).map(wave => (
+          {waveNumbers.map(wave => (
             <button
               key={wave}
               type="button"

@@ -11,7 +11,7 @@
 
 import type { EnrichedTopic, BusinessInfo, SEOPillars, SemanticTriple } from '../../types';
 import type { ActionType } from '../../types/migration';
-import type { ActionPlanEntry, ActionPriority } from '../../types/actionPlan';
+import type { ActionPlanEntry, ActionPriority, WaveDefinition } from '../../types/actionPlan';
 import { dispatchToProvider } from './providerDispatcher';
 import * as geminiService from '../geminiService';
 import * as openAiService from '../openAiService';
@@ -76,7 +76,7 @@ export function suggestPriority(topic: EnrichedTopic): ActionPriority {
  */
 export function createInitialEntries(
   topics: EnrichedTopic[],
-  waveAssignment: Map<string, 1 | 2 | 3 | 4>
+  waveAssignment: Map<string, number>
 ): ActionPlanEntry[] {
   return topics.map(topic => ({
     topicId: topic.id,
@@ -97,8 +97,13 @@ interface RationaleResult {
   topicId: string;
   actionType: ActionType;
   priority: ActionPriority;
-  suggestedWave: 1 | 2 | 3 | 4;
+  suggestedWave: number;
   rationale: string;
+}
+
+export interface RationaleWithWaveDefinitions {
+  rationales: RationaleResult[];
+  waveDefinitions: WaveDefinition[];
 }
 
 /**
@@ -137,6 +142,14 @@ ${businessContext(businessInfo)}
 **Topics to analyze:**
 ${topicList}
 
+**WAVE DEFINITION TASK:** Before assigning topics, define the wave structure. Determine the NUMBER of waves (2-8) based on business goals and topic diversity. Each wave should represent a distinct publishing phase with a clear strategic purpose.
+
+Example wave structures:
+- B2B service site (4 waves): Foundation Services → Supporting Authority → Regional Expansion → Thought Leadership
+- E-commerce (3 waves): Core Product Pages → Category Support → Buying Guides
+- SaaS (5 waves): Feature Pages → Use Case Pages → Integration Guides → Comparison Content → Educational Content
+- Local business (3 waves): Core Services → Service Area Pages → Trust & Authority Content
+
 For each topic, determine:
 1. **actionType** — One of: CREATE_NEW, OPTIMIZE, REWRITE, MERGE, REDIRECT_301, PRUNE_410, CANONICALIZE, KEEP
    - Topics marked [NEW CONTENT] should typically be CREATE_NEW
@@ -146,30 +159,31 @@ For each topic, determine:
    - Core monetization = high
    - Core informational = medium
    - Outer/authority = low
-3. **suggestedWave** — 1, 2, 3, or 4
-   - Wave 1: Foundation (pillars + monetization hubs)
-   - Wave 2: Knowledge depth (informational support)
-   - Wave 3: Regional/variant extension
-   - Wave 4: Authority expansion (outer topics)
+3. **suggestedWave** — Assign to the wave number you defined in waveDefinitions.
 4. **rationale** — 1-2 sentence explanation of WHY this action and wave assignment make strategic sense for the business.
 
 ${jsonResponseInstruction}
-Return a JSON array of objects:
-[
-  {
-    "topicIndex": 1,
-    "actionType": "CREATE_NEW",
-    "priority": "high",
-    "suggestedWave": 1,
-    "rationale": "This pillar page establishes topical authority for the core monetization cluster..."
-  }
-]
+Return a JSON object with two fields:
+{
+  "waveDefinitions": [
+    { "number": 1, "name": "Short name", "description": "Strategic purpose of this wave" }
+  ],
+  "topics": [
+    {
+      "topicIndex": 1,
+      "actionType": "CREATE_NEW",
+      "priority": "high",
+      "suggestedWave": 1,
+      "rationale": "This pillar page establishes topical authority for the core monetization cluster..."
+    }
+  ]
+}
 `;
 }
 
 /**
  * Generate AI-powered rationales for a batch of topics.
- * Returns enriched action plan entries with rationales.
+ * Returns enriched action plan entries with rationales and wave definitions.
  */
 export async function generateTopicRationales(
   topics: EnrichedTopic[],
@@ -177,8 +191,9 @@ export async function generateTopicRationales(
   pillars: SEOPillars,
   eavs: SemanticTriple[],
   dispatch: React.Dispatch<any>
-): Promise<RationaleResult[]> {
+): Promise<RationaleWithWaveDefinitions> {
   const results: RationaleResult[] = [];
+  let waveDefinitions: WaveDefinition[] = [];
 
   // Process in batches of BATCH_SIZE
   for (let i = 0; i < topics.length; i += BATCH_SIZE) {
@@ -204,42 +219,74 @@ export async function generateTopicRationales(
         openrouter: () => openRouterService.generateText(prompt, businessInfo, dispatch),
       });
 
-      // Parse JSON array from response
-      const jsonMatch = response.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]) as Array<{
-          topicIndex: number;
-          actionType: string;
-          priority: string;
-          suggestedWave: number;
-          rationale: string;
-        }>;
+      // Try to parse as JSON object with waveDefinitions + topics (new format)
+      const jsonObjMatch = response.match(/\{[\s\S]*\}/);
+      const jsonArrMatch = response.match(/\[[\s\S]*\]/);
 
-        for (const item of parsed) {
-          const topicIdx = (item.topicIndex ?? 1) - 1;
-          const topic = batch[topicIdx];
-          if (!topic) continue;
+      let topicItems: Array<{
+        topicIndex: number;
+        actionType: string;
+        priority: string;
+        suggestedWave: number;
+        rationale: string;
+      }> = [];
 
-          const validActions: ActionType[] = [
-            'KEEP', 'OPTIMIZE', 'REWRITE', 'MERGE',
-            'REDIRECT_301', 'PRUNE_410', 'CANONICALIZE', 'CREATE_NEW',
-          ];
-          const validPriorities: ActionPriority[] = ['critical', 'high', 'medium', 'low'];
-
-          results.push({
-            topicId: topic.id,
-            actionType: validActions.includes(item.actionType as ActionType)
-              ? (item.actionType as ActionType)
-              : suggestActionType(topic),
-            priority: validPriorities.includes(item.priority as ActionPriority)
-              ? (item.priority as ActionPriority)
-              : suggestPriority(topic),
-            suggestedWave: ([1, 2, 3, 4].includes(item.suggestedWave)
-              ? item.suggestedWave
-              : 1) as 1 | 2 | 3 | 4,
-            rationale: (item.rationale || '').trim(),
-          });
+      if (jsonObjMatch) {
+        try {
+          const parsed = JSON.parse(jsonObjMatch[0]);
+          // New format: { waveDefinitions: [...], topics: [...] }
+          if (parsed.waveDefinitions && Array.isArray(parsed.waveDefinitions) && i === 0) {
+            waveDefinitions = parsed.waveDefinitions.map((wd: any) => ({
+              number: wd.number,
+              name: String(wd.name || ''),
+              description: String(wd.description || ''),
+            }));
+          }
+          if (parsed.topics && Array.isArray(parsed.topics)) {
+            topicItems = parsed.topics;
+          } else if (Array.isArray(parsed)) {
+            // Fallback: AI returned a raw array in an object wrapper
+            topicItems = parsed;
+          }
+        } catch {
+          // Fall through to array match
         }
+      }
+
+      // Fallback: try to parse as plain JSON array (old format)
+      if (topicItems.length === 0 && jsonArrMatch) {
+        try {
+          topicItems = JSON.parse(jsonArrMatch[0]);
+        } catch { /* ignore */ }
+      }
+
+      const validActions: ActionType[] = [
+        'KEEP', 'OPTIMIZE', 'REWRITE', 'MERGE',
+        'REDIRECT_301', 'PRUNE_410', 'CANONICALIZE', 'CREATE_NEW',
+      ];
+      const validPriorities: ActionPriority[] = ['critical', 'high', 'medium', 'low'];
+      const maxWave = waveDefinitions.length > 0
+        ? Math.max(...waveDefinitions.map(w => w.number))
+        : 4;
+
+      for (const item of topicItems) {
+        const topicIdx = (item.topicIndex ?? 1) - 1;
+        const topic = batch[topicIdx];
+        if (!topic) continue;
+
+        results.push({
+          topicId: topic.id,
+          actionType: validActions.includes(item.actionType as ActionType)
+            ? (item.actionType as ActionType)
+            : suggestActionType(topic),
+          priority: validPriorities.includes(item.priority as ActionPriority)
+            ? (item.priority as ActionPriority)
+            : suggestPriority(topic),
+          suggestedWave: (item.suggestedWave >= 1 && item.suggestedWave <= maxWave)
+            ? item.suggestedWave
+            : 1,
+          rationale: (item.rationale || '').trim(),
+        });
       }
     } catch (error) {
       console.warn(`[ActionPlan] Batch ${i / BATCH_SIZE + 1} failed, using defaults:`, error);
@@ -256,7 +303,17 @@ export async function generateTopicRationales(
     }
   }
 
-  return results;
+  // Provide default wave definitions if AI didn't return any
+  if (waveDefinitions.length === 0) {
+    waveDefinitions = [
+      { number: 1, name: 'Foundation', description: 'Core pillar and monetization pages' },
+      { number: 2, name: 'Knowledge Depth', description: 'Informational support content' },
+      { number: 3, name: 'Extension', description: 'Regional and variant pages' },
+      { number: 4, name: 'Authority', description: 'Outer authority expansion topics' },
+    ];
+  }
+
+  return { rationales: results, waveDefinitions };
 }
 
 // ============================================================================
@@ -271,7 +328,8 @@ export async function generateStrategicSummary(
   topics: EnrichedTopic[],
   businessInfo: BusinessInfo,
   pillars: SEOPillars,
-  dispatch: React.Dispatch<any>
+  dispatch: React.Dispatch<any>,
+  waveDefinitions?: WaveDefinition[]
 ): Promise<string> {
   const languageInstruction = getLanguageAndRegionInstruction(
     businessInfo.language,
@@ -279,7 +337,7 @@ export async function generateStrategicSummary(
   );
 
   // Compute stats for the prompt
-  const stats = {
+  const actionStats = {
     total: entries.length,
     createNew: entries.filter(e => e.actionType === 'CREATE_NEW').length,
     optimize: entries.filter(e => e.actionType === 'OPTIMIZE').length,
@@ -288,11 +346,19 @@ export async function generateStrategicSummary(
     redirect: entries.filter(e => e.actionType === 'REDIRECT_301').length,
     prune: entries.filter(e => e.actionType === 'PRUNE_410').length,
     keep: entries.filter(e => e.actionType === 'KEEP').length,
-    wave1: entries.filter(e => e.wave === 1).length,
-    wave2: entries.filter(e => e.wave === 2).length,
-    wave3: entries.filter(e => e.wave === 3).length,
-    wave4: entries.filter(e => e.wave === 4).length,
   };
+
+  // Build dynamic wave stats
+  const waveDefs = waveDefinitions ?? [
+    { number: 1, name: 'Foundation' },
+    { number: 2, name: 'Knowledge' },
+    { number: 3, name: 'Extension' },
+    { number: 4, name: 'Authority' },
+  ];
+  const waveStats = waveDefs.map(wd => {
+    const count = entries.filter(e => e.wave === wd.number).length;
+    return `- Wave ${wd.number} (${wd.name}): ${count} pages`;
+  }).join('\n');
 
   const prompt = `
 ${languageInstruction}
@@ -306,13 +372,10 @@ ${businessContext(businessInfo)}
 - Central Search Intent: ${pillars.centralSearchIntent}
 
 **Action Plan Statistics:**
-- Total pages planned: ${stats.total}
-- Create New: ${stats.createNew} | Optimize: ${stats.optimize} | Rewrite: ${stats.rewrite}
-- Merge: ${stats.merge} | Redirect: ${stats.redirect} | Prune: ${stats.prune} | Keep: ${stats.keep}
-- Wave 1 (Foundation): ${stats.wave1} pages
-- Wave 2 (Knowledge): ${stats.wave2} pages
-- Wave 3 (Regional): ${stats.wave3} pages
-- Wave 4 (Authority): ${stats.wave4} pages
+- Total pages planned: ${actionStats.total}
+- Create New: ${actionStats.createNew} | Optimize: ${actionStats.optimize} | Rewrite: ${actionStats.rewrite}
+- Merge: ${actionStats.merge} | Redirect: ${actionStats.redirect} | Prune: ${actionStats.prune} | Keep: ${actionStats.keep}
+${waveStats}
 
 Write a 3-5 sentence strategic summary explaining:
 1. The overall strategy and WHY this plan makes sense for the business
@@ -335,6 +398,6 @@ Return ONLY the summary text, no JSON wrapping.
     return response.trim();
   } catch (error) {
     console.warn('[ActionPlan] Strategic summary generation failed:', error);
-    return `This plan covers ${stats.total} pages across 4 waves, with ${stats.createNew} new pages to create and ${stats.optimize} existing pages to optimize.`;
+    return `This plan covers ${actionStats.total} pages across ${waveDefs.length} waves, with ${actionStats.createNew} new pages to create and ${actionStats.optimize} existing pages to optimize.`;
   }
 }

@@ -4,15 +4,22 @@ import type { ActionPlan, ActionPlanEntry } from '../../../../types/actionPlan';
 
 // ──── Extracted inline components from original PipelineBriefsStep ────
 
-function StatusBadge({ status }: { status: 'Pending' | 'Generated' | 'Reviewed' }) {
+function StatusBadge({ status }: { status: 'Pending' | 'Generating' | 'Generated' | 'Reviewed' }) {
   const styles: Record<string, string> = {
     Pending: 'bg-gray-600/20 text-gray-400 border-gray-600/30',
+    Generating: 'bg-amber-600/20 text-amber-300 border-amber-500/30',
     Generated: 'bg-blue-600/20 text-blue-300 border-blue-500/30',
     Reviewed: 'bg-green-600/20 text-green-300 border-green-500/30',
   };
 
   return (
-    <span className={`text-xs font-medium px-2 py-0.5 rounded border ${styles[status]}`}>
+    <span className={`text-xs font-medium px-2 py-0.5 rounded border ${styles[status]} flex items-center gap-1.5`}>
+      {status === 'Generating' && (
+        <svg className="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+      )}
       {status}
     </span>
   );
@@ -32,16 +39,18 @@ function FormatIcon({ format }: { format: string }) {
   return <span className="text-[9px] bg-gray-700/30 text-gray-400 border border-gray-600/30 rounded px-1 py-0.5">prose</span>;
 }
 
-function BriefCard({ topic, brief, actionContext }: {
+function BriefCard({ topic, brief, actionContext, generatingTopicId }: {
   topic: EnrichedTopic;
   brief: ContentBrief | null;
   actionContext?: string;
+  generatingTopicId?: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
 
   const sections = brief?.structured_outline ?? [];
   const sectionCount = sections.length;
-  const isPending = !brief;
+  const isGenerating = generatingTopicId === topic.id;
+  const isPending = !brief && !isGenerating;
 
   const frameworkLabel = topic.topic_class === 'monetization' ? 'revenue page' : 'authority page';
   const labelColor = topic.topic_class === 'monetization' ? 'text-emerald-400/60' : 'text-sky-400/60';
@@ -80,7 +89,7 @@ function BriefCard({ topic, brief, actionContext }: {
   };
 
   return (
-    <div className={`bg-gray-900 border border-gray-700 rounded-md overflow-hidden ${isPending ? 'opacity-60' : ''}`}>
+    <div className={`bg-gray-900 border rounded-md overflow-hidden ${isGenerating ? 'border-amber-500/40 animate-pulse' : 'border-gray-700'} ${isPending ? 'opacity-60' : ''}`}>
       <button
         type="button"
         onClick={() => !isPending && setExpanded(!expanded)}
@@ -124,7 +133,7 @@ function BriefCard({ topic, brief, actionContext }: {
           )}
         </div>
         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-          <StatusBadge status={isPending ? 'Pending' : 'Generated'} />
+          <StatusBadge status={isGenerating ? 'Generating' : isPending ? 'Pending' : 'Generated'} />
           {!isPending && (
             <svg
               className={`w-3.5 h-3.5 text-gray-500 transition-transform ${expanded ? 'rotate-180' : ''}`}
@@ -199,21 +208,23 @@ function WaveBriefGroup({
   onGenerateWave,
   isGenerating,
   actionEntries,
+  generatingTopicId,
 }: {
   waveNumber: number;
   briefs: Array<{ topic: EnrichedTopic; brief: ContentBrief | null }>;
   onGenerateWave: (waveNumber: number) => void;
   isGenerating: boolean;
   actionEntries?: Map<string, ActionPlanEntry>;
+  generatingTopicId?: string | null;
 }) {
   const [expanded, setExpanded] = useState(waveNumber === 1);
 
-  const waveColors: Record<number, string> = {
-    1: 'border-emerald-500/50',
-    2: 'border-blue-500/50',
-    3: 'border-amber-500/50',
-    4: 'border-sky-500/50',
-  };
+  const WAVE_BORDER_PALETTE = [
+    'border-emerald-500/50', 'border-blue-500/50', 'border-amber-500/50', 'border-sky-500/50',
+    'border-purple-500/50', 'border-rose-500/50', 'border-teal-500/50', 'border-orange-500/50',
+    'border-indigo-500/50', 'border-lime-500/50',
+  ];
+  const waveBorderColor = WAVE_BORDER_PALETTE[(waveNumber - 1) % WAVE_BORDER_PALETTE.length];
 
   const generatedCount = briefs.filter(b => b.brief !== null).length;
   const qualityScore = computeWaveQuality(briefs);
@@ -221,7 +232,7 @@ function WaveBriefGroup({
   const qualityOk = qualityScore >= qualityThreshold;
 
   return (
-    <div className={`border rounded-lg ${waveColors[waveNumber] || 'border-gray-700'}`}>
+    <div className={`border rounded-lg ${waveBorderColor}`}>
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
@@ -290,6 +301,7 @@ function WaveBriefGroup({
                   topic={item.topic}
                   brief={item.brief}
                   actionContext={actionContext}
+                  generatingTopicId={generatingTopicId}
                 />
               );
             })
@@ -313,6 +325,7 @@ interface BriefGenerationPanelProps {
   waveTopics: Map<number, EnrichedTopic[]>;
   isGenerating: boolean;
   generatingWave: number | null;
+  generatingTopicId?: string | null;
   onGenerateWave: (waveNumber: number) => void;
   language: string;
 }
@@ -324,6 +337,7 @@ export function BriefGenerationPanel({
   waveTopics,
   isGenerating,
   generatingWave,
+  generatingTopicId,
   onGenerateWave,
   language,
 }: BriefGenerationPanelProps) {
@@ -335,20 +349,35 @@ export function BriefGenerationPanel({
     return new Map(actionPlan.entries.map(e => [e.topicId, e]));
   }, [actionPlan]);
 
+  // Wave definitions from AI or defaults
+  const waveDefinitions = useMemo(() => {
+    if (actionPlan?.waveDefinitions?.length) return actionPlan.waveDefinitions;
+    return [
+      { number: 1, name: 'Foundation', description: '' },
+      { number: 2, name: 'Knowledge', description: '' },
+      { number: 3, name: 'Extension', description: '' },
+      { number: 4, name: 'Authority', description: '' },
+    ];
+  }, [actionPlan?.waveDefinitions]);
+
   // Build wave data using the action plan's wave assignments if available
   const waveData = useMemo(() => {
     if (actionPlan && actionPlan.status === 'approved') {
       // Use action plan's wave assignments
-      const byWave: Record<number, EnrichedTopic[]> = { 1: [], 2: [], 3: [], 4: [] };
+      const byWave: Record<number, EnrichedTopic[]> = {};
+      for (const wd of waveDefinitions) byWave[wd.number] = [];
       const topicMap = new Map(topics.map(t => [t.id, t]));
       for (const entry of actionPlan.entries) {
         if (entry.removed) continue;
         const topic = topicMap.get(entry.topicId);
-        if (topic) byWave[entry.wave].push(topic);
+        if (topic) {
+          if (!byWave[entry.wave]) byWave[entry.wave] = [];
+          byWave[entry.wave].push(topic);
+        }
       }
-      return [1, 2, 3, 4].map(waveNum => ({
-        waveNumber: waveNum,
-        briefs: (byWave[waveNum] || []).map(t => ({
+      return waveDefinitions.map(wd => ({
+        waveNumber: wd.number,
+        briefs: (byWave[wd.number] || []).map(t => ({
           topic: t,
           brief: existingBriefs[t.id] ?? null,
         })),
@@ -356,14 +385,14 @@ export function BriefGenerationPanel({
     }
 
     // Fallback: use waveTopics from parent
-    return [1, 2, 3, 4].map(waveNum => ({
-      waveNumber: waveNum,
-      briefs: (waveTopics.get(waveNum) || []).map(t => ({
+    return waveDefinitions.map(wd => ({
+      waveNumber: wd.number,
+      briefs: (waveTopics.get(wd.number) || []).map(t => ({
         topic: t,
         brief: existingBriefs[t.id] ?? null,
       })),
     }));
-  }, [actionPlan, topics, existingBriefs, waveTopics]);
+  }, [actionPlan, topics, existingBriefs, waveTopics, waveDefinitions]);
 
   return (
     <div className="space-y-4">
@@ -399,6 +428,7 @@ export function BriefGenerationPanel({
               onGenerateWave={onGenerateWave}
               isGenerating={isGenerating && generatingWave === wave.waveNumber}
               actionEntries={actionEntries}
+              generatingTopicId={generatingTopicId}
             />
           ))}
         </div>

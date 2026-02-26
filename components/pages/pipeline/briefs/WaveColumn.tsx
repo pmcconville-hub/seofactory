@@ -5,8 +5,27 @@ import type { EnrichedTopic } from '../../../../types';
 import type { ActionPlanEntry } from '../../../../types/actionPlan';
 import { TopicRow } from './TopicRow';
 
+// Dynamic color palette for waves (cycles for wave counts > palette size)
+const WAVE_COLOR_PALETTE = [
+  { border: 'border-emerald-500/40', header: 'text-emerald-400' },
+  { border: 'border-blue-500/40', header: 'text-blue-400' },
+  { border: 'border-amber-500/40', header: 'text-amber-400' },
+  { border: 'border-sky-500/40', header: 'text-sky-400' },
+  { border: 'border-purple-500/40', header: 'text-purple-400' },
+  { border: 'border-rose-500/40', header: 'text-rose-400' },
+  { border: 'border-teal-500/40', header: 'text-teal-400' },
+  { border: 'border-orange-500/40', header: 'text-orange-400' },
+  { border: 'border-indigo-500/40', header: 'text-indigo-400' },
+  { border: 'border-lime-500/40', header: 'text-lime-400' },
+];
+
+function getWaveColors(waveNumber: number) {
+  return WAVE_COLOR_PALETTE[(waveNumber - 1) % WAVE_COLOR_PALETTE.length];
+}
+
 interface WaveColumnProps {
-  waveNumber: 1 | 2 | 3 | 4;
+  waveNumber: number;
+  waveName?: string;
   entries: ActionPlanEntry[];
   topics: EnrichedTopic[];
   selectedIds: Set<string>;
@@ -17,29 +36,9 @@ interface WaveColumnProps {
   onToggle: () => void;
 }
 
-const WAVE_NAMES: Record<1 | 2 | 3 | 4, string> = {
-  1: 'Foundation Hubs',
-  2: 'Knowledge Clusters',
-  3: 'Regional & Variants',
-  4: 'Authority Expansion',
-};
-
-const WAVE_COLORS: Record<1 | 2 | 3 | 4, string> = {
-  1: 'border-emerald-500/40',
-  2: 'border-blue-500/40',
-  3: 'border-amber-500/40',
-  4: 'border-sky-500/40',
-};
-
-const WAVE_HEADER_COLORS: Record<1 | 2 | 3 | 4, string> = {
-  1: 'text-emerald-400',
-  2: 'text-blue-400',
-  3: 'text-amber-400',
-  4: 'text-sky-400',
-};
-
 export function WaveColumn({
   waveNumber,
+  waveName,
   entries,
   topics,
   selectedIds,
@@ -71,7 +70,7 @@ export function WaveColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`border rounded-lg transition-colors ${WAVE_COLORS[waveNumber]} ${
+      className={`border rounded-lg transition-colors ${getWaveColors(waveNumber).border} ${
         isOver ? 'bg-blue-900/10 border-blue-400/50' : ''
       }`}
     >
@@ -90,10 +89,10 @@ export function WaveColumn({
           </svg>
           <div>
             <div className="flex items-center gap-2">
-              <span className={`text-sm font-medium ${WAVE_HEADER_COLORS[waveNumber]}`}>
+              <span className={`text-sm font-medium ${getWaveColors(waveNumber).header}`}>
                 Wave {waveNumber}
               </span>
-              <span className="text-xs text-gray-500">{WAVE_NAMES[waveNumber]}</span>
+              {waveName && <span className="text-xs text-gray-500">{waveName}</span>}
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-[10px] text-gray-600">

@@ -825,10 +825,11 @@ const PipelineEavsStep: React.FC = () => {
 
         try {
           const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
-          await supabase
+          const { error } = await supabase
             .from('topical_maps')
             .update({ eavs: result.eavs } as any)
             .eq('id', state.activeMapId);
+          if (error) console.warn(`[EavsStep] eavs gen save failed (${error.code}): ${error.message}`);
         } catch (err) {
           console.warn('[EAVs] Supabase save failed:', err);
         }
@@ -861,10 +862,11 @@ const PipelineEavsStep: React.FC = () => {
 
     try {
       const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
-      await supabase
+      const { error } = await supabase
         .from('topical_maps')
         .update({ eavs: updatedEavs } as any)
         .eq('id', state.activeMapId);
+      if (error) console.warn(`[EavsStep] confirmed save failed (${error.code}): ${error.message}`);
     } catch {
       // Non-fatal
     }
@@ -880,7 +882,8 @@ const PipelineEavsStep: React.FC = () => {
       dispatch({ type: 'UPDATE_MAP_DATA', payload: { mapId: state.activeMapId, data: { dialogue_context: updated } } });
       try {
         const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
-        await supabase.from('topical_maps').update({ dialogue_context: updated } as any).eq('id', state.activeMapId);
+        const { error } = await supabase.from('topical_maps').update({ dialogue_context: updated } as any).eq('id', state.activeMapId);
+        if (error) console.warn(`[EavsStep] dialogue_context save failed (${error.code}): ${error.message}`);
       } catch { /* non-fatal */ }
     }
   }, [state.activeMapId, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey, dispatch]);
@@ -896,7 +899,8 @@ const PipelineEavsStep: React.FC = () => {
       (async () => {
         try {
           const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
-          await supabase.from('topical_maps').update({ eavs: updated } as any).eq('id', state.activeMapId);
+          const { error } = await supabase.from('topical_maps').update({ eavs: updated } as any).eq('id', state.activeMapId);
+          if (error) console.warn(`[EavsStep] eavs save failed (${error.code}): ${error.message}`);
         } catch { /* non-fatal */ }
       })();
     }

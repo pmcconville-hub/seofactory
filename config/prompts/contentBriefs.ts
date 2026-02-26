@@ -117,7 +117,16 @@ ${eavContext}
 #### **I. FOUNDATIONAL STRATEGY & ENTITY ALIGNMENT**
 1.  **Central Entity Focus (Rule I.A):** Every heading and sub-heading must modify the Central Entity ("${pillars.centralEntity}"). Reject broad generalizations.
 2.  **Source Context Alignment (Rule I.B):** Filter attributes based on the Source Context ("${pillars.sourceContext}"). Only include attributes relevant to the monetization intent (e.g., if context is "Enterprise", exclude "Free" or "Cheap").
-3.  **Attribute Prioritization (Rule I.D):** Structure the 'outline' to prioritize **Unique Attributes** (definitive features/IDs) FIRST, followed by **Root Attributes** (Definitions/Nature), then **Rare Attributes** (Specific details).
+3.  **Intent-Driven Section Flow (Rule I.D):** Structure the outline based on the topic's SEARCH INTENT, not a fixed attribute order. Choose the flow that best serves the reader:
+
+    - **Service/product pages**: Problem → Solution approach → Key differentiators → Implementation details → Results/ROI → Pricing factors
+    - **How-to/process topics**: Prerequisites → Step-by-step phases → Tools/resources → Common pitfalls → Expected outcomes
+    - **Comparison topics**: Key differences overview → Feature-by-feature comparison → Use case fit → Cost comparison → Decision framework
+    - **Troubleshooting topics**: Symptom identification → Root cause analysis → Diagnostic steps → Solutions → Prevention measures
+    - **Cost/pricing topics**: Cost factors → Price ranges by tier → Variables affecting pricing → Budgeting approach → ROI analysis
+    - **Regulatory/compliance topics**: Regulatory landscape → Requirements breakdown → Implementation obligations → Penalties/risks → Compliance roadmap
+
+    Do NOT use the same heading structure for every topic. Each topic MUST have a unique section flow that reflects its specific angle. Prioritize UNIQUE and ROOT EAV attributes in the most prominent sections, but let the topic's intent drive the ordering.
 4.  **EAV-Section Mapping (Rule I.E):** For each section in 'structured_outline', include a 'mapped_eavs' field listing which Semantic Triples (by index from the list above) that section is responsible for covering. Every UNIQUE and ROOT triple MUST appear in at least one section's mapped_eavs. Example: { "heading": "Robot Materials", "mapped_eavs": [2, 5, 8] }
 
 #### **II. STRUCTURE & FLOW**
@@ -251,7 +260,7 @@ Respond with a SINGLE valid JSON object. Generate the 'structured_outline' FIRST
     "competitorHeadings": [],
     "avgWordCount": 1500,
     "avgHeadings": 8,
-    "commonStructure": "Introduction, Overview, Key Features, Implementation, Examples, FAQ, Conclusion",
+    "commonStructure": "Describe the actual heading flow used — varies by topic intent (e.g., 'Problem Analysis → Solution Architecture → Implementation Phases → Monitoring → ROI' for service pages)",
     "contentGaps": ["string - topics competitors miss"]
   },
   "visuals": {
@@ -275,12 +284,21 @@ Respond with a SINGLE valid JSON object. Generate the 'structured_outline' FIRST
 }
 
 **CRITICAL REQUIREMENTS:**
-1. **structured_outline** MUST contain 5-8 detailed section objects. This is the most critical field.
+1. **structured_outline** should contain 5-10 section objects. Count depends on topic complexity — a narrow topic may need 5 sections, a broad hub 8-10. Do NOT pad with generic filler sections.
 2. **serpAnalysis.avgWordCount** MUST be a realistic word count estimate (typically 1500-3000 based on topic complexity). Do NOT skip this field.
 3. **serpAnalysis.avgHeadings** MUST be a realistic heading count estimate (typically 6-12).
 4. **contextualBridge.links** MUST contain 2-4 internal link suggestions to related topics from the "Available Topics for Linking" list.
 
 All of these fields are MANDATORY and will cause brief validation to fail if missing or empty.
+
+**HEADING DIVERSITY RULE (CRITICAL):**
+Your headings must reflect THIS specific topic's angle, NOT a generic template. Rules:
+- Do NOT start every brief with "What is [Topic]?" — alternatives: lead with the problem it solves, the primary commercial differentiator, or the most actionable aspect.
+- Do NOT use generic headings ("Key Features", "Core Functions", "Overview", "Implementation Process"). Instead, name the SPECIFIC features, processes, or concepts. Example: "Real-time Threat Detection via SIEM Integration" instead of "Key Technologies".
+- VARY heading grammatical structures: mix questions ("When should you escalate?"), noun phrases ("SLA Response Tiers"), action phrases ("Configuring Alert Thresholds"), and declarative statements ("Forensic Evidence Preserves Legal Standing").
+- Headings should sound like they were written by a domain expert for THIS specific business, not by a template engine.
+
+SELF-CHECK before responding: Scan your headings. If >50% use the same grammatical pattern (e.g., all "Noun + en + Noun") or >30% repeat a template from another brief, rewrite them.
 
 ${shouldApplyMonetizationEnhancement(topic.topic_class) ? getMonetizationPromptEnhancement(info.language || 'English') : ''}
 
