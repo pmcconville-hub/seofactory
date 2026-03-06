@@ -4,7 +4,7 @@ import { useAppState } from '../../../state/appState';
 import ApprovalGate from '../../pipeline/ApprovalGate';
 import StepDialogue from '../../pipeline/StepDialogue';
 import { generateInitialTopicalMap, generateSingleCluster } from '../../../services/ai/mapGeneration';
-import { extractServicesFromEavs } from '../../../utils/eavUtils';
+import { extractServicesFromEavs, matchTopicsToExistingUrls } from '../../../utils/eavUtils';
 import { generateTopicRationales } from '../../../services/ai/actionPlanService';
 import type { ActionPlan } from '../../../types/actionPlan';
 import type { EnrichedTopic, SemanticTriple } from '../../../types';
@@ -1355,6 +1355,20 @@ const PipelineMapStep: React.FC = () => {
       } else {
         setGeneratedCore(newCore);
         setGeneratedOuter(newOuter);
+      }
+
+      // ── Match topics to existing site URLs before action plan generation ──
+      const crawledUrls: string[] =
+        (activeMap?.analysis_state as any)?.crawl?.urls ??
+        (activeMap?.analysis_state as any)?.discovery?.urls ??
+        [];
+
+      if (crawledUrls.length > 0) {
+        matchTopicsToExistingUrls(
+          resolvedTopics,
+          crawledUrls,
+          (activeMap?.business_info as any)?.domain || state.businessInfo.domain
+        );
       }
 
       // Generate AI-driven publishing waves after topics are created

@@ -1,7 +1,7 @@
 // utils/eavUtils.ts
 // Utility functions for extracting structured data from EAV triples
 
-import type { SemanticTriple } from '../types';
+import type { SemanticTriple, EnrichedTopic } from '../types';
 
 /**
  * Service-related predicate patterns.
@@ -108,4 +108,89 @@ export function summarizeEavsForPrompt(eavs: SemanticTriple[]): string {
 
   const result = [...priority, ...standard.slice(0, 20)];
   return JSON.stringify(result, null, 2);
+}
+
+// ── Stop words to exclude from slug matching ──
+const SLUG_STOP_WORDS = new Set([
+  'the', 'and', 'for', 'van', 'het', 'een', 'des', 'der', 'die', 'das',
+  'mit', 'und', 'fur', 'les', 'des', 'aux', 'pour', 'con', 'del', 'los',
+  'wat', 'hoe', 'over', 'met', 'bij', 'naar', 'uit', 'als',
+  'what', 'how', 'about', 'with', 'from', 'your', 'our', 'best', 'top',
+]);
+
+/**
+ * Extract meaningful words from a URL path or slug.
+ * Splits on slashes and hyphens, filters short/stop words.
+ */
+function extractPathWords(path: string): string[] {
+  return path
+    .toLowerCase()
+    .split(/[/\-_]+/)
+    .filter(w => w.length > 2 && !SLUG_STOP_WORDS.has(w));
+}
+
+/**
+ * Match topics to existing crawled URLs by slug similarity
+ * and set `target_url` on matched topics (mutates in-place).
+ *
+ * Matching strategy (mirrors ExistingPageMappingPanel logic):
+ * 1. Exact slug match → set target_url
+ * 2. Partial match (≥2 meaningful word overlap) → set target_url to best match
+ */
+export function matchTopicsToExistingUrls(
+  topics: EnrichedTopic[],
+  crawledUrls: string[],
+  domain?: string
+): void {
+  if (!crawledUrls.length) return;
+
+  // Parse crawled URLs into pathname + word tokens
+  const crawledEntries = crawledUrls.map(url => {
+    let pathname: string;
+    try {
+      pathname = new URL(url).pathname.replace(/\/$/, '').toLowerCase();
+    } catch {
+      pathname = url.replace(/\/$/, '').toLowerCase();
+    }
+    return { url, pathname, words: extractPathWords(pathname) };
+  });
+
+  // Build a Set of normalized pathnames for fast exact-match lookup
+  const crawledPathSet = new Set(crawledEntries.map(e => e.pathname));
+
+  for (const topic of topics) {
+    // Skip topics that already have a target_url
+    if (topic.target_url) continue;
+
+    const slug = topic.slug;
+    if (!slug) continue;
+
+    const normalizedSlug = `/${slug.replace(/^\//, '')}`.toLowerCase();
+
+    // 1. Exact match
+    if (crawledPathSet.has(normalizedSlug)) {
+      const matched = crawledEntries.find(e => e.pathname === normalizedSlug);
+      if (matched) {
+        topic.target_url = matched.url;
+        continue;
+      }
+    }
+
+    // 2. Partial match — find best crawled URL by word overlap
+    const slugWords = extractPathWords(slug);
+    if (slugWords.length < 2) continue; // Need at least 2 words to partial-match
+
+    let bestMatch: { url: string; overlap: number } | null = null;
+    for (const entry of crawledEntries) {
+      if (entry.words.length === 0) continue;
+      const overlap = slugWords.filter(w => entry.words.includes(w)).length;
+      if (overlap >= 2 && (!bestMatch || overlap > bestMatch.overlap)) {
+        bestMatch = { url: entry.url, overlap };
+      }
+    }
+
+    if (bestMatch) {
+      topic.target_url = bestMatch.url;
+    }
+  }
 }
