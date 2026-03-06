@@ -60,11 +60,12 @@ const PRIORITY_ORDER: Record<PlannedAction['priority'], number> = {
 // ── Signal weights ─────────────────────────────────────────────────────────
 
 const SIGNAL_WEIGHTS = {
-  contentHealth: 0.30,
-  trafficOpportunity: 0.25,
-  strategicAlignment: 0.20,
-  technicalHealth: 0.15,
+  contentHealth: 0.28,
+  trafficOpportunity: 0.24,
+  strategicAlignment: 0.19,
+  technicalHealth: 0.14,
   linkingStrength: 0.10,
+  structuralDepth: 0.05,
 } as const;
 
 // ── Site-wide averages ─────────────────────────────────────────────────────
@@ -205,6 +206,114 @@ function computeLinkingStrength(item: SiteInventoryItem, siteAvg: SiteAverages):
 }
 
 /**
+ * Structural Depth (0-100): entity prominence + section quality + schema coverage + DOM efficiency
+ * Returns null when no structural_analysis data is available (graceful degradation).
+ */
+function computeStructuralDepthScore(
+  item: SiteInventoryItem,
+  siteAvg: SiteAverages,
+): { score: number; reasoning: string } | null {
+  const sa = item.structural_analysis;
+  if (!sa) return null;
+
+  const reasons: string[] = [];
+
+  // ── Entity prominence (40%) ─────────────────────────────────────────
+  let entityScore = 0;
+  const ep = sa.entityProminence;
+  if (ep) {
+    if (ep.inH1) entityScore += 30;
+    if (ep.inFirstH2) entityScore += 15;
+    if (ep.inTitle) entityScore += 15;
+    // Heading mention rate: 0-1 scale → 0-40
+    entityScore += Math.round(ep.headingMentionRate * 40);
+    entityScore = clamp(entityScore, 0, 100);
+
+    if (ep.headingMentionRate < 0.15) {
+      reasons.push(`low entity prominence in headings (${Math.round(ep.headingMentionRate * 100)}%)`);
+    }
+    if (!ep.inH1) {
+      reasons.push('CE missing from H1');
+    }
+  }
+
+  // ── Section quality (30%) ───────────────────────────────────────────
+  let sectionScore = 50; // Default
+  const sections = sa.sections;
+  if (sections && sections.length > 0) {
+    const sectionCount = sections.length;
+    const avgWordsPerSection = sections.reduce((s, sec) => s + sec.wordCount, 0) / sectionCount;
+    const avgSiteWords = siteAvg.avgWordCount || 800;
+
+    // Score section count (3-12 is ideal range)
+    if (sectionCount >= 3 && sectionCount <= 12) {
+      sectionScore = 70;
+    } else if (sectionCount > 12) {
+      sectionScore = 50; // Overly fragmented
+      reasons.push(`overly fragmented (${sectionCount} sections)`);
+    } else {
+      sectionScore = 30; // Too few
+      reasons.push(`thin structure (${sectionCount} section(s))`);
+    }
+
+    // Bonus for substantial sections (avg 150+ words)
+    if (avgWordsPerSection >= 150) sectionScore += 15;
+    else if (avgWordsPerSection < 80) {
+      sectionScore -= 10;
+      reasons.push(`shallow sections (avg ${Math.round(avgWordsPerSection)} words)`);
+    }
+
+    sectionScore = clamp(sectionScore, 0, 100);
+  }
+
+  // ── Schema coverage (15%) ──────────────────────────────────────────
+  let schemaScore = 0;
+  const schemaMarkup = sa.schemaMarkup;
+  if (schemaMarkup && schemaMarkup.length > 0) {
+    const uniqueTypes = new Set(schemaMarkup.map(s => s.type));
+    // 1 type = 40, 2 = 60, 3 = 80, 4+ = 100
+    schemaScore = clamp(uniqueTypes.size * 20 + 20, 0, 100);
+  } else {
+    reasons.push('no schema markup detected');
+  }
+
+  // ── DOM efficiency (15%) ───────────────────────────────────────────
+  let domScore = 60; // Default
+  const dm = sa.domMetrics;
+  if (dm) {
+    const mainContentRatio = dm.mainContentNodes / (dm.totalNodes || 1);
+    // Good ratio: >0.3 = efficient, <0.15 = bloated
+    if (mainContentRatio >= 0.3) domScore = 90;
+    else if (mainContentRatio >= 0.2) domScore = 70;
+    else if (mainContentRatio < 0.15) {
+      domScore = 35;
+      reasons.push(`bloated DOM (${Math.round(mainContentRatio * 100)}% main content)`);
+    }
+    // Nesting penalty
+    if (dm.nestingDepth > 20) {
+      domScore -= 15;
+      reasons.push(`deep nesting (${dm.nestingDepth} levels)`);
+    }
+    domScore = clamp(domScore, 0, 100);
+  }
+
+  // ── Weighted total ─────────────────────────────────────────────────
+  const score = Math.round(
+    entityScore * 0.40 +
+    sectionScore * 0.30 +
+    schemaScore * 0.15 +
+    domScore * 0.15,
+  );
+
+  return {
+    score: clamp(score, 0, 100),
+    reasoning: reasons.length > 0
+      ? `Structural depth ${score}/100: ${reasons.join('; ')}`
+      : `Structural depth ${score}/100: well-structured`,
+  };
+}
+
+/**
  * Compute weighted composite score from all signals
  */
 function computeCompositeScore(
@@ -213,13 +322,28 @@ function computeCompositeScore(
   technicalHealth: number,
   strategicAlignment: number,
   linkingStrength: number,
+  structuralDepth: number | null,
 ): number {
+  if (structuralDepth != null) {
+    // Full 6-signal scoring
+    return Math.round(
+      contentHealth * SIGNAL_WEIGHTS.contentHealth +
+      trafficOpportunity * SIGNAL_WEIGHTS.trafficOpportunity +
+      technicalHealth * SIGNAL_WEIGHTS.technicalHealth +
+      strategicAlignment * SIGNAL_WEIGHTS.strategicAlignment +
+      linkingStrength * SIGNAL_WEIGHTS.linkingStrength +
+      structuralDepth * SIGNAL_WEIGHTS.structuralDepth,
+    );
+  }
+  // Graceful degradation: redistribute structural weight proportionally across other signals
+  const baseTotal = SIGNAL_WEIGHTS.contentHealth + SIGNAL_WEIGHTS.trafficOpportunity +
+    SIGNAL_WEIGHTS.technicalHealth + SIGNAL_WEIGHTS.strategicAlignment + SIGNAL_WEIGHTS.linkingStrength;
   return Math.round(
-    contentHealth * SIGNAL_WEIGHTS.contentHealth +
+    (contentHealth * SIGNAL_WEIGHTS.contentHealth +
     trafficOpportunity * SIGNAL_WEIGHTS.trafficOpportunity +
     technicalHealth * SIGNAL_WEIGHTS.technicalHealth +
     strategicAlignment * SIGNAL_WEIGHTS.strategicAlignment +
-    linkingStrength * SIGNAL_WEIGHTS.linkingStrength,
+    linkingStrength * SIGNAL_WEIGHTS.linkingStrength) / baseTotal,
   );
 }
 
@@ -260,7 +384,7 @@ function isStrikingDistance(item: SiteInventoryItem): boolean {
  */
 function buildSignalSummary(
   item: SiteInventoryItem,
-  scores: { contentHealth: number; trafficOpp: number; techHealth: number; alignment: number; linking: number; composite: number },
+  scores: { contentHealth: number; trafficOpp: number; techHealth: number; alignment: number; linking: number; structuralDepth: number | null; structuralReasoning: string | null; composite: number },
   siteAvg: SiteAverages,
 ): string {
   const parts: string[] = [];
@@ -304,6 +428,10 @@ function buildSignalSummary(
     parts.push(`schema: ${item.schema_types.join(', ')}`);
   }
 
+  if (scores.structuralReasoning) {
+    parts.push(scores.structuralReasoning);
+  }
+
   return parts.join('. ') + '.';
 }
 
@@ -312,7 +440,7 @@ function buildSignalSummary(
  */
 function buildComprehensiveDataPoints(
   item: SiteInventoryItem,
-  scores: { contentHealth: number; trafficOpp: number; techHealth: number; alignment: number; linking: number; composite: number },
+  scores: { contentHealth: number; trafficOpp: number; techHealth: number; alignment: number; linking: number; structuralDepth: number | null; structuralReasoning: string | null; composite: number },
   siteAvg: SiteAverages,
 ): PlanDataPoint[] {
   const points: PlanDataPoint[] = [
@@ -359,6 +487,14 @@ function buildComprehensiveDataPoints(
 
   if (item.schema_types && item.schema_types.length > 0) {
     points.push({ label: 'Schema Types', value: item.schema_types.join(', '), impact: 'Structured data present' });
+  }
+
+  if (scores.structuralDepth != null) {
+    points.push({
+      label: 'Structural Depth',
+      value: `${scores.structuralDepth}/100`,
+      impact: scores.structuralDepth >= 70 ? 'Well-structured' : scores.structuralDepth >= 40 ? 'Needs restructuring' : 'Poorly structured',
+    });
   }
 
   if (item.match_confidence != null) {
@@ -494,8 +630,11 @@ export class MigrationPlanEngine {
     const techHealth = computeTechnicalHealth(item);
     const alignment = computeStrategicAlignment(item);
     const linking = computeLinkingStrength(item, this.siteAverages);
-    const composite = computeCompositeScore(contentHealth, trafficOpp, techHealth, alignment, linking);
-    return { contentHealth, trafficOpp, techHealth, alignment, linking, composite };
+    const structuralResult = computeStructuralDepthScore(item, this.siteAverages);
+    const structuralDepth = structuralResult?.score ?? null;
+    const structuralReasoning = structuralResult?.reasoning ?? null;
+    const composite = computeCompositeScore(contentHealth, trafficOpp, techHealth, alignment, linking, structuralDepth);
+    return { contentHealth, trafficOpp, techHealth, alignment, linking, structuralDepth, structuralReasoning, composite };
   }
 
   // ── Matched URL rules ────────────────────────────────────────────────
@@ -542,6 +681,7 @@ export class MigrationPlanEngine {
         if (scores.contentHealth < 50) weakAreas.push('content quality');
         if (scores.techHealth < 50) weakAreas.push('technical performance');
         if (scores.linking < 40) weakAreas.push('internal linking');
+        if (scores.structuralDepth != null && scores.structuralDepth < 40) weakAreas.push('structural depth');
 
         return this.buildAction(item, match, {
           action: 'OPTIMIZE',
@@ -569,6 +709,7 @@ export class MigrationPlanEngine {
       if (scores.contentHealth < 40) failAreas.push('content health');
       if (scores.techHealth < 40) failAreas.push('technical health');
       if (scores.linking < 30) failAreas.push('internal linking');
+      if (scores.structuralDepth != null && scores.structuralDepth < 30) failAreas.push('structural depth');
 
       return this.buildAction(item, match, {
         action: 'REWRITE',
@@ -641,6 +782,14 @@ export class MigrationPlanEngine {
         );
       }
 
+      // Build structural depth context for merge reasoning
+      const structuralNote = scores.structuralReasoning
+        ? ` ${scores.structuralReasoning}.`
+        : '';
+      const mergeTargetStructuralNote = mergeTargetScores.structuralDepth != null
+        ? ` Merge target structural depth: ${mergeTargetScores.structuralDepth}/100.`
+        : '';
+
       actions.push({
         inventoryId: item.id,
         url: item.url,
@@ -648,8 +797,8 @@ export class MigrationPlanEngine {
         priority: 'high',
         effort: 'medium',
         reasoning: isMergeTarget
-          ? `${groupItems.length} pages compete for "${topicTitle}". This page has the strongest composite score (${mergeTargetScores.composite}/100) — merge the best content from the other pages here and redirect them.`
-          : `This page competes with ${groupItems.length - 1} other page(s) for "${topicTitle}" (composite ${scores.composite}/100). Merge its best content into the strongest page (${mergeTarget.item.url}) and redirect.`,
+          ? `${groupItems.length} pages compete for "${topicTitle}". This page has the strongest composite score (${mergeTargetScores.composite}/100) — merge the best content from the other pages here and redirect them.${mergeTargetStructuralNote}`
+          : `This page competes with ${groupItems.length - 1} other page(s) for "${topicTitle}" (composite ${scores.composite}/100). Merge its best content into the strongest page (${mergeTarget.item.url}) and redirect.${structuralNote}`,
         dataPoints,
         topicId,
         mergeTargetUrl: isMergeTarget ? undefined : mergeTarget.item.url,

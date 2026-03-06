@@ -5,7 +5,8 @@ import type {
   SchemaPageType,
   ContentBrief,
   EnrichedTopic,
-  BriefSection
+  BriefSection,
+  ProgressiveSchemaData
 } from '../../types';
 
 // URL patterns for page type detection
@@ -292,6 +293,35 @@ function detectPageTypeFromTitle(title: string): SchemaPageType | null {
 }
 
 /**
+ * Detect page type from heading tree analysis (progressive schema data).
+ * Question-format H2s signal FAQPage; sequential H2s signal HowTo.
+ */
+export function detectSchemaTypeFromHeadingTree(
+  headingTreeAnalysis: NonNullable<ProgressiveSchemaData['headingTreeAnalysis']>,
+): Array<{ type: SchemaPageType; weight: number; source: string }> {
+  const signals: Array<{ type: SchemaPageType; weight: number; source: string }> = [];
+
+  // Only count H2+ headings for pattern detection
+  if (headingTreeAnalysis.questionHeadingCount >= 3) {
+    signals.push({
+      type: 'FAQPage',
+      weight: 0.4,
+      source: `Heading tree: ${headingTreeAnalysis.questionHeadingCount} question-format headings`,
+    });
+  }
+
+  if (headingTreeAnalysis.sequentialHeadingCount >= 3) {
+    signals.push({
+      type: 'HowTo',
+      weight: 0.4,
+      source: `Heading tree: ${headingTreeAnalysis.sequentialHeadingCount} sequential headings`,
+    });
+  }
+
+  return signals;
+}
+
+/**
  * Main page type detection function
  * Uses multiple signals to determine the best page type
  */
@@ -299,7 +329,8 @@ export function detectPageType(
   brief: ContentBrief,
   topic?: EnrichedTopic,
   url?: string,
-  draftContent?: string
+  draftContent?: string,
+  progressiveData?: ProgressiveSchemaData,
 ): { pageType: SchemaPageType; confidence: number; reasoning: string } {
   const signals: Array<{ type: SchemaPageType; weight: number; source: string }> = [];
 
@@ -382,6 +413,12 @@ export function detectPageType(
     if (brief.featured_snippet_target.question.includes('?')) {
       signals.push({ type: 'FAQPage', weight: 0.1, source: 'Featured snippet target (question)' });
     }
+  }
+
+  // 7. Heading tree analysis (from progressive schema data)
+  if (progressiveData?.headingTreeAnalysis) {
+    const headingSignals = detectSchemaTypeFromHeadingTree(progressiveData.headingTreeAnalysis);
+    signals.push(...headingSignals);
   }
 
   // Calculate weighted scores per type

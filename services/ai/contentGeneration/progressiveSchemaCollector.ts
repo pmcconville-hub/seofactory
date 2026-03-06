@@ -399,6 +399,75 @@ function extractAbstract(content: string): string {
   return '';
 }
 
+/**
+ * Extract heading tree from markdown draft content for schema type detection.
+ * Parses all headings and their content blocks for FAQ/HowTo signals.
+ */
+export function extractHeadingTreeFromDraft(draftContent: string): NonNullable<ProgressiveSchemaData['headingTreeAnalysis']> {
+  const lines = draftContent.split('\n');
+  const headings: NonNullable<ProgressiveSchemaData['headingTreeAnalysis']>['headings'] = [];
+  let h1Text: string | undefined;
+
+  // First pass: find all headings and their positions
+  const headingPositions: Array<{ level: number; text: string; lineIndex: number }> = [];
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(/^(#{1,6})\s+(.+)$/);
+    if (match) {
+      const level = match[1].length;
+      const text = match[2].trim();
+      headingPositions.push({ level, text, lineIndex: i });
+      if (level === 1 && !h1Text) {
+        h1Text = text;
+      }
+    }
+  }
+
+  // Question pattern: ends with ? or starts with question words
+  const questionPattern = /\?$|^(what|how|why|when|where|who|which|can|should|is|are|do|does|will|would|could)\s/i;
+  // Sequential pattern: step N, numbered, or ordinal/temporal words
+  const sequentialPattern = /^step\s*\d+|^\d+\.\s|^(first|second|third|fourth|fifth|next|then|finally|lastly|afterward|subsequently)\s/i;
+
+  let questionHeadingCount = 0;
+  let sequentialHeadingCount = 0;
+
+  // Second pass: extract content between headings
+  for (let i = 0; i < headingPositions.length; i++) {
+    const current = headingPositions[i];
+    const nextLineIndex = i + 1 < headingPositions.length
+      ? headingPositions[i + 1].lineIndex
+      : lines.length;
+
+    // Collect content between this heading and the next
+    const contentLines = lines.slice(current.lineIndex + 1, nextLineIndex);
+    const contentBelow = contentLines
+      .filter(l => l.trim().length > 0 && !l.match(/^#{1,6}\s/))
+      .join('\n')
+      .trim()
+      .substring(0, 500); // Cap at 500 chars for schema purposes
+
+    const isQuestion = questionPattern.test(current.text);
+    const isSequential = sequentialPattern.test(current.text);
+
+    if (isQuestion && current.level >= 2) questionHeadingCount++;
+    if (isSequential && current.level >= 2) sequentialHeadingCount++;
+
+    headings.push({
+      level: current.level,
+      text: current.text,
+      isQuestion,
+      isSequential,
+      contentBelow,
+    });
+  }
+
+  return {
+    headings,
+    questionHeadingCount,
+    sequentialHeadingCount,
+    h1Text,
+  };
+}
+
 function isCommonWord(word: string): boolean {
   const commonWords = new Set([
     'The', 'This', 'That', 'These', 'Those', 'What', 'When', 'Where', 'Which',

@@ -106,6 +106,12 @@ export async function validateSchema(
   const bestPracticeWarnings = checkBestPractices(schema, brief);
   warnings.push(...bestPracticeWarnings);
 
+  // 6b. mainEntity ↔ H1 alignment
+  if (draftContent) {
+    const h1Warnings = validateMainEntityH1Alignment(schema, draftContent);
+    warnings.push(...h1Warnings);
+  }
+
   // 7. External validation (optional)
   let externalResult: { source: string; isValid: boolean; errors: string[] } | undefined;
   if (runExternalValidation) {
@@ -556,6 +562,65 @@ function checkBestPractices(
       recommendation: 'Add BreadcrumbList for improved navigation in search results',
       category: 'best_practice'
     });
+  }
+
+  return warnings;
+}
+
+// ============================================================================
+// MAIN ENTITY ↔ H1 ALIGNMENT
+// ============================================================================
+
+/**
+ * Validate that schema's mainEntity/about name appears in the H1 heading.
+ * Misalignment suggests the schema describes a different entity than the content.
+ */
+function validateMainEntityH1Alignment(
+  schema: object,
+  draftContent: string,
+): SchemaValidationWarning[] {
+  const warnings: SchemaValidationWarning[] = [];
+
+  // Extract H1 from markdown content
+  const h1Match = draftContent.match(/^#\s+(.+)$/m);
+  if (!h1Match) return warnings;
+
+  const h1Text = h1Match[1].trim().toLowerCase();
+
+  // Find mainEntity or about references in schema graph
+  const items = (schema as any)['@graph'] || [schema];
+  for (const item of items) {
+    // Check mainEntity
+    const mainEntity = item.mainEntity;
+    if (mainEntity && typeof mainEntity === 'object' && !Array.isArray(mainEntity)) {
+      const entityName = (mainEntity.name || '').toLowerCase();
+      if (entityName && entityName.length > 2 && !h1Text.includes(entityName) && !entityName.includes(h1Text.split(/\s+/).slice(0, 3).join(' '))) {
+        warnings.push({
+          path: `${getItemPath(item)}/mainEntity`,
+          message: `Schema mainEntity "${mainEntity.name}" not found in H1 heading "${h1Match[1]}"`,
+          recommendation: 'Ensure the schema mainEntity aligns with the primary heading of the content',
+          category: 'best_practice',
+        });
+      }
+    }
+
+    // Check about (first entity only)
+    const about = item.about;
+    if (about) {
+      const aboutItems = Array.isArray(about) ? about : [about];
+      const firstAbout = aboutItems[0];
+      if (firstAbout && typeof firstAbout === 'object') {
+        const aboutName = (firstAbout.name || '').toLowerCase();
+        if (aboutName && aboutName.length > 2 && !h1Text.includes(aboutName)) {
+          warnings.push({
+            path: `${getItemPath(item)}/about`,
+            message: `Schema about entity "${firstAbout.name}" not found in H1 heading "${h1Match[1]}"`,
+            recommendation: 'Align schema about entity with the primary content heading for consistency',
+            category: 'best_practice',
+          });
+        }
+      }
+    }
   }
 
   return warnings;

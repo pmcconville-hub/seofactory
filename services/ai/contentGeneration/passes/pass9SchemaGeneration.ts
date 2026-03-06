@@ -16,7 +16,7 @@ import { DEFAULT_PASS9_CONFIG } from '../../../../types';
 import { generateSchema, SchemaGenerationContext } from '../../schemaGeneration/schemaGenerator';
 import { validateSchema } from '../../schemaGeneration/schemaValidator';
 import { applyAutoFixes, mergeEntitySameAs } from '../../schemaGeneration/schemaAutoFix';
-import { validateCompleteness } from '../progressiveSchemaCollector';
+import { validateCompleteness, extractHeadingTreeFromDraft } from '../progressiveSchemaCollector';
 import { createLogger } from '../../../../utils/debugLogger';
 
 const log = createLogger('Pass9');
@@ -70,6 +70,22 @@ export async function executePass9(
       // Continue anyway - we can generate schema without complete progressive data
     }
 
+    // Step 1b: Extract heading tree from draft content
+    let enrichedProgressiveData = progressiveData;
+    if (draftContent) {
+      onProgress?.('Extracting heading tree from draft content...');
+      const headingTreeAnalysis = extractHeadingTreeFromDraft(draftContent);
+      enrichedProgressiveData = {
+        ...(progressiveData || {}),
+        headingTreeAnalysis,
+      } as ProgressiveSchemaData;
+      log.log(
+        ` Heading tree: ${headingTreeAnalysis.headings.length} headings, ` +
+        `${headingTreeAnalysis.questionHeadingCount} questions, ` +
+        `${headingTreeAnalysis.sequentialHeadingCount} sequential`
+      );
+    }
+
     // Step 2: Build generation context
     onProgress?.('Building generation context...');
     const url = topic?.url_slug_hint
@@ -82,7 +98,7 @@ export async function executePass9(
       pillars,
       topic,
       draftContent,
-      progressiveData,
+      progressiveData: enrichedProgressiveData,
       url,
       config: fullConfig,
       supabaseUrl,

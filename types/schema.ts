@@ -149,6 +149,20 @@ export interface ProgressiveSchemaData {
   qualityScore?: number;
   readabilityScore?: number;
 
+  // Heading tree analysis (extracted from draft content in Pass 9)
+  headingTreeAnalysis?: {
+    headings: Array<{
+      level: number;
+      text: string;
+      isQuestion: boolean;
+      isSequential: boolean;
+      contentBelow: string;   // Text between this heading and the next
+    }>;
+    questionHeadingCount: number;
+    sequentialHeadingCount: number;
+    h1Text?: string;
+  };
+
   // Collection metadata
   lastUpdatedAt?: string;
   passesContributed?: number[];

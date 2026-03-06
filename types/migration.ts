@@ -16,6 +16,7 @@ import { SemanticTriple, FreshnessProfile } from './semantic';
 import type { EnrichedTopic } from './content';
 import type { BusinessInfo, SEOPillars } from './business';
 import type { TopicalMap } from './core';
+import type { StructuralAnalysis } from './structuralAnalysis';
 
 // ============================================================================
 // FORWARD DECLARATIONS (backward-compatible aliases)
@@ -119,6 +120,9 @@ export interface SiteInventoryItem {
   last_crawled_at?: string;
   mobile_usability?: string;
   rich_results_status?: string;
+
+  // Structural analysis (from site_analysis_pages join)
+  structural_analysis?: StructuralAnalysis;
 
   // Strategy & Mapping
   mapped_topic_id: string | null;

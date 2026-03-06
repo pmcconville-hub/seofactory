@@ -83,7 +83,8 @@ export async function generateSchema(
     context.brief,
     context.topic,
     context.url,
-    context.draftContent
+    context.draftContent,
+    context.progressiveData
   );
 
   // Use override if provided
@@ -592,6 +593,63 @@ function buildMainContentSchema(
 }
 
 /**
+ * Extract FAQ Q&A pairs from heading tree analysis.
+ * Uses pre-parsed heading data with their content blocks.
+ */
+function extractFAQFromHeadings(
+  headingTreeAnalysis: NonNullable<ProgressiveSchemaData['headingTreeAnalysis']>,
+): Array<{ question: string; answer: string }> {
+  const results: Array<{ question: string; answer: string }> = [];
+
+  for (const heading of headingTreeAnalysis.headings) {
+    if (heading.isQuestion && heading.level >= 2 && heading.contentBelow.length > 20) {
+      results.push({
+        question: heading.text.replace(/^#+\s*/, ''),
+        answer: heading.contentBelow.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 500),
+      });
+    }
+    if (results.length >= 10) break;
+  }
+
+  return results;
+}
+
+/**
+ * Extract HowTo steps from heading tree analysis.
+ * Uses pre-parsed heading data with sequential pattern detection.
+ */
+function extractHowToStepsFromHeadings(
+  headingTreeAnalysis: NonNullable<ProgressiveSchemaData['headingTreeAnalysis']>,
+): Array<{ name: string; text: string; imageUrl?: string }> {
+  const steps: Array<{ name: string; text: string; imageUrl?: string }> = [];
+
+  for (const heading of headingTreeAnalysis.headings) {
+    if (heading.isSequential && heading.level >= 2) {
+      // Clean step name: remove "Step N:" prefix, numbered prefix, ordinal prefix
+      const cleanName = heading.text
+        .replace(/^step\s*\d+[:\s]*/i, '')
+        .replace(/^\d+\.\s*/, '')
+        .replace(/^(first|second|third|fourth|fifth|next|then|finally|lastly)\s*[:\s]*/i, '')
+        .trim();
+
+      const stepText = heading.contentBelow.length > 10 ? heading.contentBelow : cleanName;
+
+      // Check for image references in content
+      const imageMatch = heading.contentBelow.match(/!\[[^\]]*\]\(([^)]+)\)/);
+
+      steps.push({
+        name: cleanName.substring(0, 100),
+        text: stepText.replace(/\n+/g, ' ').trim(),
+        ...(imageMatch && { imageUrl: imageMatch[1] }),
+      });
+    }
+    if (steps.length >= 10) break;
+  }
+
+  return steps;
+}
+
+/**
  * Extract FAQ questions from brief AND actual content.
  * Looks for question headings (H2/H3 with ?) and their answers in the draft.
  */
@@ -600,6 +658,17 @@ function extractFAQQuestions(
 ): Array<{ question: string; answer: string }> {
   const questions: Array<{ question: string; answer: string }> = [];
   const seenQuestions = new Set<string>();
+
+  // 0. Try heading tree analysis first (most reliable)
+  if (context.progressiveData?.headingTreeAnalysis) {
+    const headingFAQs = extractFAQFromHeadings(context.progressiveData.headingTreeAnalysis);
+    for (const faq of headingFAQs) {
+      if (!seenQuestions.has(faq.question.toLowerCase())) {
+        seenQuestions.add(faq.question.toLowerCase());
+        questions.push(faq);
+      }
+    }
+  }
 
   // 1. Extract from actual draft content - look for headings with questions
   if (context.draftContent) {
@@ -671,6 +740,15 @@ function extractHowToSteps(
   context: SchemaGenerationContext
 ): Array<{ name: string; text: string; imageUrl?: string }> {
   const steps: Array<{ name: string; text: string; imageUrl?: string }> = [];
+
+  // 0. Try heading tree analysis first (most reliable)
+  if (context.progressiveData?.headingTreeAnalysis &&
+      context.progressiveData.headingTreeAnalysis.sequentialHeadingCount >= 3) {
+    const headingSteps = extractHowToStepsFromHeadings(context.progressiveData.headingTreeAnalysis);
+    if (headingSteps.length >= 3) {
+      return headingSteps.slice(0, 10);
+    }
+  }
 
   // 1. Extract from actual content - look for ordered lists (steps)
   if (context.draftContent) {
