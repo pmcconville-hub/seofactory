@@ -179,6 +179,7 @@ Business Context:
 ${info.authorName ? `- Author: ${info.authorName} (${info.authorBio || ''})` : ''}
 ${info.authorCredentials ? `- Author Credentials: ${info.authorCredentials}` : ''}
 ${info.uniqueDataAssets ? `- Unique Data Assets: ${info.uniqueDataAssets}` : ''}
+${info.offerings?.length ? `- Services/Products Offered: ${info.offerings.join(', ')}` : ''}
 `;
 };
 

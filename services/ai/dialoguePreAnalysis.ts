@@ -18,6 +18,7 @@ import { TopicalBorderValidator } from './topicalBorderValidator';
 import { IndexConstructionRule } from './indexConstructionRule';
 import type { TopicSignals } from './indexConstructionRule';
 import { auditEavs } from './eavAudit';
+import { extractServicesFromEavs } from '../../utils/eavUtils';
 
 // ── Types ──
 
@@ -27,6 +28,7 @@ export type FindingCategory =
   | 'missing_frame'
   | 'border_violation'
   | 'page_worthiness'
+  | 'service_gap'
   | 'eav_inconsistency'
   | 'eav_category_gap'
   | 'eav_pending_values'
@@ -79,6 +81,7 @@ const AUTO_FIXABLE_CATEGORIES: Record<FindingCategory, boolean> = {
   missing_frame: true,
   border_violation: true,
   page_worthiness: true,
+  service_gap: false,
   eav_inconsistency: true,
   eav_category_gap: false,
   eav_pending_values: false,
@@ -175,6 +178,15 @@ function analyzeMapPlanning(
 
   // 5. Page Worthiness
   runPageWorthiness(topics, findings, validatorsRun, validatorsSkipped);
+
+  // 6. Service Alignment — check if all business services have hub topics
+  const eavs: SemanticTriple[] = Array.isArray(output?.eavs) ? output.eavs : [];
+  const centralEntity = ce || '';
+  if (eavs.length > 0 && centralEntity) {
+    runServiceAlignment(topics, eavs, centralEntity, findings, validatorsRun, validatorsSkipped);
+  } else {
+    validatorsSkipped.push('ServiceAlignment');
+  }
 }
 
 // ── Map Planning Sub-Validators ──
@@ -417,6 +429,61 @@ function runPageWorthiness(
   } catch (err) {
     console.warn('[dialoguePreAnalysis] IndexConstructionRule failed:', err);
     validatorsSkipped.push('IndexConstructionRule');
+  }
+}
+
+// ── Service Alignment Validator ──
+
+function runServiceAlignment(
+  topics: EnrichedTopic[],
+  eavs: SemanticTriple[],
+  centralEntity: string,
+  findings: PreAnalysisFinding[],
+  validatorsRun: string[],
+  validatorsSkipped: string[]
+): void {
+  try {
+    const services = extractServicesFromEavs(eavs, centralEntity);
+    if (services.length === 0) {
+      validatorsSkipped.push('ServiceAlignment');
+      return;
+    }
+
+    validatorsRun.push('ServiceAlignment');
+
+    const coveredServices = new Set<string>();
+    for (const topic of topics) {
+      const titleLower = topic.title.toLowerCase();
+      const rationale = ((topic.metadata as any)?.rationale || '').toLowerCase();
+      const serviceAlign = ((topic.metadata as any)?.service_alignment || '').toLowerCase();
+
+      for (const service of services) {
+        const serviceLower = service.toLowerCase();
+        if (
+          titleLower.includes(serviceLower) ||
+          serviceAlign.includes(serviceLower) ||
+          rationale.includes(serviceLower)
+        ) {
+          coveredServices.add(service);
+        }
+      }
+    }
+
+    const uncovered = services.filter(s => !coveredServices.has(s));
+    if (uncovered.length > 0) {
+      findings.push({
+        category: 'service_gap',
+        severity: uncovered.length > 2 ? 'high' : 'medium',
+        title: `${uncovered.length} business service(s) have no dedicated hub topic`,
+        details: `Uncovered services: ${uncovered.join(', ')}. Each service should have at least one hub topic to capture search demand.`,
+        affectedItems: uncovered,
+        suggestedAction: `Add hub topics for: ${uncovered.join(', ')}`,
+        autoFixable: false,
+      });
+    }
+  } catch (err) {
+    console.warn('[dialoguePreAnalysis] ServiceAlignment failed:', err);
+    validatorsSkipped.push('ServiceAlignment');
   }
 }
 

@@ -3,7 +3,8 @@ import { usePipeline } from '../../../hooks/usePipeline';
 import { useAppState } from '../../../state/appState';
 import ApprovalGate from '../../pipeline/ApprovalGate';
 import StepDialogue from '../../pipeline/StepDialogue';
-import { generateInitialTopicalMap } from '../../../services/ai/mapGeneration';
+import { generateInitialTopicalMap, generateSingleCluster } from '../../../services/ai/mapGeneration';
+import { extractServicesFromEavs } from '../../../utils/eavUtils';
 import { generateTopicRationales } from '../../../services/ai/actionPlanService';
 import type { ActionPlan } from '../../../types/actionPlan';
 import type { EnrichedTopic, SemanticTriple } from '../../../types';
@@ -157,6 +158,9 @@ function ClusterCardsView({ coreTopics, outerTopics, contentAreas }: {
                       <p className="text-xs text-gray-500 mt-1">
                         1 hub + {spokes.length} article{spokes.length !== 1 ? 's' : ''} = <span className={`font-semibold ${countColor}`}>{totalPages} pages</span>
                       </p>
+                      {(hub.metadata as any)?.rationale && (
+                        <p className="text-[11px] text-gray-500 italic mt-0.5 line-clamp-2">{(hub.metadata as any).rationale}</p>
+                      )}
                     </div>
                     <svg
                       className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 mt-1 ${isExpanded ? 'rotate-180' : ''}`}
@@ -180,11 +184,16 @@ function ClusterCardsView({ coreTopics, outerTopics, contentAreas }: {
                     </div>
                     {/* Spoke pages */}
                     {visibleSpokes.map(spoke => (
-                      <div key={spoke.id} className="flex items-center gap-2 py-1 pl-3">
-                        <div className="w-3 h-3 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
-                          <span className="text-[7px] font-semibold text-blue-300">S</span>
+                      <div key={spoke.id} className="py-1 pl-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
+                            <span className="text-[7px] font-semibold text-blue-300">S</span>
+                          </div>
+                          <span className="text-[11px] text-gray-400 truncate">{spoke.title}</span>
                         </div>
-                        <span className="text-[11px] text-gray-400 truncate">{spoke.title}</span>
+                        {(spoke.metadata as any)?.rationale && (
+                          <p className="text-[10px] text-gray-600 italic pl-5 line-clamp-1">{(spoke.metadata as any).rationale}</p>
+                        )}
                       </div>
                     ))}
                     {spokes.length > visibleSpokes.length && (
@@ -796,12 +805,15 @@ function PublishingWavesPanel({ coreTopics, outerTopics, actionPlan, isGeneratin
 
 // ──── Topic List ────
 
-function TopicList({ topics, label, allCoreTopics }: {
+function TopicList({ topics, label, allCoreTopics, onRename }: {
   topics: EnrichedTopic[];
   label: string;
   allCoreTopics?: EnrichedTopic[];
+  onRename?: (topicId: string, newTitle: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
   const display = expanded ? topics : topics.slice(0, 5);
 
   // Build a lookup for parent hub names
@@ -809,6 +821,19 @@ function TopicList({ topics, label, allCoreTopics }: {
     if (t.cluster_role === 'pillar') acc[t.id] = t.title;
     return acc;
   }, {});
+
+  const startEditing = (topic: EnrichedTopic) => {
+    if (!onRename) return;
+    setEditingId(topic.id);
+    setEditValue(topic.title);
+  };
+
+  const commitEdit = () => {
+    if (editingId && editValue.trim() && onRename) {
+      onRename(editingId, editValue.trim());
+    }
+    setEditingId(null);
+  };
 
   if (topics.length === 0) return null;
 
@@ -821,13 +846,29 @@ function TopicList({ topics, label, allCoreTopics }: {
       <div className="space-y-1">
         {display.map((t, i) => {
           const parentName = t.parent_topic_id ? hubNameById[t.parent_topic_id] : null;
+          const isEditing = editingId === t.id;
           return (
             <div key={i} className="bg-gray-900 rounded px-3 py-2">
               <div className="flex items-center gap-2 text-xs text-gray-400">
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
                   t.cluster_role === 'pillar' ? 'bg-purple-400' : 'bg-blue-400'
                 }`} />
-                <span className="truncate">{t.title}</span>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    onBlur={commitEdit}
+                    onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditingId(null); }}
+                    autoFocus
+                    className="flex-1 bg-gray-800 border border-blue-500 rounded px-2 py-0.5 text-xs text-gray-200 focus:outline-none"
+                  />
+                ) : (
+                  <span
+                    className={`truncate ${onRename ? 'cursor-pointer hover:text-gray-200' : ''}`}
+                    onDoubleClick={() => startEditing(t)}
+                  >{t.title}</span>
+                )}
                 {t.topic_class && (
                   <span className="ml-auto text-gray-600 flex-shrink-0">{t.topic_class}</span>
                 )}
@@ -843,6 +884,9 @@ function TopicList({ topics, label, allCoreTopics }: {
                     </span>
                   )}
                 </div>
+              )}
+              {(t.metadata as any)?.rationale && (
+                <p className="text-[10px] text-gray-600 italic pl-4 mt-0.5 line-clamp-1">{(t.metadata as any).rationale}</p>
               )}
             </div>
           );
@@ -1038,6 +1082,79 @@ function ExistingPageMappingPanel({
   );
 }
 
+// ──── Service Confirmation Panel ────
+
+function ServiceConfirmationPanel({ services, onServicesChange }: {
+  services: string[];
+  onServicesChange: (services: string[]) => void;
+}) {
+  const [newService, setNewService] = useState('');
+
+  const removeService = (index: number) => {
+    onServicesChange(services.filter((_, i) => i !== index));
+  };
+
+  const addService = () => {
+    const trimmed = newService.trim();
+    if (trimmed && !services.some(s => s.toLowerCase() === trimmed.toLowerCase())) {
+      onServicesChange([...services, trimmed]);
+      setNewService('');
+    }
+  };
+
+  if (services.length === 0) {
+    return (
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+        <h4 className="text-sm font-semibold text-gray-200 mb-2">Business Services</h4>
+        <p className="text-xs text-gray-500 mb-3">
+          No services detected from EAVs. Add services to ensure the topical map covers your business offerings.
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newService}
+            onChange={e => setNewService(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addService()}
+            placeholder="e.g., Dakrenovatie, Daklekkage Reparatie"
+            className="flex-1 bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:border-blue-500 focus:outline-none"
+          />
+          <button type="button" onClick={addService} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm">Add</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+      <h4 className="text-sm font-semibold text-gray-200 mb-1">Business Services</h4>
+      <p className="text-xs text-gray-500 mb-3">
+        Extracted from EAVs. Each service will get a dedicated hub topic. Remove irrelevant ones or add missing services.
+      </p>
+      <div className="flex flex-wrap gap-2 mb-3">
+        {services.map((s, i) => (
+          <span key={i} className="inline-flex items-center gap-1 bg-emerald-900/30 border border-emerald-700/40 text-emerald-300 px-2.5 py-1 rounded-full text-xs">
+            {s}
+            <button type="button" onClick={() => removeService(i)} className="ml-0.5 text-emerald-500 hover:text-red-400 transition-colors">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newService}
+          onChange={e => setNewService(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && addService()}
+          placeholder="Add a service..."
+          className="flex-1 bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:border-blue-500 focus:outline-none"
+        />
+        <button type="button" onClick={addService} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm">Add</button>
+      </div>
+    </div>
+  );
+}
+
 // ──── Main Component ────
 
 const PipelineMapStep: React.FC = () => {
@@ -1074,6 +1191,20 @@ const PipelineMapStep: React.FC = () => {
   const [generatedCore, setGeneratedCore] = useState<EnrichedTopic[]>([]);
   const [generatedOuter, setGeneratedOuter] = useState<EnrichedTopic[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Services extracted from EAVs — user can confirm/edit before map generation
+  const extractedServices = useMemo(() => {
+    const eavs = activeMap?.eavs ?? [];
+    const ce = activeMap?.pillars?.centralEntity ?? '';
+    return extractServicesFromEavs(eavs, ce);
+  }, [activeMap?.eavs, activeMap?.pillars?.centralEntity]);
+  const [confirmedServices, setConfirmedServices] = useState<string[]>(extractedServices);
+  // Sync when extractedServices changes (e.g., after EAV step updates)
+  React.useEffect(() => {
+    if (extractedServices.length > 0 && confirmedServices.length === 0) {
+      setConfirmedServices(extractedServices);
+    }
+  }, [extractedServices]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ──── Dialogue Engine state ────
   const [dialogueContext, setDialogueContext] = useState<DialogueContext>(
@@ -1123,12 +1254,15 @@ const PipelineMapStep: React.FC = () => {
         pillars,
         eavs,
         competitors,
-        dispatch
+        dispatch,
+        undefined, // serpIntel
+        confirmedServices.length > 0 ? confirmedServices : undefined
       );
 
       const { coreTopics: newCore, outerTopics: newOuter } = result;
 
       // Assign real UUIDs and map_id (AI returns temp IDs with map_id='')
+      let resolvedTopics: EnrichedTopic[] = [...newCore, ...newOuter]; // fallback to raw if no activeMapId
       if (state.activeMapId && state.user) {
         const topicIdMap = new Map<string, string>(); // temp ID -> real UUID
         const finalTopics: EnrichedTopic[] = [];
@@ -1166,6 +1300,7 @@ const PipelineMapStep: React.FC = () => {
 
         setGeneratedCore(finalTopics.filter(t => t.type === 'core'));
         setGeneratedOuter(finalTopics.filter(t => t.type === 'outer'));
+        resolvedTopics = finalTopics;
 
         // Update React state with properly ID'd topics
         dispatch({
@@ -1199,6 +1334,8 @@ const PipelineMapStep: React.FC = () => {
               cluster_role: t.cluster_role,
               attribute_focus: t.attribute_focus,
               canonical_query: t.canonical_query,
+              rationale: (t.metadata as any)?.rationale || '',
+              service_alignment: (t.metadata as any)?.service_alignment || '',
             },
           }));
 
@@ -1221,13 +1358,12 @@ const PipelineMapStep: React.FC = () => {
       }
 
       // Generate AI-driven publishing waves after topics are created
-      // Use newCore/newOuter from the generation result (state setters haven't flushed yet)
-      const allFinalTopics = [...newCore, ...newOuter];
-      if (pillars && allFinalTopics.length > 0) {
+      // Use resolvedTopics which have real UUIDs (not temp IDs)
+      if (pillars && resolvedTopics.length > 0) {
         setIsGeneratingWaves(true);
         try {
           const rationaleResult = await generateTopicRationales(
-            allFinalTopics,
+            resolvedTopics,
             effectiveBusinessInfo,
             pillars,
             activeMap?.eavs ?? [],
@@ -1300,16 +1436,56 @@ const PipelineMapStep: React.FC = () => {
     }
   }, [state.activeMapId, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey, dispatch]);
 
-  const handleDialogueDataExtracted = useCallback((data: ExtractedData) => {
+  const handleDialogueDataExtracted = useCallback(async (data: ExtractedData) => {
     // Apply topic decisions from dialogue answers
     if (data.topicDecisions && state.activeMapId) {
-      // Topic decisions are textual — for now store as raw insight for manual processing
-      // Future: implement merge/split/add topic operations
-    }
+      const decisions = data.topicDecisions as Record<string, any>;
 
-    // Add new topics if any
-    if (data.rawInsight) {
-      // Store the insight for future topic generation refinement
+      // Handle add_cluster: generate a new hub+spokes for a service
+      if (decisions.add_cluster?.service) {
+        try {
+          const pillars = activeMap?.pillars;
+          const eavs = activeMap?.eavs ?? [];
+          if (pillars) {
+            const allTopics = [...coreTopics, ...outerTopics];
+            const { hub, spokes } = await generateSingleCluster(
+              decisions.add_cluster.service,
+              effectiveBusinessInfo,
+              pillars,
+              eavs,
+              allTopics,
+              dispatch
+            );
+            // Merge into state
+            setGeneratedCore(prev => [...prev, hub]);
+            setGeneratedOuter(prev => [...prev, ...spokes]);
+            if (state.activeMapId) {
+              dispatch({
+                type: 'SET_TOPICS_FOR_MAP',
+                payload: { mapId: state.activeMapId, topics: [...allTopics, hub, ...spokes] },
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('[PipelineMap] Cluster generation failed:', err);
+        }
+      }
+
+      // Handle remove_topic
+      if (decisions.remove_topic?.topicId) {
+        const removeId = decisions.remove_topic.topicId;
+        setGeneratedCore(prev => prev.filter(t => t.id !== removeId));
+        setGeneratedOuter(prev => prev.filter(t => t.id !== removeId && t.parent_topic_id !== removeId));
+      }
+
+      // Handle rename_topic
+      if (decisions.rename_topic?.topicId && decisions.rename_topic?.newTitle) {
+        const { topicId, newTitle } = decisions.rename_topic;
+        const updateTitle = (topics: EnrichedTopic[]) =>
+          topics.map(t => t.id === topicId ? { ...t, title: newTitle } : t);
+        setGeneratedCore(updateTitle);
+        setGeneratedOuter(updateTitle);
+      }
     }
 
     // Update questionsAnswered (uses functional updater to avoid stale closure)
@@ -1318,7 +1494,7 @@ const PipelineMapStep: React.FC = () => {
       persistDialogueContext(updated);
       return updated;
     });
-  }, [state.activeMapId, persistDialogueContext]);
+  }, [state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, coreTopics, outerTopics, dispatch, persistDialogueContext]);
 
   // Push confirmed answer to dialogue_context.answers[]
   const handleAnswerConfirmed = useCallback((answer: import('../../../types/dialogue').DialogueAnswer) => {
@@ -1341,6 +1517,21 @@ const PipelineMapStep: React.FC = () => {
   const handleCascadeAction = useCallback((_action: 'update_all' | 'review' | 'cancel', _impact: CascadeImpact) => {
     // Map planning cascade actions — handled by regeneration
   }, []);
+
+  // Inline topic rename handler
+  const handleTopicRename = useCallback((topicId: string, newTitle: string) => {
+    const updateTitle = (topics: EnrichedTopic[]) =>
+      topics.map(t => t.id === topicId ? { ...t, title: newTitle } : t);
+    setGeneratedCore(updateTitle);
+    setGeneratedOuter(updateTitle);
+    // Also update in Redux state
+    if (state.activeMapId) {
+      const allTopics = [...coreTopics, ...outerTopics].map(t =>
+        t.id === topicId ? { ...t, title: newTitle } : t
+      );
+      dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: state.activeMapId, topics: allTopics } });
+    }
+  }, [coreTopics, outerTopics, state.activeMapId, dispatch]);
 
   return (
     <div className="space-y-8">
@@ -1382,6 +1573,14 @@ const PipelineMapStep: React.FC = () => {
         </div>
       )}
 
+      {/* Service Confirmation — shown before first generation or when adjusting */}
+      {(isAdjusting || !hasMapData) && activeMap?.pillars?.centralEntity && (
+        <ServiceConfirmationPanel
+          services={confirmedServices}
+          onServicesChange={setConfirmedServices}
+        />
+      )}
+
       {/* Metric Cards */}
       <div className="grid grid-cols-3 gap-4">
         <MetricCard label="Hub Topics" value={clusterCount} color={clusterCount > 0 ? 'blue' : 'gray'} />
@@ -1419,8 +1618,8 @@ const PipelineMapStep: React.FC = () => {
         <div>
           <p className="text-[10px] uppercase tracking-widest text-gray-600 mb-2">All Pages</p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <TopicList topics={coreTopics} label="Hub Pages (main hub topic pages)" allCoreTopics={coreTopics} />
-            <TopicList topics={outerTopics} label="Articles (supporting pages)" allCoreTopics={coreTopics} />
+            <TopicList topics={coreTopics} label="Hub Pages (main hub topic pages)" allCoreTopics={coreTopics} onRename={handleTopicRename} />
+            <TopicList topics={outerTopics} label="Articles (supporting pages)" allCoreTopics={coreTopics} onRename={handleTopicRename} />
           </div>
         </div>
       )}
@@ -1482,7 +1681,7 @@ const PipelineMapStep: React.FC = () => {
       {showDialogue && !dialogueComplete && totalTopics > 0 && (
         <StepDialogue
           step="map_planning"
-          stepOutput={{ topics: [...coreTopics, ...outerTopics], clusters: clusterCount }}
+          stepOutput={{ topics: [...coreTopics, ...outerTopics], clusters: clusterCount, eavs: activeMap?.eavs ?? [] }}
           businessInfo={effectiveBusinessInfo}
           dialogueContext={dialogueContext}
           onDataExtracted={handleDialogueDataExtracted}

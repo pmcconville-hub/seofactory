@@ -508,9 +508,9 @@ export const expandSemanticTriples = async (businessInfo: BusinessInfo, pillars:
     return allNewTriples.slice(0, count); // Ensure we don't return more than requested
 };
 
-export const generateInitialTopicalMap = async (businessInfo: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>, serpIntel?: import('../config/prompts').SerpIntelligenceForMap): Promise<{ coreTopics: EnrichedTopic[], outerTopics: EnrichedTopic[] }> => {
+export const generateInitialTopicalMap = async (businessInfo: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>, serpIntel?: import('../config/prompts').SerpIntelligenceForMap, services?: string[]): Promise<{ coreTopics: EnrichedTopic[], outerTopics: EnrichedTopic[] }> => {
     const sanitizer = new AIResponseSanitizer(dispatch);
-    const prompt = prompts.GENERATE_INITIAL_TOPICAL_MAP_PROMPT(businessInfo, pillars, eavs, competitors, serpIntel);
+    const prompt = prompts.GENERATE_INITIAL_TOPICAL_MAP_PROMPT(businessInfo, pillars, eavs, competitors, serpIntel, services);
     
     // Define the response schema for the API call
     // FIX: Added 'required' fields to enforce the 1:7 ratio logic. The model MUST return 'spokes'.
@@ -528,6 +528,8 @@ export const generateInitialTopicalMap = async (businessInfo: BusinessInfo, pill
                         canonical_query: { type: Type.STRING },
                         query_network: { type: Type.ARRAY, items: { type: Type.STRING } },
                         url_slug_hint: { type: Type.STRING },
+                        rationale: { type: Type.STRING },
+                        service_alignment: { type: Type.STRING },
                         spokes: {
                             type: Type.ARRAY,
                             items: {
@@ -539,6 +541,7 @@ export const generateInitialTopicalMap = async (businessInfo: BusinessInfo, pill
                                     canonical_query: { type: Type.STRING },
                                     query_network: { type: Type.ARRAY, items: { type: Type.STRING } },
                                     url_slug_hint: { type: Type.STRING },
+                                    rationale: { type: Type.STRING },
                                 },
                                 required: ["title", "canonical_query"]
                             }
@@ -558,6 +561,8 @@ export const generateInitialTopicalMap = async (businessInfo: BusinessInfo, pill
                         canonical_query: { type: Type.STRING },
                         query_network: { type: Type.ARRAY, items: { type: Type.STRING } },
                         url_slug_hint: { type: Type.STRING },
+                        rationale: { type: Type.STRING },
+                        service_alignment: { type: Type.STRING },
                         spokes: {
                             type: Type.ARRAY,
                             items: {
@@ -569,6 +574,7 @@ export const generateInitialTopicalMap = async (businessInfo: BusinessInfo, pill
                                     canonical_query: { type: Type.STRING },
                                     query_network: { type: Type.ARRAY, items: { type: Type.STRING } },
                                     url_slug_hint: { type: Type.STRING },
+                                    rationale: { type: Type.STRING },
                                 },
                                 required: ["title", "canonical_query"]
                             }
@@ -610,6 +616,8 @@ export const generateInitialTopicalMap = async (businessInfo: BusinessInfo, pill
         canonical_query?: string;
         query_network?: string[];
         url_slug_hint?: string;
+        rationale?: string;
+        service_alignment?: string;
         spokes?: AITopicData[];
     }
 
@@ -632,7 +640,11 @@ export const generateInitialTopicalMap = async (businessInfo: BusinessInfo, pill
                 topic_class: sectionType,
                 canonical_query: core.canonical_query,
                 query_network: Array.isArray(core.query_network) ? core.query_network : [],
-                url_slug_hint: core.url_slug_hint
+                url_slug_hint: core.url_slug_hint,
+                metadata: {
+                    rationale: core.rationale || '',
+                    service_alignment: core.service_alignment || '',
+                },
             };
 
             coreTopics.push(coreTopic);
@@ -651,7 +663,10 @@ export const generateInitialTopicalMap = async (businessInfo: BusinessInfo, pill
                         topic_class: sectionType,
                         canonical_query: spoke.canonical_query,
                         query_network: Array.isArray(spoke.query_network) ? spoke.query_network : [],
-                        url_slug_hint: spoke.url_slug_hint
+                        url_slug_hint: spoke.url_slug_hint,
+                        metadata: {
+                            rationale: spoke.rationale || '',
+                        },
                     };
                     outerTopics.push(outerTopic);
                 });
@@ -663,6 +678,61 @@ export const generateInitialTopicalMap = async (businessInfo: BusinessInfo, pill
     processSection(result.informationalSection, 'informational');
 
     return { coreTopics, outerTopics };
+};
+
+export const generateSingleCluster = async (
+    serviceName: string,
+    businessInfo: BusinessInfo,
+    pillars: SEOPillars,
+    eavs: SemanticTriple[],
+    existingTopics: EnrichedTopic[],
+    dispatch: React.Dispatch<any>
+): Promise<{ hub: EnrichedTopic; spokes: EnrichedTopic[] }> => {
+    const sanitizer = new AIResponseSanitizer(dispatch);
+    const existingTitles = existingTopics.map(t => t.title);
+    const prompt = prompts.GENERATE_SINGLE_CLUSTER_PROMPT(businessInfo, pillars, eavs, serviceName, existingTitles);
+    const fallback = { hub: { title: serviceName, description: '', canonical_query: '', query_network: [], url_slug_hint: '', rationale: '', service_alignment: serviceName }, spokes: [] };
+    const result = await callApi(prompt, businessInfo, dispatch, (text) => sanitizer.sanitize(text, { hub: Object, spokes: Array }, fallback));
+
+    const hubId = `temp_${Math.random().toString(36).substr(2, 9)}`;
+    const hub: EnrichedTopic = {
+        id: hubId,
+        map_id: '',
+        parent_topic_id: null,
+        title: result.hub?.title || serviceName,
+        slug: '',
+        description: result.hub?.description || '',
+        type: 'core',
+        freshness: FreshnessProfile.EVERGREEN,
+        topic_class: 'monetization',
+        canonical_query: result.hub?.canonical_query || '',
+        query_network: Array.isArray(result.hub?.query_network) ? result.hub.query_network : [],
+        url_slug_hint: result.hub?.url_slug_hint || '',
+        metadata: {
+            rationale: result.hub?.rationale || '',
+            service_alignment: result.hub?.service_alignment || serviceName,
+        },
+    };
+
+    const spokes: EnrichedTopic[] = (Array.isArray(result.spokes) ? result.spokes : []).map((s: any) => ({
+        id: `temp_${Math.random().toString(36).substr(2, 9)}`,
+        map_id: '',
+        parent_topic_id: hubId,
+        title: s.title || '',
+        slug: '',
+        description: s.description || '',
+        type: 'outer' as const,
+        freshness: FreshnessProfile.STANDARD,
+        topic_class: 'monetization' as const,
+        canonical_query: s.canonical_query || '',
+        query_network: Array.isArray(s.query_network) ? s.query_network : [],
+        url_slug_hint: s.url_slug_hint || '',
+        metadata: {
+            rationale: s.rationale || '',
+        },
+    }));
+
+    return { hub, spokes };
 };
 
 export const suggestResponseCode = async (businessInfo: BusinessInfo, topicTitle: string, dispatch: React.Dispatch<any>): Promise<{ responseCode: ResponseCode; reasoning: string }> => {

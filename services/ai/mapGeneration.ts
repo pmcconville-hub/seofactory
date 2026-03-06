@@ -359,7 +359,8 @@ export const expandSemanticTriples = (
 
 export const generateInitialTopicalMap = async (
     businessInfo: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>,
-    serpIntel?: import('../../config/prompts').SerpIntelligenceForMap
+    serpIntel?: import('../../config/prompts').SerpIntelligenceForMap,
+    services?: string[]
 ): Promise<{ coreTopics: EnrichedTopic[], outerTopics: EnrichedTopic[] }> => {
     // Validate language and region settings before generation
     const validation = validateLanguageSettings(businessInfo.language, businessInfo.region);
@@ -377,11 +378,11 @@ export const generateInitialTopicalMap = async (
 
     // Step 1: Get raw topics from AI provider (with SERP intelligence if available)
     const rawResult = await dispatchToProvider(businessInfo, {
-        gemini: () => geminiService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel),
-        openai: () => openAiService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel),
-        anthropic: () => anthropicService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel),
-        perplexity: () => perplexityService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel),
-        openrouter: () => openRouterService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel),
+        gemini: () => geminiService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel, services),
+        openai: () => openAiService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel, services),
+        anthropic: () => anthropicService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel, services),
+        perplexity: () => perplexityService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel, services),
+        openrouter: () => openRouterService.generateInitialTopicalMap(businessInfo, pillars, eavs, competitors, dispatch, serpIntel, services),
     });
 
     // Step 2: Apply cluster_role assignment based on hub-spoke structure (website type aware)
@@ -502,6 +503,29 @@ export const generateInitialTopicalMap = async (
     }
 
     return { coreTopics: enrichedResult.coreTopics, outerTopics: enrichedResult.outerTopics };
+};
+
+/**
+ * Generate a single hub+spokes cluster for a specific service.
+ * Used when dialogue feedback identifies a missing service cluster.
+ */
+export const generateSingleCluster = async (
+    serviceName: string,
+    businessInfo: BusinessInfo,
+    pillars: SEOPillars,
+    eavs: SemanticTriple[],
+    existingTopics: EnrichedTopic[],
+    dispatch: React.Dispatch<any>
+): Promise<{ hub: EnrichedTopic; spokes: EnrichedTopic[] }> => {
+    const result = await dispatchToProvider(businessInfo, {
+        gemini: () => geminiService.generateSingleCluster(serviceName, businessInfo, pillars, eavs, existingTopics, dispatch),
+        openai: () => openAiService.generateSingleCluster(serviceName, businessInfo, pillars, eavs, existingTopics, dispatch),
+        anthropic: () => anthropicService.generateSingleCluster(serviceName, businessInfo, pillars, eavs, existingTopics, dispatch),
+        perplexity: () => perplexityService.generateSingleCluster(serviceName, businessInfo, pillars, eavs, existingTopics, dispatch),
+        openrouter: () => openRouterService.generateSingleCluster(serviceName, businessInfo, pillars, eavs, existingTopics, dispatch),
+    });
+
+    return result;
 };
 
 export const addTopicIntelligently = (

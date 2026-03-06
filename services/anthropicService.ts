@@ -692,7 +692,7 @@ export const expandSemanticTriples = async (info: BusinessInfo, pillars: SEOPill
     return allNewTriples.slice(0, count);
 };
 
-export const generateInitialTopicalMap = async (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>, serpIntel?: import('../config/prompts').SerpIntelligenceForMap) => {
+export const generateInitialTopicalMap = async (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>, serpIntel?: import('../config/prompts').SerpIntelligenceForMap, services?: string[]) => {
     const sanitizer = new AIResponseSanitizer(dispatch);
 
     // Use chunked generation to avoid token truncation
@@ -704,8 +704,8 @@ export const generateInitialTopicalMap = async (info: BusinessInfo, pillars: SEO
         timestamp: Date.now()
     }});
 
-    const monetizationPrompt = prompts.GENERATE_MONETIZATION_SECTION_PROMPT(info, pillars, eavs, competitors, serpIntel);
-    const informationalPrompt = prompts.GENERATE_INFORMATIONAL_SECTION_PROMPT(info, pillars, eavs, competitors, serpIntel);
+    const monetizationPrompt = prompts.GENERATE_MONETIZATION_SECTION_PROMPT(info, pillars, eavs, competitors, serpIntel, services);
+    const informationalPrompt = prompts.GENERATE_INFORMATIONAL_SECTION_PROMPT(info, pillars, eavs, competitors, serpIntel, services);
 
     const fallbackSection = { topics: [] };
 
@@ -746,6 +746,8 @@ export const generateInitialTopicalMap = async (info: BusinessInfo, pillars: SEO
         query_network?: string[];
         url_slug_hint?: string;
         spokes?: AIMapTopic[];
+        rationale?: string;
+        service_alignment?: string;
     }
 
     // Log the parsed result for debugging with topic_class info
@@ -762,20 +764,63 @@ export const generateInitialTopicalMap = async (info: BusinessInfo, pillars: SEO
     // Flatten into coreTopics and outerTopics
     // These arrays accumulate AI-derived topic data with added fields (id, type, topic_class, parent_topic_id)
     // They are structurally partial EnrichedTopic objects; cast at return boundary
-    const coreTopics: Array<AIMapTopic & { id: string; topic_class: string; type: string; parent_topic_id: null }> = [];
-    const outerTopics: Array<AIMapTopic & { id: string; topic_class: string; type: string; parent_topic_id: string }> = [];
+    const coreTopics: any[] = [];
+    const outerTopics: any[] = [];
 
     const process = (list: AIMapTopic[], cls: 'monetization' | 'informational') => {
          if(!list) return;
          list.forEach((c: AIMapTopic) => {
              const tid = Math.random().toString();
-             coreTopics.push({...c, id: tid, topic_class: cls, type: 'core', parent_topic_id: null});
-             if(c.spokes) c.spokes.forEach((s: AIMapTopic) => outerTopics.push({...s, id: Math.random().toString(), parent_topic_id: tid, topic_class: cls, type: 'outer'}));
+             coreTopics.push({...c, id: tid, topic_class: cls, type: 'core', parent_topic_id: null, metadata: { rationale: c.rationale || '', service_alignment: c.service_alignment || '' }});
+             if(c.spokes) c.spokes.forEach((s: AIMapTopic) => outerTopics.push({...s, id: Math.random().toString(), parent_topic_id: tid, topic_class: cls, type: 'outer', metadata: { rationale: s.rationale || '' }}));
          });
     };
     process(monetizationTopics, 'monetization');
     process(informationalTopics, 'informational');
     return { coreTopics: coreTopics as unknown as EnrichedTopic[], outerTopics: outerTopics as unknown as EnrichedTopic[] };
+};
+
+export const generateSingleCluster = async (
+    serviceName: string,
+    info: BusinessInfo,
+    pillars: SEOPillars,
+    eavs: SemanticTriple[],
+    existingTopics: EnrichedTopic[],
+    dispatch: React.Dispatch<any>
+): Promise<{ hub: EnrichedTopic; spokes: EnrichedTopic[] }> => {
+    const sanitizer = new AIResponseSanitizer(dispatch);
+    const existingTitles = existingTopics.map(t => t.title);
+    const prompt = prompts.GENERATE_SINGLE_CLUSTER_PROMPT(info, pillars, eavs, serviceName, existingTitles);
+    const fallback = { hub: { title: serviceName }, spokes: [] };
+    const result: any = await callApi(prompt, info, dispatch, (text) => sanitizer.sanitize(text, { hub: Object, spokes: Array }, fallback), 'generateSingleCluster');
+
+    const hubId = `temp_${Math.random().toString(36).substr(2, 9)}`;
+    const hub: EnrichedTopic = {
+        id: hubId, map_id: '', parent_topic_id: null,
+        title: result.hub?.title || serviceName, slug: '',
+        description: result.hub?.description || '',
+        type: 'core', freshness: 'EVERGREEN' as any,
+        topic_class: 'monetization',
+        canonical_query: result.hub?.canonical_query || '',
+        query_network: result.hub?.query_network || [],
+        url_slug_hint: result.hub?.url_slug_hint || '',
+        metadata: { rationale: result.hub?.rationale || '', service_alignment: result.hub?.service_alignment || serviceName },
+    };
+
+    const spokes: EnrichedTopic[] = (result.spokes || []).map((s: any) => ({
+        id: `temp_${Math.random().toString(36).substr(2, 9)}`,
+        map_id: '', parent_topic_id: hubId,
+        title: s.title || '', slug: '',
+        description: s.description || '',
+        type: 'outer' as const, freshness: 'STANDARD' as any,
+        topic_class: 'monetization' as const,
+        canonical_query: s.canonical_query || '',
+        query_network: s.query_network || [],
+        url_slug_hint: s.url_slug_hint || '',
+        metadata: { rationale: s.rationale || '' },
+    }));
+
+    return { hub, spokes };
 };
 
 export const suggestResponseCode = async (info: BusinessInfo, topic: string, dispatch: React.Dispatch<any>) => {

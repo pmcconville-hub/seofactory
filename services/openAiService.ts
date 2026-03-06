@@ -306,9 +306,9 @@ export const expandSemanticTriples = async (info: BusinessInfo, pillars: SEOPill
     return allNewTriples.slice(0, count);
 };
 
-export const generateInitialTopicalMap = async (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>, serpIntel?: import('../config/prompts').SerpIntelligenceForMap): Promise<{ coreTopics: EnrichedTopic[], outerTopics: EnrichedTopic[] }> => {
+export const generateInitialTopicalMap = async (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], dispatch: React.Dispatch<any>, serpIntel?: import('../config/prompts').SerpIntelligenceForMap, services?: string[]): Promise<{ coreTopics: EnrichedTopic[], outerTopics: EnrichedTopic[] }> => {
     const sanitizer = new AIResponseSanitizer(dispatch);
-    const prompt = prompts.GENERATE_INITIAL_TOPICAL_MAP_PROMPT(info, pillars, eavs, competitors, serpIntel);
+    const prompt = prompts.GENERATE_INITIAL_TOPICAL_MAP_PROMPT(info, pillars, eavs, competitors, serpIntel, services);
     
     const fallback = { monetizationSection: [], informationalSection: [] };
     const result = await callApi(prompt, info, dispatch, (text) => sanitizer.sanitize(text, { monetizationSection: Array, informationalSection: Array }, fallback));
@@ -327,7 +327,11 @@ export const generateInitialTopicalMap = async (info: BusinessInfo, pillars: SEO
                 topic_class: sectionType,
                 type: 'core',
                 parent_topic_id: null,
-                slug: '', 
+                slug: '',
+                metadata: {
+                    rationale: (core as any).rationale || '',
+                    service_alignment: (core as any).service_alignment || '',
+                },
             } as any);
 
             if (Array.isArray(core.spokes)) {
@@ -339,6 +343,9 @@ export const generateInitialTopicalMap = async (info: BusinessInfo, pillars: SEO
                         topic_class: sectionType,
                         type: 'outer',
                         slug: '',
+                        metadata: {
+                            rationale: (spoke as any).rationale || '',
+                        },
                     } as any);
                 });
             }
@@ -349,6 +356,49 @@ export const generateInitialTopicalMap = async (info: BusinessInfo, pillars: SEO
     processSection(result.informationalSection, 'informational');
 
     return { coreTopics, outerTopics };
+};
+
+export const generateSingleCluster = async (
+    serviceName: string,
+    info: BusinessInfo,
+    pillars: SEOPillars,
+    eavs: SemanticTriple[],
+    existingTopics: EnrichedTopic[],
+    dispatch: React.Dispatch<any>
+): Promise<{ hub: EnrichedTopic; spokes: EnrichedTopic[] }> => {
+    const sanitizer = new AIResponseSanitizer(dispatch);
+    const existingTitles = existingTopics.map(t => t.title);
+    const prompt = prompts.GENERATE_SINGLE_CLUSTER_PROMPT(info, pillars, eavs, serviceName, existingTitles);
+    const fallback = { hub: { title: serviceName }, spokes: [] };
+    const result: any = await callApi(prompt, info, dispatch, (text) => sanitizer.sanitize(text, { hub: Object, spokes: Array }, fallback));
+
+    const hubId = `temp_${Math.random().toString(36).substr(2, 9)}`;
+    const hub: EnrichedTopic = {
+        id: hubId, map_id: '', parent_topic_id: null,
+        title: result.hub?.title || serviceName, slug: '',
+        description: result.hub?.description || '',
+        type: 'core', freshness: 'EVERGREEN' as any,
+        topic_class: 'monetization',
+        canonical_query: result.hub?.canonical_query || '',
+        query_network: result.hub?.query_network || [],
+        url_slug_hint: result.hub?.url_slug_hint || '',
+        metadata: { rationale: result.hub?.rationale || '', service_alignment: result.hub?.service_alignment || serviceName },
+    };
+
+    const spokes: EnrichedTopic[] = (result.spokes || []).map((s: any) => ({
+        id: `temp_${Math.random().toString(36).substr(2, 9)}`,
+        map_id: '', parent_topic_id: hubId,
+        title: s.title || '', slug: '',
+        description: s.description || '',
+        type: 'outer' as const, freshness: 'STANDARD' as any,
+        topic_class: 'monetization' as const,
+        canonical_query: s.canonical_query || '',
+        query_network: s.query_network || [],
+        url_slug_hint: s.url_slug_hint || '',
+        metadata: { rationale: s.rationale || '' },
+    }));
+
+    return { hub, spokes };
 };
 
 export const suggestResponseCode = async (info: BusinessInfo, topic: string, dispatch: React.Dispatch<any>) => {

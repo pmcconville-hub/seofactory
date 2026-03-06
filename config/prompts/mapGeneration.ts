@@ -14,6 +14,7 @@ import {
     getWebsiteTypeConfig,
 } from './_common';
 import type { SerpIntelligenceForMap } from './_common';
+import { summarizeEavsForPrompt } from '../../utils/eavUtils';
 
 export const SUGGEST_CENTRAL_ENTITY_CANDIDATES_PROMPT = (info: BusinessInfo): string => `
 You are an expert SEO strategist specializing in semantic content modeling. Based on the following business context, identify EXACTLY 5 potential "Central Entities".
@@ -198,7 +199,7 @@ ${jsonResponseInstruction}
 **FINAL CHECK: Your response MUST contain EXACTLY ${count} triple objects in the array. Count them before responding.**
 `;
 
-export const GENERATE_INITIAL_TOPICAL_MAP_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], serpIntel?: SerpIntelligenceForMap): string => {
+export const GENERATE_INITIAL_TOPICAL_MAP_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], serpIntel?: SerpIntelligenceForMap, services?: string[]): string => {
     const typeConfig = info.websiteType ? getWebsiteTypeConfig(info.websiteType) : null;
     const spokeMin = typeConfig?.hubSpokeRatio.min || 3;
     const spokeMax = typeConfig?.hubSpokeRatio.max || 10;
@@ -215,9 +216,16 @@ ${languageInstruction}
 
 Strategic Inputs:
 - SEO Pillars: ${JSON.stringify(pillars, null, 2)}
-- Core Semantic Triples (EAVs): ${JSON.stringify(eavs.slice(0, 20), null, 2)}
+- Core Semantic Triples (EAVs): ${summarizeEavsForPrompt(eavs)}
 - Key Competitors: ${competitors.join(', ')}
 ${buildSerpIntelligenceBlock(serpIntel)}
+
+${services && services.length > 0 ? `**Business Services/Products (CRITICAL — Hub topics MUST map to these):**
+${services.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+
+MANDATORY: Every service listed above MUST have at least one dedicated hub topic in the monetization section.
+Topics that don't serve the business's revenue model should be in the informational section only.
+` : ''}
 
 ${businessContext(info)}
 
@@ -284,6 +292,11 @@ For every topic (Core AND Spoke), provide:
 
 **Token Optimization:** Keep "description" fields concise (1-2 sentences) to allow space for MORE TOPICS.
 
+**RATIONALE REQUIREMENT:** For every topic (hub AND spoke), include a "rationale" field explaining:
+- What business goal this topic serves (lead generation, authority building, trust)
+- What search demand it captures
+- How it connects to the business's services or expertise
+
 Output Format:
 Respond with a single JSON object containing two arrays:
 - "monetizationSection": Array of Core Topics.
@@ -297,6 +310,8 @@ Each Core Topic object structure:
   "canonical_query": "string",
   "query_network": ["string"],
   "url_slug_hint": "string",
+  "rationale": "1-sentence explanation of why this topic serves the business strategy",
+  "service_alignment": "Which business service this hub serves (or 'authority' for informational)",
   "spokes": [
       {
         "title": "string",
@@ -304,7 +319,8 @@ Each Core Topic object structure:
         "freshness": "STANDARD",
         "canonical_query": "string",
         "query_network": ["string"],
-        "url_slug_hint": "string"
+        "url_slug_hint": "string",
+        "rationale": "1-sentence explanation of strategic value"
       }
       // ... ${spokeMin}–${spokeMax} spokes per hub, justified by semantic breadth ...
   ]
@@ -315,7 +331,7 @@ ${jsonResponseInstruction}
 };
 
 // Section-specific prompts for chunked generation to avoid token truncation
-export const GENERATE_MONETIZATION_SECTION_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], serpIntel?: SerpIntelligenceForMap): string => {
+export const GENERATE_MONETIZATION_SECTION_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], serpIntel?: SerpIntelligenceForMap, services?: string[]): string => {
     const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
     const regionalLang = getRegionalLanguageVariant(info.language, info.region);
     const typeConfig = info.websiteType ? getWebsiteTypeConfig(info.websiteType) : null;
@@ -331,9 +347,15 @@ ${languageInstruction}
 
 Strategic Inputs:
 - SEO Pillars: ${JSON.stringify(pillars, null, 2)}
-- Core Semantic Triples (EAVs): ${JSON.stringify(eavs.slice(0, 15), null, 2)}
+- Core Semantic Triples (EAVs): ${summarizeEavsForPrompt(eavs)}
 - Key Competitors: ${competitors.join(', ')}
 ${buildSerpIntelligenceBlock(serpIntel)}
+
+${services && services.length > 0 ? `**Business Services/Products (CRITICAL — Hub topics MUST map to these):**
+${services.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+
+MANDATORY: Every service listed above MUST have at least one dedicated hub topic.
+` : ''}
 
 ${businessContext(info)}
 
@@ -370,7 +392,9 @@ An **OUTER TOPIC (Spoke)** is a VARIATION, MODIFIER, or SPECIFIC INSTANCE of a C
 - "canonical_query": The main search query in ${regionalLang}
 - "query_network": 3-5 related keywords in ${regionalLang}
 - "url_slug_hint": URL-friendly version (2-3 words)
-- "spokes": Array of supporting topics (variations/modifiers) with same structure
+- "rationale": 1-sentence explanation of why this topic serves the business strategy
+- "service_alignment": Which business service this hub serves
+- "spokes": Array of supporting topics (variations/modifiers) with same structure (including "rationale")
 
 Keep descriptions concise.
 
@@ -380,7 +404,7 @@ ${jsonResponseInstruction}
 `;
 };
 
-export const GENERATE_INFORMATIONAL_SECTION_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], serpIntel?: SerpIntelligenceForMap): string => {
+export const GENERATE_INFORMATIONAL_SECTION_PROMPT = (info: BusinessInfo, pillars: SEOPillars, eavs: SemanticTriple[], competitors: string[], serpIntel?: SerpIntelligenceForMap, services?: string[]): string => {
     const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
     const regionalLang = getRegionalLanguageVariant(info.language, info.region);
     const typeConfig = info.websiteType ? getWebsiteTypeConfig(info.websiteType) : null;
@@ -395,7 +419,7 @@ ${languageInstruction}
 
 Strategic Inputs:
 - SEO Pillars: ${JSON.stringify(pillars, null, 2)}
-- Core Semantic Triples (EAVs): ${JSON.stringify(eavs.slice(0, 15), null, 2)}
+- Core Semantic Triples (EAVs): ${summarizeEavsForPrompt(eavs)}
 - Key Competitors: ${competitors.join(', ')}
 ${buildSerpIntelligenceBlock(serpIntel)}
 
@@ -427,11 +451,74 @@ An **OUTER TOPIC (Spoke)** is a specific aspect, sub-question, or variation with
 - "canonical_query": The main search query in ${regionalLang}
 - "query_network": 3-5 related keywords in ${regionalLang}
 - "url_slug_hint": URL-friendly version (2-3 words)
-- "spokes": Array of specific aspects/questions within this domain
+- "rationale": 1-sentence explanation of why this topic builds authority
+- "service_alignment": "authority" (informational topics build trust, not direct revenue)
+- "spokes": Array of specific aspects/questions within this domain (including "rationale")
 
 Keep descriptions concise.
 
 Output a JSON object with a single key "topics" containing an array of Core Topics.
+
+${jsonResponseInstruction}
+`;
+};
+
+// Prompt to generate a single cluster (hub + spokes) for a specific service/topic
+export const GENERATE_SINGLE_CLUSTER_PROMPT = (
+    info: BusinessInfo,
+    pillars: SEOPillars,
+    eavs: SemanticTriple[],
+    serviceName: string,
+    existingTopicTitles: string[]
+): string => {
+    const languageInstruction = getLanguageAndRegionInstruction(info.language, info.region);
+    const regionalLang = getRegionalLanguageVariant(info.language, info.region);
+    const typeConfig = info.websiteType ? getWebsiteTypeConfig(info.websiteType) : null;
+    const spokeMin = typeConfig?.hubSpokeRatio.min || 3;
+    const spokeMax = typeConfig?.hubSpokeRatio.max || 10;
+
+    return `
+You are a Holistic SEO Architect. Generate ONE hub topic cluster for the service/product: "${serviceName}".
+
+${languageInstruction}
+**IMPORTANT:** All titles, descriptions, and queries MUST be in ${regionalLang}.
+
+Central Entity: ${pillars.centralEntity}
+Source Context: ${pillars.sourceContext}
+Service to cover: ${serviceName}
+Relevant EAVs: ${JSON.stringify(eavs.filter(e => {
+    const obj = String(e.object?.value ?? e.value ?? '').toLowerCase();
+    const pred = (e.predicate?.relation || e.attribute || '').toLowerCase();
+    return obj.includes(serviceName.toLowerCase()) || pred.includes(serviceName.toLowerCase());
+}).slice(0, 10), null, 2)}
+
+**EXISTING TOPICS (DO NOT duplicate these):**
+${existingTopicTitles.map(t => `- ${t}`).join('\n')}
+
+Generate exactly 1 hub topic with ${spokeMin}-${spokeMax} spokes. The hub must directly address "${serviceName}" as a core offering.
+
+Output JSON:
+{
+  "hub": {
+    "title": "string",
+    "description": "string",
+    "canonical_query": "string",
+    "query_network": ["string"],
+    "url_slug_hint": "string",
+    "rationale": "string",
+    "service_alignment": "${serviceName}"
+  },
+  "spokes": [
+    {
+      "title": "string",
+      "description": "string",
+      "canonical_query": "string",
+      "query_network": ["string"],
+      "url_slug_hint": "string",
+      "rationale": "string"
+    }
+  ]
+}
 
 ${jsonResponseInstruction}
 `;
