@@ -219,6 +219,14 @@ export const initialPipelineState: PipelineState = {
 
 // ──── Action Types ────
 
+export interface ReconciliationData {
+  hasTopics: boolean;
+  hasEavs: boolean;
+  hasBriefs: boolean;
+  hasPillars: boolean;
+  hasBizInfo: boolean;
+}
+
 export type PipelineAction =
   | { type: 'PIPELINE_ACTIVATE'; payload: { isGreenfield: boolean; siteUrl?: string } }
   | { type: 'PIPELINE_DEACTIVATE' }
@@ -233,6 +241,7 @@ export type PipelineAction =
   | { type: 'PIPELINE_UPDATE_WAVE'; payload: { waveId: string; updates: Partial<WaveState> } }
   | { type: 'PIPELINE_SKIP_STEP'; payload: { step: PipelineStep; reason: string } }
   | { type: 'PIPELINE_RESTORE_STATE'; payload: PipelineState }
+  | { type: 'PIPELINE_RECONCILE_WITH_DATA'; payload: ReconciliationData }
   | { type: 'PIPELINE_RESET' };
 
 // ──── Guard ────
@@ -251,6 +260,7 @@ const PIPELINE_ACTION_TYPES = new Set([
   'PIPELINE_UPDATE_WAVE',
   'PIPELINE_SKIP_STEP',
   'PIPELINE_RESTORE_STATE',
+  'PIPELINE_RECONCILE_WITH_DATA',
   'PIPELINE_RESET',
 ]);
 
@@ -499,6 +509,57 @@ export function pipelineReducer(
       return { ...state, steps: newSteps };
     }
 
+    case 'PIPELINE_RECONCILE_WITH_DATA': {
+      const { hasTopics, hasEavs, hasPillars, hasBizInfo, hasBriefs } = action.payload;
+
+      // Map steps to their data requirements
+      const stepDataMap: Partial<Record<PipelineStep, boolean>> = {
+        crawl: hasBizInfo,
+        strategy: hasPillars,
+        eavs: hasEavs,
+        map_planning: hasTopics,
+        briefs: hasBriefs,
+      };
+
+      let newSteps = [...state.steps.map(s => ({ ...s }))];
+      let needsReset = false;
+
+      // Check each step: if marked completed/approved but data is missing, reset it
+      for (const step of STEP_ORDER) {
+        const dataAvailable = stepDataMap[step];
+        if (dataAvailable === undefined) continue; // No data requirement for this step
+
+        const stepState = newSteps.find(s => s.step === step);
+        if (!stepState) continue;
+
+        const isCompleted = stepState.status === 'completed' || stepState.status === 'approved' || stepState.status === 'pending_approval';
+        if (isCompleted && !dataAvailable) {
+          // Data is missing — reset this step and all downstream steps
+          needsReset = true;
+          const stepIdx = STEP_ORDER.indexOf(step);
+          for (let i = stepIdx; i < STEP_ORDER.length; i++) {
+            const s = newSteps.find(ns => ns.step === STEP_ORDER[i]);
+            if (s && !s.autoSkipped) {
+              s.status = i === stepIdx ? 'available' : 'locked';
+              s.completedAt = undefined;
+              s.approval = undefined;
+            }
+          }
+          break; // Only reset from the first missing data point
+        }
+      }
+
+      if (!needsReset) return state;
+
+      // Set currentStep to the first non-completed, non-skipped step
+      const firstAvailable = STEP_ORDER.find(step => {
+        const s = newSteps.find(ns => ns.step === step);
+        return s && s.status !== 'completed' && !s.autoSkipped;
+      }) || state.currentStep;
+
+      return { ...state, steps: newSteps, currentStep: firstAvailable };
+    }
+
     case 'PIPELINE_RESTORE_STATE':
       return action.payload;
 
@@ -563,6 +624,10 @@ export const pipelineActions = {
   restoreState: (state: PipelineState): PipelineAction => ({
     type: 'PIPELINE_RESTORE_STATE',
     payload: state,
+  }),
+  reconcileWithData: (data: ReconciliationData): PipelineAction => ({
+    type: 'PIPELINE_RECONCILE_WITH_DATA',
+    payload: data,
   }),
   reset: (): PipelineAction => ({
     type: 'PIPELINE_RESET',

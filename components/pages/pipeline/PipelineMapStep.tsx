@@ -4,6 +4,8 @@ import { useAppState } from '../../../state/appState';
 import ApprovalGate from '../../pipeline/ApprovalGate';
 import StepDialogue from '../../pipeline/StepDialogue';
 import { generateInitialTopicalMap } from '../../../services/ai/mapGeneration';
+import { generateTopicRationales } from '../../../services/ai/actionPlanService';
+import type { ActionPlan } from '../../../types/actionPlan';
 import type { EnrichedTopic, SemanticTriple } from '../../../types';
 import type { DialogueContext, ExtractedData, CascadeImpact } from '../../../types/dialogue';
 import { createEmptyDialogueContext } from '../../../services/ai/dialogueEngine';
@@ -651,111 +653,115 @@ function ContextualBridgesPanel({ coreTopics, eavs, contentAreas }: {
 
 // ──── Publishing Waves ────
 
-function PublishingWavesPanel({ coreTopics, outerTopics }: {
+const DYNAMIC_WAVE_COLORS: Array<{ border: string; bg: string }> = [
+  { border: 'border-emerald-500/50', bg: 'bg-emerald-900/10' },
+  { border: 'border-blue-500/50', bg: 'bg-blue-900/10' },
+  { border: 'border-amber-500/50', bg: 'bg-amber-900/10' },
+  { border: 'border-sky-500/50', bg: 'bg-sky-900/10' },
+  { border: 'border-purple-500/50', bg: 'bg-purple-900/10' },
+  { border: 'border-rose-500/50', bg: 'bg-rose-900/10' },
+  { border: 'border-teal-500/50', bg: 'bg-teal-900/10' },
+  { border: 'border-orange-500/50', bg: 'bg-orange-900/10' },
+];
+
+function PublishingWavesPanel({ coreTopics, outerTopics, actionPlan, isGeneratingWaves }: {
   coreTopics: EnrichedTopic[];
   outerTopics: EnrichedTopic[];
+  actionPlan?: import('../../../types/actionPlan').ActionPlan | null;
+  isGeneratingWaves?: boolean;
 }) {
   const [expandedWaves, setExpandedWaves] = useState<Record<number, boolean>>({});
-
-  // Classify topics into waves based on topic_class.
-  // topic_class is typed as 'monetization' | 'informational' but may carry
-  // additional legacy string values at runtime; cast for flexible comparisons.
   const allTopics = [...coreTopics, ...outerTopics];
-  const wave1 = allTopics.filter(t => t.topic_class === 'monetization');
-  const wave2 = allTopics.filter(t => t.topic_class === 'informational');
-  // Outer topics without a classified topic_class fall into wave 3/4 buckets
-  const wave3 = allTopics.filter(t => !t.topic_class && t.type === 'outer').slice(0, Math.ceil(allTopics.length / 4));
-  const wave4 = allTopics.filter(t => !t.topic_class && t.type === 'outer').slice(Math.ceil(allTopics.length / 4));
-
-  const waves = [
-    {
-      number: 1,
-      name: 'Wave 1: Your Services (revenue)',
-      description: 'Publish these first — they directly serve customers searching for your services and drive conversions.',
-      action: 'After publishing: submit URLs to Google Search Console, add internal links from your homepage.',
-      improvement: 'These pages will be strengthened in Wave 2 when knowledge content links back to them.',
-      color: 'border-emerald-500/50 bg-emerald-900/10',
-      count: wave1.length,
-      topics: wave1,
-    },
-    {
-      number: 2,
-      name: 'Wave 2: Knowledge Content',
-      description: 'Informational content that supports your service pages and builds topical depth.',
-      action: 'After publishing: add contextual links from these pages to your Wave 1 service pages.',
-      improvement: 'Expect Wave 1 ranking improvements within 4-6 weeks as authority flows from these pages.',
-      color: 'border-blue-500/50 bg-blue-900/10',
-      count: wave2.length,
-      topics: wave2,
-    },
-    {
-      number: 3,
-      name: 'Wave 3: Regional Pages',
-      description: 'Location-specific content for geographic targeting and local search visibility.',
-      action: 'After publishing: update Google Business Profiles with links to these regional pages.',
-      improvement: 'Regional pages target local search queries and strengthen geographic relevance.',
-      color: 'border-amber-500/50 bg-amber-900/10',
-      count: wave3.length,
-      topics: wave3,
-    },
-    {
-      number: 4,
-      name: 'Wave 4: Authority Content',
-      description: 'Expertise-building pages that establish your authority and strengthen all other content.',
-      action: 'After publishing: share on professional networks and link from author bio pages.',
-      improvement: 'These pages complete your topical authority and improve E-E-A-T signals across the entire site.',
-      color: 'border-sky-500/50 bg-sky-900/10',
-      count: wave4.length,
-      topics: wave4,
-    },
-  ];
-
-  const total = coreTopics.length + outerTopics.length;
+  const total = allTopics.length;
   const WAVE_INITIAL = 8;
+
+  // Show loading state while waves are being generated
+  if (isGeneratingWaves) {
+    return (
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+        <h3 className="text-sm font-semibold text-gray-200 mb-4">Publishing Strategy</h3>
+        <div className="flex items-center gap-3 text-sm text-blue-300">
+          <svg className="animate-spin w-4 h-4 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Generating AI-driven publishing strategy based on your business context...
+        </div>
+      </div>
+    );
+  }
+
+  // Show placeholder when no action plan exists yet
+  if (!actionPlan?.waveDefinitions || actionPlan.waveDefinitions.length === 0) {
+    return (
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+        <h3 className="text-sm font-semibold text-gray-200 mb-4">Publishing Strategy</h3>
+        <p className="text-xs text-gray-500">
+          {total > 0
+            ? 'Publishing strategy will be generated after the topical map is created.'
+            : 'Generate a topical map to see the AI-driven publishing strategy.'}
+        </p>
+      </div>
+    );
+  }
+
+  // Build topic lookup by wave from action plan entries
+  const topicById = new Map(allTopics.map(t => [t.id, t]));
+  const topicsByWave = new Map<number, EnrichedTopic[]>();
+  for (const wd of actionPlan.waveDefinitions) {
+    topicsByWave.set(wd.number, []);
+  }
+  for (const entry of (actionPlan.entries ?? [])) {
+    const topic = topicById.get(entry.topicId);
+    if (topic) {
+      const list = topicsByWave.get(entry.wave) ?? [];
+      list.push(topic);
+      topicsByWave.set(entry.wave, list);
+    }
+  }
 
   return (
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-      <h3 className="text-sm font-semibold text-gray-200 mb-4">Publishing Strategy</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-gray-200">Publishing Strategy</h3>
+        <span className="text-[10px] text-gray-500">
+          {actionPlan.waveDefinitions.length} waves — AI-generated
+        </span>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {waves.map((wave) => {
-          const percent = total > 0 ? Math.round((wave.count / total) * 100) : 0;
-          const isExpanded = expandedWaves[wave.number] ?? false;
-          const visibleTopics = isExpanded ? wave.topics : wave.topics.slice(0, WAVE_INITIAL);
-          const hiddenCount = wave.topics.length - WAVE_INITIAL;
+        {actionPlan.waveDefinitions.map((wd, idx) => {
+          const waveTopics = topicsByWave.get(wd.number) ?? [];
+          const count = waveTopics.length;
+          const percent = total > 0 ? Math.round((count / total) * 100) : 0;
+          const isExpanded = expandedWaves[wd.number] ?? false;
+          const colors = DYNAMIC_WAVE_COLORS[idx % DYNAMIC_WAVE_COLORS.length];
 
           return (
             <div
-              key={wave.number}
-              className={`border rounded-lg p-4 ${wave.color}`}
+              key={wd.number}
+              className={`border rounded-lg p-4 ${colors.border} ${colors.bg}`}
             >
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-sm font-medium text-gray-200">{wave.name}</h4>
-                <span className="text-xs text-gray-400">{wave.count} pages</span>
+                <h4 className="text-sm font-medium text-gray-200">
+                  Wave {wd.number}: {wd.name}
+                </h4>
+                <span className="text-xs text-gray-400">{count} pages</span>
               </div>
-              <p className="text-xs text-gray-400">{wave.description}</p>
-              {wave.count > 0 && (
-                <div className="mt-2 space-y-1">
-                  <p className="text-[10px] text-blue-400/80">
-                    <span className="font-medium">Action:</span> {wave.action}
-                  </p>
-                  <p className="text-[10px] text-gray-500 italic">{wave.improvement}</p>
-                </div>
-              )}
+              <p className="text-xs text-gray-400">{wd.description}</p>
               <div className="mt-3">
                 <div className="w-full bg-gray-700 rounded-full h-1.5">
                   <div className="bg-gray-500 h-1.5 rounded-full" style={{ width: `${percent}%` }} />
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1">
-                  {wave.count > 0 ? `${wave.count} pages assigned` : 'Not started'}
+                  {count > 0 ? `${count} pages assigned` : 'No pages assigned'}
                 </p>
               </div>
 
-              {/* Expandable topic list */}
-              {wave.topics.length > 0 && (
+              {waveTopics.length > 0 && (
                 <div className="mt-3 border-t border-gray-700/40 pt-2">
                   <button
                     type="button"
-                    onClick={() => setExpandedWaves(prev => ({ ...prev, [wave.number]: !prev[wave.number] }))}
+                    onClick={() => setExpandedWaves(prev => ({ ...prev, [wd.number]: !prev[wd.number] }))}
                     className="text-[11px] text-blue-400 hover:text-blue-300 mb-1.5 flex items-center gap-1"
                   >
                     <svg
@@ -764,11 +770,11 @@ function PublishingWavesPanel({ coreTopics, outerTopics }: {
                     >
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                     </svg>
-                    {isExpanded ? 'Hide pages' : `Show ${wave.topics.length} pages`}
+                    {isExpanded ? 'Hide pages' : `Show ${waveTopics.length} pages`}
                   </button>
-                  {(isExpanded || visibleTopics.length <= WAVE_INITIAL) && isExpanded && (
+                  {isExpanded && (
                     <div className="space-y-1">
-                      {visibleTopics.map(t => (
+                      {(isExpanded ? waveTopics : waveTopics.slice(0, WAVE_INITIAL)).map(t => (
                         <div key={t.id} className="text-[11px] text-gray-400 py-0.5 pl-1">
                           <span className="truncate block">{t.title}</span>
                           {t.slug && (
@@ -776,15 +782,6 @@ function PublishingWavesPanel({ coreTopics, outerTopics }: {
                           )}
                         </div>
                       ))}
-                      {!isExpanded && hiddenCount > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setExpandedWaves(prev => ({ ...prev, [wave.number]: true }))}
-                          className="text-[10px] text-blue-400 hover:text-blue-300 pl-1"
-                        >
-                          Show {hiddenCount} more
-                        </button>
-                      )}
                     </div>
                   )}
                 </div>
@@ -1073,6 +1070,7 @@ const PipelineMapStep: React.FC = () => {
   const existingOuter = existingTopics.filter(t => t.type === 'outer');
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingWaves, setIsGeneratingWaves] = useState(false);
   const [generatedCore, setGeneratedCore] = useState<EnrichedTopic[]>([]);
   const [generatedOuter, setGeneratedOuter] = useState<EnrichedTopic[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -1220,6 +1218,61 @@ const PipelineMapStep: React.FC = () => {
       } else {
         setGeneratedCore(newCore);
         setGeneratedOuter(newOuter);
+      }
+
+      // Generate AI-driven publishing waves after topics are created
+      // Use newCore/newOuter from the generation result (state setters haven't flushed yet)
+      const allFinalTopics = [...newCore, ...newOuter];
+      if (pillars && allFinalTopics.length > 0) {
+        setIsGeneratingWaves(true);
+        try {
+          const rationaleResult = await generateTopicRationales(
+            allFinalTopics,
+            effectiveBusinessInfo,
+            pillars,
+            activeMap?.eavs ?? [],
+            dispatch
+          );
+
+          const newActionPlan: ActionPlan = {
+            status: 'ready',
+            entries: rationaleResult.rationales.map(r => ({
+              topicId: r.topicId,
+              actionType: r.actionType,
+              priority: r.priority,
+              wave: r.suggestedWave,
+              rationale: r.rationale,
+            })),
+            waveDefinitions: rationaleResult.waveDefinitions,
+            generatedAt: new Date().toISOString(),
+          };
+
+          // Update React state
+          if (state.activeMapId) {
+            dispatch({
+              type: 'UPDATE_MAP_DATA',
+              payload: { mapId: state.activeMapId, data: { action_plan: newActionPlan } },
+            });
+
+            // Persist to Supabase
+            try {
+              const supabase = getSupabaseClient(
+                effectiveBusinessInfo.supabaseUrl,
+                effectiveBusinessInfo.supabaseAnonKey
+              );
+              await supabase
+                .from('topical_maps')
+                .update({ action_plan: newActionPlan } as any)
+                .eq('id', state.activeMapId);
+            } catch (err) {
+              console.warn('[PipelineMap] Action plan save failed:', err);
+            }
+          }
+        } catch (err) {
+          console.warn('[PipelineMap] Wave generation failed (non-fatal):', err);
+        } finally {
+          setIsGeneratingWaves(false);
+        }
       }
 
       setStepStatus('map_planning', 'pending_approval');
@@ -1395,7 +1448,12 @@ const PipelineMapStep: React.FC = () => {
       )}
 
       {/* Review: Publishing Waves */}
-      <PublishingWavesPanel coreTopics={coreTopics} outerTopics={outerTopics} />
+      <PublishingWavesPanel
+        coreTopics={coreTopics}
+        outerTopics={outerTopics}
+        actionPlan={activeMap?.action_plan}
+        isGeneratingWaves={isGeneratingWaves}
+      />
 
       {/* Generate Button */}
       <div className="flex justify-center">

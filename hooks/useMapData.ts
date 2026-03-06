@@ -70,12 +70,13 @@ export const useMapData = (
                 dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: activeMapId, topics } });
 
                 const topicIds = topics.map(t => t.id);
+                let briefsCount = 0;
                 if (topicIds.length > 0) {
                     const { data: briefsData, error: briefsError } = await batchedIn(
                         supabase, 'content_briefs', '*', 'topic_id', topicIds
                     );
                     if (briefsError) throw briefsError;
-                    
+
                     const briefsRecord = (briefsData || []).reduce((acc, dbBrief) => {
                         if (dbBrief && dbBrief.topic_id) {
                              acc[dbBrief.topic_id] = sanitizeBriefFromDb(dbBrief);
@@ -83,11 +84,22 @@ export const useMapData = (
                         return acc;
                     }, {} as Record<string, ContentBrief>);
 
+                    briefsCount = Object.keys(briefsRecord).length;
                     dispatch({ type: 'SET_BRIEFS_FOR_MAP', payload: { mapId: activeMapId, briefs: briefsRecord } });
                 } else {
                     // Ensure we set an empty briefs record if no topics exist, to stop future fetches
                     dispatch({ type: 'SET_BRIEFS_FOR_MAP', payload: { mapId: activeMapId, briefs: {} } });
                 }
+
+                // Reconcile pipeline state with actual data — reset steps that claim
+                // completion but lack the underlying data
+                dispatch(pipelineActions.reconcileWithData({
+                    hasTopics: topics.length > 0,
+                    hasEavs: (activeMap?.eavs ?? []).length > 0,
+                    hasBriefs: briefsCount > 0,
+                    hasPillars: !!(activeMap?.pillars?.centralEntity && activeMap?.pillars?.sourceContext),
+                    hasBizInfo: !!(activeMap?.business_info?.language || businessInfo?.language),
+                }));
 
             } catch (e) {
                 dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : "Failed to load map details." });

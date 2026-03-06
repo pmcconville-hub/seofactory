@@ -144,6 +144,12 @@ ${topicList}
 
 **WAVE DEFINITION TASK:** Before assigning topics, define the wave structure. Determine the NUMBER of waves (2-8) based on business goals and topic diversity. Each wave should represent a distinct publishing phase with a clear strategic purpose.
 
+**WAVE PRAGMATISM RULES:**
+- Each wave should contain a manageable number of pages (5-15 ideally). Distribute work across waves — never put all topics in Wave 1.
+- Wave count should scale with topic count: 10-20 topics = 2-3 waves, 20-40 = 3-5 waves, 40+ = 5-8 waves.
+- Each wave must have a distinct strategic purpose tied to business goals. Avoid generic names like "Other" or "Miscellaneous".
+- Think as a pragmatic SEO consultant advising a small team. Waves are a publishing schedule — each wave should be achievable in 2-4 weeks of focused work.
+
 Example wave structures:
 - B2B service site (4 waves): Foundation Services → Supporting Authority → Regional Expansion → Thought Leadership
 - E-commerce (3 waves): Core Product Pages → Category Support → Buying Guides
