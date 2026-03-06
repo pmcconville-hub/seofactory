@@ -1030,20 +1030,100 @@ const PipelineEavsStep: React.FC = () => {
         </div>
       )}
 
-      {/* J1: Adaptive display — summary mode with Adjust button */}
+      {/* J1: Adaptive display — read-only summary when not adjusting */}
       {!isAdjusting && hasEavData && totalTriples > 0 && (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={() => setIsAdjusting(true)}
-            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 px-5 py-2 rounded-md text-sm font-medium transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />
-            </svg>
-            Edit Business Facts
-          </button>
-        </div>
+        <>
+          {/* Compact read-only EAV summary */}
+          <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
+            {ceEavs.length > 0 && (
+              <div className="px-4 pt-4 pb-2">
+                <p className="text-[10px] text-blue-400 font-medium uppercase tracking-wider mb-2">
+                  Central Entity Facts ({ceEavs.length})
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
+                  {ceEavs.slice(0, 10).map((item, i) => (
+                    <div key={(item.eav as any).id || `summary-ce-${i}`} className="text-xs text-gray-400 py-0.5 flex items-baseline gap-1.5">
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1 ${
+                        confirmedIds.has((item.eav as any).id || '') ? 'bg-emerald-400' : 'bg-gray-600'
+                      }`} />
+                      <span className="text-gray-500">{item.eav.predicate?.relation || '\u2014'}</span>
+                      {item.eav.object?.value && !isPendingValue(item.eav) && (
+                        <span className="text-gray-300 truncate">{String(item.eav.object.value)}</span>
+                      )}
+                      {isPendingValue(item.eav) && (
+                        <span className="text-red-400/60 italic">needs input</span>
+                      )}
+                    </div>
+                  ))}
+                  {ceEavs.length > 10 && (
+                    <p className="text-[10px] text-gray-600 py-0.5">+{ceEavs.length - 10} more</p>
+                  )}
+                </div>
+              </div>
+            )}
+            {scEavs.length > 0 && (
+              <div className="px-4 pt-3 pb-2">
+                <p className="text-[10px] text-purple-400 font-medium uppercase tracking-wider mb-2">
+                  Business Facts ({scEavs.length})
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
+                  {scEavs.slice(0, 10).map((item, i) => (
+                    <div key={(item.eav as any).id || `summary-sc-${i}`} className="text-xs text-gray-400 py-0.5 flex items-baseline gap-1.5">
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1 ${
+                        confirmedIds.has((item.eav as any).id || '') ? 'bg-emerald-400' : 'bg-gray-600'
+                      }`} />
+                      <span className="text-gray-500">{item.eav.predicate?.relation || '\u2014'}</span>
+                      {item.eav.object?.value && !isPendingValue(item.eav) && (
+                        <span className="text-gray-300 truncate">{String(item.eav.object.value)}</span>
+                      )}
+                      {isPendingValue(item.eav) && (
+                        <span className="text-red-400/60 italic">needs input</span>
+                      )}
+                    </div>
+                  ))}
+                  {scEavs.length > 10 && (
+                    <p className="text-[10px] text-gray-600 py-0.5">+{scEavs.length - 10} more</p>
+                  )}
+                </div>
+              </div>
+            )}
+            {/* If no ceEavs or scEavs matched (fallback: show from sortedEavs directly) */}
+            {ceEavs.length === 0 && scEavs.length === 0 && sortedEavs.length > 0 && (
+              <div className="px-4 pt-4 pb-2">
+                <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-2">
+                  All Facts ({sortedEavs.length})
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
+                  {sortedEavs.slice(0, 10).map((item, i) => (
+                    <div key={(item.eav as any).id || `summary-all-${i}`} className="text-xs text-gray-400 py-0.5 flex items-baseline gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1 bg-gray-600" />
+                      <span className="text-gray-500">{item.eav.predicate?.relation || '\u2014'}</span>
+                      {item.eav.object?.value && !isPendingValue(item.eav) && (
+                        <span className="text-gray-300 truncate">{String(item.eav.object.value)}</span>
+                      )}
+                    </div>
+                  ))}
+                  {sortedEavs.length > 10 && (
+                    <p className="text-[10px] text-gray-600 py-0.5">+{sortedEavs.length - 10} more</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => setIsAdjusting(true)}
+              className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 px-5 py-2 rounded-md text-sm font-medium transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />
+              </svg>
+              Edit Business Facts
+            </button>
+          </div>
+        </>
       )}
 
       {/* ── Confidence-sorted EAV list (Decision 2 + 5) — only in adjust mode ── */}
