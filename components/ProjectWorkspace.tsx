@@ -62,6 +62,16 @@ const ProjectWorkspace: React.FC = () => {
         };
 
         dispatch({ type: 'UPDATE_MAP_DATA', payload: { mapId: activeMapId, data: { business_info: strategicInfo } } });
+
+        // Persist to Supabase
+        try {
+            const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
+            const { error } = await supabase.from('topical_maps').update({ business_info: strategicInfo } as any).eq('id', activeMapId);
+            if (error) console.warn('[ProjectWorkspace] business_info save failed:', error.message);
+        } catch (err) {
+            console.warn('[ProjectWorkspace] business_info save error:', err);
+        }
+
         dispatch({ type: 'SET_STEP', payload: AppStep.PILLAR_WIZARD });
     };
 

@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { usePipeline } from '../../../hooks/usePipeline';
 import { useAppState } from '../../../state/appState';
+import { getSupabaseClient } from '../../../services/supabaseClient';
 import {
   generateExportPackage,
   type ExportPackageOptions,
@@ -344,26 +345,20 @@ function OpenItemsByRole({
   pillars,
   eavs,
   analysisState,
-  mapId,
+  persistedCheckedItems,
+  onCheckedItemsChange,
 }: {
   topics: Array<{ title: string; type: string; topic_class?: string | null }>;
   briefs: Record<string, { articleDraft?: string }>;
   pillars?: { centralEntity?: string; contentAreas?: string[] };
   eavs?: Array<{ predicate?: { relation?: string } }>;
   analysisState?: Record<string, unknown>;
-  mapId?: string;
+  persistedCheckedItems?: string[];
+  onCheckedItemsChange?: (items: string[]) => void;
 }) {
-  // Persist checked items in localStorage keyed by mapId
-  const storageKey = mapId ? `pipeline-open-items-${mapId}` : null;
-  const [checkedIds, setCheckedIds] = useState<Set<string>>(() => {
-    if (!storageKey) return new Set();
-    try {
-      const saved = localStorage.getItem(storageKey);
-      return saved ? new Set(JSON.parse(saved)) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(
+    () => new Set(persistedCheckedItems ?? [])
+  );
 
   const [filterOwner, setFilterOwner] = useState<'all' | 'business' | 'developer' | 'content'>('all');
 
@@ -371,12 +366,10 @@ function OpenItemsByRole({
     setCheckedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
-      if (storageKey) {
-        try { localStorage.setItem(storageKey, JSON.stringify([...next])); } catch { /* noop */ }
-      }
+      onCheckedItemsChange?.([...next]);
       return next;
     });
-  }, [storageKey]);
+  }, [onCheckedItemsChange]);
 
   const allItems = deriveOpenItems(topics, briefs, pillars, eavs, analysisState);
   const filtered = filterOwner === 'all' ? allItems : allItems.filter(i => i.owner === filterOwner);
@@ -735,7 +728,13 @@ const PipelineExportStep: React.FC = () => {
     activeMap,
   } = usePipeline();
 
-  const { state } = useAppState();
+  const { state, dispatch } = useAppState();
+
+  // Merge per-map business_info overrides with global state
+  const effectiveBusinessInfo = useMemo(() => {
+    const mapBI = activeMap?.business_info;
+    return mapBI ? { ...state.businessInfo, ...mapBI } : state.businessInfo;
+  }, [activeMap?.business_info, state.businessInfo]);
 
   const [activeTab, setActiveTab] = useState('SEO');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -833,6 +832,44 @@ const PipelineExportStep: React.FC = () => {
     },
     [activeMap, briefs]
   );
+
+  // ──── Persist export checked items to analysis_state ────
+
+  const persistedCheckedItems = (activeMap?.analysis_state as any)?.export_checked_items as string[] | undefined;
+
+  // Debounce persistence to avoid writing on every toggle
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleCheckedItemsChange = useCallback((items: string[]) => {
+    const activeMapId = state.activeMapId;
+    if (!activeMapId) return;
+
+    const currentAnalysisState = (activeMap?.analysis_state as Record<string, unknown>) ?? {};
+    const updatedAnalysisState = { ...currentAnalysisState, export_checked_items: items };
+
+    dispatch({
+      type: 'UPDATE_MAP_DATA',
+      payload: { mapId: activeMapId, data: { analysis_state: updatedAnalysisState } as any },
+    });
+
+    // Debounce Supabase write
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(async () => {
+      try {
+        const sbUrl = effectiveBusinessInfo.supabaseUrl;
+        const sbKey = effectiveBusinessInfo.supabaseAnonKey;
+        if (sbUrl && sbKey) {
+          const supabase = getSupabaseClient(sbUrl, sbKey);
+          const { error: dbErr } = await supabase.from('topical_maps')
+            .update({ analysis_state: updatedAnalysisState } as any)
+            .eq('id', activeMapId);
+          if (dbErr) console.warn('[Export] Failed to persist checked items:', dbErr);
+        }
+      } catch (persistErr) {
+        console.warn('[Export] Failed to persist checked items:', persistErr);
+      }
+    }, 1000);
+  }, [state.activeMapId, activeMap?.analysis_state, effectiveBusinessInfo, dispatch]);
 
   const formatBytes = (bytes: number): string => {
     if (bytes === 0) return '0 B';
@@ -1014,7 +1051,8 @@ const PipelineExportStep: React.FC = () => {
           pillars={activeMap?.pillars}
           eavs={activeMap?.eavs}
           analysisState={activeMap?.analysis_state as Record<string, unknown> | undefined}
-          mapId={activeMap?.id}
+          persistedCheckedItems={persistedCheckedItems}
+          onCheckedItemsChange={handleCheckedItemsChange}
         />
       </div>
 

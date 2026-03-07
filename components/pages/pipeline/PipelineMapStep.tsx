@@ -1192,19 +1192,50 @@ const PipelineMapStep: React.FC = () => {
   const [generatedOuter, setGeneratedOuter] = useState<EnrichedTopic[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Services extracted from EAVs — user can confirm/edit before map generation
+  // Services extracted from EAVs — fallback for first-time users
   const extractedServices = useMemo(() => {
     const eavs = activeMap?.eavs ?? [];
     const ce = activeMap?.pillars?.centralEntity ?? '';
     return extractServicesFromEavs(eavs, ce);
   }, [activeMap?.eavs, activeMap?.pillars?.centralEntity]);
-  const [confirmedServices, setConfirmedServices] = useState<string[]>(extractedServices);
-  // Sync when extractedServices changes (e.g., after EAV step updates)
+
+  // Load from DB first; fall back to EAV extraction
+  const [confirmedServices, setConfirmedServices] = useState<string[]>(() => {
+    const persisted = activeMap?.confirmed_services;
+    if (persisted && persisted.length > 0) return persisted;
+    return extractedServices;
+  });
+
+  // Sync from EAV extraction when: no persisted data AND current list is empty
+  const persistedServices = activeMap?.confirmed_services;
   React.useEffect(() => {
-    if (extractedServices.length > 0 && confirmedServices.length === 0) {
+    if (!persistedServices && extractedServices.length > 0 && confirmedServices.length === 0) {
       setConfirmedServices(extractedServices);
     }
-  }, [extractedServices]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [extractedServices, persistedServices, confirmedServices.length]);
+
+  // Debounced persistence of confirmed services to DB
+  const saveServicesTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const persistConfirmedServices = useCallback((services: string[]) => {
+    if (!state.activeMapId) return;
+    dispatch({
+      type: 'UPDATE_MAP_DATA',
+      payload: { mapId: state.activeMapId, data: { confirmed_services: services } },
+    });
+    if (saveServicesTimeoutRef.current) clearTimeout(saveServicesTimeoutRef.current);
+    saveServicesTimeoutRef.current = setTimeout(async () => {
+      try {
+        const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
+        const { error } = await supabase.from('topical_maps').update({ confirmed_services: services } as any).eq('id', state.activeMapId);
+        if (error) console.warn(`[MapStep] confirmed_services save failed (${error.code}): ${error.message}`);
+      } catch { /* network-level error, non-fatal */ }
+    }, 1000);
+  }, [state.activeMapId, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey, dispatch]);
+
+  React.useEffect(() => () => {
+    if (saveServicesTimeoutRef.current) clearTimeout(saveServicesTimeoutRef.current);
+  }, []);
 
   // ──── Dialogue Engine state ────
   const [dialogueContext, setDialogueContext] = useState<DialogueContext>(
@@ -1410,12 +1441,13 @@ const PipelineMapStep: React.FC = () => {
                 effectiveBusinessInfo.supabaseUrl,
                 effectiveBusinessInfo.supabaseAnonKey
               );
-              await supabase
+              const { error } = await supabase
                 .from('topical_maps')
                 .update({ action_plan: newActionPlan } as any)
                 .eq('id', state.activeMapId);
+              if (error) console.warn(`[PipelineMap] Action plan save failed (${error.code}): ${error.message}`);
             } catch (err) {
-              console.warn('[PipelineMap] Action plan save failed:', err);
+              console.warn('[PipelineMap] Action plan save error:', err);
             }
           }
         } catch (err) {
@@ -1490,6 +1522,17 @@ const PipelineMapStep: React.FC = () => {
         const removeId = decisions.remove_topic.topicId;
         setGeneratedCore(prev => prev.filter(t => t.id !== removeId));
         setGeneratedOuter(prev => prev.filter(t => t.id !== removeId && t.parent_topic_id !== removeId));
+        // Persist deletion to topics table
+        try {
+          const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
+          // Delete the topic and its children (outer topics referencing it)
+          const { error: childErr } = await supabase.from('topics').delete().eq('parent_topic_id', removeId);
+          if (childErr) console.warn(`[PipelineMap] Child topic delete failed: ${childErr.message}`);
+          const { error } = await supabase.from('topics').delete().eq('id', removeId);
+          if (error) console.warn(`[PipelineMap] Topic delete failed: ${error.message}`);
+        } catch (err) {
+          console.warn('[PipelineMap] Topic delete error:', err);
+        }
       }
 
       // Handle rename_topic
@@ -1499,6 +1542,14 @@ const PipelineMapStep: React.FC = () => {
           topics.map(t => t.id === topicId ? { ...t, title: newTitle } : t);
         setGeneratedCore(updateTitle);
         setGeneratedOuter(updateTitle);
+        // Persist rename to topics table
+        try {
+          const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
+          const { error } = await supabase.from('topics').update({ title: newTitle }).eq('id', topicId);
+          if (error) console.warn(`[PipelineMap] Topic rename failed: ${error.message}`);
+        } catch (err) {
+          console.warn('[PipelineMap] Topic rename error:', err);
+        }
       }
     }
 
@@ -1545,7 +1596,15 @@ const PipelineMapStep: React.FC = () => {
       );
       dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: state.activeMapId, topics: allTopics } });
     }
-  }, [coreTopics, outerTopics, state.activeMapId, dispatch]);
+    // Persist rename to topics table
+    try {
+      const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
+      supabase.from('topics').update({ title: newTitle }).eq('id', topicId)
+        .then(({ error }) => { if (error) console.warn(`[PipelineMap] Inline rename failed: ${error.message}`); });
+    } catch (err) {
+      console.warn('[PipelineMap] Inline rename error:', err);
+    }
+  }, [coreTopics, outerTopics, state.activeMapId, dispatch, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey]);
 
   return (
     <div className="space-y-8">
@@ -1591,7 +1650,10 @@ const PipelineMapStep: React.FC = () => {
       {(isAdjusting || !hasMapData) && activeMap?.pillars?.centralEntity && (
         <ServiceConfirmationPanel
           services={confirmedServices}
-          onServicesChange={setConfirmedServices}
+          onServicesChange={(services) => {
+            setConfirmedServices(services);
+            persistConfirmedServices(services);
+          }}
         />
       )}
 
@@ -1695,7 +1757,7 @@ const PipelineMapStep: React.FC = () => {
       {showDialogue && !dialogueComplete && totalTopics > 0 && (
         <StepDialogue
           step="map_planning"
-          stepOutput={{ topics: [...coreTopics, ...outerTopics], clusters: clusterCount, eavs: activeMap?.eavs ?? [] }}
+          stepOutput={{ topics: [...coreTopics, ...outerTopics], clusters: clusterCount, eavs: activeMap?.eavs ?? [], confirmedServices }}
           businessInfo={effectiveBusinessInfo}
           dialogueContext={dialogueContext}
           onDataExtracted={handleDialogueDataExtracted}

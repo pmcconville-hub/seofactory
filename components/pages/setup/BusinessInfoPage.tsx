@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAppState } from '../../../state/appState';
 import BusinessInfoForm from '../../BusinessInfoForm';
 import { BusinessInfo } from '../../../types';
+import { getSupabaseClient } from '../../../services/supabaseClient';
 
 /**
  * BusinessInfoPage - Route wrapper for the Business Info wizard step.
@@ -45,6 +46,15 @@ const BusinessInfoPage: React.FC = () => {
         };
 
         dispatch({ type: 'UPDATE_MAP_DATA', payload: { mapId, data: { business_info: strategicInfo } } });
+
+        // Persist to Supabase
+        try {
+            const supabase = getSupabaseClient(state.businessInfo.supabaseUrl, state.businessInfo.supabaseAnonKey);
+            const { error } = await supabase.from('topical_maps').update({ business_info: strategicInfo } as any).eq('id', mapId);
+            if (error) console.warn('[BusinessInfoPage] business_info save failed:', error.message);
+        } catch (err) {
+            console.warn('[BusinessInfoPage] business_info save error:', err);
+        }
 
         if (fromMigration) {
             // Return to map dashboard — viewMode='MIGRATION' is still active in state

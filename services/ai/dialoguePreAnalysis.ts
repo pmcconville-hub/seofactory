@@ -180,10 +180,12 @@ function analyzeMapPlanning(
   runPageWorthiness(topics, findings, validatorsRun, validatorsSkipped);
 
   // 6. Service Alignment — check if all business services have hub topics
+  // Prefer user-confirmed services over re-extracting from EAVs
+  const userConfirmedServices: string[] | undefined = Array.isArray(output?.confirmedServices) ? output.confirmedServices : undefined;
   const eavs: SemanticTriple[] = Array.isArray(output?.eavs) ? output.eavs : [];
   const centralEntity = ce || '';
-  if (eavs.length > 0 && centralEntity) {
-    runServiceAlignment(topics, eavs, centralEntity, findings, validatorsRun, validatorsSkipped);
+  if ((userConfirmedServices && userConfirmedServices.length > 0) || (eavs.length > 0 && centralEntity)) {
+    runServiceAlignment(topics, eavs, centralEntity, findings, validatorsRun, validatorsSkipped, userConfirmedServices);
   } else {
     validatorsSkipped.push('ServiceAlignment');
   }
@@ -440,10 +442,14 @@ function runServiceAlignment(
   centralEntity: string,
   findings: PreAnalysisFinding[],
   validatorsRun: string[],
-  validatorsSkipped: string[]
+  validatorsSkipped: string[],
+  confirmedServices?: string[]
 ): void {
   try {
-    const services = extractServicesFromEavs(eavs, centralEntity);
+    // Use user-confirmed services when available; fall back to EAV extraction
+    const services = (confirmedServices && confirmedServices.length > 0)
+      ? confirmedServices
+      : extractServicesFromEavs(eavs, centralEntity);
     if (services.length === 0) {
       validatorsSkipped.push('ServiceAlignment');
       return;

@@ -267,6 +267,8 @@ export interface TopicalMap {
     topicalAuthorityScore?: TopicalAuthorityScore;
     publicationPlan?: Record<string, unknown>;
     gscOpportunities?: GscOpportunity[];
+    tech_spec_result?: import('../services/techSpecGenerationService').TechSpecResult | null;
+    export_checked_items?: string[];
   };
   foundationPages?: FoundationPage[];
   navigation?: NavigationStructure;
@@ -274,6 +276,7 @@ export interface TopicalMap {
   pipeline_state?: import('../state/slices/pipelineSlice').PipelineState | null;
   dialogue_context?: import('./dialogue').DialogueContext;
   action_plan?: ActionPlan | null;
+  confirmed_services?: string[] | null;
 }
 
 /**

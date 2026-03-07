@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { usePipeline } from '../../../hooks/usePipeline';
 import { useAppState } from '../../../state/appState';
+import { getSupabaseClient } from '../../../services/supabaseClient';
 import ApprovalGate from '../../pipeline/ApprovalGate';
 import {
   generateTechSpec,
@@ -327,11 +328,27 @@ const PipelineTechSpecStep: React.FC = () => {
     activeMap,
   } = usePipeline();
 
-  const { state } = useAppState();
+  const { state, dispatch } = useAppState();
+
+  // Merge per-map business_info overrides with global state
+  const effectiveBusinessInfo = useMemo(() => {
+    const mapBI = activeMap?.business_info;
+    return mapBI ? { ...state.businessInfo, ...mapBI } : state.businessInfo;
+  }, [activeMap?.business_info, state.businessInfo]);
+
+  // Load persisted tech spec result from analysis_state on mount
+  const persistedResult = (activeMap?.analysis_state as any)?.tech_spec_result as TechSpecResult | null | undefined;
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<TechSpecResult | null>(null);
+  const [result, setResult] = useState<TechSpecResult | null>(persistedResult ?? null);
+
+  // Sync from persisted data when activeMap changes (e.g. page refresh)
+  useEffect(() => {
+    if (persistedResult && !result) {
+      setResult(persistedResult);
+    }
+  }, [persistedResult]); // eslint-disable-line react-hooks/exhaustive-deps -- only re-sync when persisted data changes
 
   const stepState = getStepState('tech_spec');
   const gate = stepState?.gate;
@@ -397,6 +414,32 @@ const PipelineTechSpecStep: React.FC = () => {
       const techSpec = await generateTechSpec(activeMap, topics, briefs);
       setResult(techSpec);
       setStepStatus('tech_spec', 'pending_approval');
+
+      // Persist to analysis_state
+      const activeMapId = state.activeMapId;
+      if (activeMapId) {
+        const currentAnalysisState = (activeMap?.analysis_state as Record<string, unknown>) ?? {};
+        const updatedAnalysisState = { ...currentAnalysisState, tech_spec_result: techSpec };
+
+        dispatch({
+          type: 'UPDATE_MAP_DATA',
+          payload: { mapId: activeMapId, data: { analysis_state: updatedAnalysisState } as any },
+        });
+
+        try {
+          const sbUrl = effectiveBusinessInfo.supabaseUrl;
+          const sbKey = effectiveBusinessInfo.supabaseAnonKey;
+          if (sbUrl && sbKey) {
+            const supabase = getSupabaseClient(sbUrl, sbKey);
+            const { error: dbErr } = await supabase.from('topical_maps')
+              .update({ analysis_state: updatedAnalysisState } as any)
+              .eq('id', activeMapId);
+            if (dbErr) console.warn('[TechSpec] Failed to persist tech spec result:', dbErr);
+          }
+        } catch (persistErr) {
+          console.warn('[TechSpec] Failed to persist tech spec result:', persistErr);
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(`Tech spec generation failed: ${message}`);
@@ -404,7 +447,7 @@ const PipelineTechSpecStep: React.FC = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [activeMap, setStepStatus]);
+  }, [activeMap, setStepStatus, state.activeMapId, effectiveBusinessInfo, dispatch]);
 
   // ──── Derive stats ────
 
