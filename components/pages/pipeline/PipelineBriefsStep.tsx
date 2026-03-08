@@ -1,12 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { usePipeline } from '../../../hooks/usePipeline';
 import { useAppState } from '../../../state/appState';
 import { useActionPlan } from '../../../hooks/useActionPlan';
 import ApprovalGate from '../../pipeline/ApprovalGate';
 import { generateContentBrief, suggestResponseCode } from '../../../services/ai/briefGeneration';
+import { reviewBriefQuality } from '../../../services/ai/briefQualityReview';
 import { KnowledgeGraph } from '../../../lib/knowledgeGraph';
 import type { EnrichedTopic, ContentBrief } from '../../../types';
-import type { ActionPlanEntry } from '../../../types/actionPlan';
+import type { ActionPlanEntry, BriefQualityReport } from '../../../types/actionPlan';
 import { getSupabaseClient } from '../../../services/supabaseClient';
 import { assignTopicsToWaves as assignTopicsToWavesService } from '../../../services/waveAssignmentService';
 
@@ -60,6 +61,8 @@ const PipelineBriefsStep: React.FC = () => {
     changeActionType,
     rebalance,
     getEntriesByWave,
+    updateTopicConfig,
+    updateBriefStatus,
   } = useActionPlan(topics, effectiveBusinessInfo, pillars, eavs, state.activeMapId);
 
   // Brief generation state
@@ -69,6 +72,7 @@ const PipelineBriefsStep: React.FC = () => {
   const [localBriefs, setLocalBriefs] = useState<Record<string, ContentBrief>>(existingBriefs);
   const [error, setError] = useState<string | null>(null);
   const [progressText, setProgressText] = useState('');
+  const [qualityReports, setQualityReports] = useState<Record<string, BriefQualityReport>>({});
 
   const allBriefs = { ...existingBriefs, ...localBriefs };
 
@@ -105,8 +109,8 @@ const PipelineBriefsStep: React.FC = () => {
     return map;
   }, [actionPlan, topics]);
 
-  // Brief generation handler
-  const handleGenerateWave = async (waveNumber: number) => {
+  // Core brief generation for a list of topic IDs
+  const handleGenerateTopics = useCallback(async (topicIds: string[], waveNumber?: number) => {
     const businessInfo = effectiveBusinessInfo;
 
     if (!pillars?.centralEntity) {
@@ -114,39 +118,37 @@ const PipelineBriefsStep: React.FC = () => {
       return;
     }
 
-    const waveTopicsList = waveTopics.get(waveNumber) ?? [];
-    if (waveTopicsList.length === 0) {
-      setError(`No topics assigned to Wave ${waveNumber}.`);
-      return;
-    }
+    const topicMap = new Map(topics.map(t => [t.id, t]));
+    const targetTopics = topicIds
+      .map(id => topicMap.get(id))
+      .filter((t): t is EnrichedTopic => !!t);
 
-    // Filter to topics that don't have briefs yet
-    const topicsNeedingBriefs = waveTopicsList.filter(t => !allBriefs[t.id]);
-    if (topicsNeedingBriefs.length === 0) {
-      setError(`All briefs for Wave ${waveNumber} are already generated.`);
+    if (targetTopics.length === 0) {
+      setError('No valid topics selected for generation.');
       return;
     }
 
     setError(null);
     setIsBriefGenerating(true);
-    setGeneratingWave(waveNumber);
+    if (waveNumber !== undefined) setGeneratingWave(waveNumber);
     setStepStatus('briefs', 'in_progress');
 
     const knowledgeGraph = new KnowledgeGraph();
     const newBriefs: Record<string, ContentBrief> = {};
     const failedTopics: string[] = [];
 
-    // Get action context per topic for brief prompt tailoring
     const actionEntryMap = new Map(
       (actionPlan?.entries ?? []).map(e => [e.topicId, e])
     );
 
-    for (let i = 0; i < topicsNeedingBriefs.length; i++) {
-      const topic = topicsNeedingBriefs[i];
+    for (let i = 0; i < targetTopics.length; i++) {
+      const topic = targetTopics[i];
       setGeneratingTopicId(topic.id);
-      setProgressText(`Generating brief ${i + 1}/${topicsNeedingBriefs.length}: ${topic.title}`);
+      setProgressText(`Generating brief ${i + 1}/${targetTopics.length}: ${topic.title}`);
 
-      // Per-topic try/catch with one retry so a single failure doesn't kill the wave
+      // Update brief status to generating
+      updateBriefStatus(topic.id, 'generating');
+
       let attempts = 0;
       const MAX_ATTEMPTS = 2;
       while (attempts < MAX_ATTEMPTS) {
@@ -166,7 +168,9 @@ const PipelineBriefsStep: React.FC = () => {
             undefined,
             eavs,
             undefined,
-            actionEntry?.actionType
+            actionEntry?.actionType,
+            actionEntry?.config,
+            allBriefs
           );
 
           const brief: ContentBrief = {
@@ -178,21 +182,32 @@ const PipelineBriefsStep: React.FC = () => {
 
           newBriefs[topic.id] = brief;
           setLocalBriefs(prev => ({ ...prev, [topic.id]: brief }));
-          break; // success — exit retry loop
+
+          // Run quality review
+          const report = reviewBriefQuality(
+            brief, topic, businessInfo, pillars, topics, eavs, actionEntry?.config,
+            { ...allBriefs, ...newBriefs }, businessInfo.websiteType
+          );
+          setQualityReports(prev => ({ ...prev, [topic.id]: report }));
+
+          // Update brief status
+          updateBriefStatus(topic.id, 'generated');
+          break;
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           if (attempts < MAX_ATTEMPTS) {
             console.warn(`[Briefs] Attempt ${attempts} failed for "${topic.title}", retrying: ${message}`);
-            await new Promise(r => setTimeout(r, 2000)); // brief backoff before retry
+            await new Promise(r => setTimeout(r, 2000));
           } else {
             console.error(`[Briefs] Failed after ${MAX_ATTEMPTS} attempts for "${topic.title}": ${message}`);
             failedTopics.push(topic.title);
+            updateBriefStatus(topic.id, 'failed');
           }
         }
       }
     }
 
-    // Persist all successfully generated briefs (even if some topics failed)
+    // Persist
     if (Object.keys(newBriefs).length > 0 && state.activeMapId) {
       const mergedBriefs = { ...allBriefs, ...newBriefs };
       dispatch({
@@ -200,7 +215,6 @@ const PipelineBriefsStep: React.FC = () => {
         payload: { mapId: state.activeMapId, briefs: mergedBriefs },
       });
 
-      // Save each new brief to the content_briefs table
       try {
         const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
 
@@ -230,7 +244,6 @@ const PipelineBriefsStep: React.FC = () => {
             cta: brief.cta,
           };
 
-          // Check-then-insert/update (avoids upsert hang issues)
           const { data: existing } = await supabase
             .from('content_briefs')
             .select('id')
@@ -255,12 +268,9 @@ const PipelineBriefsStep: React.FC = () => {
       }
     }
 
-    // Report results
     if (failedTopics.length > 0) {
       const successCount = Object.keys(newBriefs).length;
-      setError(
-        `Wave ${waveNumber}: ${successCount} briefs generated, ${failedTopics.length} failed: ${failedTopics.join(', ')}`
-      );
+      setError(`${successCount} briefs generated, ${failedTopics.length} failed: ${failedTopics.join(', ')}`);
     }
 
     if (Object.keys(newBriefs).length > 0) {
@@ -273,7 +283,29 @@ const PipelineBriefsStep: React.FC = () => {
     setGeneratingWave(null);
     setGeneratingTopicId(null);
     setProgressText('');
-  };
+  }, [effectiveBusinessInfo, pillars, topics, eavs, actionPlan, allBriefs, state.activeMapId, dispatch, setStepStatus, updateBriefStatus]);
+
+  // Wave-level handler — generates all pending topics in a wave
+  const handleGenerateWave = useCallback(async (waveNumber: number) => {
+    const waveTopicsList = waveTopics.get(waveNumber) ?? [];
+    const topicsNeedingBriefs = waveTopicsList.filter(t => !allBriefs[t.id]);
+
+    if (topicsNeedingBriefs.length === 0) {
+      setError(`All briefs for Wave ${waveNumber} are already generated.`);
+      return;
+    }
+
+    await handleGenerateTopics(topicsNeedingBriefs.map(t => t.id), waveNumber);
+  }, [waveTopics, allBriefs, handleGenerateTopics]);
+
+  // Approval handlers
+  const handleApproveBrief = useCallback((topicId: string) => {
+    updateBriefStatus(topicId, 'approved');
+  }, [updateBriefStatus]);
+
+  const handleRejectBrief = useCallback((topicId: string, reason: string) => {
+    updateBriefStatus(topicId, 'rejected', reason);
+  }, [updateBriefStatus]);
 
   // Metrics for approval gate
   const hubTopics = topics.filter(t => t.cluster_role === 'pillar');
@@ -346,6 +378,7 @@ const PipelineBriefsStep: React.FC = () => {
               onRebalance={rebalance}
               onApprove={approvePlan}
               isApproved={actionPlan.status === 'approved'}
+              onUpdateTopicConfig={updateTopicConfig}
             />
           )}
 
@@ -359,6 +392,11 @@ const PipelineBriefsStep: React.FC = () => {
             generatingWave={generatingWave}
             generatingTopicId={generatingTopicId}
             onGenerateWave={handleGenerateWave}
+            onGenerateTopics={handleGenerateTopics}
+            onApproveBrief={handleApproveBrief}
+            onRejectBrief={handleRejectBrief}
+            qualityReports={qualityReports}
+            eavTotal={eavs.length}
             language={effectiveBusinessInfo.language || 'en'}
           />
         </>

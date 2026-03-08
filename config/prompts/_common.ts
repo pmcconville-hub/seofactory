@@ -356,6 +356,117 @@ export const condenseBriefForPrompt = (brief: any): string => {
     }, null, 2);
 };
 
+// ============================================================================
+// BRIEF ENRICHMENT HELPERS
+// ============================================================================
+
+/**
+ * Generate website-type-specific rules for content brief prompts.
+ * Returns CSI predicates, attribute priorities, and structural guidance.
+ */
+export const getWebsiteTypeRulesForBrief = (websiteType?: WebsiteType): string => {
+    if (!websiteType) return '';
+
+    const config = getWebsiteTypeConfig(websiteType);
+
+    return `
+**WEBSITE-TYPE RULES (${config.label.toUpperCase()}):**
+${config.description}
+- Attribute priority: ${config.coreSectionRules.attributePriority.join(' → ')}
+- Required page types: ${config.coreSectionRules.requiredPageTypes.join(', ')}
+- Content depth: ${config.coreSectionRules.contentDepth}
+- Schema types: ${config.coreSectionRules.schemaTypes.join(', ')}
+- Max anchors per page: ${config.linkingRules.maxAnchorsPerPage}
+- Max anchor repetition: ${config.linkingRules.maxAnchorRepetition}
+- EAV ROOT focus: ${config.eavPriority.requiredCategories.ROOT.join(', ')}
+- EAV UNIQUE focus: ${config.eavPriority.requiredCategories.UNIQUE.join(', ')}
+${config.coreSectionRules.formatPreferences.tables ? '- Include comparison tables for key attributes' : ''}
+${config.coreSectionRules.formatPreferences.faq ? '- Include FAQ section targeting PAA queries' : ''}
+`;
+};
+
+/**
+ * Check sibling topics for cannibalization risk (semantic distance < 0.2).
+ * Returns warning text for the brief prompt if risks are found.
+ */
+export const getCannibalizationContext = (
+    topic: any, // EnrichedTopic
+    allTopics: any[], // EnrichedTopic[]
+    knowledgeGraph?: any // KnowledgeGraph
+): string => {
+    if (!allTopics || allTopics.length === 0) return '';
+
+    // Find sibling topics (same parent)
+    const siblings = allTopics.filter(t =>
+        t.id !== topic.id &&
+        t.parent_topic_id === topic.parent_topic_id &&
+        topic.parent_topic_id
+    );
+
+    if (siblings.length === 0) return '';
+
+    // Simple title-based similarity check (Jaccard on words)
+    const topicWords = new Set(
+        (topic.title || '').toLowerCase().split(/\s+/).filter((w: string) => w.length > 2)
+    );
+    const riskyTopics: string[] = [];
+
+    for (const sibling of siblings) {
+        const siblingWords = new Set(
+            (sibling.title || '').toLowerCase().split(/\s+/).filter((w: string) => w.length > 2)
+        );
+        const intersection = [...topicWords].filter(w => siblingWords.has(w)).length;
+        const union = new Set([...topicWords, ...siblingWords]).size;
+        const jaccard = union > 0 ? intersection / union : 0;
+
+        if (jaccard > 0.5) {
+            riskyTopics.push(sibling.title);
+        }
+    }
+
+    if (riskyTopics.length === 0) return '';
+
+    return `
+**CANNIBALIZATION WARNING:** The following sibling topics have high semantic overlap with "${topic.title}":
+${riskyTopics.map(t => `- "${t}"`).join('\n')}
+DIFFERENTIATE by: using a distinct angle/intent, unique EAV attributes, and different featured snippet targets. Ensure headings do NOT duplicate the sibling topics' likely heading structure.
+`;
+};
+
+/**
+ * Get sibling brief structures for template consistency.
+ * Returns heading patterns from existing briefs of same-entity-type topics.
+ */
+export const getSiblingBriefStructures = (
+    topic: any, // EnrichedTopic
+    allTopics: any[], // EnrichedTopic[]
+    existingBriefs: Record<string, ContentBrief>
+): string => {
+    // Find siblings with existing briefs
+    const siblings = allTopics.filter(t =>
+        t.id !== topic.id &&
+        t.parent_topic_id === topic.parent_topic_id &&
+        topic.parent_topic_id &&
+        existingBriefs[t.id]
+    );
+
+    if (siblings.length === 0) return '';
+
+    const structures = siblings.slice(0, 3).map(s => {
+        const brief = existingBriefs[s.id];
+        const headings = (brief.structured_outline || [])
+            .map((sec: any) => `H${sec.level}: ${sec.heading}`)
+            .join(', ');
+        return `- "${s.title}": [${headings}]`;
+    });
+
+    return `
+**TEMPLATE CONSISTENCY:** Topics of the same entity type should follow a similar heading structure. Sibling topic structures:
+${structures.join('\n')}
+Match the structural pattern where appropriate, but differentiate the specific headings.
+`;
+};
+
 // Re-export utility functions that may be needed by prompt modules
 export {
     getLanguageName,

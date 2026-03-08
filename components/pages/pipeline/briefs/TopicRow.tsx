@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { EnrichedTopic } from '../../../../types';
-import type { ActionPlanEntry, ActionType, ActionPriority } from '../../../../types/actionPlan';
+import type { ActionPlanEntry, ActionType, ActionPriority, TopicConfig } from '../../../../types/actionPlan';
 import { ActionTypeBadge } from './ActionTypeBadge';
 
 interface TopicRowProps {
@@ -12,6 +12,7 @@ interface TopicRowProps {
   onSelect: (topicId: string) => void;
   onUpdate: (topicId: string, updates: Partial<ActionPlanEntry>) => void;
   onRemove: (topicId: string) => void;
+  onUpdateConfig?: (topicId: string, config: Partial<TopicConfig>) => void;
 }
 
 const PRIORITY_COLORS: Record<ActionPriority, string> = {
@@ -35,6 +36,7 @@ export function TopicRow({
   onSelect,
   onUpdate,
   onRemove,
+  onUpdateConfig,
 }: TopicRowProps) {
   const [showRationale, setShowRationale] = useState(false);
 
@@ -119,6 +121,45 @@ export function TopicRow({
           <option value={4}>W4</option>
         </select>
 
+        {/* Inline per-topic config dropdowns */}
+        {onUpdateConfig && (
+          <>
+            <select
+              value={entry.config?.contentLength || 'standard'}
+              onChange={(e) => onUpdateConfig(entry.topicId, { contentLength: e.target.value as TopicConfig['contentLength'] })}
+              className="text-[10px] bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-gray-400 focus:outline-none focus:border-gray-600 flex-shrink-0"
+              title="Content length"
+            >
+              <option value="minimal">Minimal</option>
+              <option value="short">Short</option>
+              <option value="standard">Standard</option>
+              <option value="comprehensive">Compre.</option>
+            </select>
+            <select
+              value={entry.config?.featuredSnippetFormat || 'PARAGRAPH'}
+              onChange={(e) => onUpdateConfig(entry.topicId, { featuredSnippetFormat: e.target.value as TopicConfig['featuredSnippetFormat'] })}
+              className="text-[10px] bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-gray-400 focus:outline-none focus:border-gray-600 flex-shrink-0"
+              title="Featured snippet format"
+            >
+              <option value="PARAGRAPH">FS:Para</option>
+              <option value="LIST">FS:List</option>
+              <option value="TABLE">FS:Table</option>
+              <option value="NONE">FS:None</option>
+            </select>
+            <select
+              value={entry.config?.toneOverride || 'professional'}
+              onChange={(e) => onUpdateConfig(entry.topicId, { toneOverride: e.target.value as TopicConfig['toneOverride'] })}
+              className="text-[10px] bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-gray-400 focus:outline-none focus:border-gray-600 flex-shrink-0"
+              title="Tone"
+            >
+              <option value="conversational">Convers.</option>
+              <option value="professional">Profess.</option>
+              <option value="academic">Academic</option>
+              <option value="sales">Sales</option>
+            </select>
+          </>
+        )}
+
         {/* Rationale toggle */}
         {entry.rationale && (
           <button
@@ -150,6 +191,13 @@ export function TopicRow({
       {showRationale && entry.rationale && (
         <p className="text-[10px] text-gray-500 mt-1.5 pl-9 leading-relaxed">
           {entry.rationale}
+        </p>
+      )}
+
+      {/* AI config rationale (visible when rationale expanded) */}
+      {showRationale && entry.config?.contentLengthReason && (
+        <p className="text-[9px] text-gray-600 italic mt-1 pl-9" title="AI rationale">
+          AI: {entry.config.contentLengthReason}
         </p>
       )}
     </div>

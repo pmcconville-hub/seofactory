@@ -35,6 +35,7 @@ import {
   TopicMergeDecision,
   TopicalMap,
 } from '../types';
+import type { TopicConfig } from '../types/actionPlan';
 import * as prompts from '../config/prompts';
 import { CONTENT_BRIEF_SCHEMA, CONTENT_BRIEF_FALLBACK } from '../config/schemas';
 import { AIResponseSanitizer } from './aiResponseSanitizer';
@@ -752,10 +753,12 @@ export const generateContentBrief = async (
     dispatch: React.Dispatch<any>,
     marketPatterns?: import('../types/competitiveIntelligence').MarketPatterns,
     eavs?: import('../types').SemanticTriple[],
-    actionType?: string
+    actionType?: string,
+    topicConfig?: TopicConfig,
+    existingBriefs?: Record<string, ContentBrief>
 ): Promise<Omit<ContentBrief, 'id' | 'topic_id' | 'articleDraft'>> => {
     const sanitizer = new AIResponseSanitizer(dispatch);
-    const prompt = prompts.GENERATE_CONTENT_BRIEF_PROMPT(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, marketPatterns, eavs, actionType);
+    const prompt = prompts.GENERATE_CONTENT_BRIEF_PROMPT(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, marketPatterns, eavs, actionType, topicConfig, existingBriefs);
 
     // Using the detailed sanitizer schema as a fallback/parser for the structured output
     const sanitizerSchema = {

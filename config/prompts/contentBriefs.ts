@@ -14,7 +14,11 @@ import {
     getLanguageName,
     shouldApplyMonetizationEnhancement,
     getMonetizationPromptEnhancement,
+    getWebsiteTypeRulesForBrief,
+    getCannibalizationContext,
+    getSiblingBriefStructures,
 } from './_common';
+import type { TopicConfig } from '../../types/actionPlan';
 
 export const SUGGEST_RESPONSE_CODE_PROMPT = (info: BusinessInfo, topicTitle: string): string => `
 You are an expert content strategist. For the given topic title, suggest the most effective "Response Code" (content template).
@@ -37,7 +41,32 @@ ${jsonResponseInstruction}
 Respond with a JSON object containing "responseCode" and "reasoning".
 `;
 
-export const GENERATE_CONTENT_BRIEF_PROMPT = (info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, knowledgeGraph: KnowledgeGraph, responseCode: ResponseCode, marketPatterns?: MarketPatterns, eavs?: SemanticTriple[], actionType?: string): string => {
+/**
+ * Returns conditional contextual bridge guidance based on topic characteristics.
+ * - Pillar/root pages: MANDATORY bridge
+ * - Topics with very few siblings: OPTIONAL bridge
+ * - All others: REQUIRED bridge (standard)
+ */
+export function getContextualBridgeGuidance(topic: EnrichedTopic, allTopics: EnrichedTopic[]): string {
+    const isPillar = topic.cluster_role === 'pillar' || !topic.parent_topic_id;
+
+    if (isPillar) {
+        return `**MANDATORY** — This is a pillar page. The contextual bridge MUST connect the site's Central Entity to this page's specific scope. Define a 'contextualBridge' object with a dedicated transition paragraph that bridges the Macro Context (The Site's Core Entity) to the Micro Context (This Article's Topic).`;
+    }
+
+    // Count siblings: topics sharing the same parent (excluding self)
+    const siblingCount = topic.parent_topic_id
+        ? allTopics.filter(t => t.parent_topic_id === topic.parent_topic_id && t.id !== topic.id).length
+        : 0;
+
+    if (siblingCount <= 1) {
+        return `**OPTIONAL** — This topic has limited connections (${siblingCount} sibling topic${siblingCount === 1 ? '' : 's'}). You may omit the contextual bridge if there is no natural macro-to-micro transition. If omitted, set 'contextualBridge' to an empty object \`{}\`. If included, define a 'contextualBridge' object that bridges the Macro Context to the Micro Context.`;
+    }
+
+    return `**REQUIRED** — Include a contextual bridge. Define a 'contextualBridge' object with a dedicated transition paragraph that bridges the Macro Context (The Site's Core Entity) to the Micro Context (This Article's Topic).`;
+}
+
+export const GENERATE_CONTENT_BRIEF_PROMPT = (info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, knowledgeGraph: KnowledgeGraph, responseCode: ResponseCode, marketPatterns?: MarketPatterns, eavs?: SemanticTriple[], actionType?: string, topicConfig?: TopicConfig, existingBriefs?: Record<string, ContentBrief>): string => {
     // Extract up to 30 topic-relevant nodes from knowledge graph (sorted by relevance to current topic)
     const kgContext = knowledgeGraph
         ? (() => {
@@ -81,12 +110,51 @@ export const GENERATE_CONTENT_BRIEF_PROMPT = (info: BusinessInfo, topic: Enriche
 
     const actionContextSection = getActionContextSection(actionType, topic.target_url);
 
+    // Contextual bridge guidance based on topic characteristics
+    const bridgeGuidance = getContextualBridgeGuidance(topic, allTopics);
+
+    // New framework enrichments
+    const websiteTypeRules = getWebsiteTypeRulesForBrief(info.websiteType);
+    const cannibalizationContext = getCannibalizationContext(topic, allTopics, knowledgeGraph);
+    const siblingStructures = existingBriefs ? getSiblingBriefStructures(topic, allTopics, existingBriefs) : '';
+
+    // Content length guidance from TopicConfig
+    const contentLengthGuide = topicConfig?.contentLength
+        ? `\n**CONTENT LENGTH PRESET: ${topicConfig.contentLength.toUpperCase()}**\n- minimal: 3-4 sections, ~350 words\n- short: 4-5 sections, ~600 words\n- standard: 5-7 sections, ~1500 words\n- comprehensive: 8-10+ sections, ~2500+ words\nPlan the structured_outline to match the "${topicConfig.contentLength}" preset.`
+        : '';
+
+    // Featured snippet format from TopicConfig
+    const fsFormatGuide = topicConfig?.featuredSnippetFormat && topicConfig.featuredSnippetFormat !== 'NONE'
+        ? `\n**TARGET FEATURED SNIPPET FORMAT: ${topicConfig.featuredSnippetFormat}** — Set featured_snippet_target.target_type to "${topicConfig.featuredSnippetFormat}".`
+        : '';
+
     return `
 You are an expert Algorithmic Architect and Holistic SEO Strategist.
 Your goal is to generate a content brief that strictly minimizes the **Cost of Retrieval** for search engines.
 You do not write generic outlines. You engineer data structures for information retrieval.
 
 ${languageInstruction}
+
+**CENTERPIECE RULE:** The first 400 characters of the article MUST contain: the Central Entity ("${pillars.centralEntity}"), the primary definition/answer, and key attributes. Plan the introduction section accordingly. The structured_outline's first section must be designed to satisfy this rule.
+
+**SUBORDINATE TEXT:** For each section in structured_outline, the subordinate_text_hint MUST be a direct answer:
+- "What is X?" → "X is [definition]"
+- "How to X?" → "To X, [first step]"
+- "Why X?" → "X happens because [reason]"
+No filler phrases. No "In this section we will discuss..."
+
+**FEATURED SNIPPET FORMAT:** Select target_type based on query type:
+- Definitional ("What is X?") → PARAGRAPH (<40 words)
+- Enumeration ("Types of X", "Best X") → LIST (3-8 items)
+- Comparison ("X vs Y") → TABLE (3-5 rows)
+- Process ("How to X") → LIST (ordered steps)
+${fsFormatGuide}
+
+**EAV DENSITY RULE:** Plan for one unique EAV triple per sentence. Each sentence should convey exactly one fact. Avoid compound sentences that mix multiple facts.
+${contentLengthGuide}
+${websiteTypeRules}
+${cannibalizationContext}
+${siblingStructures}
 ${marketDataSection}
 ${actionContextSection}
 
@@ -131,7 +199,7 @@ ${eavContext}
 
 #### **II. STRUCTURE & FLOW**
 1.  **Contextual Vector (Rule II.B):** Ensure a strictly ordered heading hierarchy (H1 -> H2 -> H3) that creates a logical dependency chain.
-2.  **The Contextual Bridge (Rule II.D):** You MUST define a specific 'contextualBridge' object. This is a dedicated section (transition paragraph) that bridges the **Macro Context** (The Site's Core Entity) to the **Micro Context** (This Article's Topic).
+2.  **The Contextual Bridge (Rule II.D):** ${bridgeGuidance}
 3.  **Subordinate Text (Rule II.F):** For every H2/H3 in the 'structured_outline', provide a 'subordinate_text_hint'. This MUST dictate the syntax of the *very first sentence* (e.g., "Define [Topic] as [Category] that [Function]...").
 4.  **Introductory Summary (Rule II.E):** Mandate an abstractive summary at the start.
 5.  **Discourse Anchor Sequence (Rule II.G):** For each section transition, define in 'discourse_anchor_sequence':
@@ -176,6 +244,12 @@ ${eavContext}
     - **reasoning**: Explain why this link adds value for the reader's journey
 3.  **Semantic Relevance (Rule V.B):** Prioritize links to topics that share semantic overlap with this article. Sibling topics and parent topics are ideal candidates.
 4.  **CRITICAL**: targetTopic MUST be a verbatim copy of a topic title from the available list. anchorText MUST be 2-5 words only.
+5.  **LINKING RULES (Rule V.D):**
+    - Same anchor text max 3 times per page
+    - Links placed AFTER the concept/entity is defined (never before)
+    - Annotation text (1-2 sentences before link) must relate to target topic
+    - Anchor hierarchy: hypernyms early, core terms middle, hyponyms late
+    - Only link to topics with semantic distance 0.3-0.7 from this topic
 
 #### **VI. FORMAT CODE ASSIGNMENT**
 1.  **[FS] Featured Snippet**: Assign to the primary definition/answer section. 40-50 words max.

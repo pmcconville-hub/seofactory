@@ -2,7 +2,7 @@ import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { EnrichedTopic } from '../../../../types';
-import type { ActionPlanEntry } from '../../../../types/actionPlan';
+import type { ActionPlanEntry, TopicConfig } from '../../../../types/actionPlan';
 import { TopicRow } from './TopicRow';
 
 // Dynamic color palette for waves (cycles for wave counts > palette size)
@@ -34,6 +34,7 @@ interface WaveColumnProps {
   onRemove: (topicId: string) => void;
   isCollapsed: boolean;
   onToggle: () => void;
+  onUpdateConfig?: (topicId: string, config: Partial<TopicConfig>) => void;
 }
 
 export function WaveColumn({
@@ -47,6 +48,7 @@ export function WaveColumn({
   onRemove,
   isCollapsed,
   onToggle,
+  onUpdateConfig,
 }: WaveColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: `wave-${waveNumber}`,
@@ -130,6 +132,7 @@ export function WaveColumn({
                   onSelect={onSelect}
                   onUpdate={onUpdate}
                   onRemove={onRemove}
+                  onUpdateConfig={onUpdateConfig}
                 />
               ))}
             </SortableContext>

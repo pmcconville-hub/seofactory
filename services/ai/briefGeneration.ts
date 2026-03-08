@@ -1,8 +1,9 @@
 
-import { BusinessInfo, ResponseCode, ContentBrief, EnrichedTopic, SEOPillars, KnowledgeGraph, ContentIntegrityResult, SchemaGenerationResult, AuditRuleResult, BriefVisualSemantics, StreamingProgressCallback, HolisticSummary, CompetitorSpecs, SemanticTriple } from '../../types';
+import { BusinessInfo, ResponseCode, ContentBrief, EnrichedTopic, SEOPillars, KnowledgeGraph, ContentIntegrityResult, SchemaGenerationResult, AuditRuleResult, BriefVisualSemantics, StreamingProgressCallback, HolisticSummary, CompetitorSpecs, SemanticTriple, BriefSection } from '../../types';
 import type { StructuralAnalysis } from '../../types';
 import { MarketPatterns } from '../../types/competitiveIntelligence';
 import type { CategoryPageContext } from '../../types/catalog';
+import type { TopicConfig } from '../../types/actionPlan';
 import * as geminiService from '../geminiService';
 import * as openAiService from '../openAiService';
 import * as anthropicService from '../anthropicService';
@@ -15,6 +16,33 @@ import { analyzeImageRequirements } from '../visualSemanticsService';
 import { shouldApplyMonetizationEnhancement, getMonetizationValidationRules } from './briefOptimization';
 import { validateLanguageSettings } from '../../utils/languageUtils';
 import React from 'react';
+
+/**
+ * Compute a deterministic hash of an outline's structure for symmetry checks.
+ * Extracts level + format_code + attribute_category per section, joins with '|',
+ * and applies djb2 hashing to produce a hex string.
+ */
+export function computeStructuralTemplateHash(outline?: BriefSection[]): string {
+    if (!outline || outline.length === 0) return '';
+
+    const structureString = outline
+        .map(section => {
+            const level = section.level ?? section.heading_level ?? 0;
+            const formatCode = section.format_code || 'PROSE';
+            const category = section.attribute_category || 'COMMON';
+            return `${level}:${formatCode}:${category}`;
+        })
+        .join('|');
+
+    // djb2 hash algorithm
+    let hash = 5381;
+    for (let i = 0; i < structureString.length; i++) {
+        hash = ((hash << 5) + hash + structureString.charCodeAt(i)) | 0; // hash * 33 + char
+    }
+
+    // Convert to unsigned 32-bit hex
+    return (hash >>> 0).toString(16);
+}
 
 /**
  * Build a structural template section from competitor structural analysis data.
@@ -145,6 +173,18 @@ const validateMonetizationBrief = (
         });
     }
 };
+
+// --- Post-Brief Validation Helpers ---
+
+/**
+ * Extract links from contextualBridge, handling both array and section union types.
+ */
+function getBridgeLinks(bridge: any): any[] {
+    if (!bridge) return [];
+    if (Array.isArray(bridge)) return bridge;
+    if (bridge.links && Array.isArray(bridge.links)) return bridge.links;
+    return [];
+}
 
 // --- Algorithmic Audit Helpers ---
 
@@ -458,7 +498,9 @@ export const generateContentBrief = async (
     marketPatterns?: MarketPatterns,  // Optional: competitor-derived market patterns
     eavs?: SemanticTriple[],  // Semantic triples from topical map
     categoryContext?: CategoryPageContext,  // Optional: ecommerce category page data
-    actionType?: string  // Optional: action context (OPTIMIZE, REWRITE, MERGE, etc.) for tailored briefs
+    actionType?: string,  // Optional: action context (OPTIMIZE, REWRITE, MERGE, etc.) for tailored briefs
+    topicConfig?: TopicConfig,  // Per-topic config (content length, FS format, etc.)
+    existingBriefs?: Record<string, ContentBrief>  // Existing briefs for template consistency
 ): Promise<Omit<ContentBrief, 'id' | 'topic_id' | 'articleDraft'>> => {
     // Validate language and region settings before generation
     validateLanguageAndRegion(businessInfo, dispatch);
@@ -490,11 +532,11 @@ export const generateContentBrief = async (
     }
 
     const brief = await dispatchToProvider(businessInfo, {
-        gemini: () => geminiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType),
-        openai: () => openAiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType),
-        anthropic: () => anthropicService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType),
-        perplexity: () => perplexityService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType),
-        openrouter: () => openRouterService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType),
+        gemini: () => geminiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
+        openai: () => openAiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
+        anthropic: () => anthropicService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
+        perplexity: () => perplexityService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
+        openrouter: () => openRouterService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
     });
 
     // Validate monetization briefs meet minimum requirements
@@ -544,6 +586,117 @@ export const generateContentBrief = async (
         }
     }
 
+    // --- Post-brief validation ---
+
+    // 1. FS target_type matching query type
+    if (enrichedBrief.featured_snippet_target) {
+        const titleLower = topic.title.toLowerCase();
+        let expectedType: string | null = null;
+
+        if (/\b(what is|definition|meaning)\b/.test(titleLower)) {
+            expectedType = 'PARAGRAPH';
+        } else if (/\b(types of|best|top\s+\d+)\b/.test(titleLower)) {
+            expectedType = 'LIST';
+        } else if (/\b(vs|versus|compared)\b/.test(titleLower)) {
+            expectedType = 'TABLE';
+        } else if (/\b(how to|steps|process)\b/.test(titleLower)) {
+            expectedType = 'LIST';
+        }
+
+        if (expectedType && enrichedBrief.featured_snippet_target.target_type !== expectedType) {
+            const oldType = enrichedBrief.featured_snippet_target.target_type;
+            enrichedBrief.featured_snippet_target.target_type = expectedType as any;
+            dispatch({
+                type: 'LOG_EVENT',
+                payload: {
+                    service: 'BriefGeneration',
+                    message: `Auto-fixed FS target_type: "${oldType}" → "${expectedType}" (query pattern mismatch for "${topic.title}")`,
+                    status: 'warning',
+                    timestamp: Date.now(),
+                },
+            });
+        }
+    }
+
+    // 2. mapped_eavs coverage check
+    if (eavs && eavs.length > 0) {
+        const outline = enrichedBrief.structured_outline || [];
+        const hasAnyMappedEavs = outline.some(
+            (section: any) => section.mapped_eavs && section.mapped_eavs.length > 0
+        );
+
+        if (!hasAnyMappedEavs) {
+            dispatch({
+                type: 'LOG_EVENT',
+                payload: {
+                    service: 'BriefGeneration',
+                    message: `No EAVs mapped to any outline section despite ${eavs.length} EAVs being provided. Sections may lack semantic triple coverage.`,
+                    status: 'warning',
+                    timestamp: Date.now(),
+                },
+            });
+        }
+
+        if (!enrichedBrief.eavs || (Array.isArray(enrichedBrief.eavs) && enrichedBrief.eavs.length === 0)) {
+            dispatch({
+                type: 'LOG_EVENT',
+                payload: {
+                    service: 'BriefGeneration',
+                    message: `Brief eavs field is empty despite ${eavs.length} EAVs being provided as input.`,
+                    status: 'warning',
+                    timestamp: Date.now(),
+                },
+            });
+        }
+    }
+
+    // 3. contextualBridge.links max-3 anchor rule
+    const bridgeLinks = getBridgeLinks(enrichedBrief.contextualBridge);
+    if (bridgeLinks.length > 0) {
+        const anchorCounts = new Map<string, number>();
+        bridgeLinks.forEach((link: any) => {
+            const anchor = (link.anchorText || '').toLowerCase().trim();
+            if (anchor) {
+                anchorCounts.set(anchor, (anchorCounts.get(anchor) || 0) + 1);
+            }
+        });
+
+        const duplicatedAnchors = [...anchorCounts.entries()].filter(([, count]) => count > 3);
+        if (duplicatedAnchors.length > 0) {
+            // Deduplicate: keep only first 3 occurrences of each anchor
+            const anchorSeen = new Map<string, number>();
+            const deduped = bridgeLinks.filter((link: any) => {
+                const anchor = (link.anchorText || '').toLowerCase().trim();
+                if (!anchor) return true;
+                const seen = anchorSeen.get(anchor) || 0;
+                anchorSeen.set(anchor, seen + 1);
+                return seen < 3;
+            });
+
+            // Apply deduplication back to the bridge
+            if (Array.isArray(enrichedBrief.contextualBridge)) {
+                (enrichedBrief as any).contextualBridge = deduped;
+            } else if (enrichedBrief.contextualBridge && (enrichedBrief.contextualBridge as any).links) {
+                (enrichedBrief.contextualBridge as any).links = deduped;
+            }
+
+            dispatch({
+                type: 'LOG_EVENT',
+                payload: {
+                    service: 'BriefGeneration',
+                    message: `Deduplicated contextualBridge anchors (max 3 per anchor). Affected: ${duplicatedAnchors.map(([a, c]) => `"${a}" (${c}x)`).join(', ')}`,
+                    status: 'warning',
+                    timestamp: Date.now(),
+                },
+            });
+        }
+    }
+
+    // --- End post-brief validation ---
+
+    // Compute structural_template_hash for symmetry checks
+    const outlineHash = computeStructuralTemplateHash(enrichedBrief.structured_outline);
+
     return {
         ...enrichedBrief,
         suggestedLengthPreset: lengthSuggestion.preset,
@@ -551,6 +704,7 @@ export const generateContentBrief = async (
         competitorSpecs,
         eavs: eavs || [],
         ...(categoryContext ? { categoryContext } : {}),
+        structural_template_hash: outlineHash,
     };
 };
 

@@ -20,6 +20,7 @@ import type {
   ActionPlanStatus,
   ActionType,
   ActionPriority,
+  TopicConfig,
 } from '../types/actionPlan';
 import {
   suggestActionType,
@@ -54,6 +55,8 @@ interface UseActionPlanReturn {
   changeActionType: (topicIds: string[], actionType: ActionType) => void;
   rebalance: () => void;
   updateTitle: (topicId: string, newTitle: string) => void;
+  updateTopicConfig: (topicId: string, config: Partial<TopicConfig>) => void;
+  updateBriefStatus: (topicId: string, status: TopicConfig['briefStatus'], reason?: string) => void;
 
   // Getters
   getEntriesByWave: (wave: number) => ActionPlanEntry[];
@@ -355,6 +358,30 @@ export function useActionPlan(
     }));
   }, [actionPlan, updatePlan]);
 
+  // ──── CRUD: Update Topic Config ────
+  const updateTopicConfig = useCallback((topicId: string, config: Partial<TopicConfig>) => {
+    updatePlan(plan => ({
+      ...plan,
+      entries: plan.entries.map(e =>
+        e.topicId === topicId
+          ? { ...e, config: { ...e.config, ...config } }
+          : e
+      ),
+    }));
+  }, [updatePlan]);
+
+  // ──── CRUD: Update Brief Status ────
+  const updateBriefStatus = useCallback((topicId: string, status: TopicConfig['briefStatus'], reason?: string) => {
+    updatePlan(plan => ({
+      ...plan,
+      entries: plan.entries.map(e =>
+        e.topicId === topicId
+          ? { ...e, config: { ...e.config, briefStatus: status, ...(reason ? { briefRejectionReason: reason } : {}) } }
+          : e
+      ),
+    }));
+  }, [updatePlan]);
+
   // ──── Update Title (inline edit) ────
   // Note: This updates the topic title in state, not the action plan entry itself
   const updateTitle = useCallback((_topicId: string, _newTitle: string) => {
@@ -388,6 +415,8 @@ export function useActionPlan(
     changeActionType,
     rebalance,
     updateTitle,
+    updateTopicConfig,
+    updateBriefStatus,
     getEntriesByWave,
     getActiveEntries,
   };

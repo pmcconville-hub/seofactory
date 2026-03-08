@@ -1,19 +1,22 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import type { EnrichedTopic, ContentBrief, BriefSection } from '../../../../types';
-import type { ActionPlan, ActionPlanEntry } from '../../../../types/actionPlan';
+import type { ActionPlan, ActionPlanEntry, BriefQualityReport } from '../../../../types/actionPlan';
 
 // ──── Extracted inline components from original PipelineBriefsStep ────
 
-function StatusBadge({ status }: { status: 'Pending' | 'Generating' | 'Generated' | 'Reviewed' }) {
+function StatusBadge({ status }: { status: 'Pending' | 'Generating' | 'Generated' | 'Reviewed' | 'Failed' | 'Approved' | 'Rejected' }) {
   const styles: Record<string, string> = {
     Pending: 'bg-gray-600/20 text-gray-400 border-gray-600/30',
     Generating: 'bg-amber-600/20 text-amber-300 border-amber-500/30',
     Generated: 'bg-blue-600/20 text-blue-300 border-blue-500/30',
     Reviewed: 'bg-green-600/20 text-green-300 border-green-500/30',
+    Failed: 'bg-red-600/20 text-red-300 border-red-500/30',
+    Approved: 'bg-green-600/20 text-green-300 border-green-500/30',
+    Rejected: 'bg-red-600/20 text-red-300 border-red-500/30',
   };
 
   return (
-    <span className={`text-xs font-medium px-2 py-0.5 rounded border ${styles[status]} flex items-center gap-1.5`}>
+    <span className={`text-xs font-medium px-2 py-0.5 rounded border ${styles[status] || styles.Pending} flex items-center gap-1.5`}>
       {status === 'Generating' && (
         <svg className="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -39,13 +42,21 @@ function FormatIcon({ format }: { format: string }) {
   return <span className="text-[9px] bg-gray-700/30 text-gray-400 border border-gray-600/30 rounded px-1 py-0.5">prose</span>;
 }
 
-function BriefCard({ topic, brief, actionContext, generatingTopicId }: {
+function BriefCard({ topic, brief, actionContext, generatingTopicId, qualityReport, briefStatus, eavTotal, onGenerate, onApprove, onReject }: {
   topic: EnrichedTopic;
   brief: ContentBrief | null;
   actionContext?: string;
   generatingTopicId?: string | null;
+  qualityReport?: BriefQualityReport;
+  briefStatus?: string;
+  eavTotal?: number;
+  onGenerate?: (topicId: string) => void;
+  onApprove?: (topicId: string) => void;
+  onReject?: (topicId: string, reason: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
 
   const sections = brief?.structured_outline ?? [];
   const sectionCount = sections.length;
@@ -120,7 +131,23 @@ function BriefCard({ topic, brief, actionContext, generatingTopicId }: {
               {eavCount > 0 && (
                 <>
                   <span className="text-gray-700">&middot;</span>
-                  <span className="text-[10px] text-blue-400">{eavCount} facts</span>
+                  {eavTotal && eavTotal > 0 ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="text-[10px] text-blue-400">{eavCount}/{eavTotal} EAVs</span>
+                      <span className="inline-block w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden align-middle">
+                        <span
+                          className={`block h-full rounded-full transition-all ${
+                            eavCount >= eavTotal ? 'bg-green-500' :
+                            eavCount >= eavTotal * 0.5 ? 'bg-blue-500' :
+                            'bg-amber-500'
+                          }`}
+                          style={{ width: `${Math.min(100, Math.round((eavCount / eavTotal) * 100))}%` }}
+                        />
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-blue-400">{eavCount} facts</span>
+                  )}
                 </>
               )}
               {snippetTargets > 0 && (
@@ -133,7 +160,33 @@ function BriefCard({ topic, brief, actionContext, generatingTopicId }: {
           )}
         </div>
         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-          <StatusBadge status={isGenerating ? 'Generating' : isPending ? 'Pending' : 'Generated'} />
+          {qualityReport && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+              qualityReport.score >= 85 ? 'bg-green-900/20 text-green-300 border-green-500/30' :
+              qualityReport.score >= 60 ? 'bg-amber-900/20 text-amber-300 border-amber-500/30' :
+              'bg-red-900/20 text-red-300 border-red-500/30'
+            }`}>
+              {qualityReport.score}%
+            </span>
+          )}
+          <StatusBadge status={
+            isGenerating ? 'Generating' :
+            briefStatus === 'failed' ? 'Failed' :
+            briefStatus === 'approved' ? 'Approved' :
+            briefStatus === 'rejected' ? 'Rejected' :
+            isPending ? 'Pending' : 'Generated'
+          } />
+          {/* Per-topic generate/regenerate button */}
+          {onGenerate && !isGenerating && (isPending || briefStatus === 'failed' || brief) && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onGenerate(topic.id); }}
+              className="text-[10px] bg-blue-600/20 text-blue-300 border border-blue-500/30 rounded px-1.5 py-0.5 hover:bg-blue-600/30 transition-colors"
+              title={brief ? 'Regenerate' : 'Generate'}
+            >
+              {brief ? 'Regen' : 'Gen'}
+            </button>
+          )}
           {!isPending && (
             <svg
               className={`w-3.5 h-3.5 text-gray-500 transition-transform ${expanded ? 'rotate-180' : ''}`}
@@ -165,6 +218,89 @@ function BriefCard({ topic, brief, actionContext, generatingTopicId }: {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Quality checks */}
+          {qualityReport && (
+            <div className="space-y-1 pt-2 border-t border-gray-800">
+              <p className="text-[10px] text-gray-500 uppercase font-medium">Quality Checks ({qualityReport.passCount}/{qualityReport.checks.length})</p>
+              {qualityReport.checks.map((check, i) => (
+                <div key={i} className="flex items-center gap-2 text-[10px]">
+                  <span className={check.passed ? 'text-green-400' : 'text-red-400'}>
+                    {check.passed ? '\u2713' : '\u2717'}
+                  </span>
+                  <span className="text-gray-400">{check.name}</span>
+                  <span className="text-gray-600 truncate flex-1">{check.details}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Approve / Reject actions */}
+          {brief && briefStatus !== 'approved' && (onApprove || onReject) && (
+            <div className="flex items-center gap-2 pt-2 border-t border-gray-800">
+              {onApprove && (
+                <button
+                  type="button"
+                  onClick={() => onApprove(topic.id)}
+                  className="text-[10px] bg-green-600/20 text-green-300 border border-green-500/30 rounded px-2 py-1 hover:bg-green-600/30 transition-colors"
+                >
+                  Approve
+                </button>
+              )}
+              {onReject && !rejecting && (
+                <button
+                  type="button"
+                  onClick={() => setRejecting(true)}
+                  className="text-[10px] bg-red-600/20 text-red-300 border border-red-500/30 rounded px-2 py-1 hover:bg-red-600/30 transition-colors"
+                >
+                  Reject
+                </button>
+              )}
+              {onReject && rejecting && (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="Rejection reason..."
+                    className="text-[10px] bg-gray-800 text-gray-200 border border-red-500/30 rounded px-2 py-1 w-48 focus:outline-none focus:border-red-400/50 placeholder-gray-600"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && rejectionReason.trim()) {
+                        onReject(topic.id, rejectionReason.trim());
+                        setRejecting(false);
+                        setRejectionReason('');
+                      } else if (e.key === 'Escape') {
+                        setRejecting(false);
+                        setRejectionReason('');
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (rejectionReason.trim()) {
+                        onReject(topic.id, rejectionReason.trim());
+                        setRejecting(false);
+                        setRejectionReason('');
+                      }
+                    }}
+                    disabled={!rejectionReason.trim()}
+                    className="text-[10px] bg-red-600/20 text-red-300 border border-red-500/30 rounded px-1.5 py-1 hover:bg-red-600/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setRejecting(false); setRejectionReason(''); }}
+                    className="text-[10px] bg-gray-700/30 text-gray-400 border border-gray-600/30 rounded px-1.5 py-1 hover:bg-gray-700/50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -206,18 +342,63 @@ function WaveBriefGroup({
   waveNumber,
   briefs,
   onGenerateWave,
+  onGenerateTopics,
   isGenerating,
   actionEntries,
   generatingTopicId,
+  qualityReports,
+  onApproveBrief,
+  onRejectBrief,
+  eavTotal,
 }: {
   waveNumber: number;
   briefs: Array<{ topic: EnrichedTopic; brief: ContentBrief | null }>;
   onGenerateWave: (waveNumber: number) => void;
+  onGenerateTopics?: (topicIds: string[]) => void;
   isGenerating: boolean;
   actionEntries?: Map<string, ActionPlanEntry>;
   generatingTopicId?: string | null;
+  qualityReports?: Record<string, BriefQualityReport>;
+  onApproveBrief?: (topicId: string) => void;
+  onRejectBrief?: (topicId: string, reason: string) => void;
+  eavTotal?: number;
 }) {
   const [expanded, setExpanded] = useState(waveNumber === 1);
+  const [selectedTopicIds, setSelectedTopicIds] = useState<Set<string>>(new Set());
+
+  const toggleSelection = useCallback((topicId: string) => {
+    setSelectedTopicIds(prev => {
+      const next = new Set(prev);
+      if (next.has(topicId)) next.delete(topicId);
+      else next.add(topicId);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedTopicIds.size === briefs.length) {
+      setSelectedTopicIds(new Set());
+    } else {
+      setSelectedTopicIds(new Set(briefs.map(b => b.topic.id)));
+    }
+  }, [briefs, selectedTopicIds.size]);
+
+  const handleGenerateSelected = useCallback(() => {
+    if (onGenerateTopics && selectedTopicIds.size > 0) {
+      onGenerateTopics([...selectedTopicIds]);
+      setSelectedTopicIds(new Set());
+    }
+  }, [onGenerateTopics, selectedTopicIds]);
+
+  const handleApproveAllPassing = useCallback(() => {
+    if (!onApproveBrief || !qualityReports) return;
+    for (const b of briefs) {
+      const report = qualityReports[b.topic.id];
+      if (report && report.score >= 85 && b.brief) {
+        onApproveBrief(b.topic.id);
+      }
+    }
+  }, [briefs, qualityReports, onApproveBrief]);
 
   const WAVE_BORDER_PALETTE = [
     'border-emerald-500/50', 'border-blue-500/50', 'border-amber-500/50', 'border-sky-500/50',
@@ -259,17 +440,29 @@ function WaveBriefGroup({
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onGenerateWave(waveNumber);
-          }}
-          disabled={isGenerating || briefs.length === 0}
-          className="text-xs bg-blue-600/20 text-blue-300 border border-blue-500/30 rounded px-2.5 py-1 hover:bg-blue-600/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isGenerating ? 'Generating...' : 'Generate All Briefs'}
-        </button>
+        <div className="flex items-center gap-2">
+          {selectedTopicIds.size > 0 && onGenerateTopics && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handleGenerateSelected(); }}
+              disabled={isGenerating}
+              className="text-xs bg-purple-600/20 text-purple-300 border border-purple-500/30 rounded px-2.5 py-1 hover:bg-purple-600/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Generate Selected ({selectedTopicIds.size})
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onGenerateWave(waveNumber);
+            }}
+            disabled={isGenerating || briefs.length === 0}
+            className="text-xs bg-blue-600/20 text-blue-300 border border-blue-500/30 rounded px-2.5 py-1 hover:bg-blue-600/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isGenerating ? 'Generating...' : 'Generate All'}
+          </button>
+        </div>
       </button>
 
       {expanded && (
@@ -289,6 +482,30 @@ function WaveBriefGroup({
             </div>
           )}
 
+          {/* Select all + Approve all passing */}
+          {briefs.length > 0 && (
+            <div className="flex items-center gap-3 py-1">
+              <label className="flex items-center gap-1.5 text-[10px] text-gray-500 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedTopicIds.size === briefs.length && briefs.length > 0}
+                  onChange={toggleSelectAll}
+                  className="w-3 h-3 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-0"
+                />
+                Select all
+              </label>
+              {onApproveBrief && qualityReports && generatedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleApproveAllPassing}
+                  className="text-[10px] text-green-400 hover:text-green-300 transition-colors"
+                >
+                  Approve all passing (&ge;85%)
+                </button>
+              )}
+            </div>
+          )}
+
           {briefs.length > 0 ? (
             briefs.map((item, i) => {
               const entry = actionEntries?.get(item.topic.id);
@@ -296,13 +513,28 @@ function WaveBriefGroup({
                 ? entry.actionType.replace('_', ' ').toLowerCase()
                 : undefined;
               return (
-                <BriefCard
-                  key={i}
-                  topic={item.topic}
-                  brief={item.brief}
-                  actionContext={actionContext}
-                  generatingTopicId={generatingTopicId}
-                />
+                <div key={i} className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedTopicIds.has(item.topic.id)}
+                    onChange={() => toggleSelection(item.topic.id)}
+                    className="w-3 h-3 rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-0 mt-3 flex-shrink-0"
+                  />
+                  <div className="flex-1">
+                    <BriefCard
+                      topic={item.topic}
+                      brief={item.brief}
+                      actionContext={actionContext}
+                      generatingTopicId={generatingTopicId}
+                      qualityReport={qualityReports?.[item.topic.id]}
+                      briefStatus={entry?.config?.briefStatus}
+                      eavTotal={eavTotal}
+                      onGenerate={onGenerateTopics ? (id) => onGenerateTopics([id]) : undefined}
+                      onApprove={onApproveBrief}
+                      onReject={onRejectBrief}
+                    />
+                  </div>
+                </div>
               );
             })
           ) : (
@@ -327,6 +559,11 @@ interface BriefGenerationPanelProps {
   generatingWave: number | null;
   generatingTopicId?: string | null;
   onGenerateWave: (waveNumber: number) => void;
+  onGenerateTopics?: (topicIds: string[]) => void;
+  onApproveBrief?: (topicId: string) => void;
+  onRejectBrief?: (topicId: string, reason: string) => void;
+  qualityReports?: Record<string, BriefQualityReport>;
+  eavTotal?: number;
   language: string;
 }
 
@@ -339,6 +576,11 @@ export function BriefGenerationPanel({
   generatingWave,
   generatingTopicId,
   onGenerateWave,
+  onGenerateTopics,
+  onApproveBrief,
+  onRejectBrief,
+  qualityReports,
+  eavTotal,
   language,
 }: BriefGenerationPanelProps) {
   const isLocked = !actionPlan || actionPlan.status !== 'approved';
@@ -426,9 +668,14 @@ export function BriefGenerationPanel({
               waveNumber={wave.waveNumber}
               briefs={wave.briefs}
               onGenerateWave={onGenerateWave}
+              onGenerateTopics={onGenerateTopics}
               isGenerating={isGenerating && generatingWave === wave.waveNumber}
               actionEntries={actionEntries}
               generatingTopicId={generatingTopicId}
+              qualityReports={qualityReports}
+              onApproveBrief={onApproveBrief}
+              onRejectBrief={onRejectBrief}
+              eavTotal={eavTotal}
             />
           ))}
         </div>

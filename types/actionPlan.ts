@@ -25,6 +25,20 @@ export type ActionPriority = 'critical' | 'high' | 'medium' | 'low';
 export type ActionPlanStatus = 'draft' | 'generating' | 'ready' | 'approved';
 
 /**
+ * Per-topic configuration — AI-suggested, user-overridable
+ */
+export interface TopicConfig {
+  contentLength?: 'minimal' | 'short' | 'standard' | 'comprehensive';
+  contentLengthReason?: string;
+  featuredSnippetFormat?: 'PARAGRAPH' | 'LIST' | 'TABLE' | 'NONE';
+  toneOverride?: 'conversational' | 'professional' | 'academic' | 'sales';
+  audienceLevel?: 'beginner' | 'intermediate' | 'expert';
+  sectionCountMax?: number;
+  briefStatus?: 'pending' | 'generating' | 'generated' | 'failed' | 'approved' | 'rejected';
+  briefRejectionReason?: string;
+}
+
+/**
  * Individual topic entry in the action plan
  */
 export interface ActionPlanEntry {
@@ -36,6 +50,7 @@ export interface ActionPlanEntry {
   suggestedWave?: number;
   pinned?: boolean; // User pinned this topic to a specific wave (prevents AI rebalance)
   removed?: boolean; // User removed this topic from the plan
+  config?: TopicConfig; // Per-topic configuration
 }
 
 /**
@@ -154,3 +169,23 @@ export const ACTION_TYPE_CONFIGS: Record<ActionType, ActionTypeConfig> = {
     description: 'Point canonical to the preferred version of this page',
   },
 };
+
+/**
+ * Individual check result within a brief quality review
+ */
+export interface BriefQualityCheck {
+  name: string;
+  passed: boolean;
+  details: string;
+  suggestion?: string;
+}
+
+/**
+ * Quality review report for a generated content brief
+ */
+export interface BriefQualityReport {
+  score: number; // 0-100
+  checks: BriefQualityCheck[];
+  passCount: number;
+  failCount: number;
+}

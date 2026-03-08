@@ -11,7 +11,7 @@
 
 import type { EnrichedTopic, BusinessInfo, SEOPillars, SemanticTriple } from '../../types';
 import type { ActionType } from '../../types/migration';
-import type { ActionPlanEntry, ActionPriority, WaveDefinition } from '../../types/actionPlan';
+import type { ActionPlanEntry, ActionPriority, WaveDefinition, TopicConfig } from '../../types/actionPlan';
 import { dispatchToProvider } from './providerDispatcher';
 import * as geminiService from '../geminiService';
 import * as openAiService from '../openAiService';
@@ -24,6 +24,130 @@ import {
   jsonResponseInstruction,
 } from '../../config/prompts/_common';
 import React from 'react';
+
+// ============================================================================
+// PURE LOGIC — suggestTopicConfig (no AI needed)
+// ============================================================================
+
+/**
+ * Pre-fill TopicConfig based on topic characteristics.
+ * Deterministic — used as initial defaults before user override.
+ *
+ * Uses a layered approach:
+ * 1. Base defaults from topic type/class
+ * 2. Metadata-based overrides from keyword difficulty, competitor word counts,
+ *    search volume, and search intent (when available)
+ */
+export function suggestTopicConfig(topic: EnrichedTopic): TopicConfig {
+  const meta = topic.metadata ?? {};
+
+  // Extract metadata signals (safely typed)
+  const keywordDifficulty = typeof meta.keyword_difficulty === 'number' ? meta.keyword_difficulty : undefined;
+  const competitorAvgWordCount = typeof meta.competitor_avg_word_count === 'number'
+    ? meta.competitor_avg_word_count
+    : (typeof meta.word_count === 'number' ? meta.word_count : undefined);
+  const searchVolume = typeof meta.search_volume === 'number' ? meta.search_volume : undefined;
+  const searchIntent = typeof meta.search_intent === 'string' ? meta.search_intent.toLowerCase() : undefined;
+
+  // --- Layer 1: Base defaults from topic type/class ---
+  let contentLength: TopicConfig['contentLength'] = 'standard';
+  let contentLengthReason = 'Standard length based on topic type.';
+  if (topic.topic_class === 'monetization' || topic.type === 'core') {
+    contentLength = 'comprehensive';
+    contentLengthReason = 'Core/monetization topic — comprehensive coverage for ranking and conversions.';
+  } else if (topic.type === 'outer') {
+    contentLength = 'short';
+    contentLengthReason = 'Outer topic — flat informational content to support topical authority.';
+  } else if (topic.type === 'child') {
+    contentLength = 'minimal';
+    contentLengthReason = 'Bridge topic — minimal content to complete semantic network.';
+  }
+
+  // --- Layer 2: Metadata-based overrides ---
+  const reasonParts: string[] = [];
+
+  // Search volume + monetization combo: always comprehensive
+  if (searchVolume !== undefined && searchVolume > 1000 && topic.topic_class === 'monetization') {
+    contentLength = 'comprehensive';
+    reasonParts.push(`High search volume (${searchVolume}) with monetization intent — comprehensive coverage for maximum conversions.`);
+  }
+
+  // Very low search volume: can go minimal unless already comprehensive from monetization
+  if (searchVolume !== undefined && searchVolume < 50 && contentLength !== 'comprehensive') {
+    contentLength = 'minimal';
+    reasonParts.push(`Low search volume (${searchVolume}) — minimal content to complete semantic network.`);
+  }
+
+  // Keyword difficulty overrides
+  if (keywordDifficulty !== undefined && keywordDifficulty > 70) {
+    contentLength = 'comprehensive';
+    reasonParts.push(`High keyword difficulty (${keywordDifficulty}) — comprehensive coverage needed to compete.`);
+  } else if (keywordDifficulty !== undefined && keywordDifficulty < 20 && contentLength !== 'comprehensive') {
+    // Only downgrade if not already set to comprehensive by monetization/volume
+    if (contentLength === 'standard') {
+      contentLength = 'short';
+    }
+    reasonParts.push(`Low keyword difficulty (${keywordDifficulty}) — shorter content sufficient to rank.`);
+  }
+
+  // Competitor word count overrides
+  if (competitorAvgWordCount !== undefined && competitorAvgWordCount > 2000) {
+    contentLength = 'comprehensive';
+    reasonParts.push(`Competitors average ${competitorAvgWordCount} words — comprehensive coverage to match or exceed.`);
+  } else if (competitorAvgWordCount !== undefined && competitorAvgWordCount < 800 && contentLength !== 'comprehensive') {
+    if (contentLength === 'standard') {
+      contentLength = 'short';
+    }
+    reasonParts.push(`Competitors average only ${competitorAvgWordCount} words — shorter content is competitive.`);
+  }
+
+  // If metadata provided reasoning, use it; otherwise keep the base reason
+  if (reasonParts.length > 0) {
+    contentLengthReason = reasonParts.join(' ');
+  }
+
+  // --- Featured snippet format based on title/query patterns ---
+  let featuredSnippetFormat: TopicConfig['featuredSnippetFormat'] = 'PARAGRAPH';
+  const titleLower = (topic.title || '').toLowerCase();
+  if (/\bvs\.?\b|\bversus\b|compared|comparison/i.test(titleLower)) {
+    featuredSnippetFormat = 'TABLE';
+  } else if (/\btypes\b|\bbest\b|\btop\s+\d/i.test(titleLower)) {
+    featuredSnippetFormat = 'LIST';
+  } else if (/\bhow\s+to\b|\bsteps\b|\bprocess/i.test(titleLower)) {
+    featuredSnippetFormat = 'LIST';
+  } else if (/\bwhat\s+is\b|\bdefinition\b|\bmeaning/i.test(titleLower)) {
+    featuredSnippetFormat = 'PARAGRAPH';
+  }
+
+  // Search intent overrides for featured snippet format
+  if (searchIntent) {
+    if (searchIntent === 'informational' && /\b(what|who|where|when|why|how|is|are|does|do|can)\b/i.test(titleLower)) {
+      featuredSnippetFormat = 'PARAGRAPH';
+    } else if (searchIntent === 'transactional' || searchIntent === 'navigational') {
+      featuredSnippetFormat = 'NONE';
+    }
+  }
+
+  // Audience level based on topic depth
+  let audienceLevel: TopicConfig['audienceLevel'] = 'intermediate';
+  if (topic.cluster_role === 'pillar') audienceLevel = 'beginner';
+  else if (topic.type === 'outer') audienceLevel = 'expert';
+
+  // Section count max based on content length
+  const sectionCountMap: Record<string, number> = {
+    minimal: 4, short: 6, standard: 8, comprehensive: 12,
+  };
+
+  return {
+    contentLength,
+    contentLengthReason,
+    featuredSnippetFormat,
+    toneOverride: 'professional',
+    audienceLevel,
+    sectionCountMax: sectionCountMap[contentLength],
+    briefStatus: 'pending',
+  };
+}
 
 // ============================================================================
 // PURE LOGIC — suggestActionType (no AI needed)
@@ -84,6 +208,7 @@ export function createInitialEntries(
     priority: suggestPriority(topic),
     wave: waveAssignment.get(topic.id) ?? 1,
     rationale: '',
+    config: suggestTopicConfig(topic),
   }));
 }
 

@@ -9,6 +9,7 @@ import {
     TopicViabilityResult, TopicBlueprint, FlowAuditResult, ContextualFlowIssue,
     KnowledgeGraph, MapMergeAnalysis, TopicSimilarityResult, TopicMergeDecision, TopicalMap
 } from '../types';
+import type { TopicConfig } from '../types/actionPlan';
 import * as prompts from '../config/prompts';
 import { CONTENT_BRIEF_FALLBACK } from '../config/schemas';
 import { AIResponseSanitizer } from './aiResponseSanitizer';
@@ -410,10 +411,12 @@ export const generateContentBrief = async (
     info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, kg: KnowledgeGraph, code: ResponseCode, dispatch: React.Dispatch<any>,
     marketPatterns?: import('../types/competitiveIntelligence').MarketPatterns,
     eavs?: import('../types').SemanticTriple[],
-    actionType?: string
+    actionType?: string,
+    topicConfig?: TopicConfig,
+    existingBriefs?: Record<string, ContentBrief>
 ): Promise<Omit<ContentBrief, 'id' | 'topic_id' | 'articleDraft'>> => {
     const sanitizer = new AIResponseSanitizer(dispatch);
-    const prompt = prompts.GENERATE_CONTENT_BRIEF_PROMPT(info, topic, allTopics, pillars, kg, code, marketPatterns, eavs, actionType);
+    const prompt = prompts.GENERATE_CONTENT_BRIEF_PROMPT(info, topic, allTopics, pillars, kg, code, marketPatterns, eavs, actionType, topicConfig, existingBriefs);
     
     // Define expected schema for sanitizer (mirroring Gemini schema but for sanitizer consumption)
     const schema = {

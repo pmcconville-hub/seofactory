@@ -11,7 +11,7 @@ import {
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import type { EnrichedTopic } from '../../../../types';
-import type { ActionPlanEntry, ActionPlan, ActionType, WaveDefinition } from '../../../../types/actionPlan';
+import type { ActionPlanEntry, ActionPlan, ActionType, WaveDefinition, TopicConfig } from '../../../../types/actionPlan';
 import { WaveColumn } from './WaveColumn';
 import { BulkActionBar } from './BulkActionBar';
 import { ActionTypeBadge } from './ActionTypeBadge';
@@ -26,6 +26,7 @@ interface TopicManagementPanelProps {
   onRebalance: () => void;
   onApprove: () => void;
   isApproved: boolean;
+  onUpdateTopicConfig?: (topicId: string, config: Partial<TopicConfig>) => void;
 }
 
 export function TopicManagementPanel({
@@ -38,6 +39,7 @@ export function TopicManagementPanel({
   onRebalance,
   onApprove,
   isApproved,
+  onUpdateTopicConfig,
 }: TopicManagementPanelProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [collapsedWaves, setCollapsedWaves] = useState<Set<number>>(new Set());
@@ -205,6 +207,7 @@ export function TopicManagementPanel({
               onRemove={onRemove}
               isCollapsed={collapsedWaves.has(wd.number)}
               onToggle={() => toggleWave(wd.number)}
+              onUpdateConfig={onUpdateTopicConfig}
             />
           ))}
         </div>

@@ -10,6 +10,7 @@ import {
     KnowledgeGraph, MapMergeAnalysis, TopicSimilarityResult, TopicMergeDecision, TopicalMap,
     StreamingProgressCallback, ExpansionMode
 } from '../types';
+import type { TopicConfig } from '../types/actionPlan';
 import * as prompts from '../config/prompts';
 import { CONTENT_BRIEF_FALLBACK } from '../config/schemas';
 import { AIResponseSanitizer } from './aiResponseSanitizer';
@@ -831,9 +832,11 @@ export const suggestResponseCode = async (info: BusinessInfo, topic: string, dis
 export const generateContentBrief = async (info: BusinessInfo, topic: EnrichedTopic, allTopics: EnrichedTopic[], pillars: SEOPillars, kg: KnowledgeGraph, code: ResponseCode, dispatch: React.Dispatch<any>,
     marketPatterns?: import('../types/competitiveIntelligence').MarketPatterns,
     eavs?: import('../types').SemanticTriple[],
-    actionType?: string) => {
+    actionType?: string,
+    topicConfig?: TopicConfig,
+    existingBriefs?: Record<string, ContentBrief>) => {
     const sanitizer = new AIResponseSanitizer(dispatch);
-    const prompt = prompts.GENERATE_CONTENT_BRIEF_PROMPT(info, topic, allTopics, pillars, kg, code, marketPatterns, eavs, actionType);
+    const prompt = prompts.GENERATE_CONTENT_BRIEF_PROMPT(info, topic, allTopics, pillars, kg, code, marketPatterns, eavs, actionType, topicConfig, existingBriefs);
     const schema = {
         title: String, slug: String, metaDescription: String, keyTakeaways: Array, outline: String,
         structured_outline: Array, perspectives: Array, methodology_note: String,
