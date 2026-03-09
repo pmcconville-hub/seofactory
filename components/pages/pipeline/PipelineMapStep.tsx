@@ -1252,19 +1252,29 @@ const PipelineMapStep: React.FC = () => {
     return extractedServices;
   });
 
-  // Sync from EAV extraction when: no persisted data AND current list is empty
+  // Track whether user has made local edits (to avoid overwriting with stale DB data)
+  const hasLocalEditsRef = React.useRef(false);
+
+  // Hydrate from persisted data when it becomes available (e.g. after async load)
   const persistedServices = activeMap?.confirmed_services;
   React.useEffect(() => {
-    if (!persistedServices && extractedServices.length > 0 && confirmedServices.length === 0) {
-      setConfirmedServices(extractedServices);
+    // Priority 1: Persisted data from DB — always wins over EAV extraction
+    if (persistedServices && persistedServices.length > 0 && !hasLocalEditsRef.current) {
+      setConfirmedServices(persistedServices);
+      return;
     }
-  }, [extractedServices, persistedServices, confirmedServices.length]);
+    // Priority 2: EAV extraction fallback — only when no persisted data and no local state
+    if (!persistedServices && extractedServices.length > 0 && !hasLocalEditsRef.current) {
+      setConfirmedServices(prev => prev.length === 0 ? extractedServices : prev);
+    }
+  }, [persistedServices, extractedServices]);
 
   // Debounced persistence of confirmed services to DB
   const saveServicesTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const persistConfirmedServices = useCallback((services: string[]) => {
     if (!state.activeMapId) return;
+    hasLocalEditsRef.current = true; // Prevent hydration effect from overwriting user edits
     dispatch({
       type: 'UPDATE_MAP_DATA',
       payload: { mapId: state.activeMapId, data: { confirmed_services: services } },
@@ -1273,9 +1283,15 @@ const PipelineMapStep: React.FC = () => {
     saveServicesTimeoutRef.current = setTimeout(async () => {
       try {
         const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
-        const { error } = await supabase.from('topical_maps').update({ confirmed_services: services } as any).eq('id', state.activeMapId);
-        if (error) console.warn(`[MapStep] confirmed_services save failed (${error.code}): ${error.message}`);
-      } catch { /* network-level error, non-fatal */ }
+        const { error, count } = await supabase.from('topical_maps').update({ confirmed_services: services } as any).eq('id', state.activeMapId);
+        if (error) {
+          console.warn(`[MapStep] confirmed_services save failed (${error.code}): ${error.message}`);
+        } else {
+          console.info(`[MapStep] confirmed_services saved (${services.length} services)`);
+        }
+      } catch (err) {
+        console.warn('[MapStep] confirmed_services save network error:', err);
+      }
     }, 1000);
   }, [state.activeMapId, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey, dispatch]);
 
