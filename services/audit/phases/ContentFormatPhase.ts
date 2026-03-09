@@ -13,6 +13,7 @@ import { AuditPhase } from './AuditPhase';
 import type { AuditPhaseName, AuditRequest, AuditPhaseResult, AuditFinding } from '../types';
 import { ContentFormatValidator } from '../rules/ContentFormatValidator';
 import { ContentFormattingExtended } from '../rules/ContentFormattingExtended';
+import { AnswerCapsuleValidator } from '../rules/AnswerCapsuleValidator';
 
 export class ContentFormatPhase extends AuditPhase {
   readonly phaseName: AuditPhaseName = 'contentFormat';
@@ -56,6 +57,26 @@ export class ContentFormatPhase extends AuditPhase {
           category: 'Content Format',
         }));
       }
+
+      // Answer capsule validation: 40-70 word opening paragraphs after H2s
+      totalChecks++;
+      const capsuleValidator = new AnswerCapsuleValidator();
+      const capsuleIssues = capsuleValidator.validate(
+        contentData.html,
+        contentData.centralEntity || contentData.targetQuery
+      );
+      for (const issue of capsuleIssues) {
+        findings.push(this.createFinding({
+          ruleId: issue.ruleId,
+          severity: issue.severity,
+          title: issue.title,
+          description: issue.description,
+          affectedElement: issue.affectedElement,
+          exampleFix: issue.exampleFix,
+          whyItMatters: 'Answer capsules (40-70 word opening paragraphs) serve Featured Snippets, AI Overviews, and RAG retrieval simultaneously while providing immediate value to human readers.',
+          category: 'Content Format',
+        }));
+      }
     }
 
     return this.buildResult(findings, totalChecks);
@@ -65,6 +86,7 @@ export class ContentFormatPhase extends AuditPhase {
     html: string;
     text?: string;
     targetQuery?: string;
+    centralEntity?: string;
   } | null {
     if (!content) return null;
     if (typeof content === 'string') return { html: content };
@@ -74,6 +96,7 @@ export class ContentFormatPhase extends AuditPhase {
         html: c.html as string,
         text: c.text as string | undefined,
         targetQuery: c.targetQuery as string | undefined,
+        centralEntity: c.centralEntity as string | undefined,
       };
     }
     return null;
