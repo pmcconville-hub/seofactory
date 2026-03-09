@@ -336,6 +336,8 @@ ${sectionType !== 'body' ? `Section Type: ${sectionType}` : ''}
 ${formatConstraints}
 ${this.buildSubordinateTextGuidance(section, businessInfo.seedKeyword, businessInfo.language)}
 
+**ISOLATION RULE**: This section may be read in complete isolation by an AI system. Do not assume the reader has seen any other section. Restate key facts rather than referencing other sections.
+
 ## Article Context
 Title: ${brief.title}
 Central Entity: ${businessInfo.seedKeyword}

@@ -96,6 +96,13 @@ For each H2, include an "answer_capsule" object:
 - "required_predicates": 1-3 key verbs/terms the capsule must contain.
 
 VARIETY RULE: Vary capsule openings across sections. Use definition ("X is..."), statistic ("In 2025, X..."), narrative ("When X occurs..."), scene-setting ("For businesses seeking..."), and question-answer approaches. Do NOT start every capsule with "[Entity] is...".
+
+**CHUNKING RESISTANCE (Self-Contained Sections)**:
+Each section MUST be independently comprehensible when read in isolation:
+- Re-introduce the entity by name in the first sentence (not "it" or "they")
+- Never use cross-references: "as mentioned above", "see below", "as discussed earlier"
+- Each section should be 200-500 words (optimal for RAG chunk retrieval)
+- Include at least one complete fact (Subject-Predicate-Object) per section
 ${fsFormatGuide}
 ${contentLengthGuide}
 ${websiteTypeRules}
@@ -353,6 +360,13 @@ For each H2, include an "answer_capsule" object:
 - "required_predicates": 1-3 key verbs/terms the capsule must contain.
 
 VARIETY RULE: Vary capsule openings across sections. Use definition ("X is..."), statistic ("In 2025, X..."), narrative ("When X occurs..."), scene-setting ("For businesses seeking..."), and question-answer approaches. Do NOT start every capsule with "[Entity] is...".
+
+**CHUNKING RESISTANCE (Self-Contained Sections)**:
+Each section MUST be independently comprehensible when read in isolation:
+- Re-introduce the entity by name in the first sentence (not "it" or "they")
+- Never use cross-references: "as mentioned above", "see below", "as discussed earlier"
+- Each section should be 200-500 words (optimal for RAG chunk retrieval)
+- Include at least one complete fact (Subject-Predicate-Object) per section
 
 **FEATURED SNIPPET FORMAT:** Select target_type based on query type:
 - Definitional ("What is X?") → PARAGRAPH (<40 words)
