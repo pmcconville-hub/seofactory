@@ -1939,6 +1939,7 @@ const PipelineGapStep: React.FC = () => {
         if (analysisPages && analysisPages.length > 0) {
           const analysisByUrl = new Map(analysisPages.map((p: any) => [p.url, p]));
           let enrichedCount = 0;
+          let contentCount = 0;
           for (const page of siteInventory) {
             const analysisPage = analysisByUrl.get(page.url);
             if (analysisPage) {
@@ -1954,14 +1955,29 @@ const PipelineGapStep: React.FC = () => {
               }
               if (!page.content_markdown && analysisPage.content_markdown) {
                 page.content_markdown = analysisPage.content_markdown;
+                contentCount++;
               }
               if (analysisPage?.structural_analysis) {
                 (page as any).structural_analysis = analysisPage.structural_analysis;
+                // Extract mainContentText from structural_analysis as content_markdown
+                // The html-structure-analyzer edge function produces this but it's buried in the JSONB blob
+                if (!page.content_markdown && analysisPage.structural_analysis.mainContentText) {
+                  page.content_markdown = analysisPage.structural_analysis.mainContentText;
+                  contentCount++;
+                }
+                // Extract H1 from structural_analysis when not already set
+                if (!page.page_h1 && analysisPage.structural_analysis.h1) {
+                  page.page_h1 = analysisPage.structural_analysis.h1;
+                  enrichedCount++;
+                }
               }
             }
           }
-          if (enrichedCount > 0) {
-            addEvent('found', `Enriched ${enrichedCount} pages with H1/heading data from crawl`);
+          if (enrichedCount > 0 || contentCount > 0) {
+            const parts: string[] = [];
+            if (enrichedCount > 0) parts.push(`${enrichedCount} pages with H1/heading data`);
+            if (contentCount > 0) parts.push(`${contentCount} pages with full content`);
+            addEvent('found', `Enriched ${parts.join(' and ')} from crawl`);
           }
         }
       } catch {

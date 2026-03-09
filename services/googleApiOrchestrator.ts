@@ -145,7 +145,11 @@ export async function fetchAllGoogleApiData(config: OrchestratorConfig): Promise
               // Truncate each page to ~2000 chars to stay within API limits
               return p.content_markdown.slice(0, 2000);
             }
-            // Fallback: assemble from metadata
+            // Fallback: extract mainContentText from structural_analysis (html-structure-analyzer output)
+            if (p.structural_analysis?.mainContentText && p.structural_analysis.mainContentText.length > 50) {
+              return p.structural_analysis.mainContentText.slice(0, 2000);
+            }
+            // Final fallback: assemble from metadata
             const parts: string[] = [p.title, p.page_h1, p.meta_description].filter(Boolean) as string[];
             const headings = p.headings;
             if (Array.isArray(headings)) {
