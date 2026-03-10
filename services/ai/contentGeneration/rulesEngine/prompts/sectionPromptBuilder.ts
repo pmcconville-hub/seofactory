@@ -337,6 +337,13 @@ ${formatConstraints}
 ${this.buildSubordinateTextGuidance(section, businessInfo.seedKeyword, businessInfo.language)}
 
 **ISOLATION RULE**: This section may be read in complete isolation by an AI system. Do not assume the reader has seen any other section. Restate key facts rather than referencing other sections.
+${section.answer_capsule ? `
+**ANSWER CAPSULE (FIRST PARAGRAPH)**:
+Your first paragraph must be exactly ${section.answer_capsule.target_length} words (±10).
+Hint: ${section.answer_capsule.text_hint}
+${section.answer_capsule.required_predicates?.length ? `Must include: ${section.answer_capsule.required_predicates.join(', ')}` : ''}
+This paragraph must read as a natural, compelling opening — not a keyword list.
+After the capsule, add an evidence paragraph, then the depth section.` : ''}
 
 ## Article Context
 Title: ${brief.title}
