@@ -13,6 +13,7 @@ import type { SemanticTriple } from '../../../types';
 import type { DialogueContext, ExtractedData, CascadeImpact } from '../../../types/dialogue';
 import { createEmptyDialogueContext, ensureValidDialogueContext } from '../../../services/ai/dialogueEngine';
 import { getSupabaseClient } from '../../../services/supabaseClient';
+import { EavCompletenessCard } from '../../eav/EavCompletenessCard';
 
 // ──── Confidence Types (Decision 2) ────
 
@@ -535,6 +536,83 @@ function CompetitorGapRow({
   );
 }
 
+// ──── Competitor Gaps Section (collapsed by default, progressive disclosure) ────
+
+function CompetitorGapsSection({
+  gaps,
+  onAddValue,
+  onDismiss,
+}: {
+  gaps: Array<{ attribute: string; competitorCount: number }>;
+  onAddValue: (attribute: string, value: string) => void;
+  onDismiss: (attribute: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const INITIAL_SHOW = 5;
+  const [showAll, setShowAll] = useState(false);
+  const visibleGaps = expanded ? (showAll ? gaps : gaps.slice(0, INITIAL_SHOW)) : [];
+  const hasMore = gaps.length > INITIAL_SHOW;
+
+  return (
+    <div className="bg-gray-800/50 border border-gray-700 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-800/80 transition-colors text-left"
+      >
+        <div className="flex items-center gap-2">
+          <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+          </svg>
+          <span className="text-xs font-medium text-gray-300">
+            Competitor Insights
+          </span>
+          <span className="text-[10px] text-red-400 bg-red-900/20 border border-red-700/30 rounded px-1.5 py-0.5">
+            {gaps.length} gap{gaps.length > 1 ? 's' : ''}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-gray-500">
+            {expanded ? 'Click to collapse' : 'Optional — attributes your competitors cover that you don\'t'}
+          </span>
+          <svg
+            className={`w-4 h-4 text-gray-500 transition-transform ${expanded ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-gray-700/50 px-4 py-3 space-y-2">
+          <p className="text-xs text-gray-500 mb-2">
+            These are attributes found on competitor pages. Add values for the ones relevant to your business, or dismiss with N/A.
+          </p>
+          {visibleGaps.map((gap) => (
+            <CompetitorGapRow
+              key={`gap-${gap.attribute}`}
+              attribute={gap.attribute}
+              competitorCount={gap.competitorCount}
+              onAddValue={(v) => onAddValue(gap.attribute, v)}
+              onDismiss={() => onDismiss(gap.attribute)}
+            />
+          ))}
+          {hasMore && !showAll && (
+            <button
+              type="button"
+              onClick={() => setShowAll(true)}
+              className="w-full text-center text-xs text-gray-500 hover:text-gray-300 py-2 transition-colors"
+            >
+              Show {gaps.length - INITIAL_SHOW} more competitor insights...
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ──── Main Component ────
 
 const PipelineEavsStep: React.FC = () => {
@@ -979,9 +1057,10 @@ const PipelineEavsStep: React.FC = () => {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-200">Business Facts</h2>
+        <h2 className="text-lg font-semibold text-gray-200">EAV Inventory</h2>
         <p className="text-sm text-gray-400 mt-1">
-          Verify the facts about your business. Confirmed facts will be used consistently across all content.
+          Entity-Attribute-Value triples define what your content says about your business.
+          Fill in core facts first, then optionally review competitor gaps.
         </p>
       </div>
 
@@ -1031,6 +1110,16 @@ const PipelineEavsStep: React.FC = () => {
             {coverage.highPriorityCovered}/{coverage.highPriorityTotal} high-priority attributes covered
           </p>
         </div>
+      )}
+
+      {/* EAV Quality Score — shown when we have data */}
+      {hasEavData && totalTriples > 0 && (
+        <EavCompletenessCard
+          eavs={rawEavs as SemanticTriple[]}
+          compact
+          showRecommendations={isAdjusting}
+          showChart
+        />
       )}
 
       {/* J1: Adaptive display — read-only summary when not adjusting */}
@@ -1228,26 +1317,13 @@ const PipelineEavsStep: React.FC = () => {
             </div>
           )}
 
-          {/* Competitor Gap Rows (E2+G2) */}
+          {/* Competitor Gap Rows (E2+G2) — collapsed by default */}
           {activeCompetitorGaps.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="h-px flex-1 bg-red-700/30" />
-                <span className="text-[10px] text-red-400 font-medium uppercase tracking-wider">
-                  Competitor insights — {activeCompetitorGaps.length} attribute{activeCompetitorGaps.length > 1 ? 's' : ''} your competitors mention
-                </span>
-                <div className="h-px flex-1 bg-red-700/30" />
-              </div>
-              {activeCompetitorGaps.map((gap) => (
-                <CompetitorGapRow
-                  key={`gap-${gap.attribute}`}
-                  attribute={gap.attribute}
-                  competitorCount={gap.competitorCount}
-                  onAddValue={(v) => handleAddCompetitorGap(gap.attribute, v)}
-                  onDismiss={() => handleDismissGap(gap.attribute)}
-                />
-              ))}
-            </div>
+            <CompetitorGapsSection
+              gaps={activeCompetitorGaps}
+              onAddValue={handleAddCompetitorGap}
+              onDismiss={handleDismissGap}
+            />
           )}
         </>
       )}
