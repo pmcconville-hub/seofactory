@@ -257,11 +257,13 @@ function DataSourceBadge({ source }: { source: DataSource }) {
 
 function EavRow({
   item,
+  centralEntity,
   onConfirm,
   onUpdateValue,
   onDismiss,
 }: {
   item: EavWithConfidence;
+  centralEntity?: string;
   onConfirm: () => void;
   onUpdateValue: (value: string) => void;
   onDismiss: () => void;
@@ -269,6 +271,11 @@ function EavRow({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(item.eav.object?.value ? String(item.eav.object.value) : '');
   const hasValue = !!item.eav.object?.value;
+
+  // Show entity context when subject differs from central entity (sub-entities need context)
+  const subjectLabel = item.eav.subject?.label ?? '';
+  const isSubEntity = subjectLabel && centralEntity && subjectLabel.toLowerCase() !== centralEntity.toLowerCase();
+  const entityContext = isSubEntity ? subjectLabel : null;
 
   const handleSaveEdit = () => {
     onUpdateValue(editValue);
@@ -282,6 +289,11 @@ function EavRow({
         <svg className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
         </svg>
+        {entityContext && (
+          <span className="text-[10px] text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 rounded px-1.5 py-0.5 flex-shrink-0 truncate max-w-[120px]" title={entityContext}>
+            {entityContext}
+          </span>
+        )}
         <span className="text-xs text-gray-400 font-mono flex-shrink-0 w-32 truncate">{item.eav.predicate?.relation ?? '\u2014'}</span>
         <span className="text-xs text-emerald-300 flex-1 truncate">{String(item.eav.object?.value)}</span>
         <DataSourceBadge source={item.dataSource} />
@@ -305,6 +317,11 @@ function EavRow({
     return (
       <div className="px-4 py-3 bg-gray-800 border border-blue-700/50 rounded-md space-y-2">
         <div className="flex items-center gap-2">
+          {entityContext && (
+            <span className="text-[10px] text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 rounded px-1.5 py-0.5" title={entityContext}>
+              {entityContext}
+            </span>
+          )}
           <span className="text-xs text-gray-400 font-mono">{item.eav.predicate?.relation ?? '\u2014'}</span>
           <DataSourceBadge source={item.dataSource} />
           <CategoryBadge category={item.eav.predicate?.category} />
@@ -343,6 +360,11 @@ function EavRow({
     return (
       <div className="flex items-center gap-3 px-4 py-3 bg-gray-800 border border-gray-700 rounded-md hover:border-gray-600 transition-colors">
         <ConfidenceBadge level={item.confidence} />
+        {entityContext && (
+          <span className="text-[10px] text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 rounded px-1.5 py-0.5 flex-shrink-0 truncate max-w-[120px]" title={entityContext}>
+            {entityContext}
+          </span>
+        )}
         <span className="text-xs text-gray-400 font-mono flex-shrink-0 w-32 truncate">{item.eav.predicate?.relation ?? '\u2014'}</span>
         <span className="text-sm text-gray-200 flex-1">{String(item.eav.object?.value)}</span>
         <DataSourceBadge source={item.dataSource} />
@@ -376,6 +398,11 @@ function EavRow({
     <div className="px-4 py-3 bg-gray-800 border border-red-700/30 rounded-md">
       <div className="flex items-center gap-3 mb-2">
         <ConfidenceBadge level="low" />
+        {entityContext && (
+          <span className="text-[10px] text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 rounded px-1.5 py-0.5 flex-shrink-0" title={entityContext}>
+            {entityContext}
+          </span>
+        )}
         <span className="text-xs text-gray-400 font-mono flex-shrink-0">{item.eav.predicate?.relation ?? '\u2014'}</span>
         <span className="text-xs text-gray-500 flex-1">{item.source}</span>
         <DataSourceBadge source={item.dataSource} />
@@ -419,17 +446,24 @@ function EavRow({
 
 interface Contradiction {
   predicate: string;
-  values: Array<{ value: string; index: number }>;
+  values: Array<{ value: string; index: number; subject?: string }>;
 }
 
 function ContradictionRow({
   contradiction,
+  centralEntity,
   onResolve,
 }: {
   contradiction: Contradiction;
+  centralEntity?: string;
   onResolve: (chosenIndex: number) => void;
 }) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+
+  // Check if values come from different entities — if so, they may not be real contradictions
+  const subjects = contradiction.values.map(v => v.subject).filter(Boolean);
+  const uniqueSubjects = new Set(subjects.map(s => s!.toLowerCase()));
+  const hasDifferentEntities = uniqueSubjects.size > 1;
 
   return (
     <div className="px-4 py-3 bg-amber-900/10 border border-amber-700/40 rounded-md">
@@ -437,11 +471,15 @@ function ContradictionRow({
         <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" />
         </svg>
-        <span className="text-xs font-medium text-amber-300">Contradiction found</span>
+        <span className="text-xs font-medium text-amber-300">
+          {hasDifferentEntities ? 'Different values per product' : 'Contradiction found'}
+        </span>
         <span className="text-xs text-gray-400 font-mono">{contradiction.predicate}</span>
       </div>
       <p className="text-xs text-gray-400 mb-2">
-        Your website says different things about this fact. Which is correct?
+        {hasDifferentEntities
+          ? 'These values are for different products/entities. If both are correct, keep both — otherwise pick the right one.'
+          : 'Your website says different things about this fact. Which is correct?'}
       </p>
       <div className="space-y-1.5">
         {contradiction.values.map((v, i) => (
@@ -460,9 +498,16 @@ function ContradictionRow({
               onChange={() => setSelectedIdx(i)}
               className="accent-emerald-500"
             />
-            <span className={`text-sm ${selectedIdx === i ? 'text-emerald-200' : 'text-gray-300'}`}>
-              {v.value}
-            </span>
+            <div className="flex items-center gap-2 flex-1">
+              {v.subject && v.subject.toLowerCase() !== (centralEntity ?? '').toLowerCase() && (
+                <span className="text-[10px] text-cyan-400 bg-cyan-900/20 border border-cyan-700/30 rounded px-1.5 py-0.5 flex-shrink-0">
+                  {v.subject}
+                </span>
+              )}
+              <span className={`text-sm ${selectedIdx === i ? 'text-emerald-200' : 'text-gray-300'}`}>
+                {v.value}
+              </span>
+            </div>
           </label>
         ))}
       </div>
@@ -709,13 +754,13 @@ const PipelineEavsStep: React.FC = () => {
 
   // E6: Detect contradictions — same predicate, different values
   const contradictions: Contradiction[] = [];
-  const predicateValueMap = new Map<string, Array<{ value: string; index: number }>>();
+  const predicateValueMap = new Map<string, Array<{ value: string; index: number; subject?: string }>>();
   rawEavs.forEach((eav, i) => {
     const predicate = eav.predicate?.relation?.toLowerCase()?.trim();
     const value = String(eav.object?.value ?? '').trim();
     if (!predicate || !value) return;
     if (!predicateValueMap.has(predicate)) predicateValueMap.set(predicate, []);
-    predicateValueMap.get(predicate)!.push({ value, index: i });
+    predicateValueMap.get(predicate)!.push({ value, index: i, subject: eav.subject?.label });
   });
   predicateValueMap.forEach((values, predicate) => {
     const uniqueValues = new Set(values.map(v => v.value.toLowerCase()));
@@ -1261,6 +1306,7 @@ const PipelineEavsStep: React.FC = () => {
                 <ContradictionRow
                   key={`contradiction-${c.predicate}`}
                   contradiction={c}
+                  centralEntity={activeMap?.pillars?.centralEntity}
                   onResolve={(idx) => handleResolveContradiction(c, idx)}
                 />
               ))}
@@ -1283,6 +1329,7 @@ const PipelineEavsStep: React.FC = () => {
                   <EavRow
                     key={(item.eav as any).id || `eav-${realIdx}`}
                     item={item}
+                    centralEntity={activeMap?.pillars?.centralEntity}
                     onConfirm={() => handleConfirm(realIdx)}
                     onUpdateValue={(v) => handleUpdateValue(realIdx, v)}
                     onDismiss={() => handleDismiss(realIdx)}
@@ -1308,6 +1355,7 @@ const PipelineEavsStep: React.FC = () => {
                   <EavRow
                     key={(item.eav as any).id || `eav-${realIdx}`}
                     item={item}
+                    centralEntity={activeMap?.pillars?.centralEntity}
                     onConfirm={() => handleConfirm(realIdx)}
                     onUpdateValue={(v) => handleUpdateValue(realIdx, v)}
                     onDismiss={() => handleDismiss(realIdx)}
