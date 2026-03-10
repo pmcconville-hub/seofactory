@@ -1131,9 +1131,10 @@ function ExistingPageMappingPanel({
 
 // ──── Service Confirmation Panel ────
 
-function ServiceConfirmationPanel({ services, onServicesChange }: {
+function ServiceConfirmationPanel({ services, onServicesChange, source }: {
   services: string[];
   onServicesChange: (services: string[]) => void;
+  source?: 'confirmed' | 'offerings' | 'eavs' | 'manual';
 }) {
   const [newService, setNewService] = useState('');
 
@@ -1154,7 +1155,7 @@ function ServiceConfirmationPanel({ services, onServicesChange }: {
       <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
         <h4 className="text-sm font-semibold text-gray-200 mb-2">Business Services</h4>
         <p className="text-xs text-gray-500 mb-3">
-          No services detected from EAVs. Add services to ensure the topical map covers your business offerings.
+          No services detected. Add your core products/services to ensure the topical map covers your business.
         </p>
         <div className="flex gap-2">
           <input
@@ -1175,7 +1176,9 @@ function ServiceConfirmationPanel({ services, onServicesChange }: {
     <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
       <h4 className="text-sm font-semibold text-gray-200 mb-1">Business Services</h4>
       <p className="text-xs text-gray-500 mb-3">
-        Extracted from EAVs. Each service will get a dedicated hub topic. Remove irrelevant ones or add missing services.
+        {source === 'confirmed' || source === 'offerings'
+          ? 'Confirmed from your business profile. Each service gets a dedicated hub topic. Edit if needed.'
+          : 'Extracted from business facts. Review carefully — remove irrelevant ones and add missing services.'}
       </p>
       <div className="flex flex-wrap gap-2 mb-3">
         {services.map((s, i) => (
@@ -1241,19 +1244,35 @@ const PipelineMapStep: React.FC = () => {
   const [mapQualityFindings, setMapQualityFindings] = useState<PreAnalysisFinding[]>([]);
   const [mapHealthScore, setMapHealthScore] = useState<number | null>(null);
 
-  // Services extracted from EAVs — fallback for first-time users
+  // Services: Priority 1 = confirmed_services from DB, Priority 2 = businessInfo.offerings, Priority 3 = EAV extraction (last resort)
   const extractedServices = useMemo(() => {
     const eavs = activeMap?.eavs ?? [];
     const ce = activeMap?.pillars?.centralEntity ?? '';
     return extractServicesFromEavs(eavs, ce);
   }, [activeMap?.eavs, activeMap?.pillars?.centralEntity]);
 
-  // Load from DB first; fall back to EAV extraction
+  const effectiveOfferings = useMemo(() => {
+    const mapBI = activeMap?.business_info;
+    const offerings = mapBI?.offerings ?? state.businessInfo?.offerings;
+    return Array.isArray(offerings) ? offerings.filter((o: any) => typeof o === 'string' && o.trim()) as string[] : [];
+  }, [activeMap?.business_info, state.businessInfo?.offerings]);
+
+  // Load from DB first; fall back to businessInfo.offerings; last resort = EAV extraction
   const [confirmedServices, setConfirmedServices] = useState<string[]>(() => {
     const persisted = activeMap?.confirmed_services;
     if (persisted && persisted.length > 0) return persisted;
+    if (effectiveOfferings.length > 0) return effectiveOfferings;
     return extractedServices;
   });
+
+  // Track the source for display purposes
+  const servicesSource: 'confirmed' | 'offerings' | 'eavs' | 'manual' = useMemo(() => {
+    const persisted = activeMap?.confirmed_services;
+    if (persisted && persisted.length > 0) return 'confirmed';
+    if (effectiveOfferings.length > 0) return 'offerings';
+    if (extractedServices.length > 0) return 'eavs';
+    return 'manual';
+  }, [activeMap?.confirmed_services, effectiveOfferings, extractedServices]);
 
   // Track whether user has made local edits (to avoid overwriting with stale DB data)
   const hasLocalEditsRef = React.useRef(false);
@@ -1261,16 +1280,22 @@ const PipelineMapStep: React.FC = () => {
   // Hydrate from persisted data when it becomes available (e.g. after async load)
   const persistedServices = activeMap?.confirmed_services;
   React.useEffect(() => {
-    // Priority 1: Persisted data from DB — always wins over EAV extraction
-    if (persistedServices && persistedServices.length > 0 && !hasLocalEditsRef.current) {
+    if (hasLocalEditsRef.current) return;
+    // Priority 1: Persisted confirmed_services from DB
+    if (persistedServices && persistedServices.length > 0) {
       setConfirmedServices(persistedServices);
       return;
     }
-    // Priority 2: EAV extraction fallback — only when no persisted data and no local state
-    if (!persistedServices && extractedServices.length > 0 && !hasLocalEditsRef.current) {
+    // Priority 2: businessInfo.offerings from crawl step
+    if (effectiveOfferings.length > 0) {
+      setConfirmedServices(prev => prev.length === 0 ? effectiveOfferings : prev);
+      return;
+    }
+    // Priority 3: EAV extraction — absolute last resort
+    if (extractedServices.length > 0) {
       setConfirmedServices(prev => prev.length === 0 ? extractedServices : prev);
     }
-  }, [persistedServices, extractedServices]);
+  }, [persistedServices, effectiveOfferings, extractedServices]);
 
   // Debounced persistence of confirmed services to DB
   const saveServicesTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1750,6 +1775,7 @@ const PipelineMapStep: React.FC = () => {
       {(isAdjusting || !hasMapData) && activeMap?.pillars?.centralEntity && (
         <ServiceConfirmationPanel
           services={confirmedServices}
+          source={servicesSource}
           onServicesChange={(services) => {
             setConfirmedServices(services);
             persistConfirmedServices(services);
