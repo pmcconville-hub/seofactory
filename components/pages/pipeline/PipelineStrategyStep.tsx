@@ -877,8 +877,8 @@ const PipelineStrategyStep: React.FC = () => {
         </div>
       )}
 
-      {/* Success */}
-      {savedSuccess && (
+      {/* Success — only show here when dialogue is NOT about to appear (otherwise it shows near the dialogue) */}
+      {savedSuccess && (dialogueComplete || !showDialogue) && (
         <div className="bg-green-900/20 border border-green-700 rounded-lg p-4 flex items-center gap-2">
           <svg className="w-4 h-4 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -1143,6 +1143,28 @@ const PipelineStrategyStep: React.FC = () => {
 
       {/* Intelligent Dialogue — Q&A before approval */}
       <div id="strategy-dialogue-section" />
+      {/* Save confirmation + AI Review header — shown at scroll target so user sees it */}
+      {showDialogue && !dialogueComplete && (
+        <div className="space-y-3">
+          {savedSuccess && (
+            <div className="bg-green-900/20 border border-green-700 rounded-lg p-4 flex items-center gap-2">
+              <svg className="w-4 h-4 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              <p className="text-sm text-green-300">Strategy saved successfully. AI review starting below...</p>
+            </div>
+          )}
+          <div className="flex items-center gap-3 py-2">
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+              </svg>
+              <h3 className="text-sm font-semibold text-violet-300">AI Strategy Review</h3>
+            </div>
+            <div className="flex-1 h-px bg-gray-700" />
+          </div>
+        </div>
+      )}
       {showDialogue && !dialogueComplete && (
         <StepDialogue
           step="strategy"
