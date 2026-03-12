@@ -318,4 +318,5 @@ export interface BusinessInfo {
   // Admin & Editor Features
   verboseLogging?: boolean;       // Used by admin dashboard
   offerings?: string[];           // Used by contextual editor
+  researchDepth?: 'ai_guess' | 'full_api';
 }

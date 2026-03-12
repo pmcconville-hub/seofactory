@@ -156,6 +156,56 @@ export interface EnrichedTopic {
 
   // Typed metadata container
   metadata?: TopicMetadata;
+
+  // Page inventory fields (populated by topic research orchestrator)
+  search_volume?: number;
+  search_volume_source?: 'dataforseo' | 'ai_estimate' | 'competitor_signal';
+  page_decision?: 'standalone_page' | 'section' | 'faq_entry' | 'merge_into_parent' | 'skip';
+  page_decision_confidence?: number; // 0-1
+  page_decision_reasoning?: string;
+  consolidation_target_id?: string | null; // which page this folds into
+  extracted_keyword?: string; // 2-4 word searchable keyword from topic title
+  competitor_heading_frequency?: number;
+  competitor_has_dedicated_url?: boolean;
+}
+
+// ============================================================================
+// PAGE INVENTORY TYPES
+// ============================================================================
+
+/**
+ * A section consolidated into a page from the topic research orchestrator
+ */
+export interface ConsolidatedSection {
+  topicId: string;
+  topicTitle: string;
+  role: 'h2_section' | 'h3_subsection' | 'faq_entry' | 'merged';
+  estimatedVolume: number;
+  keyword?: string;
+}
+
+/**
+ * A single page in the page inventory
+ */
+export interface PageInventoryEntry {
+  pageTopicId: string;
+  pageTitle: string;
+  sections: ConsolidatedSection[];
+  totalEstimatedVolume: number;
+  priority: number;
+  urgencyLabel: 'launch_critical' | 'wave_1' | 'wave_2' | 'wave_3' | 'optional';
+}
+
+/**
+ * Complete page inventory for a topical map
+ */
+export interface PageInventory {
+  pages: PageInventoryEntry[];
+  skipped: string[];
+  totalTopics: number;
+  totalPages: number;
+  consolidationRatio: number; // 85 topics -> 35 pages = 2.4x
+  researchMode: 'ai_guess' | 'full_api';
 }
 
 // ============================================================================

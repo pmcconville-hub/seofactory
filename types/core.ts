@@ -277,6 +277,7 @@ export interface TopicalMap {
   dialogue_context?: import('./dialogue').DialogueContext;
   action_plan?: ActionPlan | null;
   confirmed_services?: string[] | null;
+  page_inventory?: import('./content').PageInventory;
 }
 
 /**

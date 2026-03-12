@@ -233,6 +233,9 @@ export const parseTopicalMap = (data: any): TopicalMap => {
         // Dialogue context (persisted JSONB column)
         dialogue_context: data.dialogue_context && typeof data.dialogue_context === 'object' ? data.dialogue_context : undefined,
 
+        // Page inventory (persisted JSONB column)
+        page_inventory: data.page_inventory && typeof data.page_inventory === 'object' ? data.page_inventory : undefined,
+
         // User-confirmed services (persisted JSONB column)
         confirmed_services: Array.isArray(data.confirmed_services)
             ? data.confirmed_services.filter((s: unknown) => typeof s === 'string')
@@ -311,6 +314,17 @@ export const sanitizeTopicFromDb = (dbTopic: any): EnrichedTopic => {
 
         // Generic metadata container
         metadata: metadata,
+
+        // Page inventory fields
+        search_volume: typeof (metadata.search_volume ?? dbTopic.search_volume) === 'number' ? (metadata.search_volume ?? dbTopic.search_volume) : undefined,
+        search_volume_source: (metadata.search_volume_source || dbTopic.search_volume_source) || undefined,
+        page_decision: (metadata.page_decision || dbTopic.page_decision) || undefined,
+        page_decision_confidence: typeof (metadata.page_decision_confidence ?? dbTopic.page_decision_confidence) === 'number' ? (metadata.page_decision_confidence ?? dbTopic.page_decision_confidence) : undefined,
+        page_decision_reasoning: (metadata.page_decision_reasoning || dbTopic.page_decision_reasoning) ? safeString(metadata.page_decision_reasoning || dbTopic.page_decision_reasoning) : undefined,
+        consolidation_target_id: (metadata.consolidation_target_id || dbTopic.consolidation_target_id) ? safeString(metadata.consolidation_target_id || dbTopic.consolidation_target_id) : null,
+        extracted_keyword: (metadata.extracted_keyword || dbTopic.extracted_keyword) ? safeString(metadata.extracted_keyword || dbTopic.extracted_keyword) : undefined,
+        competitor_heading_frequency: typeof (metadata.competitor_heading_frequency ?? dbTopic.competitor_heading_frequency) === 'number' ? (metadata.competitor_heading_frequency ?? dbTopic.competitor_heading_frequency) : undefined,
+        competitor_has_dedicated_url: typeof (metadata.competitor_has_dedicated_url ?? dbTopic.competitor_has_dedicated_url) === 'boolean' ? (metadata.competitor_has_dedicated_url ?? dbTopic.competitor_has_dedicated_url) : undefined,
     } as EnrichedTopic;
 };
 
