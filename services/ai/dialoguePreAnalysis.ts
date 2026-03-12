@@ -240,9 +240,11 @@ function runFrameCoverage(
     );
 
     if (uncoveredFrames.length > 0) {
-      // Promote to critical if <7/10 frames covered (map quality gate blocker)
-      const coveredFrameCount = report.frameResults.length - uncoveredFrames.length;
-      const severity: FindingSeverity = coveredFrameCount < 7 ? 'critical' : uncoveredFrames.length > 3 ? 'high' : 'medium';
+      // Graduated severity based on uncovered frame count (not binary threshold)
+      const severity: FindingSeverity =
+        uncoveredFrames.length >= 7 ? 'critical' :
+        uncoveredFrames.length >= 5 ? 'high' :
+        uncoveredFrames.length >= 3 ? 'medium' : 'low';
       for (const fr of uncoveredFrames) {
         findings.push({
           category: 'missing_frame',
@@ -400,8 +402,8 @@ function runPageWorthiness(
 
       return {
         topic: t.title,
-        searchVolume: (t as any).search_volume,
-        intent: (t as any).search_intent || t.query_type,
+        searchVolume: t.search_volume,
+        intent: t.search_intent || t.query_type,
         parentTopic: parentTopic?.title,
         subtopicCount,
         category: t.attribute_focus ? undefined : undefined,

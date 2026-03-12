@@ -16,6 +16,9 @@ import { verifiedBulkInsert } from '../../../services/verifiedDatabaseService';
 import { v4 as uuidv4 } from 'uuid';
 import { slugify, cleanSlug } from '../../../utils/helpers';
 import { runPreAnalysis, calculateHealthScore, type PreAnalysisFinding } from '../../../services/ai/dialoguePreAnalysis';
+import { PageInventoryView } from '../../pipeline/PageInventoryView';
+import { ActionableFindingsPanel, type ActionableFinding, type FindingAction } from '../../pipeline/ActionableFindingsPanel';
+import type { PageInventory } from '../../../types';
 
 // ──── Ensure existing service pages are pillar topics ────
 
@@ -1243,6 +1246,13 @@ const PipelineMapStep: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [mapQualityFindings, setMapQualityFindings] = useState<PreAnalysisFinding[]>([]);
   const [mapHealthScore, setMapHealthScore] = useState<number | null>(null);
+  const [dismissedFindings, setDismissedFindings] = useState<Set<number>>(new Set());
+  const [pageInventory, setPageInventory] = useState<PageInventory | null>(
+    (activeMap?.page_inventory as PageInventory | undefined) ?? null
+  );
+  const [researchDepth, setResearchDepth] = useState<'ai_guess' | 'full_api'>(
+    effectiveBusinessInfo.researchDepth || 'ai_guess'
+  );
 
   // Services: Priority 1 = confirmed_services from DB, Priority 2 = businessInfo.offerings, Priority 3 = EAV extraction (last resort)
   const extractedServices = useMemo(() => {
@@ -1462,6 +1472,16 @@ const PipelineMapStep: React.FC = () => {
             description: t.description,
             type: t.type,
             freshness: t.freshness,
+            // New top-level columns from page_inventory_fields migration
+            search_volume: typeof t.search_volume === 'number' ? t.search_volume : null,
+            search_volume_source: t.search_volume_source || null,
+            page_decision: t.page_decision || null,
+            page_decision_confidence: typeof t.page_decision_confidence === 'number' ? t.page_decision_confidence : null,
+            page_decision_reasoning: t.page_decision_reasoning || null,
+            consolidation_target_id: t.consolidation_target_id || null,
+            extracted_keyword: t.extracted_keyword || null,
+            competitor_heading_frequency: typeof t.competitor_heading_frequency === 'number' ? t.competitor_heading_frequency : null,
+            competitor_has_dedicated_url: typeof t.competitor_has_dedicated_url === 'boolean' ? t.competitor_has_dedicated_url : null,
             metadata: {
               topic_class: t.topic_class || (t.type === 'core' ? 'monetization' : 'informational'),
               cluster_role: t.cluster_role,
@@ -1502,6 +1522,28 @@ const PipelineMapStep: React.FC = () => {
         if (servicesWithPages) {
           ensureExistingPagesArePillars(resolvedTopics, servicesWithPages);
         }
+      }
+
+      // Build page inventory from resolved topics (enrichment post-step)
+      try {
+        const { buildPageInventory } = await import('../../../services/ai/pageInventoryBuilder');
+        const inventory = buildPageInventory(resolvedTopics, researchDepth);
+        setPageInventory(inventory);
+
+        // Persist page_inventory to topical_maps table
+        if (state.activeMapId) {
+          dispatch({ type: 'UPDATE_MAP_DATA', payload: { mapId: state.activeMapId, data: { page_inventory: inventory } } });
+          try {
+            const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
+            const { error } = await supabase.from('topical_maps').update({ page_inventory: inventory } as any).eq('id', state.activeMapId);
+            if (error) console.warn(`[PipelineMap] page_inventory save failed (${error.code}): ${error.message}`);
+            else console.info(`[PipelineMap] page_inventory saved (${inventory.totalPages} pages, ${inventory.consolidationRatio}x consolidation)`);
+          } catch (err) {
+            console.warn('[PipelineMap] page_inventory save error:', err);
+          }
+        }
+      } catch (err) {
+        console.warn('[PipelineMapStep] Page inventory build failed (non-fatal):', err);
       }
 
       // Generate AI-driven publishing waves after topics are created
@@ -1731,6 +1773,172 @@ const PipelineMapStep: React.FC = () => {
     }
   }, [coreTopics, outerTopics, state.activeMapId, dispatch, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey]);
 
+  // Stable allTopics for page inventory handlers
+  const allTopics = useMemo(() => [...coreTopics, ...outerTopics], [coreTopics, outerTopics]);
+
+  const rebuildPageInventory = useCallback(async (topics: EnrichedTopic[]) => {
+    try {
+      const { buildPageInventory } = await import('../../../services/ai/pageInventoryBuilder');
+      const inv = buildPageInventory(topics, researchDepth);
+      setPageInventory(inv);
+
+      // Persist updated page_inventory to DB
+      if (state.activeMapId) {
+        dispatch({ type: 'UPDATE_MAP_DATA', payload: { mapId: state.activeMapId, data: { page_inventory: inv } } });
+        try {
+          const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
+          const { error } = await supabase.from('topical_maps').update({ page_inventory: inv } as any).eq('id', state.activeMapId);
+          if (error) console.warn(`[PipelineMap] page_inventory rebuild save failed (${error.code}): ${error.message}`);
+        } catch { /* non-fatal */ }
+      }
+    } catch (err) {
+      console.warn('[PipelineMapStep] Page inventory rebuild failed:', err);
+    }
+  }, [researchDepth, state.activeMapId, dispatch, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey]);
+
+  const handlePromoteTopic = useCallback((topicId: string) => {
+    const topic = allTopics.find(t => t.id === topicId);
+    if (!topic) return;
+
+    const updateTopics = (topics: EnrichedTopic[]) =>
+      topics.map(t => t.id === topicId ? { ...t, page_decision: 'standalone_page' as const, consolidation_target_id: null } : t);
+    setGeneratedCore(updateTopics);
+    setGeneratedOuter(updateTopics);
+
+    if (state.activeMapId) {
+      const updated = allTopics.map(t =>
+        t.id === topicId ? { ...t, page_decision: 'standalone_page' as const, consolidation_target_id: null } : t
+      );
+      dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: state.activeMapId, topics: updated } });
+      rebuildPageInventory(updated);
+
+      // Persist page_decision to topics table
+      try {
+        const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
+        supabase.from('topics').update({ page_decision: 'standalone_page', consolidation_target_id: null }).eq('id', topicId)
+          .then(({ error }) => { if (error) console.warn(`[PipelineMap] Promote topic failed: ${error.message}`); });
+      } catch { /* non-fatal */ }
+    }
+  }, [allTopics, state.activeMapId, dispatch, rebuildPageInventory, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey]);
+
+  const handleDemoteTopic = useCallback((topicId: string) => {
+    const topic = allTopics.find(t => t.id === topicId);
+    if (!topic) return;
+
+    // Find nearest parent that is standalone
+    const parent = allTopics.find(t => t.id === topic.parent_topic_id && t.page_decision === 'standalone_page');
+
+    const updateTopics = (topics: EnrichedTopic[]) =>
+      topics.map(t => t.id === topicId ? { ...t, page_decision: 'section' as const, consolidation_target_id: parent?.id || null } : t);
+    setGeneratedCore(updateTopics);
+    setGeneratedOuter(updateTopics);
+
+    if (state.activeMapId) {
+      const updated = allTopics.map(t =>
+        t.id === topicId ? { ...t, page_decision: 'section' as const, consolidation_target_id: parent?.id || null } : t
+      );
+      dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: state.activeMapId, topics: updated } });
+      rebuildPageInventory(updated);
+
+      // Persist page_decision to topics table
+      try {
+        const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
+        supabase.from('topics').update({ page_decision: 'section', consolidation_target_id: parent?.id || null }).eq('id', topicId)
+          .then(({ error }) => { if (error) console.warn(`[PipelineMap] Demote topic failed: ${error.message}`); });
+      } catch { /* non-fatal */ }
+    }
+  }, [allTopics, state.activeMapId, dispatch, rebuildPageInventory, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey]);
+
+  // Dismiss a finding and recalculate health score
+  const handleDismissFinding = useCallback((findingIndex: number) => {
+    setDismissedFindings(prev => {
+      const next = new Set(prev);
+      next.add(findingIndex);
+      // Recalculate health score from remaining findings
+      const activeFindings = (mapQualityFindings || []).filter((_, idx) => !next.has(idx));
+      setMapHealthScore(activeFindings.length > 0 ? calculateHealthScore(activeFindings) : 100);
+      return next;
+    });
+  }, [mapQualityFindings]);
+
+  // Convert pre-analysis findings to actionable findings format
+  const actionableFindings: ActionableFinding[] = useMemo(() => {
+    return (mapQualityFindings || [])
+      .map((f, idx) => ({ f, idx }))
+      .filter(({ idx }) => !dismissedFindings.has(idx))
+      .map(({ f, idx }) => {
+      const actions: FindingAction[] = [];
+      switch (f.category) {
+        case 'title_cannibalization':
+          actions.push({ label: 'Merge', variant: 'primary' as const, onClick: () => handleMergeFinding(f) });
+          break;
+        case 'page_worthiness':
+          actions.push({ label: 'Consolidate', variant: 'primary' as const, onClick: () => handleConsolidateFinding(f) });
+          break;
+        case 'border_violation':
+          actions.push({ label: 'Remove', variant: 'danger' as const, onClick: () => handleRemoveFinding(f) });
+          actions.push({ label: 'Bridge', variant: 'secondary' as const, onClick: () => {} });
+          break;
+        case 'missing_frame':
+          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(idx) });
+          break;
+        case 'depth_imbalance':
+          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(idx) });
+          break;
+        case 'service_gap':
+          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(idx) });
+          break;
+        case 'eav_inconsistency':
+        case 'eav_category_gap':
+        case 'eav_pending_values':
+        case 'ce_ambiguity':
+        case 'sc_specificity':
+        case 'csi_coverage':
+          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(idx) });
+          break;
+      }
+      return {
+        category: f.category,
+        severity: f.severity,
+        title: f.title,
+        details: f.suggestedAction || f.details || '',
+        affectedItems: f.affectedItems || [],
+        actions,
+      };
+    });
+  }, [mapQualityFindings, dismissedFindings, handleDismissFinding]);
+
+  const handleMergeFinding = useCallback((finding: PreAnalysisFinding) => {
+    // Merge first two affected items — keep the first, remove the second
+    const items = finding.affectedItems || [];
+    if (items.length < 2) return;
+    const removeTitle = items[1];
+    const removeTarget = allTopics.find(t => t.title === removeTitle);
+    if (removeTarget) {
+      setGeneratedCore(prev => prev.filter(t => t.id !== removeTarget.id));
+      setGeneratedOuter(prev => prev.filter(t => t.id !== removeTarget.id && t.parent_topic_id !== removeTarget.id));
+    }
+  }, [allTopics]);
+
+  const handleConsolidateFinding = useCallback((finding: PreAnalysisFinding) => {
+    const items = finding.affectedItems || [];
+    if (items.length === 0) return;
+    const target = allTopics.find(t => t.title === items[0]);
+    if (target) {
+      handleDemoteTopic(target.id);
+    }
+  }, [allTopics, handleDemoteTopic]);
+
+  const handleRemoveFinding = useCallback((finding: PreAnalysisFinding) => {
+    const items = finding.affectedItems || [];
+    if (items.length === 0) return;
+    const target = allTopics.find(t => t.title === items[0]);
+    if (target) {
+      setGeneratedCore(prev => prev.filter(t => t.id !== target.id));
+      setGeneratedOuter(prev => prev.filter(t => t.id !== target.id && t.parent_topic_id !== target.id));
+    }
+  }, [allTopics]);
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -1789,6 +1997,16 @@ const PipelineMapStep: React.FC = () => {
         <MetricCard label="Total Pages" value={totalTopics} color={totalTopics > 0 ? 'green' : 'gray'} />
         <MetricCard label="Internal Links" value={internalLinksEstimate > 0 ? `~${internalLinksEstimate}` : 0} color={internalLinksEstimate > 0 ? 'amber' : 'gray'} />
       </div>
+
+      {/* Page Inventory View — shown when enrichment has produced page decisions */}
+      {pageInventory && (
+        <PageInventoryView
+          pageInventory={pageInventory}
+          topics={allTopics}
+          onPromoteTopic={handlePromoteTopic}
+          onDemoteTopic={handleDemoteTopic}
+        />
+      )}
 
       {/* Review: Content Structure (Decision 6 — cluster cards primary, tree toggle) */}
       <ClusterCardsView
@@ -1856,6 +2074,25 @@ const PipelineMapStep: React.FC = () => {
         isGeneratingWaves={isGeneratingWaves}
       />
 
+      {/* Research Depth Toggle */}
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-sm text-gray-600">Research:</span>
+        <button
+          type="button"
+          onClick={() => setResearchDepth('ai_guess')}
+          className={`px-3 py-1 text-xs rounded-l border ${researchDepth === 'ai_guess' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-600 border-gray-300'}`}
+        >
+          AI Guess (free)
+        </button>
+        <button
+          type="button"
+          onClick={() => setResearchDepth('full_api')}
+          className={`px-3 py-1 text-xs rounded-r border-t border-b border-r ${researchDepth === 'full_api' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-600 border-gray-300'}`}
+        >
+          Full API (~${(allTopics.length * 0.005).toFixed(2)})
+        </button>
+      </div>
+
       {/* Generate Button */}
       <div className="flex justify-center">
         <button
@@ -1894,7 +2131,7 @@ const PipelineMapStep: React.FC = () => {
       )}
 
       {/* Map Quality Gate — show critical findings that block advancement */}
-      {mapHealthScore !== null && mapQualityFindings.length > 0 && (
+      {mapHealthScore !== null && actionableFindings.length > 0 && (
         <div className={`border rounded-lg p-4 space-y-3 ${
           mapHealthScore < 60
             ? 'bg-red-900/15 border-red-700/50'
@@ -1916,24 +2153,9 @@ const PipelineMapStep: React.FC = () => {
                 </span>
               )}
             </div>
-            <span className="text-xs text-gray-500">{mapQualityFindings.length} findings</span>
+            <span className="text-xs text-gray-500">{actionableFindings.length} findings</span>
           </div>
-          {mapQualityFindings
-            .filter(f => f.severity === 'critical' || f.severity === 'high')
-            .slice(0, 8)
-            .map((finding, i) => (
-              <div key={i} className="flex items-start gap-2 text-xs">
-                <span className={`flex-shrink-0 mt-0.5 ${
-                  finding.severity === 'critical' ? 'text-red-400' : 'text-amber-400'
-                }`}>
-                  {finding.severity === 'critical' ? '\u2717' : '!'}
-                </span>
-                <div>
-                  <p className="text-gray-300">{finding.title}</p>
-                  <p className="text-gray-500 text-[10px]">{finding.suggestedAction}</p>
-                </div>
-              </div>
-            ))}
+          <ActionableFindingsPanel findings={actionableFindings} />
         </div>
       )}
 
@@ -1950,8 +2172,8 @@ const PipelineMapStep: React.FC = () => {
           onToggleAutoApprove={toggleAutoApprove}
           summaryMetrics={[
             { label: 'Hub Topics', value: clusterCount, color: clusterCount > 0 ? 'green' : 'gray' },
-            { label: 'Total Pages', value: totalTopics, color: totalTopics > 0 ? 'green' : 'gray' },
-            { label: 'Internal Links', value: internalLinksEstimate > 0 ? `~${internalLinksEstimate}` : 0, color: internalLinksEstimate > 0 ? 'amber' : 'gray' },
+            { label: 'Total Pages', value: pageInventory ? pageInventory.totalPages : totalTopics, color: (pageInventory ? pageInventory.totalPages : totalTopics) > 0 ? 'green' : 'gray' },
+            { label: pageInventory ? 'Consolidation' : 'Internal Links', value: pageInventory ? `${pageInventory.consolidationRatio.toFixed(1)}x` : (internalLinksEstimate > 0 ? `~${internalLinksEstimate}` : 0), color: pageInventory ? 'blue' : (internalLinksEstimate > 0 ? 'amber' : 'gray') },
             { label: 'Map Health', value: mapHealthScore !== null ? `${mapHealthScore}%` : '--', color: mapHealthScore !== null ? (mapHealthScore >= 80 ? 'green' : mapHealthScore >= 60 ? 'amber' : 'red') : 'gray' },
           ]}
         />
