@@ -126,15 +126,20 @@ Layer 2 (SC) — Generate 15-25 triples:
   phone numbers, team size, review count), use the clipboard emoji as the value
   to indicate the user needs to fill this in.
 
-VALUE RULES:
-- CE Layer: Populate ALL values with factual domain knowledge. Use specific numbers,
-  units, ranges where applicable.
+VALUE RULES — THIS IS CRITICAL:
+- CE Layer: You MUST populate EVERY value with factual domain knowledge. NEVER leave
+  values empty. Use specific numbers, units, ranges, lists, or descriptive text.
+  Example: costs → "€50-€150 per m²", is_a → "online marketing dienstverlener",
+  has_feature → "zoekmachine optimalisatie, content marketing, link building"
 - SC Layer: Populate values you can infer from context (company type, service types).
-  Use the clipboard emoji for values requiring business-specific data (address, phone, exact counts).
+  ONLY use the clipboard emoji for values you truly cannot know (exact address, phone
+  number, founding year, employee count, review count).
 - All text values must be in ${languageName}.
 - Use snake_case for attribute names (e.g., "levensduur", "kosten_per_m2")
 - Set confidence: 0.9 for established domain facts, 0.7 for reasonable inferences,
   0.5 for estimates, 0.0 for clipboard-emoji pending values.
+- IMPORTANT: At least 90% of triples must have populated values. Empty values are
+  unacceptable for CE layer attributes.
 
 Return JSON:
 {
@@ -216,12 +221,110 @@ function processAiResponse(
   return { eavs: classified, reasoning };
 }
 
+// ── Value Auto-Fill ──
+
+/**
+ * Second-pass AI call to populate empty values on EAV triples.
+ * Ensures ≥90% of triples have concrete values before presenting to user.
+ */
+async function autoFillEmptyValues(
+  eavs: SemanticTriple[],
+  businessInfo: BusinessInfo,
+  ctx: EavGenerationContext,
+  dispatch: React.Dispatch<AppAction>
+): Promise<SemanticTriple[]> {
+  const emptyIndices: number[] = [];
+  const emptyEavs: Array<{ entity: string; attribute: string; category?: string; layer?: string }> = [];
+
+  for (let i = 0; i < eavs.length; i++) {
+    const val = eavs[i].object?.value ?? eavs[i].value;
+    if (!val || (typeof val === 'string' && (val.trim() === '' || val.includes(PENDING_MARKER)))) {
+      emptyIndices.push(i);
+      emptyEavs.push({
+        entity: eavs[i].subject?.label || eavs[i].entity || ctx.pillars.centralEntity,
+        attribute: eavs[i].predicate?.relation || eavs[i].attribute || '',
+        category: eavs[i].predicate?.category || eavs[i].category,
+        layer: (eavs[i] as any).context === 'needs_input' ? 'sc' : 'ce',
+      });
+    }
+  }
+
+  if (emptyEavs.length === 0) return eavs;
+
+  const languageInstruction = getLanguageAndRegionInstruction(businessInfo.language, businessInfo.region);
+  const languageName = getLanguageName(businessInfo.language);
+
+  const fillPrompt = `${languageInstruction}
+
+You are populating values for Entity-Attribute-Value triples about "${ctx.pillars.centralEntity}".
+Business: ${ctx.pillars.sourceContext || businessInfo.domain || 'not specified'}
+Industry: ${businessInfo.industry || 'not specified'}
+
+For each attribute below, provide a concrete, factual value in ${languageName}.
+Use specific numbers, ranges, lists, or descriptive text. NEVER return empty values.
+For business-specific unknowns (exact address, phone, founding year), use reasonable
+industry-typical examples prefixed with "bijv. " (example).
+
+Attributes to fill:
+${emptyEavs.map((e, i) => `${i + 1}. Entity: "${e.entity}" → Attribute: "${e.attribute}" (${e.category || 'COMMON'}, layer: ${e.layer})`).join('\n')}
+
+Return JSON:
+{
+  "values": [
+    { "index": 0, "value": "concrete value here" },
+    ...
+  ]
+}`;
+
+  const fallback = { values: [] as any[] };
+
+  try {
+    const result = await dispatchToProvider<any>(businessInfo, {
+      gemini: () => geminiService.generateJson(fillPrompt, businessInfo, dispatch, fallback),
+      openai: () => openAiService.generateJson(fillPrompt, businessInfo, dispatch, fallback),
+      anthropic: () => anthropicService.generateJson(fillPrompt, businessInfo, dispatch, fallback),
+      perplexity: () => perplexityService.generateJson(fillPrompt, businessInfo, dispatch, fallback),
+      openrouter: () => openRouterService.generateJson(fillPrompt, businessInfo, dispatch, fallback),
+    });
+
+    const filled = Array.isArray(result?.values) ? result.values : [];
+    const updated = [...eavs];
+
+    for (const entry of filled) {
+      const idx = typeof entry.index === 'number' ? entry.index : -1;
+      if (idx >= 0 && idx < emptyIndices.length && entry.value) {
+        const eavIdx = emptyIndices[idx];
+        const val = String(entry.value);
+        updated[eavIdx] = {
+          ...updated[eavIdx],
+          object: { ...updated[eavIdx].object, value: val, type: 'Value' as const },
+          value: val,
+          confidence: 0.6,
+          context: 'needs_confirmation',
+        } as SemanticTriple;
+      }
+    }
+
+    const remainingEmpty = updated.filter(e => {
+      const v = e.object?.value ?? e.value;
+      return !v || (typeof v === 'string' && v.trim() === '');
+    }).length;
+    console.info(`[eavGeneration] Auto-fill: ${filled.length}/${emptyEavs.length} values populated, ${remainingEmpty} still empty`);
+
+    return updated;
+  } catch (err) {
+    console.warn('[eavGeneration] Auto-fill failed (non-fatal):', err);
+    return eavs;
+  }
+}
+
 // ── Main Export ──
 
 /**
  * Generate a comprehensive dual-layer EAV inventory using AI.
  *
  * Falls back to rule-based template generation if AI fails.
+ * Always runs auto-fill pass to ensure ≥90% value population.
  */
 export async function generateEavsWithAI(
   businessInfo: BusinessInfo,
@@ -233,8 +336,10 @@ export async function generateEavsWithAI(
 
   const fallback = { eavs: [] as any[], reasoning: 'Fallback — AI generation unavailable' };
 
+  let result: EavGenerationResult;
+
   try {
-    const result = await dispatchToProvider<any>(businessInfo, {
+    const raw = await dispatchToProvider<any>(businessInfo, {
       gemini: () => geminiService.generateJson(prompt, businessInfo, dispatch, fallback),
       openai: () => openAiService.generateJson(prompt, businessInfo, dispatch, fallback),
       anthropic: () => anthropicService.generateJson(prompt, businessInfo, dispatch, fallback),
@@ -242,19 +347,32 @@ export async function generateEavsWithAI(
       openrouter: () => openRouterService.generateJson(prompt, businessInfo, dispatch, fallback),
     });
 
-    const processed = processAiResponse(result, ctx.pillars);
+    const processed = processAiResponse(raw, ctx.pillars);
 
     // If AI returned too few results, something went wrong — use fallback
     if (processed.eavs.length < 5) {
       console.warn('[eavGeneration] AI returned too few EAVs, falling back to templates');
-      return generateFallbackEavs(businessInfo, ctx.pillars.centralEntity);
+      result = generateFallbackEavs(businessInfo, ctx.pillars.centralEntity);
+    } else {
+      result = processed;
     }
-
-    return processed;
   } catch (err) {
     console.warn('[eavGeneration] AI generation failed, using fallback:', err);
-    return generateFallbackEavs(businessInfo, ctx.pillars.centralEntity);
+    result = generateFallbackEavs(businessInfo, ctx.pillars.centralEntity);
   }
+
+  // Auto-fill pass: populate any remaining empty values
+  const emptyCount = result.eavs.filter(e => {
+    const v = e.object?.value ?? e.value;
+    return !v || (typeof v === 'string' && (v.trim() === '' || v.includes(PENDING_MARKER)));
+  }).length;
+
+  if (emptyCount > 0 && emptyCount / result.eavs.length > 0.1) {
+    console.info(`[eavGeneration] ${emptyCount}/${result.eavs.length} EAVs need values, running auto-fill`);
+    result.eavs = await autoFillEmptyValues(result.eavs, businessInfo, ctx, dispatch);
+  }
+
+  return result;
 }
 
 // ── Fallback (existing rule-based pipeline) ──
