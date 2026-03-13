@@ -1851,22 +1851,39 @@ const PipelineMapStep: React.FC = () => {
     });
   }, [mapQualityFindings]);
 
+  // Helper: remove a topic from both local state and persisted state
+  const removeTopic = useCallback((topicId: string) => {
+    // Update local generated state
+    setGeneratedCore(prev => prev.filter(t => t.id !== topicId));
+    setGeneratedOuter(prev => prev.filter(t => t.id !== topicId && t.parent_topic_id !== topicId));
+
+    // Update persisted state
+    if (state.activeMapId) {
+      dispatch({ type: 'DELETE_TOPIC', payload: { mapId: state.activeMapId, topicId } });
+
+      // Delete from DB
+      try {
+        const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
+        supabase.from('topics').delete().eq('id', topicId)
+          .then(({ error }) => { if (error) console.warn(`[PipelineMap] Delete topic failed: ${error.message}`); });
+      } catch { /* non-fatal */ }
+    }
+  }, [state.activeMapId, dispatch, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey]);
+
   // Action handlers — defined before actionableFindings useMemo that references them
   const handleMergeFinding = useCallback((finding: PreAnalysisFinding) => {
-    // Merge first two affected items — keep the first, remove the second
-    // affectedItems contains topic IDs (not titles)
+    // Merge: keep the first topic, remove the second
     const items = finding.affectedItems || [];
     if (items.length < 2) return;
     const removeId = items[1];
     const removeTarget = allTopics.find(t => t.id === removeId || t.title === removeId);
     if (removeTarget) {
-      setGeneratedCore(prev => prev.filter(t => t.id !== removeTarget.id));
-      setGeneratedOuter(prev => prev.filter(t => t.id !== removeTarget.id && t.parent_topic_id !== removeTarget.id));
-      // Recalculate health after merge by dismissing this finding
+      removeTopic(removeTarget.id);
+      // Dismiss this finding and recalculate health
       const findingIdx = (mapQualityFindings || []).findIndex(f => f === finding);
       if (findingIdx >= 0) handleDismissFinding(findingIdx);
     }
-  }, [allTopics, mapQualityFindings, handleDismissFinding]);
+  }, [allTopics, removeTopic, mapQualityFindings, handleDismissFinding]);
 
   const handleConsolidateFinding = useCallback((finding: PreAnalysisFinding) => {
     const items = finding.affectedItems || [];
@@ -1882,13 +1899,40 @@ const PipelineMapStep: React.FC = () => {
     if (items.length === 0) return;
     const target = allTopics.find(t => t.id === items[0] || t.title === items[0]);
     if (target) {
-      setGeneratedCore(prev => prev.filter(t => t.id !== target.id));
-      setGeneratedOuter(prev => prev.filter(t => t.id !== target.id && t.parent_topic_id !== target.id));
-      // Recalculate health after removal
+      removeTopic(target.id);
+      // Dismiss this finding and recalculate health
       const findingIdx = (mapQualityFindings || []).findIndex(f => f === finding);
       if (findingIdx >= 0) handleDismissFinding(findingIdx);
     }
-  }, [allTopics, mapQualityFindings, handleDismissFinding]);
+  }, [allTopics, removeTopic, mapQualityFindings, handleDismissFinding]);
+
+  // Add hub topics for uncovered business services
+  const handleAddServiceHubs = useCallback((finding: PreAnalysisFinding) => {
+    const services = finding.affectedItems || [];
+    if (services.length === 0 || !state.activeMapId) return;
+
+    const newTopics: EnrichedTopic[] = services.map((serviceName, i) => ({
+      id: `hub-service-${Date.now()}-${i}`,
+      title: serviceName,
+      type: 'core' as const,
+      description: `Hub topic for business service: ${serviceName}`,
+      parent_topic_id: null,
+      topic_class: 'monetization' as const,
+      cluster_role: 'pillar' as const,
+      page_decision: 'standalone_page' as const,
+    } as EnrichedTopic));
+
+    // Add to local state
+    setGeneratedCore(prev => [...prev, ...newTopics]);
+
+    // Add to persisted state
+    const updatedAll = [...allTopics, ...newTopics];
+    dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: state.activeMapId, topics: updatedAll } });
+
+    // Dismiss finding and recalculate
+    const findingIdx = (mapQualityFindings || []).findIndex(f => f === finding);
+    if (findingIdx >= 0) handleDismissFinding(findingIdx);
+  }, [allTopics, state.activeMapId, dispatch, mapQualityFindings, handleDismissFinding]);
 
   // Convert pre-analysis findings to actionable findings format
   const actionableFindings: ActionableFinding[] = useMemo(() => {
@@ -1915,6 +1959,7 @@ const PipelineMapStep: React.FC = () => {
           actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(idx) });
           break;
         case 'service_gap':
+          actions.push({ label: 'Add Hubs', variant: 'primary' as const, onClick: () => handleAddServiceHubs(f) });
           actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(idx) });
           break;
         case 'eav_inconsistency':
@@ -1935,7 +1980,7 @@ const PipelineMapStep: React.FC = () => {
         actions,
       };
     });
-  }, [mapQualityFindings, dismissedFindings, handleDismissFinding, handleMergeFinding, handleConsolidateFinding, handleRemoveFinding]);
+  }, [mapQualityFindings, dismissedFindings, handleDismissFinding, handleMergeFinding, handleConsolidateFinding, handleRemoveFinding, handleAddServiceHubs]);
 
   return (
     <div className="space-y-8">
