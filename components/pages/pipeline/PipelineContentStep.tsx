@@ -847,7 +847,7 @@ const PipelineContentStep: React.FC = () => {
   const qualityPages: PageQuality[] = Object.entries(contentMap).map(([topicId, data]) => {
     const topic = topics.find(t => t.id === topicId);
     return {
-      name: topic?.title ?? topicId,
+      name: topic?.title || (topicId.length > 20 ? '[Missing topic]' : topicId),
       score: data.score,
       words: data.wordCount,
       status: data.score >= 70 ? 'PASS' : 'REVIEW',

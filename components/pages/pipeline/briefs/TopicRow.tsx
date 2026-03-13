@@ -55,7 +55,7 @@ export function TopicRow({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const title = topic?.title ?? entry.topicId;
+  const title = topic?.title || (entry.topicId.length > 20 ? `[Missing topic]` : entry.topicId);
   const topicType = topic?.type ?? 'core';
   const topicClass = topic?.topic_class;
 

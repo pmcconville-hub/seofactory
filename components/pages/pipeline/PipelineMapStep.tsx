@@ -1638,6 +1638,37 @@ const PipelineMapStep: React.FC = () => {
     }
   }, [state.activeMapId, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey, dispatch]);
 
+  // Helper: persist newly added topics to the DB topics table
+  const persistNewTopics = useCallback(async (newTopics: EnrichedTopic[]) => {
+    if (!state.activeMapId || !state.user?.id || newTopics.length === 0) return;
+    try {
+      const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
+      const dbTopics = newTopics.map(t => ({
+        id: t.id,
+        map_id: state.activeMapId,
+        user_id: state.user!.id,
+        parent_topic_id: t.parent_topic_id,
+        title: t.title,
+        slug: t.slug || slugify(t.title),
+        description: t.description,
+        type: t.type,
+        freshness: t.freshness || 'STANDARD',
+        metadata: {
+          topic_class: t.topic_class || (t.type === 'core' ? 'monetization' : 'informational'),
+          cluster_role: t.cluster_role,
+          attribute_focus: t.attribute_focus,
+          canonical_query: t.canonical_query,
+          rationale: (t.metadata as any)?.rationale || '',
+          service_alignment: (t.metadata as any)?.service_alignment || '',
+        },
+      }));
+      const { error } = await supabase.from('topics').insert(dbTopics);
+      if (error) console.warn(`[PipelineMap] persistNewTopics failed: ${error.message}`);
+    } catch (err) {
+      console.warn('[PipelineMap] persistNewTopics error:', err);
+    }
+  }, [state.activeMapId, state.user?.id, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey]);
+
   const handleDialogueDataExtracted = useCallback(async (data: ExtractedData) => {
     const changes: string[] = [];
     const currentAll = [...coreTopics, ...outerTopics];
@@ -1667,6 +1698,7 @@ const PipelineMapStep: React.FC = () => {
               type: 'SET_TOPICS_FOR_MAP',
               payload: { mapId: state.activeMapId, topics: [...currentAll, hub, ...spokes] },
             });
+            await persistNewTopics([hub, ...spokes]);
             changes.push(`Added hub "${hub.title}" with ${spokes.length} spokes`);
           }
         } catch (err) {
@@ -1727,7 +1759,7 @@ const PipelineMapStep: React.FC = () => {
       persistDialogueContext(updated);
       return updated;
     });
-  }, [state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, coreTopics, outerTopics, dispatch, persistDialogueContext]);
+  }, [state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, coreTopics, outerTopics, dispatch, persistDialogueContext, persistNewTopics]);
 
   // Push confirmed answer to dialogue_context.answers[]
   const handleAnswerConfirmed = useCallback((answer: import('../../../types/dialogue').DialogueAnswer) => {
@@ -1989,6 +2021,7 @@ const PipelineMapStep: React.FC = () => {
         setGeneratedOuter(prev => [...prev, ...newOuter]);
         const updatedAll = [...allTopics, ...addedTopics];
         dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: state.activeMapId!, topics: updatedAll } });
+        await persistNewTopics(addedTopics);
 
         setActionFeedback({ message: `Added ${addedTopics.length} topics for ${services.join(', ')}`, type: 'success' });
       } else {
@@ -2006,6 +2039,7 @@ const PipelineMapStep: React.FC = () => {
         setGeneratedCore(prev => [...prev, ...newTopics]);
         const updatedAll = [...allTopics, ...newTopics];
         dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: state.activeMapId!, topics: updatedAll } });
+        await persistNewTopics(newTopics);
 
         setActionFeedback({ message: `Added ${newTopics.length} hub topics for ${services.join(', ')}`, type: 'success' });
       }
@@ -2020,7 +2054,7 @@ const PipelineMapStep: React.FC = () => {
       setIsProcessingAction(false);
       setTimeout(() => setActionFeedback(null), 8000);
     }
-  }, [allTopics, state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, dispatch, mapQualityFindings, handleDismissFinding]);
+  }, [allTopics, state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, dispatch, mapQualityFindings, handleDismissFinding, persistNewTopics]);
 
   // Fix missing semantic frame — generate topics to cover uncovered frame elements
   const handleFixMissingFrame = useCallback(async (finding: PreAnalysisFinding) => {
@@ -2063,6 +2097,7 @@ const PipelineMapStep: React.FC = () => {
       setGeneratedOuter(prev => [...prev, ...newOuter]);
       const updatedAll = [...currentAll, hub, ...spokes];
       dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: state.activeMapId!, topics: updatedAll } });
+      await persistNewTopics([hub, ...spokes]);
 
       // Dismiss finding
       const findingIdx = (mapQualityFindings || []).findIndex(f => f === finding);
@@ -2082,7 +2117,7 @@ const PipelineMapStep: React.FC = () => {
       setIsProcessingAction(false);
       setTimeout(() => setActionFeedback(null), 8000);
     }
-  }, [allTopics, state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, dispatch, mapQualityFindings, handleDismissFinding]);
+  }, [allTopics, state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, dispatch, mapQualityFindings, handleDismissFinding, persistNewTopics]);
 
   // Convert pre-analysis findings to actionable findings format
   const actionableFindings: ActionableFinding[] = useMemo(() => {
