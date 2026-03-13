@@ -531,12 +531,29 @@ export const generateContentBrief = async (
         });
     }
 
+    // If this topic has consolidated sections, enrich the topic description with section hints
+    const consolidatedSections = allTopics.filter(t => t.consolidation_target_id === topic.id);
+    let enrichedTopic = topic;
+    if (consolidatedSections.length > 0) {
+        const consolidationHint = `\n\n**CONSOLIDATED SECTIONS:** This page must cover these sub-topics as H2/H3 sections:\n${consolidatedSections.map(s => `- "${s.title}" (keyword: ${s.extracted_keyword || 'n/a'}, role: ${s.page_decision || 'section'})`).join('\n')}\nInclude each as a distinct section in your structured_outline.`;
+        enrichedTopic = { ...topic, description: (topic.description || '') + consolidationHint };
+        dispatch({
+            type: 'LOG_EVENT',
+            payload: {
+                service: 'BriefGeneration',
+                message: `Topic "${topic.title}" has ${consolidatedSections.length} consolidated section(s): ${consolidatedSections.map(s => s.title).join(', ')}`,
+                status: 'info',
+                timestamp: Date.now()
+            }
+        });
+    }
+
     const brief = await dispatchToProvider(businessInfo, {
-        gemini: () => geminiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
-        openai: () => openAiService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
-        anthropic: () => anthropicService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
-        perplexity: () => perplexityService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
-        openrouter: () => openRouterService.generateContentBrief(businessInfo, topic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
+        gemini: () => geminiService.generateContentBrief(businessInfo, enrichedTopic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
+        openai: () => openAiService.generateContentBrief(businessInfo, enrichedTopic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
+        anthropic: () => anthropicService.generateContentBrief(businessInfo, enrichedTopic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
+        perplexity: () => perplexityService.generateContentBrief(businessInfo, enrichedTopic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
+        openrouter: () => openRouterService.generateContentBrief(businessInfo, enrichedTopic, allTopics, pillars, knowledgeGraph, responseCode, dispatch, marketPatterns, eavs, actionType, topicConfig, existingBriefs),
     });
 
     // ── Structural Validation Gate ──

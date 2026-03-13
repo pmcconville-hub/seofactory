@@ -6,8 +6,10 @@ import ApprovalGate from '../../pipeline/ApprovalGate';
 import { generateContentBrief, suggestResponseCode } from '../../../services/ai/briefGeneration';
 import { reviewBriefQuality } from '../../../services/ai/briefQualityReview';
 import { improveBrief } from '../../../services/ai/briefImprover';
+import { validateCrossWaveLinks, type CrossWaveLinkReport } from '../../../services/ai/crossWaveLinkValidator';
 import { KnowledgeGraph } from '../../../lib/knowledgeGraph';
 import type { EnrichedTopic, ContentBrief } from '../../../types';
+import type { Wave } from '../../../types/wave';
 import type { ActionPlanEntry, BriefQualityReport } from '../../../types/actionPlan';
 import { getSupabaseClient } from '../../../services/supabaseClient';
 import { assignTopicsToWaves as assignTopicsToWavesService } from '../../../services/waveAssignmentService';
@@ -376,6 +378,26 @@ const PipelineBriefsStep: React.FC = () => {
   const generatedHubBriefs = hubTopics.filter(t => allBriefs[t.id]).length;
   const generatedSpokeBriefs = spokeTopics.filter(t => allBriefs[t.id]).length;
 
+  // Cross-wave link coverage report
+  const crossWaveLinkReport = useMemo<CrossWaveLinkReport | null>(() => {
+    const briefCount = Object.keys(allBriefs).length;
+    if (briefCount === 0 || waveTopics.size < 2) return null;
+
+    // Build Wave[] from waveTopics map
+    const waves: Wave[] = Array.from(waveTopics.entries()).map(([num, wTopics]) => ({
+      id: `wave-${num}`,
+      number: num,
+      name: `Wave ${num}`,
+      description: '',
+      topicIds: wTopics.map(t => t.id),
+      weekStart: 0,
+      weekEnd: 0,
+      status: 'planning' as const,
+    }));
+
+    return validateCrossWaveLinks(waves, allBriefs, topics);
+  }, [allBriefs, waveTopics, topics]);
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -465,6 +487,52 @@ const PipelineBriefsStep: React.FC = () => {
         </>
       )}
 
+      {/* Cross-Wave Link Coverage */}
+      {crossWaveLinkReport && (
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-200">Cross-Wave Link Coverage</h3>
+            <span className={`text-sm font-medium ${
+              crossWaveLinkReport.overallCrossWavePercent >= 30 ? 'text-green-400' :
+              crossWaveLinkReport.overallCrossWavePercent > 0 ? 'text-amber-400' : 'text-red-400'
+            }`}>
+              {crossWaveLinkReport.overallCrossWavePercent}% cross-wave
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
+            {crossWaveLinkReport.waveCoverages.map(wc => (
+              <div key={wc.waveId} className="bg-gray-900/50 rounded px-3 py-2">
+                <p className="text-[11px] text-gray-400 mb-0.5">Wave {wc.waveNumber}</p>
+                <p className="text-xs text-gray-300">
+                  <span className="font-medium">{wc.crossWaveLinksCount}</span> cross /
+                  <span className="font-medium"> {wc.intraWaveLinksCount}</span> intra
+                </p>
+                <p className={`text-[10px] mt-0.5 ${
+                  wc.coveragePercent >= 80 ? 'text-green-400/70' :
+                  wc.coveragePercent > 0 ? 'text-amber-400/70' : 'text-red-400/70'
+                }`}>
+                  {wc.coveragePercent}% wave coverage
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {crossWaveLinkReport.warnings.length > 0 && (
+            <div className="space-y-1">
+              {crossWaveLinkReport.warnings.map((warning, i) => (
+                <p key={i} className="text-[11px] text-amber-400/80 flex items-start gap-1.5">
+                  <svg className="w-3 h-3 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                  </svg>
+                  {warning}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Approval Gate */}
       {gate && (stepState?.status === 'pending_approval' || stepState?.approval?.status === 'rejected') && (
         <ApprovalGate
@@ -479,6 +547,7 @@ const PipelineBriefsStep: React.FC = () => {
           summaryMetrics={[
             { label: 'Hub Briefs', value: `${generatedHubBriefs}/${hubTopics.length}`, color: generatedHubBriefs > 0 ? 'green' : 'gray' },
             { label: 'Spoke Briefs', value: `${generatedSpokeBriefs}/${spokeTopics.length}`, color: generatedSpokeBriefs > 0 ? 'green' : 'gray' },
+            ...(crossWaveLinkReport ? [{ label: 'Cross-Wave Links', value: `${crossWaveLinkReport.overallCrossWavePercent}%`, color: crossWaveLinkReport.overallCrossWavePercent >= 30 ? 'green' as const : 'amber' as const }] : []),
           ]}
         />
       )}

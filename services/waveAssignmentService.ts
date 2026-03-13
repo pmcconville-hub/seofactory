@@ -34,6 +34,8 @@ interface WaveAssignableTopic {
   cluster_role?: 'pillar' | 'cluster_content';
   parentId?: string;
   metadata?: Record<string, unknown>;
+  page_decision?: string;
+  search_volume?: number;
 }
 
 // ============================================================================
@@ -127,6 +129,9 @@ function assignMonetizationFirst(topics: WaveAssignableTopic[]): Wave[] {
   const defaults = getDefaultWaveDescriptions();
   const weeks = getDefaultWeekRanges();
 
+  // Filter to standalone pages only (sections ride with parent page)
+  const pageTopics = topics.filter(t => !t.page_decision || t.page_decision === 'standalone_page');
+
   // Wave 1: Core topics with monetization class AND pillar role
   const wave1Ids: string[] = [];
   // Wave 2: Core topics with informational class
@@ -140,7 +145,7 @@ function assignMonetizationFirst(topics: WaveAssignableTopic[]): Wave[] {
   const assigned = new Set<string>();
 
   // Pass 1: Wave 1 - monetization pillars
-  for (const topic of topics) {
+  for (const topic of pageTopics) {
     if (
       topic.type === 'core' &&
       topic.topic_class === 'monetization' &&
@@ -152,7 +157,7 @@ function assignMonetizationFirst(topics: WaveAssignableTopic[]): Wave[] {
   }
 
   // Pass 2: Wave 3 - regional pages (before general informational to pull them out)
-  for (const topic of topics) {
+  for (const topic of pageTopics) {
     if (assigned.has(topic.id)) continue;
     if (
       topic.type === 'core' &&
@@ -164,7 +169,7 @@ function assignMonetizationFirst(topics: WaveAssignableTopic[]): Wave[] {
   }
 
   // Pass 3: Wave 2 - core informational topics
-  for (const topic of topics) {
+  for (const topic of pageTopics) {
     if (assigned.has(topic.id)) continue;
     if (
       topic.type === 'core' &&
@@ -176,7 +181,7 @@ function assignMonetizationFirst(topics: WaveAssignableTopic[]): Wave[] {
   }
 
   // Pass 4: Wave 4 - outer topics
-  for (const topic of topics) {
+  for (const topic of pageTopics) {
     if (assigned.has(topic.id)) continue;
     if (topic.type === 'outer') {
       wave4Ids.push(topic.id);
@@ -185,7 +190,7 @@ function assignMonetizationFirst(topics: WaveAssignableTopic[]): Wave[] {
   }
 
   // Remaining core topics without explicit class go to Wave 1 (monetization default)
-  for (const topic of topics) {
+  for (const topic of pageTopics) {
     if (assigned.has(topic.id)) continue;
     if (topic.type === 'core') {
       wave1Ids.push(topic.id);
@@ -194,13 +199,23 @@ function assignMonetizationFirst(topics: WaveAssignableTopic[]): Wave[] {
   }
 
   // Child topics follow their parent's wave or go to Wave 2
-  for (const topic of topics) {
+  for (const topic of pageTopics) {
     if (assigned.has(topic.id)) continue;
     if (topic.type === 'child') {
       wave2Ids.push(topic.id);
       assigned.add(topic.id);
     }
   }
+
+  // Sort each wave by search volume (highest first)
+  const sortByVolume = (ids: string[]) => {
+    const volumeMap = new Map(topics.map(t => [t.id, t.search_volume || 0]));
+    return ids.sort((a, b) => (volumeMap.get(b) || 0) - (volumeMap.get(a) || 0));
+  };
+  sortByVolume(wave1Ids);
+  sortByVolume(wave2Ids);
+  sortByVolume(wave3Ids);
+  sortByVolume(wave4Ids);
 
   return [
     createWave(1, 'Monetization Hubs', defaults[1].description, wave1Ids, weeks[0].start, weeks[0].end),
@@ -220,6 +235,9 @@ function assignMonetizationFirst(topics: WaveAssignableTopic[]): Wave[] {
 function assignAuthorityFirst(topics: WaveAssignableTopic[]): Wave[] {
   const weeks = getDefaultWeekRanges();
 
+  // Filter to standalone pages only (sections ride with parent page)
+  const pageTopics = topics.filter(t => !t.page_decision || t.page_decision === 'standalone_page');
+
   const wave1Ids: string[] = [];
   const wave2Ids: string[] = [];
   const wave3Ids: string[] = [];
@@ -228,7 +246,7 @@ function assignAuthorityFirst(topics: WaveAssignableTopic[]): Wave[] {
   const assigned = new Set<string>();
 
   // Pass 1: Wave 1 - outer pillars (AS knowledge hubs)
-  for (const topic of topics) {
+  for (const topic of pageTopics) {
     if (
       topic.type === 'outer' &&
       topic.cluster_role === 'pillar'
@@ -239,7 +257,7 @@ function assignAuthorityFirst(topics: WaveAssignableTopic[]): Wave[] {
   }
 
   // Pass 2: Wave 2 - remaining outer topics
-  for (const topic of topics) {
+  for (const topic of pageTopics) {
     if (assigned.has(topic.id)) continue;
     if (topic.type === 'outer') {
       wave2Ids.push(topic.id);
@@ -248,7 +266,7 @@ function assignAuthorityFirst(topics: WaveAssignableTopic[]): Wave[] {
   }
 
   // Pass 3: Wave 3 - core informational topics
-  for (const topic of topics) {
+  for (const topic of pageTopics) {
     if (assigned.has(topic.id)) continue;
     if (
       topic.type === 'core' &&
@@ -260,7 +278,7 @@ function assignAuthorityFirst(topics: WaveAssignableTopic[]): Wave[] {
   }
 
   // Pass 4: Wave 4 - core monetization topics
-  for (const topic of topics) {
+  for (const topic of pageTopics) {
     if (assigned.has(topic.id)) continue;
     if (
       topic.type === 'core' &&
@@ -272,7 +290,7 @@ function assignAuthorityFirst(topics: WaveAssignableTopic[]): Wave[] {
   }
 
   // Remaining core topics without explicit class go to Wave 4
-  for (const topic of topics) {
+  for (const topic of pageTopics) {
     if (assigned.has(topic.id)) continue;
     if (topic.type === 'core') {
       wave4Ids.push(topic.id);
@@ -281,13 +299,23 @@ function assignAuthorityFirst(topics: WaveAssignableTopic[]): Wave[] {
   }
 
   // Child topics go to Wave 3 (informational default for authority-first)
-  for (const topic of topics) {
+  for (const topic of pageTopics) {
     if (assigned.has(topic.id)) continue;
     if (topic.type === 'child') {
       wave3Ids.push(topic.id);
       assigned.add(topic.id);
     }
   }
+
+  // Sort each wave by search volume (highest first)
+  const sortByVolume = (ids: string[]) => {
+    const volumeMap = new Map(topics.map(t => [t.id, t.search_volume || 0]));
+    return ids.sort((a, b) => (volumeMap.get(b) || 0) - (volumeMap.get(a) || 0));
+  };
+  sortByVolume(wave1Ids);
+  sortByVolume(wave2Ids);
+  sortByVolume(wave3Ids);
+  sortByVolume(wave4Ids);
 
   return [
     createWave(1, 'Authority Knowledge Hubs', 'Outer pillar pages that establish broad topical authority and attract editorial links.', wave1Ids, weeks[0].start, weeks[0].end),
@@ -331,6 +359,8 @@ export function assignTopicsToWaves(
     cluster_role?: string;
     parentId?: string;
     metadata?: Record<string, unknown>;
+    page_decision?: string;
+    search_volume?: number;
   }>,
   strategy: WaveConfiguration['strategy'] = 'monetization_first'
 ): WaveAssignmentResult {

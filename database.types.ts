@@ -6263,6 +6263,7 @@ export type Database = {
           id: string
           map_type: string | null
           name: string
+          page_inventory: Json | null
           pillars: Json | null
           project_id: string
           seo_pillars: Json | null
@@ -6280,6 +6281,7 @@ export type Database = {
           id?: string
           map_type?: string | null
           name: string
+          page_inventory?: Json | null
           pillars?: Json | null
           project_id: string
           seo_pillars?: Json | null
@@ -6297,6 +6299,7 @@ export type Database = {
           id?: string
           map_type?: string | null
           name?: string
+          page_inventory?: Json | null
           pillars?: Json | null
           project_id?: string
           seo_pillars?: Json | null
@@ -6328,15 +6331,22 @@ export type Database = {
           blueprint: Json | null
           canonical_query: string | null
           cluster_role: string | null
+          competitor_has_dedicated_url: boolean | null
+          competitor_heading_frequency: number | null
+          consolidation_target_id: string | null
           created_at: string | null
           decay_score: number | null
           description: string | null
           display_parent_id: string | null
+          extracted_keyword: string | null
           freshness: string | null
           id: string
           map_id: string
           metadata: Json | null
           optimal_publication_date: string | null
+          page_decision: string | null
+          page_decision_confidence: number | null
+          page_decision_reasoning: string | null
           parent_topic_id: string | null
           planned_publication_date: string | null
           planning_notes: string | null
@@ -6348,6 +6358,8 @@ export type Database = {
           query_network: Json | null
           query_type: string | null
           scheduled_date: string | null
+          search_volume: number | null
+          search_volume_source: string | null
           slug: string | null
           title: string
           topic_class: string | null
@@ -6363,15 +6375,22 @@ export type Database = {
           blueprint?: Json | null
           canonical_query?: string | null
           cluster_role?: string | null
+          competitor_has_dedicated_url?: boolean | null
+          competitor_heading_frequency?: number | null
+          consolidation_target_id?: string | null
           created_at?: string | null
           decay_score?: number | null
           description?: string | null
           display_parent_id?: string | null
+          extracted_keyword?: string | null
           freshness?: string | null
           id?: string
           map_id: string
           metadata?: Json | null
           optimal_publication_date?: string | null
+          page_decision?: string | null
+          page_decision_confidence?: number | null
+          page_decision_reasoning?: string | null
           parent_topic_id?: string | null
           planned_publication_date?: string | null
           planning_notes?: string | null
@@ -6383,6 +6402,8 @@ export type Database = {
           query_network?: Json | null
           query_type?: string | null
           scheduled_date?: string | null
+          search_volume?: number | null
+          search_volume_source?: string | null
           slug?: string | null
           title: string
           topic_class?: string | null
@@ -6398,15 +6419,22 @@ export type Database = {
           blueprint?: Json | null
           canonical_query?: string | null
           cluster_role?: string | null
+          competitor_has_dedicated_url?: boolean | null
+          competitor_heading_frequency?: number | null
+          consolidation_target_id?: string | null
           created_at?: string | null
           decay_score?: number | null
           description?: string | null
           display_parent_id?: string | null
+          extracted_keyword?: string | null
           freshness?: string | null
           id?: string
           map_id?: string
           metadata?: Json | null
           optimal_publication_date?: string | null
+          page_decision?: string | null
+          page_decision_confidence?: number | null
+          page_decision_reasoning?: string | null
           parent_topic_id?: string | null
           planned_publication_date?: string | null
           planning_notes?: string | null
@@ -6418,6 +6446,8 @@ export type Database = {
           query_network?: Json | null
           query_type?: string | null
           scheduled_date?: string | null
+          search_volume?: number | null
+          search_volume_source?: string | null
           slug?: string | null
           title?: string
           topic_class?: string | null

@@ -893,6 +893,35 @@ const PipelineContentStep: React.FC = () => {
         </div>
       )}
 
+      {/* Brief completion gate — warn when waves have less than 80% briefs */}
+      {topics.length > 0 && totalWithBriefs > 0 && (() => {
+        const missingBriefWaves = waveProgress.filter(wave => {
+          const waveTopicsList = wave.waveTopics;
+          if (waveTopicsList.length === 0) return false;
+          const briefedCount = waveTopicsList.filter(t => t.hasBrief).length;
+          return briefedCount < waveTopicsList.length * 0.8;
+        });
+        if (missingBriefWaves.length === 0) return null;
+        return (
+          <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-4">
+            <h3 className="font-medium text-yellow-300 text-sm">Brief Completion Required</h3>
+            <p className="text-xs text-yellow-400/80 mt-1">
+              Generate briefs for all waves before starting content generation.
+            </p>
+            <ul className="mt-2 space-y-1">
+              {missingBriefWaves.map(wave => {
+                const briefed = wave.waveTopics.filter(t => t.hasBrief).length;
+                return (
+                  <li key={wave.number} className="text-xs text-yellow-400/70">
+                    Wave {wave.number}: {briefed}/{wave.waveTopics.length} topics briefed
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })()}
+
       {/* Error */}
       {error && (
         <div className="bg-red-900/20 border border-red-700 rounded-lg p-4">

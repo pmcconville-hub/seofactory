@@ -1,6 +1,6 @@
 
 // services/ai/mapGeneration.ts
-import { BusinessInfo, CandidateEntity, SourceContextOption, SEOPillars, SemanticTriple, EnrichedTopic, KnowledgeGraph, ExpansionMode, TopicViabilityResult, TopicBlueprint, WebsiteType } from '../../types';
+import { BusinessInfo, CandidateEntity, SourceContextOption, SEOPillars, SemanticTriple, EnrichedTopic, KnowledgeGraph, ExpansionMode, TopicViabilityResult, TopicBlueprint, WebsiteType, PageInventory } from '../../types';
 import * as geminiService from '../geminiService';
 import * as openAiService from '../openAiService';
 import * as anthropicService from '../anthropicService';
@@ -687,4 +687,56 @@ export const evaluateQueryDecisions = (
     queries: QDPSignals[]
 ): Map<string, QDPResult> => {
     return QueryDeservesPage.evaluateBatch(queries);
+};
+
+/**
+ * Generate topical map with full topic research enrichment.
+ * Wraps generateInitialTopicalMap + topic research orchestrator + page inventory builder.
+ */
+export const generateEnrichedTopicalMap = async (
+    businessInfo: BusinessInfo,
+    pillars: SEOPillars,
+    eavs: SemanticTriple[],
+    competitors: string[],
+    dispatch: React.Dispatch<any>,
+    serpIntel?: import('../../config/prompts').SerpIntelligenceForMap,
+    services?: import('../../utils/eavUtils').ServiceWithPage[]
+): Promise<{
+    coreTopics: EnrichedTopic[],
+    outerTopics: EnrichedTopic[],
+    pageInventory: PageInventory
+}> => {
+    // Step 1-3: Existing map generation with cluster roles and hub-spoke correction
+    const { coreTopics, outerTopics } = await generateInitialTopicalMap(
+        businessInfo, pillars, eavs, competitors, dispatch, serpIntel, services
+    );
+
+    // Step 4: Topic research enrichment (keywords, volumes, page decisions)
+    const { enrichTopics } = await import('./topicResearchOrchestrator');
+    const allTopics = [...coreTopics, ...outerTopics];
+    const enrichedAll = await enrichTopics(allTopics, businessInfo, dispatch);
+
+    // Split back into core/outer
+    const coreIds = new Set(coreTopics.map(t => t.id));
+    const enrichedCore = enrichedAll.filter(t => coreIds.has(t.id));
+    const enrichedOuter = enrichedAll.filter(t => !coreIds.has(t.id));
+
+    // Step 5: Build page inventory
+    const { buildPageInventory } = await import('./pageInventoryBuilder');
+    const pageInventory = buildPageInventory(
+        enrichedAll,
+        businessInfo.researchDepth || 'ai_guess'
+    );
+
+    dispatch({
+        type: 'LOG_EVENT',
+        payload: {
+            service: 'MapGeneration',
+            message: `Page inventory built: ${pageInventory.totalPages} pages from ${pageInventory.totalTopics} topics (${pageInventory.consolidationRatio}x consolidation)`,
+            status: 'success',
+            timestamp: Date.now()
+        }
+    });
+
+    return { coreTopics: enrichedCore, outerTopics: enrichedOuter, pageInventory };
 };

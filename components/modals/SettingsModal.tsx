@@ -246,6 +246,14 @@ const ServiceSettings: React.FC<{ settings: Partial<BusinessInfo>, handleChange:
         <h3 className="text-lg font-semibold text-purple-400 pt-4 border-t border-gray-700">SERP & Crawling</h3>
         <p className="text-sm text-gray-400 -mt-3">SERP data retrieval and web page crawling for audits and analysis.</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="md:col-span-2">
+                <Label htmlFor="researchDepth">Topic Research Depth</Label>
+                <Select id="researchDepth" name="researchDepth" value={settings.researchDepth || 'ai_guess'} onChange={(e) => setSettings(prev => ({ ...prev, researchDepth: e.target.value as 'ai_guess' | 'full_api' }))}>
+                    <option value="ai_guess">AI Educated Guess (free, fast)</option>
+                    <option value="full_api">Full API Research (DataForSEO + competitor scraping)</option>
+                </Select>
+                <p className="text-xs text-gray-500 mt-1">Controls how topic search volumes and page decisions are determined during map generation.</p>
+            </div>
             <div>
                 <Label htmlFor="dataforseoLogin">DataForSEO Login</Label>
                 <Input id="dataforseoLogin" name="dataforseoLogin" value={settings.dataforseoLogin || ''} onChange={handleChange} placeholder="user@example.com" />

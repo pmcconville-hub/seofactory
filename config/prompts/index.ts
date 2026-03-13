@@ -176,3 +176,13 @@ export {
   PASS_6_DISCOURSE_PROMPT,
   PASS_7_INTRO_SYNTHESIS_PROMPT,
 } from './multiPass';
+
+// Keyword extraction and volume estimation
+export {
+  KEYWORD_EXTRACTION_PROMPT,
+} from './keywordExtraction';
+
+export {
+  VOLUME_ESTIMATION_PROMPT,
+  type VolumeEstimationInput,
+} from './volumeEstimation';

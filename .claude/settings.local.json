@@ -392,7 +392,13 @@
       "Bash(perl:*)",
       "Bash(xxd:*)",
       "Bash(node:*)",
-      "Bash(npm list:*)"
+      "Bash(npm list:*)",
+      "Bash(BASE_URL=http://localhost:3002 npx playwright test:*)",
+      "WebFetch(domain:docs.crawl4ai.com)",
+      "WebFetch(domain:crawl4ai.com)",
+      "Bash(git:*)",
+      "Bash(cp:*)",
+      "Read(//c/Users/Dhr. Koeleman/.claude/**)"
     ],
     "deny": [],
     "ask": []
