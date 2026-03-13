@@ -1851,6 +1851,45 @@ const PipelineMapStep: React.FC = () => {
     });
   }, [mapQualityFindings]);
 
+  // Action handlers — defined before actionableFindings useMemo that references them
+  const handleMergeFinding = useCallback((finding: PreAnalysisFinding) => {
+    // Merge first two affected items — keep the first, remove the second
+    // affectedItems contains topic IDs (not titles)
+    const items = finding.affectedItems || [];
+    if (items.length < 2) return;
+    const removeId = items[1];
+    const removeTarget = allTopics.find(t => t.id === removeId || t.title === removeId);
+    if (removeTarget) {
+      setGeneratedCore(prev => prev.filter(t => t.id !== removeTarget.id));
+      setGeneratedOuter(prev => prev.filter(t => t.id !== removeTarget.id && t.parent_topic_id !== removeTarget.id));
+      // Recalculate health after merge by dismissing this finding
+      const findingIdx = (mapQualityFindings || []).findIndex(f => f === finding);
+      if (findingIdx >= 0) handleDismissFinding(findingIdx);
+    }
+  }, [allTopics, mapQualityFindings, handleDismissFinding]);
+
+  const handleConsolidateFinding = useCallback((finding: PreAnalysisFinding) => {
+    const items = finding.affectedItems || [];
+    if (items.length === 0) return;
+    const target = allTopics.find(t => t.id === items[0] || t.title === items[0]);
+    if (target) {
+      handleDemoteTopic(target.id);
+    }
+  }, [allTopics, handleDemoteTopic]);
+
+  const handleRemoveFinding = useCallback((finding: PreAnalysisFinding) => {
+    const items = finding.affectedItems || [];
+    if (items.length === 0) return;
+    const target = allTopics.find(t => t.id === items[0] || t.title === items[0]);
+    if (target) {
+      setGeneratedCore(prev => prev.filter(t => t.id !== target.id));
+      setGeneratedOuter(prev => prev.filter(t => t.id !== target.id && t.parent_topic_id !== target.id));
+      // Recalculate health after removal
+      const findingIdx = (mapQualityFindings || []).findIndex(f => f === finding);
+      if (findingIdx >= 0) handleDismissFinding(findingIdx);
+    }
+  }, [allTopics, mapQualityFindings, handleDismissFinding]);
+
   // Convert pre-analysis findings to actionable findings format
   const actionableFindings: ActionableFinding[] = useMemo(() => {
     return (mapQualityFindings || [])
@@ -1896,38 +1935,7 @@ const PipelineMapStep: React.FC = () => {
         actions,
       };
     });
-  }, [mapQualityFindings, dismissedFindings, handleDismissFinding]);
-
-  const handleMergeFinding = useCallback((finding: PreAnalysisFinding) => {
-    // Merge first two affected items — keep the first, remove the second
-    const items = finding.affectedItems || [];
-    if (items.length < 2) return;
-    const removeTitle = items[1];
-    const removeTarget = allTopics.find(t => t.title === removeTitle);
-    if (removeTarget) {
-      setGeneratedCore(prev => prev.filter(t => t.id !== removeTarget.id));
-      setGeneratedOuter(prev => prev.filter(t => t.id !== removeTarget.id && t.parent_topic_id !== removeTarget.id));
-    }
-  }, [allTopics]);
-
-  const handleConsolidateFinding = useCallback((finding: PreAnalysisFinding) => {
-    const items = finding.affectedItems || [];
-    if (items.length === 0) return;
-    const target = allTopics.find(t => t.title === items[0]);
-    if (target) {
-      handleDemoteTopic(target.id);
-    }
-  }, [allTopics, handleDemoteTopic]);
-
-  const handleRemoveFinding = useCallback((finding: PreAnalysisFinding) => {
-    const items = finding.affectedItems || [];
-    if (items.length === 0) return;
-    const target = allTopics.find(t => t.title === items[0]);
-    if (target) {
-      setGeneratedCore(prev => prev.filter(t => t.id !== target.id));
-      setGeneratedOuter(prev => prev.filter(t => t.id !== target.id && t.parent_topic_id !== target.id));
-    }
-  }, [allTopics]);
+  }, [mapQualityFindings, dismissedFindings, handleDismissFinding, handleMergeFinding, handleConsolidateFinding, handleRemoveFinding]);
 
   return (
     <div className="space-y-8">

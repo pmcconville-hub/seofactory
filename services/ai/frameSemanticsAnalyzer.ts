@@ -10,6 +10,8 @@
  * A semantic frame represents a structured situation or event with
  * defined roles (frame elements). For SEO, ensuring all relevant
  * frames are covered means comprehensive topical authority.
+ *
+ * Supports multilingual topic matching via translated keyword synonyms.
  */
 
 export interface SemanticFrame {
@@ -52,6 +54,91 @@ export interface FrameAnalysisReport {
   /** Suggested topics for uncovered frames */
   suggestions: string[];
 }
+
+/**
+ * Multilingual keywords per frame element for matching topic titles.
+ * Maps each core/peripheral element to additional match keywords across languages.
+ * Covers: EN, NL, DE, FR, ES (the supported content languages).
+ */
+const MULTILINGUAL_KEYWORDS: Record<string, string[]> = {
+  // Definition frame
+  'entity': ['entiteit', 'entité', 'entidad', 'was ist', 'wat is', 'qu\'est', 'qué es', 'definitie', 'definition', 'definición'],
+  'category': ['categorie', 'kategorie', 'catégorie', 'categoría', 'soort', 'type', 'tipo', 'art'],
+  'distinguishing features': ['kenmerken', 'eigenschappen', 'merkmale', 'caractéristiques', 'características', 'features'],
+  'history': ['geschiedenis', 'historie', 'historisch', 'histoire', 'historia', 'geschicht'],
+  'etymology': ['etymologie', 'herkomst', 'oorsprong', 'etymología', 'étymologie'],
+  'alternative names': ['andere namen', 'synoniemen', 'andere bezeichnungen', 'noms alternatifs', 'sinónimos'],
+
+  // Components frame
+  'parts': ['onderdelen', 'delen', 'componenten', 'bestanddelen', 'teile', 'bestandteile', 'parties', 'composants', 'partes', 'componentes'],
+  'relationships between parts': ['relaties', 'samenhang', 'structuur', 'beziehungen', 'struktur', 'relations', 'estructura'],
+  'hierarchy': ['hiërarchie', 'hierarchie', 'hiérarchie', 'jerarquía', 'opbouw', 'aufbau'],
+  'optional components': ['optioneel', 'optionale', 'optionnel', 'opcional', 'toebehoren', 'zubehör', 'accessoires'],
+  'variations': ['variaties', 'varianten', 'variationen', 'variations', 'variaciones', 'soorten', 'types', 'arten'],
+
+  // Process frame
+  'steps': ['stappen', 'stappenplan', 'schritte', 'étapes', 'pasos', 'werkwijze', 'aanpak', 'procedure', 'verfahren'],
+  'agent': ['uitvoerder', 'specialist', 'vakman', 'bedrijf', 'akteur', 'agent', 'agente', 'professional'],
+  'goal': ['doel', 'resultaat', 'ziel', 'ergebnis', 'objectif', 'but', 'objetivo', 'resultado'],
+  'tools': ['gereedschap', 'hulpmiddelen', 'werkzeuge', 'outils', 'herramientas', 'materiaal', 'benodigdheden'],
+  'duration': ['duur', 'tijdsduur', 'looptijd', 'dauer', 'zeitraum', 'durée', 'duración', 'termijn'],
+  'prerequisites': ['vereisten', 'voorwaarden', 'voraussetzungen', 'prérequis', 'requisitos', 'benodigdheden'],
+  'outcomes': ['resultaten', 'uitkomsten', 'ergebnisse', 'résultats', 'resultados', 'opbrengst'],
+
+  // Comparison frame
+  'alternative': ['alternatief', 'alternatieven', 'alternative', 'alternativa', 'vergelijking', 'vergleich', 'comparaison', 'comparación', 'versus'],
+  'differentiators': ['verschil', 'verschillen', 'onderscheid', 'unterschiede', 'différences', 'diferencias'],
+  'use cases': ['toepassingen', 'gebruikssituaties', 'anwendungsfälle', 'cas d\'utilisation', 'casos de uso'],
+  'trade-offs': ['afwegingen', 'voor en nadelen', 'kompromisse', 'compromis', 'compensaciones'],
+  'scenarios': ['scenario', 'situatie', 'szenarien', 'scénarios', 'escenarios'],
+
+  // Benefits frame
+  'benefit': ['voordeel', 'voordelen', 'vorteil', 'vorteile', 'avantage', 'avantages', 'ventaja', 'ventajas', 'baat'],
+  'beneficiary': ['begunstigde', 'gebruiker', 'nutznießer', 'bénéficiaire', 'beneficiario'],
+  'mechanism': ['mechanisme', 'werking', 'mechanismus', 'mécanisme', 'mecanismo'],
+  'evidence': ['bewijs', 'onderbouwing', 'nachweis', 'preuve', 'evidencia'],
+  'quantification': ['kwantificering', 'cijfers', 'quantifizierung', 'quantification', 'cuantificación'],
+  'conditions': ['voorwaarden', 'condities', 'bedingungen', 'conditions', 'condiciones'],
+
+  // Risks frame
+  'risk': ['risico', 'risico\'s', 'gevaar', 'gevaren', 'risiko', 'risiken', 'risque', 'risques', 'riesgo', 'riesgos', 'nadeel', 'nadelen'],
+  'affected party': ['betrokkene', 'getroffen', 'betroffene', 'partie affectée', 'parte afectada'],
+  'likelihood': ['waarschijnlijkheid', 'kans', 'wahrscheinlichkeit', 'probabilité', 'probabilidad'],
+  'mitigation': ['beperking', 'mitigatie', 'maatregelen', 'minderung', 'atténuation', 'mitigación'],
+  'severity': ['ernst', 'schwere', 'gravité', 'gravedad', 'impact'],
+  'prevention': ['preventie', 'voorkomen', 'prävention', 'verhütung', 'prévention', 'prevención'],
+
+  // Cost frame
+  'price': ['prijs', 'kosten', 'tarief', 'tarieven', 'preis', 'kosten', 'prix', 'coût', 'precio', 'coste', 'kost'],
+  'currency': ['valuta', 'währung', 'devise', 'moneda', 'euro', 'dollar'],
+  'what is included': ['inbegrepen', 'inclusief', 'enthalten', 'inclus', 'incluido', 'pakket'],
+  'discounts': ['korting', 'kortingen', 'rabatt', 'rabatte', 'réductions', 'descuentos'],
+  'alternatives': ['alternatieven', 'alternativen', 'alternatives', 'alternativas'],
+  'ROI': ['rendement', 'opbrengst', 'rendite', 'retour', 'retorno', 'besparing'],
+  'payment options': ['betaalmogelijkheden', 'betaling', 'zahlungsoptionen', 'options de paiement', 'opciones de pago'],
+
+  // Evaluation frame
+  'criteria': ['criteria', 'maatstaven', 'kriterien', 'critères', 'criterios', 'eisen'],
+  'measurement': ['meting', 'beoordeling', 'messung', 'bewertung', 'mesure', 'évaluation', 'medición', 'evaluación'],
+  'standards': ['normen', 'standaarden', 'standards', 'normas', 'kwaliteitseisen', 'richtlijnen'],
+  'best practices': ['best practices', 'richtlijnen', 'bewährte praktiken', 'meilleures pratiques', 'mejores prácticas', 'tips'],
+  'benchmarks': ['benchmarks', 'referentie', 'referenzwerte', 'repères', 'puntos de referencia'],
+
+  // Troubleshooting frame
+  'problem': ['probleem', 'problemen', 'fout', 'storing', 'problem', 'fehler', 'problème', 'problèmes', 'problema', 'problemas'],
+  'cause': ['oorzaak', 'oorzaken', 'ursache', 'ursachen', 'cause', 'causes', 'causa', 'causas', 'reden'],
+  'solution': ['oplossing', 'oplossingen', 'lösung', 'lösungen', 'solution', 'solutions', 'solución', 'soluciones'],
+  'when to seek help': ['wanneer hulp', 'hulp inschakelen', 'wann hilfe', 'quand demander', 'cuándo buscar'],
+  'tools needed': ['benodigdheden', 'benodigd', 'werkzeuge', 'outils nécessaires', 'herramientas necesarias'],
+
+  // Future frame
+  'trend': ['trend', 'trends', 'ontwikkeling', 'ontwikkelingen', 'tendenz', 'tendenzen', 'tendance', 'tendances', 'tendencia', 'tendencias'],
+  'timeline': ['tijdlijn', 'planning', 'zeitplan', 'chronologie', 'línea de tiempo', 'kalender'],
+  'impact': ['impact', 'invloed', 'gevolgen', 'auswirkung', 'auswirkungen', 'effet', 'impacto'],
+  'predictions': ['voorspellingen', 'prognose', 'vorhersagen', 'prognosen', 'prédictions', 'predicciones'],
+  'emerging technologies': ['nieuwe technologieën', 'innovatie', 'neue technologien', 'technologies émergentes', 'tecnologías emergentes'],
+  'preparation': ['voorbereiding', 'vorbereitung', 'préparation', 'preparación'],
+};
 
 /**
  * Generic semantic frames applicable to many domains.
@@ -120,10 +207,33 @@ const GENERIC_FRAMES: SemanticFrame[] = [
   },
 ];
 
+/**
+ * Check if a topic title matches a frame element, using both the English
+ * element words and multilingual synonyms.
+ */
+function elementMatchesTopic(element: string, topicsLower: string[]): boolean {
+  // 1. English keyword match (original logic)
+  const elementWords = element.toLowerCase().split(/\s+/);
+  const englishMatch = topicsLower.some(topic =>
+    elementWords.some(word => word.length > 3 && topic.includes(word))
+  );
+  if (englishMatch) return true;
+
+  // 2. Multilingual synonym match
+  const synonyms = MULTILINGUAL_KEYWORDS[element.toLowerCase()];
+  if (synonyms) {
+    return topicsLower.some(topic =>
+      synonyms.some(synonym => topic.includes(synonym.toLowerCase()))
+    );
+  }
+
+  return false;
+}
+
 export class FrameSemanticsAnalyzer {
   /**
    * Analyze frame coverage for a set of topics.
-   * Topics are matched against frame elements using keyword matching.
+   * Topics are matched against frame elements using multilingual keyword matching.
    */
   static analyze(
     topics: string[],
@@ -142,23 +252,20 @@ export class FrameSemanticsAnalyzer {
       const missingCore: string[] = [];
       const coveredPeripheral: string[] = [];
 
-      // Check core elements
+      // Check core elements (multilingual)
       for (const element of frame.coreElements) {
-        const elementWords = element.toLowerCase().split(/\s+/);
-        const isCovered = topicsLower.some(topic =>
-          elementWords.some(word => word.length > 3 && topic.includes(word))
-        );
-        if (isCovered) coveredCore.push(element);
-        else missingCore.push(element);
+        if (elementMatchesTopic(element, topicsLower)) {
+          coveredCore.push(element);
+        } else {
+          missingCore.push(element);
+        }
       }
 
-      // Check peripheral elements
+      // Check peripheral elements (multilingual)
       for (const element of frame.peripheralElements) {
-        const elementWords = element.toLowerCase().split(/\s+/);
-        const isCovered = topicsLower.some(topic =>
-          elementWords.some(word => word.length > 3 && topic.includes(word))
-        );
-        if (isCovered) coveredPeripheral.push(element);
+        if (elementMatchesTopic(element, topicsLower)) {
+          coveredPeripheral.push(element);
+        }
       }
 
       // Calculate coverage
