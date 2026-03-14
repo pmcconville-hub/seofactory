@@ -20,6 +20,14 @@ import { PageInventoryView } from '../../pipeline/PageInventoryView';
 import { ActionableFindingsPanel, type ActionableFinding, type FindingAction } from '../../pipeline/ActionableFindingsPanel';
 import type { PageInventory } from '../../../types';
 
+// ──── Finding key for stable dismiss tracking ────
+
+/** Generate a stable key for a finding so dismissals survive re-check */
+function findingKey(f: PreAnalysisFinding): string {
+  const items = (f.affectedItems || []).slice(0, 3).join(',');
+  return `${f.category}::${f.title}::${items}`;
+}
+
 // ──── Ensure existing service pages are pillar topics ────
 
 /**
@@ -1248,7 +1256,7 @@ const PipelineMapStep: React.FC = () => {
   const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [mapQualityFindings, setMapQualityFindings] = useState<PreAnalysisFinding[]>([]);
   const [mapHealthScore, setMapHealthScore] = useState<number | null>(null);
-  const [dismissedFindings, setDismissedFindings] = useState<Set<number>>(new Set());
+  const [dismissedFindings, setDismissedFindings] = useState<Set<string>>(new Set());
   const [pageInventory, setPageInventory] = useState<PageInventory | null>(
     (activeMap?.page_inventory as PageInventory | undefined) ?? null
   );
@@ -1933,22 +1941,33 @@ const PipelineMapStep: React.FC = () => {
       effectiveBusinessInfo
     );
     setMapQualityFindings(analysis.findings);
-    setMapHealthScore(analysis.healthScore);
-    setDismissedFindings(new Set());
+    // Prune dismissed keys that no longer match any finding, keep still-relevant dismissals
+    const newKeys = new Set(analysis.findings.map(findingKey));
+    setDismissedFindings(prev => {
+      const pruned = new Set<string>();
+      for (const key of prev) {
+        if (newKeys.has(key)) pruned.add(key);
+      }
+      // Recalculate health score excluding still-dismissed findings
+      const activeFindings = analysis.findings.filter(f => !pruned.has(findingKey(f)));
+      setMapHealthScore(activeFindings.length > 0 ? calculateHealthScore(activeFindings) : 100);
+      return pruned;
+    });
     setActionFeedback({
-      message: `Health re-checked: ${analysis.healthScore}% (${analysis.findings.length} findings)`,
+      message: `Health re-checked: ${analysis.findings.length} findings analyzed`,
       type: analysis.healthScore >= 80 ? 'success' : 'info',
     });
     setTimeout(() => setActionFeedback(null), 6000);
   }, [coreTopics, outerTopics, activeMap?.eavs, confirmedServices, effectiveBusinessInfo]);
 
   // Dismiss a finding and recalculate health score
-  const handleDismissFinding = useCallback((findingIndex: number) => {
+  const handleDismissFinding = useCallback((finding: PreAnalysisFinding) => {
+    const key = findingKey(finding);
     setDismissedFindings(prev => {
       const next = new Set(prev);
-      next.add(findingIndex);
+      next.add(key);
       // Recalculate health score from remaining findings
-      const activeFindings = (mapQualityFindings || []).filter((_, idx) => !next.has(idx));
+      const activeFindings = (mapQualityFindings || []).filter(f => !next.has(findingKey(f)));
       setMapHealthScore(activeFindings.length > 0 ? calculateHealthScore(activeFindings) : 100);
       return next;
     });
@@ -1984,12 +2003,11 @@ const PipelineMapStep: React.FC = () => {
     if (removeTarget) {
       removeTopic(removeTarget.id);
       // Dismiss this finding and recalculate health
-      const findingIdx = (mapQualityFindings || []).findIndex(f => f === finding);
-      if (findingIdx >= 0) handleDismissFinding(findingIdx);
+      handleDismissFinding(finding);
       setActionFeedback({ message: `Merged: kept "${keepTarget?.title || items[0]}", removed "${removeTarget.title}"`, type: 'success' });
       setTimeout(() => setActionFeedback(null), 6000);
     }
-  }, [allTopics, removeTopic, mapQualityFindings, handleDismissFinding]);
+  }, [allTopics, removeTopic, handleDismissFinding]);
 
   const handleConsolidateFinding = useCallback((finding: PreAnalysisFinding) => {
     const items = finding.affectedItems || [];
@@ -2007,12 +2025,11 @@ const PipelineMapStep: React.FC = () => {
     if (target) {
       removeTopic(target.id);
       // Dismiss this finding and recalculate health
-      const findingIdx = (mapQualityFindings || []).findIndex(f => f === finding);
-      if (findingIdx >= 0) handleDismissFinding(findingIdx);
+      handleDismissFinding(finding);
       setActionFeedback({ message: `Removed "${target.title}" from the map`, type: 'success' });
       setTimeout(() => setActionFeedback(null), 6000);
     }
-  }, [allTopics, removeTopic, mapQualityFindings, handleDismissFinding]);
+  }, [allTopics, removeTopic, handleDismissFinding]);
 
   // Add hub topics for uncovered business services (with spokes via AI)
   const handleAddServiceHubs = useCallback(async (finding: PreAnalysisFinding) => {
@@ -2084,8 +2101,7 @@ const PipelineMapStep: React.FC = () => {
       }
 
       // Dismiss finding and recalculate
-      const findingIdx = (mapQualityFindings || []).findIndex(f => f === finding);
-      if (findingIdx >= 0) handleDismissFinding(findingIdx);
+      handleDismissFinding(finding);
     } catch (err) {
       console.error('[PipelineMap] handleAddServiceHubs failed:', err);
       setActionFeedback({ message: `Failed to generate hub topics: ${err instanceof Error ? err.message : 'Unknown error'}`, type: 'error' });
@@ -2093,7 +2109,7 @@ const PipelineMapStep: React.FC = () => {
       setIsProcessingAction(false);
       setTimeout(() => setActionFeedback(null), 8000);
     }
-  }, [allTopics, state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, dispatch, mapQualityFindings, handleDismissFinding, persistNewTopics]);
+  }, [allTopics, state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, dispatch, handleDismissFinding, persistNewTopics]);
 
   // Fix missing semantic frame — generate topics to cover uncovered frame elements
   const handleFixMissingFrame = useCallback(async (finding: PreAnalysisFinding) => {
@@ -2139,8 +2155,7 @@ const PipelineMapStep: React.FC = () => {
       await persistNewTopics([hub, ...spokes]);
 
       // Dismiss finding
-      const findingIdx = (mapQualityFindings || []).findIndex(f => f === finding);
-      if (findingIdx >= 0) handleDismissFinding(findingIdx);
+      handleDismissFinding(finding);
 
       setActionFeedback({
         message: `Added hub "${hub.title}" + ${spokes.length} spokes covering the ${frameName} frame`,
@@ -2156,14 +2171,13 @@ const PipelineMapStep: React.FC = () => {
       setIsProcessingAction(false);
       setTimeout(() => setActionFeedback(null), 8000);
     }
-  }, [allTopics, state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, dispatch, mapQualityFindings, handleDismissFinding, persistNewTopics]);
+  }, [allTopics, state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, dispatch, handleDismissFinding, persistNewTopics]);
 
   // Convert pre-analysis findings to actionable findings format
   const actionableFindings: ActionableFinding[] = useMemo(() => {
     return (mapQualityFindings || [])
-      .map((f, idx) => ({ f, idx }))
-      .filter(({ idx }) => !dismissedFindings.has(idx))
-      .map(({ f, idx }) => {
+      .filter(f => !dismissedFindings.has(findingKey(f)))
+      .map(f => {
       const actions: FindingAction[] = [];
       switch (f.category) {
         case 'title_cannibalization':
@@ -2184,10 +2198,10 @@ const PipelineMapStep: React.FC = () => {
             loading: isProcessingAction,
             disabled: isProcessingAction,
           });
-          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(idx), disabled: isProcessingAction });
+          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(f), disabled: isProcessingAction });
           break;
         case 'depth_imbalance':
-          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(idx) });
+          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(f) });
           break;
         case 'service_gap':
           actions.push({
@@ -2197,7 +2211,7 @@ const PipelineMapStep: React.FC = () => {
             loading: isProcessingAction,
             disabled: isProcessingAction,
           });
-          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(idx), disabled: isProcessingAction });
+          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(f), disabled: isProcessingAction });
           break;
         case 'eav_inconsistency':
         case 'eav_category_gap':
@@ -2205,7 +2219,7 @@ const PipelineMapStep: React.FC = () => {
         case 'ce_ambiguity':
         case 'sc_specificity':
         case 'csi_coverage':
-          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(idx) });
+          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(f) });
           break;
       }
       return {
