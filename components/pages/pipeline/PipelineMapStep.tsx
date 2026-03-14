@@ -2004,7 +2004,7 @@ const PipelineMapStep: React.FC = () => {
       removeTopic(removeTarget.id);
       // Dismiss this finding and recalculate health
       handleDismissFinding(finding);
-      setActionFeedback({ message: `Merged: kept "${keepTarget?.title || items[0]}", removed "${removeTarget.title}"`, type: 'success' });
+      setActionFeedback({ message: `Merged: kept "${keepTarget?.title || items[0]}", removed "${removeTarget.title}" — saved`, type: 'success' });
       setTimeout(() => setActionFeedback(null), 6000);
     }
   }, [allTopics, removeTopic, handleDismissFinding]);
@@ -2026,7 +2026,7 @@ const PipelineMapStep: React.FC = () => {
       removeTopic(target.id);
       // Dismiss this finding and recalculate health
       handleDismissFinding(finding);
-      setActionFeedback({ message: `Removed "${target.title}" from the map`, type: 'success' });
+      setActionFeedback({ message: `Removed "${target.title}" from the map — saved`, type: 'success' });
       setTimeout(() => setActionFeedback(null), 6000);
     }
   }, [allTopics, removeTopic, handleDismissFinding]);
@@ -2097,7 +2097,7 @@ const PipelineMapStep: React.FC = () => {
         dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: state.activeMapId!, topics: updatedAll } });
         await persistNewTopics(newTopics);
 
-        setActionFeedback({ message: `Added ${newTopics.length} hub topics for ${services.join(', ')}`, type: 'success' });
+        setActionFeedback({ message: `Added ${newTopics.length} hub topics for ${services.join(', ')} — saved`, type: 'success' });
       }
 
       // Dismiss finding and recalculate
@@ -2158,7 +2158,7 @@ const PipelineMapStep: React.FC = () => {
       handleDismissFinding(finding);
 
       setActionFeedback({
-        message: `Added hub "${hub.title}" + ${spokes.length} spokes covering the ${frameName} frame`,
+        message: `Added hub "${hub.title}" + ${spokes.length} spokes covering the ${frameName} frame — saved`,
         type: 'success',
       });
     } catch (err) {
@@ -2523,6 +2523,46 @@ const PipelineMapStep: React.FC = () => {
             { label: 'Map Health', value: mapHealthScore !== null ? `${mapHealthScore}%` : '--', color: mapHealthScore !== null ? (mapHealthScore >= 80 ? 'green' : mapHealthScore >= 60 ? 'amber' : 'red') : 'gray' },
           ]}
         />
+      )}
+
+      {/* Continue button — shown when step is already approved or all findings resolved */}
+      {totalTopics > 0 && stepState?.status !== 'pending_approval' && stepState?.approval?.status !== 'rejected' && !isGenerating && (
+        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {mapHealthScore !== null && mapHealthScore >= 80 ? (
+                <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              )}
+              <div>
+                <p className="text-sm text-gray-200">
+                  {mapHealthScore !== null && mapHealthScore >= 80
+                    ? `Content plan ready — ${totalTopics} pages across ${clusterCount} hubs`
+                    : `${totalTopics} pages planned across ${clusterCount} hubs`}
+                </p>
+                {mapHealthScore !== null && actionableFindings.length > 0 && (
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {actionableFindings.length} finding{actionableFindings.length !== 1 ? 's' : ''} remaining — you can fix them or continue
+                  </p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => advanceStep('map_planning')}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2"
+            >
+              Continue to Content Briefs
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
