@@ -63,6 +63,11 @@ export const ActionableFindingsPanel: React.FC<ActionableFindingsPanelProps> = (
                   <span className="text-xs font-bold text-gray-500 uppercase">
                     {finding.severity}
                   </span>
+                  {finding.actions.some(a => a.variant === 'primary' || a.variant === 'danger') ? (
+                    <span className="text-[9px] bg-blue-600/20 text-blue-300 border border-blue-500/30 rounded px-1 py-0.5">Fixable</span>
+                  ) : (
+                    <span className="text-[9px] bg-gray-600/20 text-gray-400 border border-gray-500/30 rounded px-1 py-0.5">Review</span>
+                  )}
                   <span className="text-sm font-medium text-gray-900 dark:text-white">
                     {finding.title}
                   </span>
@@ -78,6 +83,7 @@ export const ActionableFindingsPanel: React.FC<ActionableFindingsPanelProps> = (
                       key={actionIdx}
                       onClick={action.onClick}
                       disabled={action.disabled || action.loading}
+                      title={action.label === 'Not Applicable' ? 'Mark as not relevant to your situation — removes from health score' : undefined}
                       className={`px-2.5 py-1 text-xs font-medium rounded ${ACTION_STYLES[action.variant] || ACTION_STYLES.secondary} ${
                         (action.disabled || action.loading) ? 'opacity-50 cursor-not-allowed' : ''
                       }`}

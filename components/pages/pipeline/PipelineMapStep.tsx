@@ -1277,6 +1277,7 @@ const PipelineMapStep: React.FC = () => {
     toggleAutoApprove,
     getStepState,
     setStepStatus,
+    setCurrentStep,
     activeMap,
   } = usePipeline();
   const { state, dispatch } = useAppState();
@@ -1436,6 +1437,13 @@ const PipelineMapStep: React.FC = () => {
     setError(null);
     setIsGenerating(true);
     setStepStatus('map_planning', 'in_progress');
+
+    // Clear stale state from previous map version
+    setDismissedFindings(new Set());
+    setMapQualityFindings([]);
+    setMapHealthScore(null);
+    setActionFeedback(null);
+    reviseStep('map_planning'); // Invalidate any previous approval
 
     try {
       // Load crawled URLs early to enrich services with existing page data
@@ -1668,6 +1676,15 @@ const PipelineMapStep: React.FC = () => {
       } catch (err) {
         console.warn('[PipelineMap] Map quality check failed (non-fatal):', err);
       }
+
+      // Save confirmation with next-step guidance
+      const totalGenerated = [...coreTopics, ...outerTopics].length;
+      const hubCount = coreTopics.length;
+      setActionFeedback({
+        message: `Map saved — ${totalGenerated} topics across ${hubCount} hubs. Review findings below, then approve to continue.`,
+        type: 'success',
+      });
+      // Don't auto-dismiss — let user see until they interact
 
       setStepStatus('map_planning', 'pending_approval');
       setShowDialogue(true);
@@ -2279,6 +2296,70 @@ const PipelineMapStep: React.FC = () => {
     }
   }, [allTopics, state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, dispatch, handleDismissFinding, persistNewTopics, handleRecheckHealth]);
 
+  // Expand a thin cluster by generating more subtopics for it
+  const handleExpandCluster = useCallback(async (finding: PreAnalysisFinding) => {
+    const hubTitle = finding.affectedItems?.[0];
+    if (!hubTitle || !activeMap?.pillars || !state.activeMapId) return;
+
+    // Find the hub topic by title or ID
+    const hub = coreTopics.find(t => t.title === hubTitle || t.id === hubTitle);
+    if (!hub) {
+      setActionFeedback({ message: `Could not find hub topic "${hubTitle}"`, type: 'error' });
+      setTimeout(() => setActionFeedback(null), 6000);
+      return;
+    }
+
+    setIsProcessingAction(true);
+    setActionFeedback({ message: `Expanding "${hub.title}" with more subtopics...`, type: 'info' });
+
+    try {
+      const result = await generateSingleCluster(
+        hub.title,
+        effectiveBusinessInfo,
+        activeMap.pillars,
+        activeMap?.eavs ?? [],
+        allTopics,
+        dispatch
+      );
+
+      if (result.spokes.length === 0) {
+        setActionFeedback({ message: `No new subtopics generated for "${hub.title}"`, type: 'error' });
+        return;
+      }
+
+      // Assign parent IDs to new spokes
+      const newSpokes = result.spokes.map(s => ({
+        ...s,
+        parent_topic_id: hub.id,
+        map_id: state.activeMapId!,
+      }));
+
+      // Persist to DB and update state
+      const { persisted, skippedCount } = await persistNewTopics(newSpokes);
+      if (persisted.length > 0) {
+        setGeneratedOuter(prev => [...prev, ...persisted]);
+        dispatch({ type: 'ADD_TOPICS', payload: { mapId: state.activeMapId!, topics: persisted } });
+      }
+
+      setActionFeedback({
+        message: `Added ${persisted.length} subtopic${persisted.length !== 1 ? 's' : ''} to "${hub.title}"${skippedCount > 0 ? ` (${skippedCount} duplicates skipped)` : ''}`,
+        type: 'success',
+      });
+
+      // Re-check health with updated topics
+      handleRecheckHealth([...allTopics, ...persisted]);
+    } catch (err) {
+      console.error(`[PipelineMap] handleExpandCluster failed for "${hub.title}":`, err);
+      setActionFeedback({
+        message: `Failed to expand "${hub.title}": ${err instanceof Error ? err.message : 'Unknown error'}`,
+        type: 'error',
+      });
+    } finally {
+      setIsProcessingAction(false);
+      setTimeout(() => setActionFeedback(null), 8000);
+    }
+  }, [coreTopics, allTopics, state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, dispatch, persistNewTopics, handleRecheckHealth]);
+
   // Auto-merge all cannibalization pairs: iterate through pairs and remove the less-detailed topic
   const handleAutoMergeAll = useCallback(() => {
     const cannibFindings = (mapQualityFindings || []).filter(f => f.category === 'title_cannibalization');
@@ -2324,7 +2405,7 @@ const PipelineMapStep: React.FC = () => {
           } else {
             actions.push({ label: 'Merge', variant: 'primary' as const, onClick: () => handleMergeFinding(f) });
           }
-          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(f) });
+          actions.push({ label: 'Not Applicable', variant: 'secondary' as const, onClick: () => handleDismissFinding(f) });
           break;
         case 'page_worthiness':
           actions.push({ label: 'Consolidate', variant: 'primary' as const, onClick: () => handleConsolidateFinding(f) });
@@ -2341,10 +2422,17 @@ const PipelineMapStep: React.FC = () => {
             loading: isProcessingAction,
             disabled: isProcessingAction,
           });
-          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(f), disabled: isProcessingAction });
+          actions.push({ label: 'Not Applicable', variant: 'secondary' as const, onClick: () => handleDismissFinding(f), disabled: isProcessingAction });
           break;
         case 'depth_imbalance':
-          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(f) });
+          actions.push({
+            label: 'Expand',
+            variant: 'primary' as const,
+            onClick: () => { handleExpandCluster(f).catch(console.error); },
+            loading: isProcessingAction,
+            disabled: isProcessingAction,
+          });
+          actions.push({ label: 'Not Applicable', variant: 'secondary' as const, onClick: () => handleDismissFinding(f), disabled: isProcessingAction });
           break;
         case 'service_gap':
           actions.push({
@@ -2354,15 +2442,19 @@ const PipelineMapStep: React.FC = () => {
             loading: isProcessingAction,
             disabled: isProcessingAction,
           });
-          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(f), disabled: isProcessingAction });
+          actions.push({ label: 'Not Applicable', variant: 'secondary' as const, onClick: () => handleDismissFinding(f), disabled: isProcessingAction });
           break;
         case 'eav_inconsistency':
         case 'eav_category_gap':
         case 'eav_pending_values':
+          actions.push({ label: 'Edit EAVs', variant: 'primary' as const, onClick: () => setCurrentStep('eavs') });
+          actions.push({ label: 'Not Applicable', variant: 'secondary' as const, onClick: () => handleDismissFinding(f) });
+          break;
         case 'ce_ambiguity':
         case 'sc_specificity':
         case 'csi_coverage':
-          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(f) });
+          actions.push({ label: 'Edit Strategy', variant: 'primary' as const, onClick: () => setCurrentStep('strategy') });
+          actions.push({ label: 'Not Applicable', variant: 'secondary' as const, onClick: () => handleDismissFinding(f) });
           break;
       }
       return {
@@ -2374,7 +2466,7 @@ const PipelineMapStep: React.FC = () => {
         actions,
       };
     });
-  }, [mapQualityFindings, dismissedFindings, handleDismissFinding, handleMergeFinding, handleConsolidateFinding, handleRemoveFinding, handleAddServiceHubs, handleFixMissingFrame, handleAutoMergeAll, isProcessingAction]);
+  }, [mapQualityFindings, dismissedFindings, handleDismissFinding, handleMergeFinding, handleConsolidateFinding, handleRemoveFinding, handleAddServiceHubs, handleFixMissingFrame, handleExpandCluster, handleAutoMergeAll, isProcessingAction, setCurrentStep]);
 
   return (
     <div className="space-y-8">
