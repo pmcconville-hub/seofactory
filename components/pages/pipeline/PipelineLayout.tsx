@@ -146,7 +146,9 @@ const PipelineLayout: React.FC = () => {
             : 'Start';
 
         // Build summary of what's done
-        const topicCount = activeMap?.topics?.length ?? 0;
+        const topicCount = (activeMap?.topics ?? []).filter(
+          (t: any) => !t.page_decision || t.page_decision === 'standalone_page'
+        ).length;
         const eavCount = activeMap?.eavs?.length ?? 0;
         const briefCount = activeMap?.briefs ? Object.keys(activeMap.briefs).length : 0;
         const summaryParts: string[] = [];

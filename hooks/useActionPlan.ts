@@ -134,6 +134,42 @@ export function useActionPlan(
     }
   }, [persistedPlan]);
 
+  // ──── Orphan cleanup: remove entries whose topicId no longer exists ────
+  useEffect(() => {
+    if (!actionPlan || actionPlan.status === 'generating' || topics.length === 0) return;
+    const topicIds = new Set(topics.map(t => t.id));
+    const hasOrphans = actionPlan.entries.some(e => !e.removed && !topicIds.has(e.topicId));
+    if (hasOrphans) {
+      setActionPlan(prev => {
+        if (!prev) return prev;
+        const cleaned: ActionPlan = {
+          ...prev,
+          entries: prev.entries.filter(e => e.removed || topicIds.has(e.topicId)),
+        };
+        const orphanCount = prev.entries.length - cleaned.entries.length;
+        if (orphanCount > 0) {
+          dispatch({
+            type: 'LOG_EVENT',
+            payload: {
+              service: 'ActionPlan',
+              message: `Removed ${orphanCount} orphaned action plan entries (topics were deleted).`,
+              status: 'info',
+              timestamp: Date.now(),
+            },
+          });
+        }
+        // Persist cleaned plan
+        if (mapId) {
+          dispatch({
+            type: 'UPDATE_MAP_DATA',
+            payload: { mapId, data: { action_plan: cleaned } },
+          });
+        }
+        return cleaned;
+      });
+    }
+  }, [topics, actionPlan?.entries?.length]);
+
   // ──── Persistence (500ms debounce) ────
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -191,11 +227,15 @@ export function useActionPlan(
 
     try {
       // Step 1: Create placeholder entries (wave=1 for all, will be overridden by AI)
+      // Filter to standalone pages only — section topics don't get their own briefs/actions
+      const standaloneTopics = topics.filter(
+        t => !t.page_decision || t.page_decision === 'standalone_page'
+      );
       const placeholderWaveMap = new Map<string, number>();
-      for (const topic of topics) {
+      for (const topic of standaloneTopics) {
         placeholderWaveMap.set(topic.id, 1);
       }
-      const initialEntries = createInitialEntries(topics, placeholderWaveMap);
+      const initialEntries = createInitialEntries(standaloneTopics, placeholderWaveMap);
 
       // Update plan with initial entries (generating state)
       const draftPlan: ActionPlan = {
@@ -208,7 +248,7 @@ export function useActionPlan(
 
       // Step 2: Generate AI rationales with dynamic wave definitions
       const { rationales, waveDefinitions } = await generateTopicRationales(
-        topics,
+        standaloneTopics,
         businessInfo,
         pillars,
         eavs,

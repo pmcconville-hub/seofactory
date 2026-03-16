@@ -86,7 +86,7 @@ const ProjectDashboardContainer: React.FC<ProjectDashboardContainerProps> = ({ o
     useMapData(activeMapId, activeMap, businessInfo, dispatch);
 
     // REFACTOR 03: Use custom hook for KG hydration
-    useKnowledgeGraph(activeMap, knowledgeGraph, dispatch);
+    useKnowledgeGraph(activeMap, dispatch);
 
     // Build effective business info: global settings + project domain + map overrides
     // Priority:

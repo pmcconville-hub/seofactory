@@ -16,6 +16,7 @@ import {
 } from '../types';
 import {
   ContentGenerationOrchestrator,
+  withPassTimeout,
   executePass1,
   executePass2,
   executePass3,   // Lists & Tables
@@ -379,6 +380,18 @@ export function useContentGeneration({
   const [cachedBrief, setCachedBrief] = useState<{ briefId: string; data: ContentBrief } | null>(null);
   const abortRef = useRef(false);
   const orchestratorRef = useRef<ContentGenerationOrchestrator | null>(null);
+  const previousMapIdRef = useRef<string | null>(null);
+
+  // Reset state when mapId changes to prevent stale data across map switches
+  useEffect(() => {
+    if (previousMapIdRef.current !== null && previousMapIdRef.current !== mapId) {
+      setJob(null);
+      setSections([]);
+      setError(null);
+      setCachedBrief(null);
+    }
+    previousMapIdRef.current = mapId;
+  }, [mapId]);
 
   const supabase = getSupabaseClient(businessInfo.supabaseUrl, businessInfo.supabaseAnonKey);
 

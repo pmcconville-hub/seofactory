@@ -2,6 +2,7 @@
 import { TopicalMap, SEOPillars, BusinessInfo, ContentBrief, EnrichedTopic, FreshnessProfile, SemanticTriple, Project, ContextualBridgeLink, ContextualBridgeSection, BriefSection, TopicBlueprint, AttributeCategory, AttributeClass, VisualSemantics, FeaturedSnippetTarget, AuthorProfile, StylometryType, SiteInventoryItem, TransitionStatus, ActionType, SectionType } from '../types';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { batchedIn } from './supabaseBatchQuery';
+import { slugify } from './helpers';
 
 // Type aliases for improved readability in parsing functions
 // These accept unknown data from external sources (DB, AI, user input)
@@ -148,7 +149,7 @@ export const parseBusinessInfo = (json: any): Partial<BusinessInfo> => {
 export const parseEavs = (json: any): SemanticTriple[] => {
     const rawArray = safeArray(json); // Use safeArray to handle potential stringified inputs
 
-    return rawArray.map((item: any) => {
+    const parsed = rawArray.map((item: any) => {
         if (!item || typeof item !== 'object') return null;
 
         // DEFENSIVE: Skip malformed triples that lack required structure
@@ -180,7 +181,27 @@ export const parseEavs = (json: any): SemanticTriple[] => {
             }
         } as SemanticTriple;
     }).filter((item): item is SemanticTriple => item !== null);
+
+    const droppedCount = rawArray.length - parsed.length;
+    if (droppedCount > 0) {
+        console.warn(`[parseEavs] Dropped ${droppedCount} malformed triple(s) out of ${rawArray.length} total.`);
+    }
+
+    return parsed;
 };
+
+/**
+ * Ensures all topics have unique slugs by appending a numeric suffix to duplicates.
+ */
+export function deduplicateSlugs(topics: EnrichedTopic[]): EnrichedTopic[] {
+    const seenSlugs = new Map<string, number>();
+    return topics.map(t => {
+        const baseSlug = t.slug || slugify(t.title);
+        const count = seenSlugs.get(baseSlug) || 0;
+        seenSlugs.set(baseSlug, count + 1);
+        return { ...t, slug: count > 0 ? `${baseSlug}-${count}` : baseSlug };
+    });
+}
 
 /**
  * Transforms a raw database row into a safe Project object.

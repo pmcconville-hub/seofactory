@@ -73,6 +73,54 @@ function ensureExistingPagesArePillars(
   }
 }
 
+// ──── Deduplication helper ────
+
+const MAX_TOPICS_PER_MAP = 150;
+
+/** Jaccard word similarity for deduplication — words ≤2 chars are ignored */
+function jaccardSimilarity(a: string, b: string): number {
+  const wordsA = new Set(a.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+  const wordsB = new Set(b.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+  const intersection = [...wordsA].filter(w => wordsB.has(w)).length;
+  const union = new Set([...wordsA, ...wordsB]).size;
+  return union > 0 ? intersection / union : 0;
+}
+
+/** Filter out topics that are near-duplicates of existing topics */
+function deduplicateNewTopics(
+  newTopics: EnrichedTopic[],
+  existingTopics: EnrichedTopic[],
+  threshold = 0.7
+): { kept: EnrichedTopic[]; skippedCount: number } {
+  const existingSlugs = new Set(existingTopics.map(t => slugify(t.title)));
+  const kept: EnrichedTopic[] = [];
+  let skippedCount = 0;
+
+  for (const newTopic of newTopics) {
+    const newSlug = slugify(newTopic.title);
+    // Exact slug match
+    if (existingSlugs.has(newSlug)) {
+      skippedCount++;
+      continue;
+    }
+    // Jaccard similarity against existing topics
+    const isDuplicate = existingTopics.some(
+      existing => jaccardSimilarity(newTopic.title, existing.title) > threshold
+    );
+    // Also check against already-kept new topics
+    const isDuplicateOfKept = kept.some(
+      k => jaccardSimilarity(newTopic.title, k.title) > threshold || slugify(k.title) === newSlug
+    );
+    if (isDuplicate || isDuplicateOfKept) {
+      skippedCount++;
+      continue;
+    }
+    kept.push(newTopic);
+  }
+
+  return { kept, skippedCount };
+}
+
 // ──── Metric Card ────
 
 function MetricCard({ label, value, color = 'gray' }: {
@@ -1648,20 +1696,28 @@ const PipelineMapStep: React.FC = () => {
 
   // Helper: persist newly added topics to the DB topics table.
   // Converts temp_xxx IDs to proper UUIDs and updates local + Redux state with the new IDs.
-  const persistNewTopics = useCallback(async (newTopics: EnrichedTopic[]) => {
-    if (!state.activeMapId || !state.user?.id || newTopics.length === 0) return;
+  const persistNewTopics = useCallback(async (newTopics: EnrichedTopic[]): Promise<{ persisted: EnrichedTopic[]; skippedCount: number }> => {
+    if (!state.activeMapId || !state.user?.id || newTopics.length === 0) return { persisted: [], skippedCount: 0 };
+
+    // WS1: Pre-insert deduplication — check against existing topics
+    const existingTopics = [...coreTopics, ...outerTopics];
+    const { kept, skippedCount } = deduplicateNewTopics(newTopics, existingTopics);
+    if (kept.length === 0) {
+      return { persisted: [], skippedCount };
+    }
+
     try {
       const supabase = getSupabaseClient(effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey);
 
       // Build a map from temp IDs to real UUIDs
       const idMap = new Map<string, string>();
-      for (const t of newTopics) {
+      for (const t of kept) {
         if (t.id.startsWith('temp_') || t.id.startsWith('hub-service-')) {
           idMap.set(t.id, uuidv4());
         }
       }
 
-      const dbTopics = newTopics.map(t => {
+      const dbTopics = kept.map(t => {
         const realId = idMap.get(t.id) || t.id;
         const realParent = t.parent_topic_id ? (idMap.get(t.parent_topic_id) || t.parent_topic_id) : null;
         return {
@@ -1687,7 +1743,7 @@ const PipelineMapStep: React.FC = () => {
       const { error } = await supabase.from('topics').insert(dbTopics);
       if (error) {
         console.warn(`[PipelineMap] persistNewTopics failed: ${error.message}`);
-        return;
+        return { persisted: [], skippedCount };
       }
 
       // Update local state and Redux with the real UUIDs
@@ -1711,8 +1767,10 @@ const PipelineMapStep: React.FC = () => {
         const remapped = remapIds(allCurrent);
         dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: state.activeMapId!, topics: remapped } });
       }
+      return { persisted: kept, skippedCount };
     } catch (err) {
       console.warn('[PipelineMap] persistNewTopics error:', err);
+      return { persisted: [], skippedCount };
     }
   }, [state.activeMapId, state.user?.id, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey, coreTopics, outerTopics, dispatch]);
 
@@ -1726,30 +1784,39 @@ const PipelineMapStep: React.FC = () => {
 
       // Handle add_cluster: generate a new hub+spokes for a service
       if (decisions.add_cluster?.service) {
-        try {
-          const pillars = activeMap?.pillars;
-          const eavs = activeMap?.eavs ?? [];
-          if (pillars) {
-            const { hub, spokes } = await generateSingleCluster(
-              decisions.add_cluster.service,
-              effectiveBusinessInfo,
-              pillars,
-              eavs,
-              currentAll,
-              dispatch
-            );
-            // Update local + persisted state
-            setGeneratedCore(prev => [...prev, hub]);
-            setGeneratedOuter(prev => [...prev, ...spokes]);
-            dispatch({
-              type: 'SET_TOPICS_FOR_MAP',
-              payload: { mapId: state.activeMapId, topics: [...currentAll, hub, ...spokes] },
-            });
-            await persistNewTopics([hub, ...spokes]);
-            changes.push(`Added hub "${hub.title}" with ${spokes.length} spokes`);
+        // WS2: Topic count cap
+        if (currentAll.length >= MAX_TOPICS_PER_MAP) {
+          changes.push(`Topic cap reached (${MAX_TOPICS_PER_MAP}), skipped adding cluster`);
+        } else {
+          try {
+            const pillars = activeMap?.pillars;
+            const eavs = activeMap?.eavs ?? [];
+            if (pillars) {
+              const { hub, spokes } = await generateSingleCluster(
+                decisions.add_cluster.service,
+                effectiveBusinessInfo,
+                pillars,
+                eavs,
+                currentAll,
+                dispatch
+              );
+              // WS1: Dedup happens inside persistNewTopics
+              const { persisted, skippedCount } = await persistNewTopics([hub, ...spokes]);
+              const newCore = persisted.filter(t => t.type === 'core' || t.cluster_role === 'pillar');
+              const newOuter = persisted.filter(t => t.type === 'outer' || (t.type !== 'core' && t.cluster_role !== 'pillar'));
+              setGeneratedCore(prev => [...prev, ...newCore]);
+              setGeneratedOuter(prev => [...prev, ...newOuter]);
+              const updatedAll = [...currentAll, ...persisted];
+              dispatch({
+                type: 'SET_TOPICS_FOR_MAP',
+                payload: { mapId: state.activeMapId, topics: updatedAll },
+              });
+              const skipMsg = skippedCount > 0 ? ` (skipped ${skippedCount} duplicates)` : '';
+              changes.push(`Added ${persisted.length} topics for "${hub.title}"${skipMsg}`);
+            }
+          } catch (err) {
+            console.warn('[PipelineMap] Cluster generation failed:', err);
           }
-        } catch (err) {
-          console.warn('[PipelineMap] Cluster generation failed:', err);
         }
       }
 
@@ -1934,8 +2001,8 @@ const PipelineMapStep: React.FC = () => {
   }, [allTopics, state.activeMapId, dispatch, rebuildPageInventory, effectiveBusinessInfo.supabaseUrl, effectiveBusinessInfo.supabaseAnonKey]);
 
   // Re-check health without regenerating the map
-  const handleRecheckHealth = useCallback(() => {
-    const currentAll = [...coreTopics, ...outerTopics];
+  const handleRecheckHealth = useCallback((topicsOverride?: EnrichedTopic[]) => {
+    const currentAll = topicsOverride ?? [...coreTopics, ...outerTopics];
     if (currentAll.length === 0) return;
     const analysis = runPreAnalysis(
       'map_planning',
@@ -2004,12 +2071,13 @@ const PipelineMapStep: React.FC = () => {
     const removeTarget = allTopics.find(t => t.id === removeId || t.title === removeId);
     if (removeTarget) {
       removeTopic(removeTarget.id);
-      // Dismiss this finding and recalculate health
-      handleDismissFinding(finding);
       setActionFeedback({ message: `Merged: kept "${keepTarget?.title || items[0]}", removed "${removeTarget.title}" — saved`, type: 'success' });
       setTimeout(() => setActionFeedback(null), 6000);
+      // WS3: Auto-recheck health with updated topics
+      const updatedTopics = allTopics.filter(t => t.id !== removeTarget.id);
+      handleRecheckHealth(updatedTopics);
     }
-  }, [allTopics, removeTopic, handleDismissFinding]);
+  }, [allTopics, removeTopic, handleRecheckHealth]);
 
   const handleConsolidateFinding = useCallback((finding: PreAnalysisFinding) => {
     const items = finding.affectedItems || [];
@@ -2017,8 +2085,13 @@ const PipelineMapStep: React.FC = () => {
     const target = allTopics.find(t => t.id === items[0] || t.title === items[0]);
     if (target) {
       handleDemoteTopic(target.id);
+      // WS3: Auto-recheck health (topic still exists but is now a section)
+      const updatedTopics = allTopics.map(t =>
+        t.id === target.id ? { ...t, page_decision: 'section' as const } : t
+      );
+      handleRecheckHealth(updatedTopics);
     }
-  }, [allTopics, handleDemoteTopic]);
+  }, [allTopics, handleDemoteTopic, handleRecheckHealth]);
 
   const handleRemoveFinding = useCallback((finding: PreAnalysisFinding) => {
     const items = finding.affectedItems || [];
@@ -2026,17 +2099,25 @@ const PipelineMapStep: React.FC = () => {
     const target = allTopics.find(t => t.id === items[0] || t.title === items[0]);
     if (target) {
       removeTopic(target.id);
-      // Dismiss this finding and recalculate health
-      handleDismissFinding(finding);
       setActionFeedback({ message: `Removed "${target.title}" from the map — saved`, type: 'success' });
       setTimeout(() => setActionFeedback(null), 6000);
+      // WS3: Auto-recheck health with updated topics
+      const updatedTopics = allTopics.filter(t => t.id !== target.id);
+      handleRecheckHealth(updatedTopics);
     }
-  }, [allTopics, removeTopic, handleDismissFinding]);
+  }, [allTopics, removeTopic, handleRecheckHealth]);
 
   // Add hub topics for uncovered business services (with spokes via AI)
   const handleAddServiceHubs = useCallback(async (finding: PreAnalysisFinding) => {
     const services = finding.affectedItems || [];
     if (services.length === 0 || !state.activeMapId) return;
+
+    // WS2: Topic count cap
+    if (allTopics.length >= MAX_TOPICS_PER_MAP) {
+      setActionFeedback({ message: `Topic cap reached (${allTopics.length}/${MAX_TOPICS_PER_MAP}). Remove or merge existing topics before adding new ones.`, type: 'info' });
+      setTimeout(() => setActionFeedback(null), 8000);
+      return;
+    }
 
     setIsProcessingAction(true);
     const pillars = activeMap?.pillars;
@@ -2047,6 +2128,11 @@ const PipelineMapStep: React.FC = () => {
         setActionFeedback({ message: `Generating hub topics for: ${services.join(', ')}...`, type: 'info' });
         let addedTopics: EnrichedTopic[] = [];
         for (const serviceName of services) {
+          // Check cap before each cluster generation
+          if (allTopics.length + addedTopics.length >= MAX_TOPICS_PER_MAP) {
+            setActionFeedback({ message: `Topic cap reached after adding some services. Remaining services skipped.`, type: 'info' });
+            break;
+          }
           try {
             const currentAll = [...allTopics, ...addedTopics];
             const { hub, spokes } = await generateSingleCluster(
@@ -2073,15 +2159,20 @@ const PipelineMapStep: React.FC = () => {
           }
         }
 
-        const newCore = addedTopics.filter(t => t.type === 'core' || t.cluster_role === 'pillar');
-        const newOuter = addedTopics.filter(t => t.type === 'outer' || (t.type !== 'core' && t.cluster_role !== 'pillar'));
+        // WS1: Dedup happens inside persistNewTopics
+        const { persisted, skippedCount } = await persistNewTopics(addedTopics);
+        const newCore = persisted.filter(t => t.type === 'core' || t.cluster_role === 'pillar');
+        const newOuter = persisted.filter(t => t.type === 'outer' || (t.type !== 'core' && t.cluster_role !== 'pillar'));
         setGeneratedCore(prev => [...prev, ...newCore]);
         setGeneratedOuter(prev => [...prev, ...newOuter]);
-        const updatedAll = [...allTopics, ...addedTopics];
+        const updatedAll = [...allTopics, ...persisted];
         dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: state.activeMapId!, topics: updatedAll } });
-        await persistNewTopics(addedTopics);
 
-        setActionFeedback({ message: `Added ${addedTopics.length} topics for ${services.join(', ')}`, type: 'success' });
+        const skipMsg = skippedCount > 0 ? ` (skipped ${skippedCount} duplicates)` : '';
+        setActionFeedback({ message: `Added ${persisted.length} topics for ${services.join(', ')}${skipMsg}`, type: 'success' });
+
+        // WS3: Auto-recheck health
+        handleRecheckHealth(updatedAll);
       } else {
         const newTopics: EnrichedTopic[] = services.map((serviceName, i) => ({
           id: `hub-service-${Date.now()}-${i}`,
@@ -2094,15 +2185,19 @@ const PipelineMapStep: React.FC = () => {
           page_decision: 'standalone_page' as const,
         } as EnrichedTopic));
 
-        setGeneratedCore(prev => [...prev, ...newTopics]);
-        const updatedAll = [...allTopics, ...newTopics];
+        const { persisted, skippedCount } = await persistNewTopics(newTopics);
+        setGeneratedCore(prev => [...prev, ...persisted]);
+        const updatedAll = [...allTopics, ...persisted];
         dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: state.activeMapId!, topics: updatedAll } });
-        await persistNewTopics(newTopics);
 
-        setActionFeedback({ message: `Added ${newTopics.length} hub topics for ${services.join(', ')} — saved`, type: 'success' });
+        const skipMsg = skippedCount > 0 ? ` (skipped ${skippedCount} duplicates)` : '';
+        setActionFeedback({ message: `Added ${persisted.length} hub topics for ${services.join(', ')}${skipMsg} — saved`, type: 'success' });
+
+        // WS3: Auto-recheck health
+        handleRecheckHealth(updatedAll);
       }
 
-      // Dismiss finding and recalculate
+      // Dismiss finding
       handleDismissFinding(finding);
     } catch (err) {
       console.error('[PipelineMap] handleAddServiceHubs failed:', err);
@@ -2111,12 +2206,19 @@ const PipelineMapStep: React.FC = () => {
       setIsProcessingAction(false);
       setTimeout(() => setActionFeedback(null), 8000);
     }
-  }, [allTopics, state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, dispatch, handleDismissFinding, persistNewTopics]);
+  }, [allTopics, state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, dispatch, handleDismissFinding, persistNewTopics, handleRecheckHealth]);
 
   // Fix missing semantic frame — generate topics to cover uncovered frame elements
   const handleFixMissingFrame = useCallback(async (finding: PreAnalysisFinding) => {
     const frameName = finding.affectedItems?.[0];
     if (!frameName || !state.activeMapId) return;
+
+    // WS2: Topic count cap
+    if (allTopics.length >= MAX_TOPICS_PER_MAP) {
+      setActionFeedback({ message: `Topic cap reached (${allTopics.length}/${MAX_TOPICS_PER_MAP}). Remove or merge existing topics before adding new ones.`, type: 'info' });
+      setTimeout(() => setActionFeedback(null), 8000);
+      return;
+    }
 
     setIsProcessingAction(true);
     const pillars = activeMap?.pillars;
@@ -2129,8 +2231,6 @@ const PipelineMapStep: React.FC = () => {
         return;
       }
 
-      // Use the frame concept as a cluster theme — AI will generate a hub + spokes
-      // covering the frame's elements (e.g., "Benefits" → hub about benefits of CE + spokes)
       const frameTheme = `${frameName} - ${ce}`;
       setActionFeedback({ message: `Generating topics for "${frameName}" frame (${finding.details})...`, type: 'info' });
 
@@ -2144,25 +2244,29 @@ const PipelineMapStep: React.FC = () => {
         dispatch
       );
 
-      // Mark these as informational content (frame coverage / authority building)
       hub.topic_class = 'informational';
       spokes.forEach(s => { s.topic_class = 'informational'; });
 
-      const newCore = [hub];
-      const newOuter = spokes;
+      // WS1: Dedup happens inside persistNewTopics
+      const { persisted, skippedCount } = await persistNewTopics([hub, ...spokes]);
+      const newCore = persisted.filter(t => t.type === 'core' || t.cluster_role === 'pillar');
+      const newOuter = persisted.filter(t => t.type === 'outer' || (t.type !== 'core' && t.cluster_role !== 'pillar'));
       setGeneratedCore(prev => [...prev, ...newCore]);
       setGeneratedOuter(prev => [...prev, ...newOuter]);
-      const updatedAll = [...currentAll, hub, ...spokes];
+      const updatedAll = [...currentAll, ...persisted];
       dispatch({ type: 'SET_TOPICS_FOR_MAP', payload: { mapId: state.activeMapId!, topics: updatedAll } });
-      await persistNewTopics([hub, ...spokes]);
 
       // Dismiss finding
       handleDismissFinding(finding);
 
+      const skipMsg = skippedCount > 0 ? ` (skipped ${skippedCount} duplicates)` : '';
       setActionFeedback({
-        message: `Added hub "${hub.title}" + ${spokes.length} spokes covering the ${frameName} frame — saved`,
+        message: `Added ${persisted.length} topics covering the ${frameName} frame${skipMsg} — saved`,
         type: 'success',
       });
+
+      // WS3: Auto-recheck health
+      handleRecheckHealth(updatedAll);
     } catch (err) {
       console.error(`[PipelineMap] handleFixMissingFrame failed for "${frameName}":`, err);
       setActionFeedback({
@@ -2173,7 +2277,38 @@ const PipelineMapStep: React.FC = () => {
       setIsProcessingAction(false);
       setTimeout(() => setActionFeedback(null), 8000);
     }
-  }, [allTopics, state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, dispatch, handleDismissFinding, persistNewTopics]);
+  }, [allTopics, state.activeMapId, activeMap?.pillars, activeMap?.eavs, effectiveBusinessInfo, dispatch, handleDismissFinding, persistNewTopics, handleRecheckHealth]);
+
+  // Auto-merge all cannibalization pairs: iterate through pairs and remove the less-detailed topic
+  const handleAutoMergeAll = useCallback(() => {
+    const cannibFindings = (mapQualityFindings || []).filter(f => f.category === 'title_cannibalization');
+    if (cannibFindings.length === 0) return;
+
+    const removedIds = new Set<string>();
+    for (const f of cannibFindings) {
+      const items = f.affectedItems || [];
+      if (items.length < 2) continue;
+      const topicA = allTopics.find(t => t.id === items[0]);
+      const topicB = allTopics.find(t => t.id === items[1]);
+      if (!topicA || !topicB) continue;
+      if (removedIds.has(topicA.id) || removedIds.has(topicB.id)) continue;
+
+      // Keep the topic with more metadata/description; remove the other
+      const scoreA = (topicA.description?.length || 0) + (topicA.attribute_focus ? 10 : 0);
+      const scoreB = (topicB.description?.length || 0) + (topicB.attribute_focus ? 10 : 0);
+      const removeTarget = scoreA >= scoreB ? topicB : topicA;
+      removedIds.add(removeTarget.id);
+      removeTopic(removeTarget.id);
+    }
+
+    if (removedIds.size > 0) {
+      setActionFeedback({ message: `Auto-merged: removed ${removedIds.size} duplicate topics`, type: 'success' });
+      setTimeout(() => setActionFeedback(null), 6000);
+      // Auto-recheck health
+      const updatedTopics = allTopics.filter(t => !removedIds.has(t.id));
+      handleRecheckHealth(updatedTopics);
+    }
+  }, [allTopics, mapQualityFindings, removeTopic, handleRecheckHealth]);
 
   // Convert pre-analysis findings to actionable findings format
   const actionableFindings: ActionableFinding[] = useMemo(() => {
@@ -2183,7 +2318,13 @@ const PipelineMapStep: React.FC = () => {
       const actions: FindingAction[] = [];
       switch (f.category) {
         case 'title_cannibalization':
-          actions.push({ label: 'Merge', variant: 'primary' as const, onClick: () => handleMergeFinding(f) });
+          if (f.affectedItems.length > 4) {
+            // Aggregated finding — offer bulk auto-merge
+            actions.push({ label: 'Auto-Merge All', variant: 'primary' as const, onClick: () => handleAutoMergeAll() });
+          } else {
+            actions.push({ label: 'Merge', variant: 'primary' as const, onClick: () => handleMergeFinding(f) });
+          }
+          actions.push({ label: 'Dismiss', variant: 'secondary' as const, onClick: () => handleDismissFinding(f) });
           break;
         case 'page_worthiness':
           actions.push({ label: 'Consolidate', variant: 'primary' as const, onClick: () => handleConsolidateFinding(f) });
@@ -2233,7 +2374,7 @@ const PipelineMapStep: React.FC = () => {
         actions,
       };
     });
-  }, [mapQualityFindings, dismissedFindings, handleDismissFinding, handleMergeFinding, handleConsolidateFinding, handleRemoveFinding, handleAddServiceHubs, handleFixMissingFrame, isProcessingAction]);
+  }, [mapQualityFindings, dismissedFindings, handleDismissFinding, handleMergeFinding, handleConsolidateFinding, handleRemoveFinding, handleAddServiceHubs, handleFixMissingFrame, handleAutoMergeAll, isProcessingAction]);
 
   return (
     <div className="space-y-8">
@@ -2470,7 +2611,7 @@ const PipelineMapStep: React.FC = () => {
       {mapHealthScore === null && totalTopics > 0 && !isGenerating && (
         <div className="flex justify-end">
           <button
-            onClick={handleRecheckHealth}
+            onClick={() => handleRecheckHealth()}
             className="text-xs px-3 py-1.5 rounded border border-gray-600 text-gray-400 hover:text-gray-200 hover:border-gray-400 transition-colors"
           >
             Check Map Health
@@ -2504,7 +2645,7 @@ const PipelineMapStep: React.FC = () => {
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500">{actionableFindings.length} findings</span>
               <button
-                onClick={handleRecheckHealth}
+                onClick={() => handleRecheckHealth()}
                 className="text-[10px] px-2 py-0.5 rounded border border-gray-600 text-gray-400 hover:text-gray-200 hover:border-gray-400 transition-colors"
               >
                 Re-check

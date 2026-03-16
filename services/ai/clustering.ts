@@ -65,7 +65,10 @@ export function clusterTopicsSemanticDistance(
                     topicA.title,
                     topicB.title
                 );
-                distances.get(topicA.id)!.set(topicB.id, result.distance);
+                const dist = (result && typeof result.distance === 'number' && !isNaN(result.distance))
+                    ? result.distance
+                    : 1; // Default to maximum distance (unrelated)
+                distances.get(topicA.id)!.set(topicB.id, dist);
             }
         }
     }
@@ -215,6 +218,16 @@ export function findCannibalizationRisks(
     return risks;
 }
 
+const CANNIBALIZATION_STOPWORDS = new Set([
+  'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had',
+  'her', 'was', 'one', 'our', 'out', 'has', 'his', 'how', 'its', 'may',
+  'new', 'now', 'old', 'see', 'way', 'who', 'did', 'get', 'let', 'say',
+  'she', 'too', 'use', 'what', 'with', 'this', 'that', 'from', 'they',
+  'been', 'have', 'many', 'some', 'them', 'than', 'each', 'make', 'like',
+  'does', 'when', 'over', 'such', 'take', 'into', 'most', 'your', 'best',
+  'about', 'which', 'their', 'there', 'would', 'other', 'these', 'after',
+]);
+
 /**
  * Detect potential cannibalization during map generation using title/query word overlap.
  * Doesn't require a KG — uses Jaccard similarity on canonical queries.
@@ -224,17 +237,28 @@ export function detectTitleCannibalization(
 ): Array<{ topicA: EnrichedTopic; topicB: EnrichedTopic; similarity: number; recommendation: string }> {
   const risks: Array<{ topicA: EnrichedTopic; topicB: EnrichedTopic; similarity: number; recommendation: string }> = [];
 
-  for (let i = 0; i < topics.length; i++) {
-    for (let j = i + 1; j < topics.length; j++) {
-      const a = topics[i];
-      const b = topics[j];
+  // Sample for large maps to avoid O(N^2) blowup
+  const MAX_TOPICS = 300;
+  let workingTopics = topics;
+  if (topics.length > MAX_TOPICS) {
+    const core = topics.filter(t => t.type === 'core');
+    const outer = topics.filter(t => t.type !== 'core');
+    const remaining = MAX_TOPICS - core.length;
+    const sampledOuter = outer.sort(() => Math.random() - 0.5).slice(0, Math.max(0, remaining));
+    workingTopics = [...core, ...sampledOuter];
+  }
+
+  for (let i = 0; i < workingTopics.length; i++) {
+    for (let j = i + 1; j < workingTopics.length; j++) {
+      const a = workingTopics[i];
+      const b = workingTopics[j];
 
       const queryA = (a.canonical_query || a.title).toLowerCase();
       const queryB = (b.canonical_query || b.title).toLowerCase();
 
-      // Jaccard similarity on words (filter stopwords by length)
-      const wordsA = new Set(queryA.split(/\s+/).filter(w => w.length > 2));
-      const wordsB = new Set(queryB.split(/\s+/).filter(w => w.length > 2));
+      // Jaccard similarity on words (filter stopwords)
+      const wordsA = new Set(queryA.split(/\s+/).filter(w => w.length > 2 && !CANNIBALIZATION_STOPWORDS.has(w)));
+      const wordsB = new Set(queryB.split(/\s+/).filter(w => w.length > 2 && !CANNIBALIZATION_STOPWORDS.has(w)));
       const intersection = new Set([...wordsA].filter(w => wordsB.has(w)));
       const union = new Set([...wordsA, ...wordsB]);
       const similarity = union.size > 0 ? intersection.size / union.size : 0;

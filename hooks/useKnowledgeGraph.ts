@@ -21,7 +21,6 @@ const generateEdgeId = (sourceId: string, targetId: string, relation: string): s
 
 export const useKnowledgeGraph = (
     activeMap: TopicalMap | undefined,
-    knowledgeGraph: KnowledgeGraph | null,
     dispatch: React.Dispatch<AppAction>
 ) => {
     useEffect(() => {
@@ -134,9 +133,7 @@ export const useKnowledgeGraph = (
                     log('No EAVs found or invalid format. Initializing empty Knowledge Graph.');
                 }
 
-                if (!knowledgeGraph) {
-                     dispatch({ type: 'SET_KNOWLEDGE_GRAPH', payload: kg });
-                }
+                dispatch({ type: 'SET_KNOWLEDGE_GRAPH', payload: kg });
             } catch (error) {
                 const message = error instanceof Error ? error.message : 'An unknown error occurred during KG rebuild.';
                 log(`KG Hydration failed: ${message}`, 'failure');
@@ -145,5 +142,5 @@ export const useKnowledgeGraph = (
         };
 
         hydrateKnowledgeGraph();
-    }, [activeMap, knowledgeGraph, dispatch]);
+    }, [activeMap, dispatch]);
 };

@@ -45,7 +45,11 @@ const PipelineBriefsStep: React.FC = () => {
   const stepState = getStepState('briefs');
   const gate = stepState?.gate;
 
-  const topics = activeMap?.topics ?? [];
+  const allMapTopics = activeMap?.topics ?? [];
+  const topics = useMemo(
+    () => allMapTopics.filter(t => !t.page_decision || t.page_decision === 'standalone_page'),
+    [allMapTopics]
+  );
   const existingBriefs = activeMap?.briefs ?? {};
   const pillars = activeMap?.pillars;
   const eavs = activeMap?.eavs ?? [];

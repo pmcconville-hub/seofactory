@@ -90,6 +90,9 @@ export class IndexConstructionRule {
         case 'navigational':
           scores.standalone_page += 1;
           break;
+        default:
+          scores.standalone_page += 1;
+          break;
       }
     }
 

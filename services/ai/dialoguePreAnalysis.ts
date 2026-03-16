@@ -196,6 +196,8 @@ function analyzeMapPlanning(
 
 // ── Map Planning Sub-Validators ──
 
+const MAX_INDIVIDUAL_CANNIBALIZATION_FINDINGS = 5;
+
 function runTitleCannibalization(
   topics: EnrichedTopic[],
   findings: PreAnalysisFinding[],
@@ -206,17 +208,45 @@ function runTitleCannibalization(
     const risks = detectTitleCannibalization(topics);
     validatorsRun.push('detectTitleCannibalization');
 
-    for (const risk of risks) {
-      const pct = Math.round(risk.similarity * 100);
+    if (risks.length > MAX_INDIVIDUAL_CANNIBALIZATION_FINDINGS) {
+      // Top N individually (worst overlaps first — already sorted by similarity desc)
+      for (const risk of risks.slice(0, MAX_INDIVIDUAL_CANNIBALIZATION_FINDINGS)) {
+        const pct = Math.round(risk.similarity * 100);
+        findings.push({
+          category: 'title_cannibalization',
+          severity: risk.similarity > 0.85 ? 'critical' : 'high',
+          title: `"${risk.topicA.title}" and "${risk.topicB.title}" overlap ${pct}%`,
+          details: `Jaccard word similarity is ${pct}%. These topics risk cannibalizing each other in search results.`,
+          affectedItems: [risk.topicA.id, risk.topicB.id],
+          suggestedAction: 'Merge into a single comprehensive page or differentiate their angles',
+          autoFixable: AUTO_FIXABLE_CATEGORIES['title_cannibalization'],
+        });
+      }
+      // Aggregate the rest into one summary finding
+      const remainingCount = risks.length - MAX_INDIVIDUAL_CANNIBALIZATION_FINDINGS;
+      const uniqueIds = [...new Set(risks.slice(MAX_INDIVIDUAL_CANNIBALIZATION_FINDINGS).flatMap(r => [r.topicA.id, r.topicB.id]))];
       findings.push({
         category: 'title_cannibalization',
-        severity: risk.similarity > 0.85 ? 'critical' : 'high',
-        title: `"${risk.topicA.title}" and "${risk.topicB.title}" overlap ${pct}%`,
-        details: `Jaccard word similarity is ${pct}%. These topics risk cannibalizing each other in search results.`,
-        affectedItems: [risk.topicA.id, risk.topicB.id],
-        suggestedAction: 'Merge into a single comprehensive page or differentiate their angles',
+        severity: 'critical',
+        title: `${remainingCount} additional duplicate topic pairs detected`,
+        details: `Total: ${risks.length} cannibalization risks. Consider bulk auto-merge to deduplicate the topical map.`,
+        affectedItems: uniqueIds.slice(0, 20),
+        suggestedAction: 'Run auto-merge to deduplicate the topical map',
         autoFixable: AUTO_FIXABLE_CATEGORIES['title_cannibalization'],
       });
+    } else {
+      for (const risk of risks) {
+        const pct = Math.round(risk.similarity * 100);
+        findings.push({
+          category: 'title_cannibalization',
+          severity: risk.similarity > 0.85 ? 'critical' : 'high',
+          title: `"${risk.topicA.title}" and "${risk.topicB.title}" overlap ${pct}%`,
+          details: `Jaccard word similarity is ${pct}%. These topics risk cannibalizing each other in search results.`,
+          affectedItems: [risk.topicA.id, risk.topicB.id],
+          suggestedAction: 'Merge into a single comprehensive page or differentiate their angles',
+          autoFixable: AUTO_FIXABLE_CATEGORIES['title_cannibalization'],
+        });
+      }
     }
   } catch (err) {
     console.warn('[dialoguePreAnalysis] detectTitleCannibalization failed:', err);
@@ -231,7 +261,11 @@ function runFrameCoverage(
   validatorsSkipped: string[]
 ): void {
   try {
-    const titles = topics.map(t => t.title);
+    const titles = topics.map(t => t.title).filter(t => t?.trim());
+    if (titles.length === 0) {
+      validatorsSkipped.push('FrameSemanticsAnalyzer');
+      return;
+    }
     const report = FrameSemanticsAnalyzer.analyze(titles);
     validatorsRun.push('FrameSemanticsAnalyzer');
 
@@ -514,10 +548,11 @@ function runServiceAlignment(
 
       for (const service of services) {
         const serviceLower = service.toLowerCase();
+        const regex = new RegExp(`\\b${serviceLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
         if (
-          titleLower.includes(serviceLower) ||
-          serviceAlign.includes(serviceLower) ||
-          rationale.includes(serviceLower)
+          regex.test(titleLower) ||
+          regex.test(serviceAlign) ||
+          regex.test(rationale)
         ) {
           coveredServices.add(service);
         }

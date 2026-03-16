@@ -61,6 +61,9 @@ const ProjectLoader: React.FC = () => {
                 }
 
                 dispatch({ type: 'SET_TOPICAL_MAPS', payload: sanitizedMaps });
+                if (sanitizedMaps.length > 0 && !state.activeMapId) {
+                    dispatch({ type: 'SET_ACTIVE_MAP', payload: sanitizedMaps[0].id });
+                }
             } catch (e) {
                 dispatch({ type: 'SET_ERROR', payload: e instanceof Error ? e.message : 'Failed to load project maps.' });
             } finally {

@@ -168,6 +168,7 @@ export const correctHubSpokeRatios = (
     const config = getWebsiteTypeConfig(websiteType);
     const { min, max } = config.hubSpokeRatio;
     const corrections: HubSpokeCorrection[] = [];
+    const promotedIds = new Set<string>();
 
     // Work with mutable copies
     let mutableCore = coreTopics.map(c => ({ ...c }));
@@ -186,9 +187,13 @@ export const correctHubSpokeRatios = (
         const spokes = mutableOuter.filter(o => o.parent_topic_id === overSpokeHub.id);
         if (spokes.length <= max) break;
 
+        // Filter out already-promoted spokes to prevent infinite loops
+        const eligibleSpokes = spokes.filter(s => !promotedIds.has(s.id));
+        if (eligibleSpokes.length === 0) break;
+
         // Pick the spoke with the longest title (heuristic: more specific = better sub-hub)
-        const bestSubHub = spokes.reduce((best, s) =>
-            s.title.length > best.title.length ? s : best, spokes[0]);
+        const bestSubHub = eligibleSpokes.reduce((best, s) =>
+            s.title.length > best.title.length ? s : best, eligibleSpokes[0]);
 
         // Find spokes most similar to the new sub-hub (by word overlap)
         const subHubWords = new Set(bestSubHub.title.toLowerCase().split(/\s+/).filter(w => w.length > 2));
@@ -222,6 +227,7 @@ export const correctHubSpokeRatios = (
             }
         };
         mutableCore.push(newCore);
+        promotedIds.add(bestSubHub.id);
 
         // Reassign moved spokes to the new sub-hub
         for (const spoke of movedSpokes) {
@@ -230,6 +236,10 @@ export const correctHubSpokeRatios = (
                 mutableOuter[idx] = { ...mutableOuter[idx], parent_topic_id: bestSubHub.id };
             }
         }
+
+        // Progress detection: if spoke count didn't decrease, stop to prevent infinite loop
+        const spokeCountAfter = getSpokeCount(overSpokeHub.id);
+        if (spokeCountAfter >= spokes.length) break;
 
         corrections.push({
             type: 'split_hub',
@@ -348,12 +358,13 @@ export const discoverCoreSemanticTriples = (
 export const expandSemanticTriples = (
     businessInfo: BusinessInfo, pillars: SEOPillars, existingTriples: SemanticTriple[], dispatch: React.Dispatch<any>, count: number = 15
 ): Promise<SemanticTriple[]> => {
+    const safeCount = Math.min(Math.max(1, count), 100);
     return dispatchToProvider(businessInfo, {
-        gemini: () => geminiService.expandSemanticTriples(businessInfo, pillars, existingTriples, dispatch, count),
-        openai: () => openAiService.expandSemanticTriples(businessInfo, pillars, existingTriples, dispatch, count),
-        anthropic: () => anthropicService.expandSemanticTriples(businessInfo, pillars, existingTriples, dispatch, count),
-        perplexity: () => perplexityService.expandSemanticTriples(businessInfo, pillars, existingTriples, dispatch, count),
-        openrouter: () => openRouterService.expandSemanticTriples(businessInfo, pillars, existingTriples, dispatch, count),
+        gemini: () => geminiService.expandSemanticTriples(businessInfo, pillars, existingTriples, dispatch, safeCount),
+        openai: () => openAiService.expandSemanticTriples(businessInfo, pillars, existingTriples, dispatch, safeCount),
+        anthropic: () => anthropicService.expandSemanticTriples(businessInfo, pillars, existingTriples, dispatch, safeCount),
+        perplexity: () => perplexityService.expandSemanticTriples(businessInfo, pillars, existingTriples, dispatch, safeCount),
+        openrouter: () => openRouterService.expandSemanticTriples(businessInfo, pillars, existingTriples, dispatch, safeCount),
     });
 };
 

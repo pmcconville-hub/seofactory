@@ -209,6 +209,18 @@ export interface OrchestratorCallbacks {
   onJobComplete: (auditScore: number) => void;
 }
 
+/**
+ * Wraps a promise with a timeout to prevent indefinite hangs.
+ */
+export function withPassTimeout<T>(promise: Promise<T>, timeoutMs: number, context: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms in ${context}`)), timeoutMs)
+    )
+  ]);
+}
+
 export class ContentGenerationOrchestrator {
   private supabaseUrl: string;
   private supabaseKey: string;

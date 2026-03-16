@@ -440,7 +440,27 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
         case 'SET_PROJECTS': return { ...state, projects: action.payload };
         case 'ADD_PROJECT': return { ...state, projects: [...state.projects, action.payload] };
         case 'DELETE_PROJECT': return { ...state, projects: state.projects.filter(p => p.id !== action.payload.projectId) };
-        case 'SET_ACTIVE_PROJECT': return { ...state, activeProjectId: action.payload, activeMapId: null, topicalMaps: [] };
+        case 'SET_ACTIVE_PROJECT': return {
+            ...state,
+            activeProjectId: action.payload,
+            activeMapId: null,
+            topicalMaps: [],
+            knowledgeGraph: null,
+            validationResult: null,
+            semanticAnalysisResult: null,
+            contextualCoverageResult: null,
+            internalLinkAuditResult: null,
+            topicalAuthorityScore: null,
+            mergeSuggestions: null,
+            gscOpportunities: null,
+            publicationPlan: null,
+            contentIntegrityResult: null,
+            schemaResult: null,
+            flowAuditResult: null,
+            activeBriefTopic: null,
+            briefGenerationResult: null,
+            briefGenerationStatus: null,
+        };
         case 'SET_TOPICAL_MAPS': return { ...state, topicalMaps: action.payload };
         case 'ADD_TOPICAL_MAP': return { ...state, topicalMaps: [...state.topicalMaps, action.payload] };
         case 'DELETE_TOPICAL_MAP': return { ...state, topicalMaps: state.topicalMaps.filter(m => m.id !== action.payload.mapId) };
@@ -695,7 +715,7 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
                 ...state,
                 unifiedAudit: {
                     ...state.unifiedAudit,
-                    fixHistory: [action.payload, ...state.unifiedAudit.fixHistory]
+                    fixHistory: [action.payload, ...state.unifiedAudit.fixHistory].slice(0, 100)
                 }
             };
         case 'SET_UNIFIED_AUDIT_ID':

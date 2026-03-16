@@ -67,6 +67,7 @@ export async function dispatchToProvider<T>(
   }
 
   // Fallback to gemini if specific handler not provided
+  console.warn(`[providerDispatcher] No handler for provider "${provider}", falling back to Gemini.`);
   return handlers.gemini();
 }
 
@@ -98,6 +99,7 @@ export function dispatchToProviderSync<T>(
   }
 
   // Fallback to gemini if specific handler not provided
+  console.warn(`[providerDispatcher] No handler for provider "${provider}", falling back to Gemini.`);
   return handlers.gemini() as T;
 }
 
